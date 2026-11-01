@@ -16,17 +16,12 @@ classifiers = [
     "Topic :: Software Development :: Version Control :: Git",
 ]
 dependencies = [
-    "basstler-domain-model @ git+https://github.com/LucaKro/basstler_domain_model",
+    "basstler-domain-model",
 ]
 dynamic = ["version"]
 
 [project.optional-dependencies]
 test = ["pytest"]
-
-# basstler-domain-model is installed straight from its repository, which hatch accepts
-# only when told to.
-[tool.hatch.metadata]
-allow-direct-references = true
 
 # The version comes from the latest git tag; a commit past it builds as the next development
 # version, and a source without git history as 0.0.0.
