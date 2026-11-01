@@ -1,0 +1,86 @@
+# Probe report
+
+## Environment
+
+- **python**: 3.13.18
+- **cloud session**: true
+- **token variable set**: True
+- **checked-out branch**: cloud-probe
+- **git author**: LucaKro <luc_kro@uni-bremen.de>
+- **git**: git version 2.43.0
+- **curl**: curl 8.5.0 (x86_64-pc-linux-gnu) libcurl/8.5.0 OpenSSL/3.0.13 zlib/1.3 brotli/1.1.0 zstd/1.5.5 libidn2/2.3.7 libpsl/0.21.2 (+libidn2/2.3.7) libssh/0.10.6/openssl/zlib nghttp2/1.59.0 librtmp/2.3 OpenLDAP/2.6.10
+- **gh**: gh version 2.89.0 (2026-03-26)
+- **repository**: LucaKro/GitHubWorkflow
+- **default branch**: main
+
+## domain model, used live
+
+| check | ok | detail | s |
+|---|---|---|---|
+| authenticated-login | yes | LucaKro | 0.33 |
+| labels | yes | accessibility, bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix | 0.35 |
+| open-pull-requests | yes | 0 open | 0.33 |
+| check-state | yes | not reported | 0.86 |
+| pull-request-review-state | yes | read through rest: 0 review threads, checks not reported | 2.11 |
+
+## git: a notes branch on the repository
+
+| check | ok | detail | s |
+|---|---|---|---|
+| push probe/notes-20261101T122056Z | yes | pushed | 1.35 |
+| read probe/notes-20261101T122056Z back | yes | 878eb654a21ff9e7690d8a466244d9840f67d528	refs/heads/probe/notes-20261101T122056Z | 0.38 |
+| delete probe/notes-20261101T122056Z | NO | fatal: the remote end hung up unexpectedly | 0.43 |
+| push claude/probe-notes-20261101T122056Z | yes | pushed | 1.34 |
+| read claude/probe-notes-20261101T122056Z back | yes | 878eb654a21ff9e7690d8a466244d9840f67d528	refs/heads/claude/probe-notes-20261101T122056Z | 0.39 |
+| delete claude/probe-notes-20261101T122056Z | NO | fatal: the remote end hung up unexpectedly | 0.4 |
+
+## issues: the finding boards
+
+| check | ok | detail | s |
+|---|---|---|---|
+| issues enabled | yes | 200 True | 0.32 |
+| create the unreviewed label | yes | 201 | 0.4 |
+| file a finding as unreviewed | yes | 201 | 0.5 |
+| list the unreviewed board right after filing | yes | 200 finding listed: False | 0.34 |
+| comment the rejection reason | yes | 201 | 0.65 |
+| close it as not planned | yes | 200 #7 | 0.94 |
+| read it back directly | yes | 200 state closed, reason not_planned | 0.27 |
+| list the rejected board right after closing | yes | 200 close reason: [] | 0.33 |
+| delete the label | yes | 204 | 0.4 |
+
+## pull requests: draft, review threads, base
+
+| check | ok | detail | s |
+|---|---|---|---|
+| push probe/pull-request-20261101T122056Z | yes | d70da61ebd48f0b03737f9a47332f482494695e1 | 1.33 |
+| open a draft pull request | yes | 201 | 1.02 |
+| read its state | yes | 200 draft True, mergeable_state unknown, 0 review requests | 0.36 |
+| count its review threads (proxy route) | yes | 200 0 entries | 0.31 |
+| compare it with its base | yes | 200 ahead 1, behind 0 | 0.3 |
+| read the checks on its head | yes | 200 0 check runs | 0.25 |
+| close it | yes | 200 #8 | 0.83 |
+| delete probe/pull-request-20261101T122056Z | NO | fatal: the remote end hung up unexpectedly | 0.43 |
+
+## settings: issues, merged-branch deletion, Actions
+
+| check | ok | detail | s |
+|---|---|---|---|
+| read the repository settings | yes | 200 has_issues True, delete_branch_on_merge False | 0.26 |
+| write them back unchanged | NO | 403 Repository settings writes are not permitted through this proxy. | 0.09 |
+| read the Actions permissions | NO | 403 Access to this GitHub Actions path is not permitted through this proxy. | 0.24 |
+
+## Actions: deleting branches from a workflow
+
+| check | ok | detail | s |
+|---|---|---|---|
+| push probe/deleted-by-workflow-20261101T122056Z | yes | pushed | 1.46 |
+| build a commit carrying the workflow | yes | a50f918574b0e08eed09971b4bc35b63c0f63a15 | 0.0 |
+| push the workflow on probe/workflow-20261101T122056Z | yes | pushed | 1.4 |
+| the workflow run | yes | success https://github.com/LucaKro/GitHubWorkflow/actions/runs/41306102120 | 10.47 |
+| branches gone afterwards | yes | both deleted | 0.0 |
+
+## signals beside the repository
+
+| check | ok | detail | s |
+|---|---|---|---|
+| search pull requests waiting on my review | yes | 200 8 waiting | 0.71 |
