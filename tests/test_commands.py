@@ -194,7 +194,9 @@ def test_a_session_start_is_shown_to_the_person_and_given_to_the_model(
     answer = json.loads(finished.stdout)
     given = answer[HookKey.HOOK_SPECIFIC_OUTPUT]
     assert given[HookKey.HOOK_EVENT_NAME] == HookValue.SESSION_START
-    assert answer[HookKey.SYSTEM_MESSAGE] == given[HookKey.ADDITIONAL_CONTEXT]
+    shown = answer[HookKey.SYSTEM_MESSAGE].splitlines()
+    plain = given[HookKey.ADDITIONAL_CONTEXT].splitlines()
+    assert [line for line in plain if any(line in seen for seen in shown)] == plain
 
 
 def test_a_session_outside_a_checkout_says_so_in_one_line(tmp_path: Path):

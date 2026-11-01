@@ -11,8 +11,10 @@ import os
 import shutil
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import StrEnum
+from itertools import repeat
 from pathlib import Path
 from typing import Any
 
@@ -178,9 +180,16 @@ class Runtime:
         :return: Each package whose branch moved on, as ``<package> <installed> ->
             <tip>``; a branch that cannot be reached counts as not moved.
         """
+        with ThreadPoolExecutor() as pool:
+            tips = list(
+                pool.map(
+                    InstallSource.latest_commit,
+                    [package.source for package in self.packages],
+                    repeat(git),
+                )
+            )
         behind = []
-        for package in self.packages:
-            latest = package.source.latest_commit(git)
+        for package, latest in zip(self.packages, tips):
             if latest is not None and latest != package.source.commit:
                 behind.append(
                     f"{package.distribution} {package.source.commit[:7]} -> {latest[:7]}"

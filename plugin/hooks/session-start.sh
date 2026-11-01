@@ -10,11 +10,12 @@ set -uo pipefail
 
 PYTHON="${GITHUB_WORKFLOW_PYTHON:-${HOME}/.virtualenvs/githubworkflow-runtime/bin/python}"
 
-# Answers the hook with one line shown to the person, when the package cannot answer.
+# Answers the hook with one line shown to the person in bold red, when the package cannot
+# answer.
 report() {
   local text="${1//\\/\\\\}"
   text="${text//\"/\\\"}"
-  printf '{"systemMessage": "%s"}\n' "${text}"
+  printf '{"systemMessage": "\\u001b[1;31m%s\\u001b[0m"}\n' "${text}"
 }
 
 if [ ! -x "${PYTHON}" ]; then

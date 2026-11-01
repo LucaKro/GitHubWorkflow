@@ -3,8 +3,8 @@ Have GitHub delete a pull request's branch once it is merged, on the owner's rep
 turned on where it is off, and where this session may not change settings, one line
 saying where to turn it on.
 
-Usage: ``python -m github_workflow.merged_branch_deletion``; prints one line, or nothing
-when GitHub already deletes merged branches.
+Usage: ``python -m github_workflow.merged_branch_deletion``; prints one report line as
+JSON, or nothing when GitHub already deletes merged branches.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from basstler_domain_model.github.repository_client import (
 from basstler_domain_model.repository import Repository
 
 from github_workflow.checkout import ProjectCheckout
+from github_workflow.hooks import ReportLine, Tone
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.settings import WorkflowSettings
 
@@ -41,7 +42,7 @@ class MergedBranchDeletion:
     Reads and changes its settings.
     """
 
-    def ensure(self) -> str | None:
+    def ensure(self) -> ReportLine | None:
         """
         Turn the deletion on where it is off.
 
@@ -51,14 +52,16 @@ class MergedBranchDeletion:
         if self.settings.deletes_merged_branches():
             return None
         if self.settings.turn_on_merged_branch_deletion():
-            return (
+            return ReportLine(
                 f"github-workflow: turned on GitHub's deletion of merged branches "
-                f"for {self.repository}"
+                f"for {self.repository}",
+                Tone.NEWS,
             )
-        return (
+        return ReportLine(
             f"github-workflow: GitHub keeps the merged branches of {self.repository}, "
             f'and this session may not change that: turn on "Automatically delete '
-            f'head branches" at {self.repository.settings_url}'
+            f'head branches" at {self.repository.settings_url}',
+            Tone.ACTION,
         )
 
 
@@ -75,7 +78,7 @@ def main() -> None:
         repository, GitHubRepository.from_environment(repository)
     ).ensure()
     if done is not None:
-        print(done)
+        print(done.json())
 
 
 if __name__ == "__main__":
