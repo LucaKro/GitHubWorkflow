@@ -61,13 +61,16 @@ them:
   when the notes branch is pushed deletes them too, so a cloud session only has to push
   the notes.
 - The tool turns on GitHub's own deletion of a merged pull request's branch on every
-  repository it works on, so most branches never need listing.
+  repository it works on, so most branches never need listing. Only a local session can:
+  a cloud session may read a repository's settings but not change them.
 - Issues and pull requests are only ever closed, never deleted.
 
 ## Where something is turned off
 
 - Where issues or Actions are turned off, as they are on a new fork, the tool turns them
   on if it can, and otherwise tells me exactly where to do it, with the link.
+- A local session can turn them on. A cloud session can see whether issues are on, but
+  can neither change it nor see whether Actions are on, so there the tool tells me.
 
 ## What the agent may do without asking
 

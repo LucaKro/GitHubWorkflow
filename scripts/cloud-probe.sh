@@ -20,8 +20,18 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 RESULTS="${ROOT}/probe-results/${STAMP}"
 ENVIRONMENT="$(mktemp -d)/environment"
 
-mkdir -p "${RESULTS}"
 cd "${ROOT}" || exit 1
+
+# A checkout behind its remote would run an old probe and have its push refused. Bash
+# reads this script while running it, so it stops rather than updating itself.
+CURRENT="$(git branch --show-current)"
+if [ -n "${CURRENT}" ] && git fetch --quiet origin "${CURRENT}" 2>/dev/null &&
+  [ "$(git rev-list --count HEAD..FETCH_HEAD)" != "0" ]; then
+  echo "${CURRENT} is behind origin/${CURRENT}: run 'git merge --ff-only origin/${CURRENT}', then run this again"
+  exit 1
+fi
+
+mkdir -p "${RESULTS}"
 
 # The project's own author signs every commit the probe makes, its own probe commits
 # included, rather than whatever identity the session's git carries.
