@@ -26,7 +26,7 @@ from basstler_domain_model.github.repository_client import (
 from basstler_domain_model.github.stack_models import Stack
 
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.credential import GitHubToken
+from basstler_domain_model.github.credential import GitHubToken
 from github_workflow.exceptions import StackContinuesAboveError
 from basstler_domain_model.commands import CommandRunner
 from github_workflow.remotes import OwnedRemotes
