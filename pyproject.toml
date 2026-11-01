@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling>=1.24", "hatch-vcs>=0.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "github-workflow"
+description = "A personal GitHub workflow, built on basstler-domain-model."
+requires-python = ">=3.12"
+authors = [
+    {name = "LucaKro", email = "luc_kro@uni-bremen.de"}
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+dependencies = [
+    "basstler-domain-model @ git+https://github.com/LucaKro/basstler_domain_model",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+# basstler-domain-model is installed straight from its repository, which hatch accepts
+# only when told to.
+[tool.hatch.metadata]
+allow-direct-references = true
+
+# The version comes from the latest git tag; a commit past it builds as the next development
+# version, and a source without git history as 0.0.0.
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "0.0.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/github_workflow"]
+
+# Docstrings are formatted by docformatter on top of black.
+[tool.docformatter]
+make-summary-multi-line = true
+pre-summary-newline = true
+close-quotes-on-newline = true
+black = true
