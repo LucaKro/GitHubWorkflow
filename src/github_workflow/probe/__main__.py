@@ -64,6 +64,7 @@ def main() -> None:
     probe.check_issue_board()
     if default_branch is not None:
         probe.check_pull_request(default_branch)
+        probe.check_stack(default_branch)
     probe.check_signals()
     probe.check_repository_settings()
     probe.check_workflow_branch_deletion()

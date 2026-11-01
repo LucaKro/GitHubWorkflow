@@ -20,6 +20,7 @@ class CheckGroup(StrEnum):
     GIT = "git: a notes branch on the repository"
     ISSUE_BOARD = "issues: the finding boards"
     PULL_REQUEST = "pull requests: draft, review threads, base"
+    STACKS = "stacks: retargeting and native stacks, through the stacks command"
     SETTINGS = "settings: issues, merged-branch deletion, Actions"
     ACTIONS = "Actions: deleting branches from a workflow"
     SIGNALS = "signals beside the repository"

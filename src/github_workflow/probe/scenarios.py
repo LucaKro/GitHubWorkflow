@@ -24,7 +24,9 @@ from basstler_domain_model.git.commands import (
     RemoteName,
 )
 from basstler_domain_model.github.clients import GitHubApi, RestAnswer
-from basstler_domain_model.github.routes import RepositoryRoute
+from basstler_domain_model.github.pull_request_fields import PullRequestField
+from basstler_domain_model.github.routes import RepositoryRoute, StackAction
+from basstler_domain_model.github.stack_models import Stack
 from basstler_domain_model.github.vocabulary import (
     IssueState,
     IssueStateReason,
@@ -35,6 +37,7 @@ from basstler_domain_model.repository import Repository
 
 from github_workflow.locations import ProbeTemplate, RepositoryFile
 from github_workflow.probe.library_check import LibraryCheck
+from github_workflow.stacks import StackCommand
 from github_workflow.probe.results import CheckGroup, ProbeReport
 
 # %% vocabulary
@@ -86,6 +89,8 @@ class ProbeText(StrEnum):
     PULL_REQUEST_BODY = "Created by the cloud probe; closed by it again."
     COMMIT_MESSAGE = "Probe commit, never merged"
     WORKFLOW_COMMIT_MESSAGE = "Probe workflow deleting the probe's branches"
+    STACK_LOWER_TITLE = "Probe: lower layer of a stack"
+    STACK_UPPER_TITLE = "Probe: upper layer of a stack"
 
 
 class BranchName(StrEnum):
@@ -116,6 +121,16 @@ class BranchName(StrEnum):
     WORKFLOW = "probe/workflow-"
     """
     The branch carrying the branch deletion workflow.
+    """
+
+    STACK_LOWER = "probe/stack-lower-"
+    """
+    The lower pull request of the stack the probe forms.
+    """
+
+    STACK_UPPER = "probe/stack-upper-"
+    """
+    The upper pull request of the stack the probe forms.
     """
 
 
@@ -569,6 +584,119 @@ class Probe:
             CheckGroup.PULL_REQUEST, "read the checks on its head", checks, runs
         )
         self.check_library_call(LibraryCheck.PULL_REQUEST_REVIEW_STATE, str(number))
+
+    # %% stacks
+
+    def check_stack(self, default_branch: str) -> None:
+        """
+        Open two chained draft pull requests, the upper one deliberately targeting the
+        default branch, and stack them with the stacks command, which has to retarget
+        the upper one first; check both on GitHub, then unstack and close them.
+
+        :param default_branch: The branch the lower pull request targets.
+        """
+        self.git.fetch(RemoteName.ORIGIN, default_branch)
+        base = RemoteBranch(RemoteName.ORIGIN, default_branch).tracking_reference
+        lower_commit = self.git.commit_files(base, {}, ProbeText.STACK_LOWER_TITLE)
+        upper_commit = self.git.commit_files(
+            lower_commit, {}, ProbeText.STACK_UPPER_TITLE
+        )
+        lower = self.branch(BranchName.STACK_LOWER)
+        upper = self.branch(BranchName.STACK_UPPER)
+        pushed = [
+            self.git.push(ProposedPush(branch.remote, f"{commit}:{branch.reference}"))
+            for branch, commit in ((lower, lower_commit), (upper, upper_commit))
+        ]
+        recorded = [
+            self.record_command(
+                CheckGroup.STACKS, f"push {branch.name}", result, "pushed"
+            )
+            for branch, result in zip((lower, upper), pushed)
+        ]
+        if all(recorded):
+            self.stack_drafts(lower, upper, default_branch)
+        for branch, result in zip((lower, upper), pushed):
+            if result.succeeded:
+                self.delete(CheckGroup.STACKS, branch)
+
+    def stack_drafts(
+        self, lower: RemoteBranch, upper: RemoteBranch, default_branch: str
+    ) -> None:
+        """
+        Open a draft pull request for each branch, both targeting the default branch,
+        stack them with the stacks command, and close them again.
+
+        :param lower: The branch of the lower pull request.
+        :param upper: The branch of the upper pull request, built on *lower*.
+        :param default_branch: The branch both pull requests first target.
+        """
+        numbers = [
+            self.open_draft(CheckGroup.STACKS, branch.name, default_branch, title)
+            for branch, title in (
+                (lower, ProbeText.STACK_LOWER_TITLE),
+                (upper, ProbeText.STACK_UPPER_TITLE),
+            )
+        ]
+        if None not in numbers:
+            self.stack_with_command(*numbers, lower.name)
+        for number in numbers:
+            if number is not None:
+                self.close_pull_request(CheckGroup.STACKS, number)
+
+    def stack_with_command(self, lower: int, upper: int, lower_branch: str) -> None:
+        """
+        :param lower: The lower pull request.
+        :param upper: The upper pull request, targeting the default branch.
+        :param lower_branch: The lower pull request's branch, which the upper one must
+            end up targeting.
+        """
+        command = self.runner.run(
+            sys.executable,
+            "-m",
+            "github_workflow.stacks",
+            StackCommand.ON,
+            str(lower),
+            str(upper),
+        )
+        self.record_command(
+            CheckGroup.STACKS, f"stacks on {lower} {upper}", command, "stacked"
+        )
+        upper_read = self.call(HTTPMethod.GET, self.route.pull_request(upper))
+        base = (
+            PullRequestField.BASE.read(upper_read.body, upper)
+            if upper_read.succeeded
+            else ""
+        )
+        self.report.record(
+            CheckGroup.STACKS,
+            "the upper pull request was retargeted",
+            base == lower_branch,
+            f"targets {base}",
+            upper_read.seconds,
+        )
+        holding = self.call(HTTPMethod.GET, self.route.stacks_holding(upper))
+        stacks = (
+            [Stack.from_json(entry) for entry in holding.body]
+            if holding.succeeded
+            else []
+        )
+        self.record_response(
+            CheckGroup.STACKS,
+            "read the stack holding the upper one",
+            holding,
+            (
+                f"stack {stacks[0].number}: {stacks[0].numbers}"
+                if stacks
+                else "in no stack"
+            ),
+        )
+        if not stacks:
+            return
+        unstacked = self.call(
+            HTTPMethod.POST,
+            self.route.stack_action(stacks[0].number, StackAction.UNSTACK),
+        )
+        self.record_response(CheckGroup.STACKS, "unstack it", unstacked)
 
     # %% settings
 
