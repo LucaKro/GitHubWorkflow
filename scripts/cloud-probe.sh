@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Measures what this session can do on git and GitHub, then commits what it found to the
-# checked-out branch and pushes it, so it can be pulled and read elsewhere.
+# Measures what this session can do on git and GitHub, then commits what it found and
+# pushes it, so it can be pulled and read elsewhere: to the checked-out branch, or to a
+# branch of its own when that is the default branch.
 #
 # Installs this package and basstler-domain-model into a fresh environment of its own,
 # runs `python -m github_workflow.probe`, and records the install log, the run log, the
@@ -40,7 +41,14 @@ else
   echo "installing failed; see ${RESULTS}/install.log"
 fi
 
+# Results never go to the default branch directly: on it, or on no branch at all, they go
+# to a branch of their own.
 BRANCH="$(git branch --show-current)"
+DEFAULT_BRANCH="$(git ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\(.*\)\tHEAD$|\1|p')"
+if [ -z "${BRANCH}" ] || [ "${BRANCH}" = "${DEFAULT_BRANCH}" ]; then
+  BRANCH="probe/results-${STAMP}"
+  git switch --quiet --create "${BRANCH}"
+fi
 git add "${RESULTS}"
 git commit --quiet --message "Record cloud probe results ${STAMP}" --message "Made with AI assistance"
 if git push --quiet origin "HEAD:refs/heads/${BRANCH}"; then

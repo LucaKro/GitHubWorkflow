@@ -7,8 +7,10 @@ contradicts one of these changes this file first.
 
 - Mostly in local sessions, but cloud sessions are a first-class target: the workflow is
   what should make cloud sessions trustworthy enough to use.
-- On forks of upstream projects: work happens on the fork, pull requests go to an upstream
-  that reviews them.
+- On forks of upstream projects, where pull requests go to an upstream that reviews them,
+  and on repositories of my own that have no upstream.
+- In both, work reaches the default branch only through branches and pull requests:
+  nothing is ever pushed to the default branch directly.
 
 ## What a session starts with
 
@@ -17,7 +19,7 @@ agent:
 
 - my standing notes
 - this branch's progress
-- one line per other open pull request on the fork
+- one line per other open pull request on the repository
 - warnings about this branch's pull request
 
 ## Signals
@@ -32,7 +34,9 @@ detail; the detail is fetched only when I ask:
 
 ## Findings outside the current pull request
 
-Recorded as GitHub issues on the fork, never acted on in the session that found them:
+Recorded as GitHub issues on the repository the session works in - the fork, or the
+repository itself when it has no upstream - never acted on in the session that found
+them:
 
 - *unreviewed*: an open issue labelled for triage, until I look at it
 - *accepted*: an open issue I confirmed; working on it starts with a failing test
@@ -41,7 +45,8 @@ Recorded as GitHub issues on the fork, never acted on in the session that found 
 
 ## Notes and progress
 
-- On a notes branch on each fork, readable from any session on that project.
+- On a notes branch on each repository - the fork, or the repository itself - readable
+  from any session on that project.
 
 ## What the agent may do without asking
 
@@ -60,6 +65,6 @@ Everything else written to GitHub needs my go-ahead.
 
 ## Open questions
 
-- Forks start with issues turned off, and a public fork shows its issues publicly.
-- A cloud session working in the fork cannot reach the upstream's API, so signals about
-  my upstream pull requests need another route.
+- Forks start with issues turned off, and a public repository shows its issues publicly.
+- A cloud session working in a fork cannot reach the upstream's API, so signals about my
+  upstream pull requests need another route.
