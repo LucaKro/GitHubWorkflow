@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from basstler_domain_model.git.commands import GitCommandRunner
+from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
 from basstler_domain_model.git.storage_branch import StorageBranch
 
 from github_workflow.remotes import OwnedRemote
@@ -30,7 +30,7 @@ class NotesBranch(StorageBranch):
         """
         :param git: Runs git in the checkout.
         :param remote: The owner's remote the branch lives on.
-        :param settings: The branch's name, and where a fetch of it is kept.
+        :param settings: The branch's name.
         :return: The notes branch.
         """
-        return cls(git, remote.name, settings.notes_branch, settings.notes_reference)
+        return cls(git, RemoteBranch(remote.name, settings.notes_branch))

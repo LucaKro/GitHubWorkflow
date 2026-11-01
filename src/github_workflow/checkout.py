@@ -41,11 +41,6 @@ class ProjectCheckout:
         return self.git.working_directory
 
     @property
-    def branch(self) -> str:
-        """:return: The checked-out branch, empty on a detached ``HEAD``."""
-        return self.git.run("branch", "--show-current")
-
-    @property
     def claude_local(self) -> Path:
         """:return: Where ``CLAUDE.local.md`` lives in this checkout."""
         return self.root / ProjectFile.CLAUDE_LOCAL

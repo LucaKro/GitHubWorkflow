@@ -72,7 +72,7 @@ class NotesSave:
                 NotesSection.STANDING_NOTES, ""
             )
         }
-        branch = self.checkout.branch
+        branch = self.checkout.git.checked_out_branch()
         if branch and NotesSection.BRANCH_PROGRESS in sections:
             files[NotesFile.progress_of(branch)] = sections[
                 NotesSection.BRANCH_PROGRESS
@@ -86,6 +86,7 @@ class NotesSave:
         :return: The files saved, empty when nothing changed.
         """
         files = self.files()
+        branch = self.checkout.git.checked_out_branch()
         self.notes.fetch()
         changed = {
             path: f"{text}\n"
@@ -93,7 +94,5 @@ class NotesSave:
             if (self.notes.read(path) or "") != text
         }
         if changed:
-            self.notes.write(
-                changed, f"Save notes from {self.checkout.branch or 'a detached HEAD'}"
-            )
+            self.notes.write(changed, f"Save notes from {branch or 'a detached HEAD'}")
         return list(changed)

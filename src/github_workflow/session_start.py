@@ -33,7 +33,7 @@ def main() -> None:
     remote = remotes.chosen
     notes = NotesBranch.on(checkout.git, remote, settings)
     exists = notes.fetch()
-    branch = checkout.branch
+    branch = checkout.git.checked_out_branch()
     sections = {NotesSection.STANDING_NOTES: notes.read(NotesFile.STANDING_NOTES) or ""}
     progress = notes.read(NotesFile.progress_of(branch)) if branch else None
     if branch:

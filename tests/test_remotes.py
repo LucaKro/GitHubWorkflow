@@ -7,7 +7,9 @@ from __future__ import annotations
 import pytest
 
 from github_workflow.exceptions import AmbiguousOwnedRemoteError, NoOwnedRemoteError
-from github_workflow.remotes import OwnedRemotes, RemoteName
+from basstler_domain_model.git.commands import RemoteName
+
+from github_workflow.remotes import OwnedRemotes
 from github_workflow.settings import WorkflowSettings
 
 from .repositories_by_owner import RepositoriesByOwner

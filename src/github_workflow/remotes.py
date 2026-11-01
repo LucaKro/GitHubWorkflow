@@ -6,40 +6,20 @@ of the owner's.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 
-from basstler_domain_model.git.commands import GitCommandRunner
+from basstler_domain_model.git.commands import GitCommandRunner, Remote, RemoteName
 from basstler_domain_model.repository import Repository
 
 from github_workflow.exceptions import AmbiguousOwnedRemoteError, NoOwnedRemoteError
 from github_workflow.settings import WorkflowSettings
 
-# %% vocabulary
-
-
-class RemoteName(StrEnum):
-    """
-    The remote names the workflow treats specially.
-    """
-
-    ORIGIN = "origin"
-    """
-    The remote a clone starts with, preferred when several are the owner's.
-    """
-
-
 # %% one remote
 
 
 @dataclass(frozen=True)
-class OwnedRemote:
+class OwnedRemote(Remote):
     """
     A remote whose push URL points at a repository of the owner's.
-    """
-
-    name: str
-    """
-    The remote's name in the checkout.
     """
 
     repository: Repository
@@ -81,7 +61,7 @@ class OwnedRemotes:
         """
         remotes = git.remotes()
         owned = tuple(
-            OwnedRemote(remote.name, remote.repository)
+            OwnedRemote(remote.name, remote.push_url, remote.repository)
             for remote in remotes
             if remote.repository is not None
             and remote.repository.owner.casefold() == settings.owner.casefold()
