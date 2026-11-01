@@ -13,6 +13,7 @@ Usage: ``python -m github_workflow.session_start``
 from __future__ import annotations
 
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,7 +21,7 @@ from basstler_domain_model.commands import CommandRunner
 
 import github_workflow.merged_branch_deletion as merged_branch_deletion
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.hooks import SessionStartReport
+from github_workflow.hooks import ReportLine, SessionStartReport, Tone
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection
@@ -48,21 +49,26 @@ class SessionStart:
     Whose repositories are written to, and where the notes live.
     """
 
-    def report(self) -> list[str]:
+    def report(self) -> list[ReportLine]:
         """
-        Load the notes into ``CLAUDE.local.md``.
+        Load the notes into ``CLAUDE.local.md``, make sure GitHub deletes merged
+        branches and check the runtime, all at once, since each mostly waits on GitHub.
 
         :return: One line per thing the session should know.
         """
-        lines = [self.load_notes()]
-        if OwnedRemotes.read(self.checkout.git, self.settings).problem is None:
-            lines += self.merged_branch_deletion()
-        notice = Runtime.installed().notice(self.checkout.git)
-        if notice is not None:
-            lines.append(notice)
+        owned = OwnedRemotes.read(self.checkout.git, self.settings).problem is None
+        with ThreadPoolExecutor() as pool:
+            notes = pool.submit(self.load_notes)
+            deletion = pool.submit(self.merged_branch_deletion) if owned else None
+            notice = pool.submit(Runtime.installed().notice, self.checkout.git)
+        lines = [notes.result()]
+        if deletion is not None:
+            lines += deletion.result()
+        if notice.result() is not None:
+            lines.append(ReportLine(notice.result(), Tone.ACTION))
         return lines
 
-    def merged_branch_deletion(self) -> list[str]:
+    def merged_branch_deletion(self) -> list[ReportLine]:
         """
         Make sure GitHub deletes merged branches, in a process of its own so a failure
         costs only this line.
@@ -74,12 +80,15 @@ class SessionStart:
         )
         if not checked.succeeded:
             return [
-                "github-workflow: could not check whether GitHub deletes merged "
-                f"branches: {checked.summary}"
+                ReportLine(
+                    "github-workflow: could not check whether GitHub deletes merged "
+                    f"branches: {checked.summary}",
+                    Tone.PROBLEM,
+                )
             ]
-        return checked.output.splitlines()
+        return [ReportLine.from_json(line) for line in checked.output.splitlines()]
 
-    def load_notes(self) -> str:
+    def load_notes(self) -> ReportLine:
         """
         Write the notes and this branch's progress into ``CLAUDE.local.md``.
 
@@ -87,8 +96,9 @@ class SessionStart:
         """
         remotes = OwnedRemotes.read(self.checkout.git, self.settings)
         if remotes.problem is not None:
-            return (
-                f"github-workflow: notes not loaded: {remotes.problem.error_message()}"
+            return ReportLine(
+                f"github-workflow: notes not loaded: {remotes.problem.error_message()}",
+                Tone.NEWS,
             )
         remote = remotes.chosen
         git = self.checkout.git
@@ -120,7 +130,9 @@ class SessionStart:
             if branch
             else ""
         )
-        return f"github-workflow: notes from {source}{state}{progress_state}"
+        return ReportLine(
+            f"github-workflow: notes from {source}{state}{progress_state}", Tone.NEWS
+        )
 
 
 # %% entry point
@@ -132,7 +144,12 @@ def main() -> None:
     """
     checkout = ProjectCheckout.around(Path.cwd())
     if checkout is None:
-        lines = ["github-workflow: not in a git checkout, so no notes were loaded"]
+        lines = [
+            ReportLine(
+                "github-workflow: not in a git checkout, so no notes were loaded",
+                Tone.NEWS,
+            )
+        ]
     else:
         lines = SessionStart(checkout, WorkflowSettings()).report()
     print(SessionStartReport(lines).json())
