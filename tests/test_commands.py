@@ -48,13 +48,23 @@ def github(
 ) -> Iterator[ReplayedApi]:
     """
     :return: GitHub as every command run here reaches it, answering that the owner's
-        repository already deletes merged branches.
+        repository has everything the workflow relies on set up.
     """
     with ReplayedApi() as api:
         api.answers[("GET", root_path(settings))] = setting(HTTPStatus.OK, True)
+        api.answers[("GET", actions_path(settings))] = RecordedAnswer(
+            HTTPStatus.OK, json.dumps({RestJSONKey.ENABLED: True})
+        )
         monkeypatch.setenv(GitHubActionsVariable.API_URL, api.url)
         monkeypatch.setenv(GitHubCredentialVariable.GH_TOKEN, "a-token")
         yield api
+
+
+def actions_path(settings: WorkflowSettings) -> str:
+    """:param settings: The workflow's settings.
+    :return: The REST path of the owner's scratch repository's Actions permissions."""
+    repository = Repository(settings.owner, RepositoriesByOwner.repository_name)
+    return f"/{RepositoryRoute(repository).actions_permissions}"
 
 
 def root_path(settings: WorkflowSettings) -> str:
@@ -69,7 +79,10 @@ def setting(status: HTTPStatus, deletes: bool) -> RecordedAnswer:
     :param deletes: Whether merged branches are deleted.
     :return: An answer carrying the merged-branch deletion setting."""
     return RecordedAnswer(
-        status, json.dumps({RestJSONKey.DELETE_BRANCH_ON_MERGE: deletes})
+        status,
+        json.dumps(
+            {RestJSONKey.DELETE_BRANCH_ON_MERGE: deletes, RestJSONKey.HAS_ISSUES: True}
+        ),
     )
 
 
@@ -266,7 +279,7 @@ def test_a_session_whose_repository_deletes_merged_branches_changes_nothing(
 ):
     start_session(repositories.clone(owned_url, "session"))
 
-    assert [sent.method for sent in github.sent] == ["GET"]
+    assert {sent.method for sent in github.sent} == {"GET"}
 
 
 # %% saving
