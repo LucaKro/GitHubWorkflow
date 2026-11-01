@@ -29,6 +29,7 @@ from github_workflow.command_line import (
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
+from github_workflow.cleanup import BranchCleanup, KeptBranches
 from github_workflow.findings import (
     FindingAcceptance,
     FindingFiling,
@@ -154,6 +155,16 @@ class WorkflowSession(RepositoryDetails):
                 return FindingAcceptance(self.github, arguments.number)
             case WorkflowCommand.FINDING, FindingSubcommand.REJECT:
                 return FindingRejection(self.github, arguments.number, arguments.reason)
+            case WorkflowCommand.CLEANUP, _:
+                git = self.checkout.git
+                return BranchCleanup(
+                    git,
+                    self.remote,
+                    KeptBranches.read(
+                        git, self.remote, self.github, self.settings.notes_branch
+                    ),
+                    NotesBranch.on(git, self.remote, self.settings),
+                )
             case WorkflowCommand.DETAILS, _:
                 return PullRequestDetails(
                     PullRequestSignalReader.of(self.github), arguments.number
@@ -229,6 +240,9 @@ class WorkflowSession(RepositoryDetails):
         )
         reject.add_argument("number", type=int)
         reject.add_argument("--reason", required=True)
+        commands.add_parser(
+            WorkflowCommand.CLEANUP, help="delete branches of closed pull requests"
+        )
         details = commands.add_parser(
             WorkflowCommand.DETAILS, help="what a pull request's signals are about"
         )

@@ -26,6 +26,17 @@ class NotesFile(PathEnumeration):
     One file per work branch, named after it.
     """
 
+    READY_FOR_DELETION = Path("ready-for-deletion.md")
+    """
+    The branches a cloud session could not delete, one per line, for the deletion
+    workflow.
+    """
+
+    DELETION_WORKFLOW = Path(".github/workflows/delete-ready-branches.yml")
+    """
+    The Actions workflow deleting those branches whenever the notes branch is pushed.
+    """
+
     @classmethod
     def progress_of(cls, branch: str) -> Path:
         """
@@ -57,6 +68,22 @@ class GitFile(PathEnumeration):
     EXCLUDE = Path("info/exclude")
     """
     The repository's own ignore list, which is never committed.
+    """
+
+
+# %% what the workflow pushes
+
+
+class WorkflowTemplate(PathEnumeration):
+    """
+    The files the workflow fills in and pushes, as shipped in the package.
+    """
+
+    DELETION_WORKFLOW = (
+        Path(__file__).parent / "templates" / "delete_ready_branches.yml"
+    )
+    """
+    The Actions workflow deleting the branches listed on the notes branch.
     """
 
 

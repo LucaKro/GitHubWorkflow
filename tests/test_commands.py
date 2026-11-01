@@ -51,7 +51,8 @@ def github(
     """
     :return: GitHub as every command run here reaches it, answering that the owner's
         repository has everything the workflow relies on set up, no open pull request,
-        nothing waiting on the person's review, and no findings.
+        nothing waiting on the person's review, no findings, and no pull request
+        whose branch is left to delete.
     """
     with ReplayedApi() as api:
         api.answers[("GET", root_path(settings))] = setting(HTTPStatus.OK, True)
@@ -61,12 +62,13 @@ def github(
         route = RepositoryRoute(
             Repository(settings.owner, RepositoriesByOwner.repository_name)
         )
-        open_pull_requests = route.listing(
-            route.pull_requests, {QueryParameter.STATE: PullRequestListState.OPEN.query}
-        )
-        api.answers[("GET", f"/{open_pull_requests}")] = RecordedAnswer(
-            HTTPStatus.OK, "[]"
-        )
+        for listed in (PullRequestListState.OPEN, PullRequestListState.ALL):
+            pull_requests = route.listing(
+                route.pull_requests, {QueryParameter.STATE: listed.query}
+            )
+            api.answers[("GET", f"/{pull_requests}")] = RecordedAnswer(
+                HTTPStatus.OK, "[]"
+            )
         api.answers[("GET", f"/{route.review_requests()}")] = RecordedAnswer(
             HTTPStatus.OK, json.dumps({RestJSONKey.TOTAL_COUNT: 0})
         )
@@ -102,7 +104,11 @@ def setting(status: HTTPStatus, deletes: bool) -> RecordedAnswer:
     return RecordedAnswer(
         status,
         json.dumps(
-            {RestJSONKey.DELETE_BRANCH_ON_MERGE: deletes, RestJSONKey.HAS_ISSUES: True}
+            {
+                RestJSONKey.DELETE_BRANCH_ON_MERGE: deletes,
+                RestJSONKey.HAS_ISSUES: True,
+                RestJSONKey.DEFAULT_BRANCH: RepositoriesByOwner.default_branch,
+            }
         ),
     )
 
