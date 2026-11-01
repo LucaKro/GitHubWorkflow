@@ -1,0 +1,29 @@
+# Each line is one command line the guard lets through.
+git status --short
+git log --oneline -5 main..feature
+git -C /some/checkout diff HEAD~1
+git --no-pager show HEAD:README.md
+git branch
+git branch -a --contains HEAD
+git branch --show-current
+git remote -v
+git remote get-url origin
+git config --get user.name
+git stash list
+git fetch origin
+git fetch --quiet origin main
+git ls-remote origin refs/heads/main
+cd /some/checkout && git status | head -5
+grep -rn "git push" src
+gh pr view 9
+gh pr checks 10
+gh issue list --state open
+gh run view 123 --log
+gh api repos/LucaKro/GitHubWorkflow/pulls
+gh api -X GET repos/LucaKro/GitHubWorkflow
+gh search prs --author LucaKro
+curl -fsSL https://raw.githubusercontent.com/LucaKro/GitHubWorkflow/main/README.md
+curl -s https://api.github.com/repos/LucaKro/GitHubWorkflow
+curl -X POST https://example.com/hook
+python -m github_workflow commit -m "Add a file" a.txt
+python -m github_workflow push
