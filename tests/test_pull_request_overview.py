@@ -1,0 +1,229 @@
+"""
+Tests for :mod:`github_workflow.pull_request_overview`: one line per open pull request
+with the signals that ask for attention, and the details only when asked for.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+import pytest
+
+from basstler_domain_model.github.pull_request_fields import (
+    PullRequestHeadKey,
+    PullRequestPayload,
+)
+from basstler_domain_model.github.pull_request_models import (
+    CheckResult,
+    CheckStatus,
+    UpstreamPullRequestSnapshot,
+)
+from basstler_domain_model.github.readers import PullRequestSource
+from basstler_domain_model.github.repository_client import (
+    PullRequestReader,
+    ReviewRequests,
+)
+from basstler_domain_model.github.review_models import (
+    Author,
+    ReviewThread,
+    ThreadComment,
+)
+from basstler_domain_model.github.vocabulary import (
+    CheckOutcome,
+    MergeableState,
+    RestJSONKey,
+)
+
+from github_workflow.hooks import Tone
+from github_workflow.pull_request_overview import (
+    PullRequestDetails,
+    PullRequestOverview,
+    PullRequestSignalReader,
+)
+
+# %% pull requests in memory
+
+
+def thread(resolved: bool) -> ReviewThread:
+    """:param resolved: Whether the thread is resolved.
+    :return: A thread with one comment on ``src/a.py`` line 3."""
+    comment = ThreadComment(
+        database_identifier=1,
+        author=Author(login="reviewer"),
+        body="Rename this\nand explain why",
+        created_at="2026-11-02T00:00:00Z",
+        url="https://github.com/LucaKro/project/pull/1#discussion_r1",
+    )
+    return ReviewThread(
+        identifier="thread",
+        is_resolved=resolved,
+        is_outdated=False,
+        path="src/a.py",
+        line=3,
+        comments=[comment],
+    )
+
+
+@dataclass(frozen=True)
+class PullRequestsWithSignals(PullRequestReader, PullRequestSource, ReviewRequests):
+    """
+    Open pull requests with their merge state, checks and threads, and how many wait on
+    the person's review.
+    """
+
+    mergeable: dict[int, str] = field(default_factory=dict)
+    """
+    Each pull request's merge state, by number.
+    """
+
+    checks: dict[int, CheckStatus | None] = field(default_factory=dict)
+    """
+    Each pull request's checks, by number.
+    """
+
+    threads: dict[int, list[ReviewThread]] = field(default_factory=dict)
+    """
+    Each pull request's review threads, by number.
+    """
+
+    drafts: frozenset[int] = frozenset()
+    """
+    The pull requests that are drafts.
+    """
+
+    waiting: int = 0
+    """
+    How many pull requests wait on the person's review.
+    """
+
+    def open_pull_requests(self) -> list[PullRequestPayload]:
+        return [self.pull_request(number) for number in self.mergeable]
+
+    def pull_request(self, number: int) -> PullRequestPayload:
+        return {
+            RestJSONKey.NUMBER: number,
+            RestJSONKey.TITLE: f"Change {number}",
+            RestJSONKey.DRAFT: number in self.drafts,
+            RestJSONKey.MERGEABLE_STATE: self.mergeable[number],
+            RestJSONKey.HEAD: {
+                PullRequestHeadKey.REFERENCE: f"branch-{number}",
+                PullRequestHeadKey.HEAD_REPOSITORY: None,
+                RestJSONKey.SHA: "0" * 40,
+            },
+        }
+
+    def resolve_pull_request_number(self, branch: str) -> int:
+        return int(branch.removeprefix("branch-"))
+
+    def read_current_state(
+        self, pull_request_number: int
+    ) -> UpstreamPullRequestSnapshot:
+        return UpstreamPullRequestSnapshot(
+            number=pull_request_number,
+            title=f"Change {pull_request_number}",
+            url=f"https://github.com/LucaKro/project/pull/{pull_request_number}",
+            reviews=[],
+            threads=self.threads.get(pull_request_number, []),
+            checks=self.checks.get(pull_request_number),
+        )
+
+    def awaiting_my_review(self) -> int:
+        return self.waiting
+
+    def overview(self, checked_out: str = "elsewhere") -> PullRequestOverview:
+        """:param checked_out: The branch the session works on.
+        :return: The section over these pull requests."""
+        return PullRequestOverview(
+            PullRequestSignalReader(self, self), self, checked_out
+        )
+
+
+FAILING = CheckStatus.over(
+    [CheckResult("build", CheckOutcome.FAILURE, "https://example.com/build")]
+)
+"""
+Checks one of which failed.
+"""
+
+
+# %% the lines
+
+
+def test_a_pull_request_nothing_asks_attention_for_is_ok():
+    github = PullRequestsWithSignals(mergeable={1: MergeableState.CLEAN})
+
+    [line] = github.overview().lines()
+
+    assert line.text.endswith("Change 1 - ok")
+    assert line.tone is Tone.NEWS
+
+
+@pytest.mark.parametrize(
+    "github, signal",
+    [
+        (
+            PullRequestsWithSignals(
+                mergeable={1: MergeableState.CLEAN}, checks={1: FAILING}
+            ),
+            "CI failing",
+        ),
+        (PullRequestsWithSignals(mergeable={1: MergeableState.DIRTY}), "conflict"),
+        (
+            PullRequestsWithSignals(mergeable={1: MergeableState.BEHIND}),
+            "behind its base",
+        ),
+        (
+            PullRequestsWithSignals(
+                mergeable={1: MergeableState.CLEAN},
+                threads={1: [thread(resolved=False), thread(resolved=True)]},
+            ),
+            "1 unresolved thread",
+        ),
+    ],
+    ids=["checks", "conflict", "behind", "threads"],
+)
+def test_a_signal_is_named_and_asks_for_attention(
+    github: PullRequestsWithSignals, signal: str
+):
+    [line] = github.overview().lines()
+
+    assert line.text.endswith(f"Change 1 - {signal}")
+    assert line.tone is Tone.ACTION
+
+
+def test_the_pull_request_of_the_session_s_branch_is_marked():
+    github = PullRequestsWithSignals(
+        mergeable={1: MergeableState.CLEAN}, drafts=frozenset({1})
+    )
+
+    [line] = github.overview(checked_out="branch-1").lines()
+
+    assert line.text.endswith("Change 1 - this branch · draft · ok")
+
+
+def test_pull_requests_waiting_on_the_person_are_counted():
+    github = PullRequestsWithSignals(waiting=2)
+
+    [line] = github.overview().lines()
+
+    assert line.text == "github-workflow: 2 pull requests wait on your review"
+
+
+# %% the details
+
+
+def test_the_details_name_the_failing_check_the_merge_state_and_the_thread():
+    github = PullRequestsWithSignals(
+        mergeable={1: MergeableState.DIRTY},
+        checks={1: FAILING},
+        threads={1: [thread(resolved=False)]},
+    )
+
+    details = PullRequestDetails(PullRequestSignalReader(github, github), 1).run()
+
+    [check] = FAILING.unsuccessful
+    assert details.splitlines()[1:] == [
+        f"check {check.outcome}: {check.name} {check.url}",
+        f"merge state: {MergeableState.DIRTY}",
+        "unresolved thread at src/a.py:3: Rename this",
+    ]

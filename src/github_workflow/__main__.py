@@ -28,6 +28,10 @@ from github_workflow.command_line import (
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
+from github_workflow.pull_request_overview import (
+    PullRequestDetails,
+    PullRequestSignalReader,
+)
 from github_workflow.remotes import OwnedRemote, OwnedRemotes
 from github_workflow.runtime import Runtime, RuntimeRebuild
 from github_workflow.settings import WorkflowSettings
@@ -128,6 +132,10 @@ class WorkflowSession(RepositoryDetails):
             case WorkflowCommand.NOTES, NotesSubcommand.SAVE:
                 notes = NotesBranch.on(self.checkout.git, self.remote, self.settings)
                 return NotesSaving(NotesSave(self.checkout, notes))
+            case WorkflowCommand.DETAILS, _:
+                return PullRequestDetails(
+                    PullRequestSignalReader.of(self.github), arguments.number
+                )
             case WorkflowCommand.DESCRIBE, _:
                 return DescriptionRewrite(
                     self.github,
@@ -173,6 +181,10 @@ class WorkflowSession(RepositoryDetails):
         notes = commands.add_parser(WorkflowCommand.NOTES, help="save the notes")
         notes_actions = notes.add_subparsers(dest="action", required=True)
         notes_actions.add_parser(NotesSubcommand.SAVE, help="save the notes block")
+        details = commands.add_parser(
+            WorkflowCommand.DETAILS, help="what a pull request's signals are about"
+        )
+        details.add_argument("number", type=int, help="the pull request")
         describe = commands.add_parser(
             WorkflowCommand.DESCRIBE, help="rewrite a draft's description"
         )
