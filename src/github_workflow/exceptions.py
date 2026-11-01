@@ -292,3 +292,24 @@ class NotACheckoutError(DataclassException, RuntimeError):
 
     def suggest_correction(self) -> str:
         return "Run the command inside the checkout it is to work on."
+
+
+# %% pull requests
+
+
+@dataclass
+class NotADraftError(DataclassException, RuntimeError):
+    """
+    Raised when a pull request to be rewritten is ready for review or closed.
+    """
+
+    number: int
+    """
+    The pull request.
+    """
+
+    def error_message(self) -> str:
+        return f"#{self.number} is not an open draft"
+
+    def suggest_correction(self) -> str:
+        return "Changing it needs the go-ahead of the person running the tool."

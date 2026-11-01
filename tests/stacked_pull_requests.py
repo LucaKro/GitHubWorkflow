@@ -16,6 +16,7 @@ from basstler_domain_model.github.repository_client import (
     PullRequestBaseWriter,
     PullRequestOpener,
     PullRequestReader,
+    PullRequestWriter,
     StackReader,
     StackWriter,
 )
@@ -126,3 +127,44 @@ class DraftsAndStacksInMemory(StackedPullRequestsInMemory, PullRequestOpener):
         self.writes.append(f"open_draft {head} {base}")
         self.bases[number] = base
         return number
+
+
+# %% rewriting drafts too
+
+
+@dataclass(frozen=True)
+class DraftsInMemory(DraftsAndStacksInMemory, PullRequestWriter):
+    """
+    The stand-in, with pull requests that are drafts or not, open or closed, whose
+    descriptions can be rewritten.
+    """
+
+    drafts: frozenset[int] = frozenset()
+    """
+    The pull requests that are drafts.
+    """
+
+    closed: frozenset[int] = frozenset()
+    """
+    The pull requests that are closed.
+    """
+
+    def pull_request(self, number: int) -> PullRequestPayload:
+        state = (
+            PullRequestState.CLOSED if number in self.closed else PullRequestState.OPEN
+        )
+        return {
+            **super().pull_request(number),
+            RestJSONKey.DRAFT: number in self.drafts,
+            RestJSONKey.STATE: state.value,
+        }
+
+    def replace_labels(self, number: int, labels: Sequence[str]) -> None:
+        self.writes.append(f"replace_labels {number}")
+
+    def add_comment(self, number: int, body: str) -> str:
+        self.writes.append(f"add_comment {number}")
+        return ""
+
+    def set_description(self, number: int, body: str) -> None:
+        self.writes.append(f"set_description {number} {body}")

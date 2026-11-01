@@ -22,6 +22,7 @@ from github_workflow.exceptions import (
     BranchNotPushedError,
     DefaultBranchWriteError,
     DetachedHeadError,
+    NotADraftError,
     PushRefusedError,
     UnpushedCommitsError,
 )
@@ -34,12 +35,13 @@ from github_workflow.work import (
     BranchSwitch,
     BranchSync,
     CommitWork,
+    DescriptionRewrite,
     DraftOpening,
     PushWork,
 )
 
 from .repositories_by_owner import RepositoriesByOwner
-from .stacked_pull_requests import DraftsAndStacksInMemory
+from .stacked_pull_requests import DraftsAndStacksInMemory, DraftsInMemory
 
 # %% helpers
 
@@ -342,3 +344,37 @@ def test_a_branch_with_unpushed_commits_github_diverged_from_is_left_alone(
         BranchSync(work).run()
 
     assert work.checkout.git.commit_at("HEAD") == before
+
+
+# %% rewriting a draft's description
+
+
+def test_a_draft_s_description_is_rewritten():
+    github = DraftsInMemory(
+        {1: RepositoriesByOwner.default_branch}, drafts=frozenset({1})
+    )
+
+    DescriptionRewrite(github, github, 1, "A new body").run()
+
+    assert github.writes == ["set_description 1 A new body"]
+
+
+@pytest.mark.parametrize(
+    "github",
+    [
+        DraftsInMemory({1: RepositoriesByOwner.default_branch}),
+        DraftsInMemory(
+            {1: RepositoriesByOwner.default_branch},
+            drafts=frozenset({1}),
+            closed=frozenset({1}),
+        ),
+    ],
+    ids=["ready for review", "closed"],
+)
+def test_a_pull_request_that_is_no_open_draft_keeps_its_description(
+    github: DraftsInMemory,
+):
+    with pytest.raises(NotADraftError):
+        DescriptionRewrite(github, github, 1, "A new body").run()
+
+    assert github.writes == []
