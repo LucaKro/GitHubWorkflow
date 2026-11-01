@@ -12,11 +12,13 @@ import sys
 from enum import StrEnum
 from pathlib import Path
 
-from basstler_domain_model.commands import CommandRunner
-from basstler_domain_model.git.commands import GitCommandRunner
+from basstler_domain_model.git.commands import (
+    GitCommandRunner,
+    RemoteBranch,
+    RemoteName,
+)
 from basstler_domain_model.git.storage_branch import StorageBranch
 from basstler_domain_model.github.clients import GitHubApi
-from basstler_domain_model.repository import Repository
 
 from github_workflow.locations import ProbeFile
 from github_workflow.probe.results import ProbeReport
@@ -36,11 +38,6 @@ class ResultsBranch(StrEnum):
     The branch on the remote.
     """
 
-    REFERENCE = "refs/github-workflow/probe-results"
-    """
-    Where a fetch of it is kept.
-    """
-
 
 # %% entry point
 
@@ -50,20 +47,19 @@ def main() -> None:
     Run the checks in order, write the report and the results, and publish both.
     """
     output = Path(sys.argv[1])
-    runner = CommandRunner(Path.cwd())
+    git = GitCommandRunner(Path.cwd())
+    [origin] = [remote for remote in git.remotes() if remote.name == RemoteName.ORIGIN]
     probe = Probe(
-        runner=runner,
+        git=git,
         github=GitHubApi.from_environment(),
-        repository=Repository.from_remote_url(
-            runner.run("git", "remote", "get-url", "origin").output
-        ),
+        repository=origin.repository,
         stamp=output.name,
-        report=ProbeReport(Probe.describe_environment(runner)),
+        report=ProbeReport(Probe.describe_environment(git)),
     )
     default_branch = probe.default_branch()
     probe.report.environment["repository"] = probe.repository.full_name
     probe.report.environment["default branch"] = str(default_branch)
-    probe.check_library(runner.run("git", "rev-parse", "HEAD").output)
+    probe.check_library(git.commit_at("HEAD"))
     probe.check_notes_branch()
     probe.check_issue_board()
     if default_branch is not None:
@@ -73,12 +69,7 @@ def main() -> None:
     probe.check_workflow_branch_deletion()
     (output / ProbeFile.REPORT).write_text(probe.report.markdown())
     (output / ProbeFile.RESULTS).write_text(probe.report.to_json())
-    results = StorageBranch(
-        GitCommandRunner(Path.cwd()),
-        "origin",
-        ResultsBranch.NAME,
-        ResultsBranch.REFERENCE,
-    )
+    results = StorageBranch(git, RemoteBranch(RemoteName.ORIGIN, ResultsBranch.NAME))
     results.fetch()
     results.write(
         {

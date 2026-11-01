@@ -16,8 +16,13 @@ from basstler_domain_model.environment import (
     ClaudeCodeVariable,
     GitHubCredentialVariable,
 )
-from basstler_domain_model.commands import CommandRunner
-from basstler_domain_model.git.commands import GitCommandRunner
+from basstler_domain_model.commands import CommandResult, CommandRunner
+from basstler_domain_model.git.commands import (
+    GitCommandRunner,
+    ProposedPush,
+    RemoteBranch,
+    RemoteName,
+)
 from basstler_domain_model.github.clients import GitHubApi, RestAnswer
 from basstler_domain_model.github.routes import RepositoryRoute
 from basstler_domain_model.github.vocabulary import (
@@ -151,9 +156,9 @@ class Probe:
     One run of every check against the repository the session works in.
     """
 
-    runner: CommandRunner
+    git: GitCommandRunner
     """
-    Runs git and the library checks in the checkout.
+    Runs git in the checkout.
     """
 
     github: GitHubApi
@@ -181,10 +186,22 @@ class Probe:
         """:return: The REST paths of the repository."""
         return RepositoryRoute(self.repository)
 
-    @classmethod
-    def describe_environment(cls, runner: CommandRunner) -> dict[str, str]:
+    @property
+    def runner(self) -> CommandRunner:
+        """:return: Runs the library checks and the stacks command in the checkout."""
+        return CommandRunner(self.git.working_directory)
+
+    def branch(self, shape: BranchName) -> RemoteBranch:
         """
-        :param runner: Runs the commands that describe the environment.
+        :param shape: The name shape.
+        :return: This run's branch of that shape, on the repository's remote.
+        """
+        return RemoteBranch(RemoteName.ORIGIN, f"{shape}{self.stamp}")
+
+    @classmethod
+    def describe_environment(cls, git: GitCommandRunner) -> dict[str, str]:
+        """
+        :param git: Runs git in the checkout.
         :return: What the session runs on, by what was looked at.
         """
         return {
@@ -193,13 +210,12 @@ class Probe:
             "token variable set": str(
                 GitHubCredentialVariable.first_token() is not None
             ),
-            "checked-out branch": runner.run("git", "branch", "--show-current").output,
-            "git author": runner.run("git", "var", "GIT_AUTHOR_IDENT").output.rsplit(
-                " ", 2
-            )[0],
-            "git": runner.run("git", "--version").first_line,
-            "curl": runner.run("curl", "--version").first_line,
-            "gh": runner.run("gh", "--version").first_line,
+            "checked-out branch": git.checked_out_branch(),
+            "git author": git.run("var", "GIT_AUTHOR_IDENT").rsplit(" ", 2)[0],
+            "git": git.run("--version"),
+            "gh": CommandRunner(git.working_directory)
+            .run("gh", "--version")
+            .first_line,
         }
 
     def record_response(
@@ -218,6 +234,24 @@ class Probe:
             response.succeeded,
             f"{response.status} {detail if response.succeeded and detail else response.summary}".strip(),
             response.seconds,
+        )
+
+    def record_command(
+        self,
+        group: CheckGroup,
+        check: str,
+        result: CommandResult,
+        detail: str,
+    ) -> bool:
+        """
+        :param group: What part of the workflow the command answers for.
+        :param check: What was tried.
+        :param result: The finished command.
+        :param detail: What to record on success, when the command printed nothing.
+        :return: Whether the command succeeded.
+        """
+        return self.report.record(
+            group, check, result.succeeded, result.summary or detail, result.seconds
         )
 
     def call(
@@ -285,38 +319,35 @@ class Probe:
         for each name shape.
         """
         for shape in (BranchName.PLAIN, BranchName.SESSION_STYLE):
-            branch = f"{shape}{self.stamp}"
-            pushed = self.runner.run(
-                "git", "push", "--quiet", "origin", f"HEAD:refs/heads/{branch}"
+            branch = self.branch(shape)
+            pushed = self.git.push(
+                ProposedPush(branch.remote, f"HEAD:{branch.reference}")
             )
-            if not self.report.record(
-                CheckGroup.GIT,
-                f"push {branch}",
-                pushed.succeeded,
-                pushed.summary or "pushed",
-                pushed.seconds,
+            if not self.record_command(
+                CheckGroup.GIT, f"push {branch.name}", pushed, "pushed"
             ):
                 continue
-            listed = self.runner.run(
-                "git", "ls-remote", "origin", f"refs/heads/{branch}"
-            )
+            found = self.git.has_remote_branch(branch)
             self.report.record(
                 CheckGroup.GIT,
-                f"read {branch} back",
-                bool(listed.output),
-                listed.summary or "not found",
-                listed.seconds,
+                f"read {branch.name} back",
+                found,
+                "found" if found else "not found",
+                0.0,
             )
-            deleted = self.runner.run(
-                "git", "push", "--quiet", "origin", "--delete", branch
-            )
-            self.report.record(
-                CheckGroup.GIT,
-                f"delete {branch}",
-                deleted.succeeded,
-                deleted.summary or "deleted",
-                deleted.seconds,
-            )
+            self.delete(CheckGroup.GIT, branch)
+
+    def delete(self, group: CheckGroup, branch: RemoteBranch) -> None:
+        """
+        :param group: What part of the workflow the branch was pushed for.
+        :param branch: The branch to delete from the remote.
+        """
+        self.record_command(
+            group,
+            f"delete {branch.name}",
+            self.git.delete_remote_branch(branch),
+            "deleted",
+        )
 
     # %% the finding boards
 
@@ -436,56 +467,66 @@ class Probe:
 
         :param default_branch: The branch the pull request targets.
         """
-        base = f"origin/{default_branch}"
-        self.runner.run("git", "fetch", "--quiet", "origin", default_branch)
-        commit = self.runner.run(
-            "git",
-            "commit-tree",
-            f"{base}^{{tree}}",
-            "-p",
-            base,
-            "-m",
-            ProbeText.COMMIT_MESSAGE,
+        self.git.fetch(RemoteName.ORIGIN, default_branch)
+        base = RemoteBranch(RemoteName.ORIGIN, default_branch).tracking_reference
+        commit = self.git.commit_files(base, {}, ProbeText.COMMIT_MESSAGE)
+        branch = self.branch(BranchName.PULL_REQUEST)
+        pushed = self.git.push(
+            ProposedPush(branch.remote, f"{commit}:{branch.reference}")
         )
-        branch = f"{BranchName.PULL_REQUEST}{self.stamp}"
-        pushed = self.runner.run(
-            "git", "push", "--quiet", "origin", f"{commit.output}:refs/heads/{branch}"
-        )
-        if not self.report.record(
-            CheckGroup.PULL_REQUEST,
-            f"push {branch}",
-            pushed.succeeded and commit.succeeded,
-            pushed.summary or commit.summary or "pushed",
-            pushed.seconds,
+        if not self.record_command(
+            CheckGroup.PULL_REQUEST, f"push {branch.name}", pushed, "pushed"
         ):
             return
+        number = self.open_draft(
+            CheckGroup.PULL_REQUEST,
+            branch.name,
+            default_branch,
+            ProbeText.PULL_REQUEST_TITLE,
+        )
+        if number is not None:
+            self.read_pull_request(number, default_branch, branch.name, commit)
+            self.close_pull_request(CheckGroup.PULL_REQUEST, number)
+        self.delete(CheckGroup.PULL_REQUEST, branch)
+
+    def open_draft(
+        self, group: CheckGroup, branch: str, base: str, title: str
+    ) -> int | None:
+        """
+        :param group: What part of the workflow the pull request is opened for.
+        :param branch: The branch the pull request merges.
+        :param base: The branch it targets.
+        :param title: Its title.
+        :return: Its number, ``None`` when it could not be opened.
+        """
         created = self.call(
             HTTPMethod.POST,
             self.route.pull_requests,
             {
-                RestJSONKey.TITLE: ProbeText.PULL_REQUEST_TITLE,
+                RestJSONKey.TITLE: title,
                 RestJSONKey.BODY: ProbeText.PULL_REQUEST_BODY,
                 RestJSONKey.HEAD: branch,
-                RestJSONKey.BASE: default_branch,
+                RestJSONKey.BASE: base,
                 RestJSONKey.DRAFT: True,
             },
         )
-        if self.record_response(
-            CheckGroup.PULL_REQUEST, "open a draft pull request", created
+        if not self.record_response(
+            group, f"open a draft pull request for {branch}", created
         ):
-            self.read_pull_request(
-                created.body[RestJSONKey.NUMBER], default_branch, branch, commit.output
-            )
-        deleted = self.runner.run(
-            "git", "push", "--quiet", "origin", "--delete", branch
+            return None
+        return created.body[RestJSONKey.NUMBER]
+
+    def close_pull_request(self, group: CheckGroup, number: int) -> None:
+        """
+        :param group: What part of the workflow the pull request was opened for.
+        :param number: The pull request to close.
+        """
+        closed = self.call(
+            HTTPMethod.PATCH,
+            self.route.pull_request(number),
+            {RestJSONKey.STATE: IssueState.CLOSED},
         )
-        self.report.record(
-            CheckGroup.PULL_REQUEST,
-            f"delete {branch}",
-            deleted.succeeded,
-            deleted.summary or "deleted",
-            deleted.seconds,
-        )
+        self.record_response(group, f"close #{number}", closed)
 
     def read_pull_request(self, number: int, base: str, head: str, commit: str) -> None:
         """
@@ -528,12 +569,6 @@ class Probe:
             CheckGroup.PULL_REQUEST, "read the checks on its head", checks, runs
         )
         self.check_library_call(LibraryCheck.PULL_REQUEST_REVIEW_STATE, str(number))
-        closed = self.call(
-            HTTPMethod.PATCH,
-            self.route.pull_request(number),
-            {RestJSONKey.STATE: IssueState.CLOSED},
-        )
-        self.record_response(CheckGroup.PULL_REQUEST, "close it", closed, f"#{number}")
 
     # %% settings
 
@@ -581,37 +616,30 @@ class Probe:
         Push a branch for a workflow to delete, then the workflow on a branch of its own,
         wait for its run, and see whether both branches are gone.
         """
-        deleted = f"{BranchName.DELETED_BY_WORKFLOW}{self.stamp}"
-        workflow = f"{BranchName.WORKFLOW}{self.stamp}"
-        pushed = self.runner.run(
-            "git", "push", "--quiet", "origin", f"HEAD:refs/heads/{deleted}"
+        deleted = self.branch(BranchName.DELETED_BY_WORKFLOW)
+        workflow = self.branch(BranchName.WORKFLOW)
+        pushed = self.git.push(
+            ProposedPush(deleted.remote, f"HEAD:{deleted.reference}")
         )
-        if not self.report.record(
-            CheckGroup.ACTIONS,
-            f"push {deleted}",
-            pushed.succeeded,
-            pushed.summary or "pushed",
-            pushed.seconds,
+        if not self.record_command(
+            CheckGroup.ACTIONS, f"push {deleted.name}", pushed, "pushed"
         ):
             return
-        commit = self.commit_with_workflow(workflow, deleted)
-        pushed = self.runner.run(
-            "git", "push", "--quiet", "origin", f"{commit}:refs/heads/{workflow}"
+        commit = self.commit_with_workflow(workflow.name, deleted.name)
+        pushed = self.git.push(
+            ProposedPush(workflow.remote, f"{commit}:{workflow.reference}")
         )
-        if self.report.record(
+        if self.record_command(
             CheckGroup.ACTIONS,
-            f"push the workflow on {workflow}",
-            pushed.succeeded,
-            pushed.summary or "pushed",
-            pushed.seconds,
+            f"push the workflow on {workflow.name}",
+            pushed,
+            "pushed",
         ):
-            self.wait_for_run(workflow)
+            self.wait_for_run(workflow.name)
         left = [
-            branch
+            branch.name
             for branch in (deleted, workflow)
-            if self.runner.run(
-                "git", "ls-remote", "origin", f"refs/heads/{branch}"
-            ).output
+            if self.git.has_remote_branch(branch)
         ]
         self.report.record(
             CheckGroup.ACTIONS,
@@ -631,7 +659,7 @@ class Probe:
         :return: The commit.
         """
         text = WorkflowPlaceholder.filled_workflow(workflow, deleted)
-        commit = GitCommandRunner(self.runner.working_directory).commit_files(
+        commit = self.git.commit_files(
             "HEAD",
             {RepositoryFile.BRANCH_DELETION_WORKFLOW: text},
             ProbeText.WORKFLOW_COMMIT_MESSAGE,
