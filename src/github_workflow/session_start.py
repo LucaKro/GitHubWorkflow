@@ -1,6 +1,7 @@
 """
 Write the notes and this branch's progress into ``CLAUDE.local.md`` at the start of a
-session, and print one line saying what was loaded. Never writes to a remote.
+session, and print one line saying what was loaded - and one more when the workflow's
+runtime is behind main. Never writes to a remote.
 
 Usage: ``python -m github_workflow.session_start``
 """
@@ -15,6 +16,7 @@ from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection
 from github_workflow.command_line import NotesSubcommand, WorkflowCommand
 from github_workflow.remotes import OwnedRemotes
+from github_workflow.runtime import Runtime
 from github_workflow.settings import WorkflowSettings
 
 # %% entry point
@@ -26,6 +28,9 @@ def main() -> None:
     """
     settings = WorkflowSettings()
     checkout = ProjectCheckout.containing(Path.cwd())
+    notice = Runtime.installed().notice(checkout.git)
+    if notice is not None:
+        print(notice)
     remotes = OwnedRemotes.read(checkout.git, settings)
     if remotes.problem is not None:
         print(f"github-workflow: notes not loaded: {remotes.problem.error_message()}")

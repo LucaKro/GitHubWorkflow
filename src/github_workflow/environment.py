@@ -18,3 +18,22 @@ class WorkflowVariable(EnvironmentVariable):
     """
     The interpreter the package is installed in, for the hooks to run it with.
     """
+
+
+# %% git, run without a person at the keyboard
+
+
+class GitBatchVariable(EnvironmentVariable):
+    """
+    The variables that keep git from asking for credentials when nobody can answer.
+    """
+
+    TERMINAL_PROMPT = "GIT_TERMINAL_PROMPT"
+    """
+    Whether git may prompt on the terminal; ``0`` makes it fail instead.
+    """
+
+    SSH_COMMAND = "GIT_SSH_COMMAND"
+    """
+    The ssh command git runs, here one that fails instead of asking.
+    """
