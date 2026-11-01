@@ -6,8 +6,10 @@
 # Installs this package and basstler-domain-model into a fresh environment of its own,
 # runs `python -m github_workflow.probe`, and records the install log, the run log, the
 # report and the results under probe-results/<UTC stamp>/. The checks create a label, an
-# issue, a draft pull request and a few branches on the repository, and remove them again;
-# the issue cannot be deleted through the API, so it stays behind, closed as not planned.
+# issue, a draft pull request and a few branches on the repository, write two settings
+# back unchanged, and run one short Actions workflow that deletes its own branches. The
+# issue and the pull request are closed rather than deleted, and a branch a session may
+# not delete is named in the report.
 #
 # Usage: bash scripts/cloud-probe.sh
 set -uo pipefail

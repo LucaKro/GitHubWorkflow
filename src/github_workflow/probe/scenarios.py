@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import platform
 import sys
+import tempfile
+import time
 from dataclasses import dataclass
+from pathlib import Path
 from enum import StrEnum
 
 from basstler_domain_model.environment import (
@@ -17,6 +20,8 @@ from basstler_domain_model.environment import (
 from basstler_domain_model.github.vocabulary import RestJSONKey
 from basstler_domain_model.repository import Repository
 
+from github_workflow.environment import GitVariable
+from github_workflow.locations import ProbeTemplate, RepositoryFile
 from github_workflow.probe.commands import CommandRunner
 from github_workflow.probe.library_check import LibraryCheck
 from github_workflow.probe.rest import (
@@ -43,6 +48,48 @@ class ProbeJSONKey(StrEnum):
     BEHIND_BY = "behind_by"
     TOTAL_COUNT = "total_count"
     COLOR = "color"
+    DELETE_BRANCH_ON_MERGE = "delete_branch_on_merge"
+    ENABLED = "enabled"
+    ALLOWED_ACTIONS = "allowed_actions"
+    WORKFLOW_RUNS = "workflow_runs"
+    STATUS = "status"
+
+
+class RunStatus(StrEnum):
+    """
+    The workflow run status the probe waits for.
+    """
+
+    COMPLETED = "completed"
+
+
+class WorkflowPlaceholder(StrEnum):
+    """
+    The names the branch deletion workflow template leaves for the probe to fill in.
+    """
+
+    WORKFLOW_BRANCH = "__WORKFLOW_BRANCH__"
+    """
+    The branch carrying the workflow, which triggers it and is deleted last.
+    """
+
+    DELETED_BRANCH = "__DELETED_BRANCH__"
+    """
+    The other branch the workflow deletes.
+    """
+
+    @classmethod
+    def filled_workflow(cls, workflow: str, deleted: str) -> str:
+        """
+        :param workflow: The branch the workflow is pushed on.
+        :param deleted: The other branch it deletes.
+        :return: The branch deletion workflow, naming both.
+        """
+        return (
+            ProbeTemplate.BRANCH_DELETION_WORKFLOW.read_text()
+            .replace(cls.WORKFLOW_BRANCH, workflow)
+            .replace(cls.DELETED_BRANCH, deleted)
+        )
 
 
 class IssueState(StrEnum):
@@ -72,6 +119,7 @@ class ProbeText(StrEnum):
     PULL_REQUEST_TITLE = "Probe: draft pull request"
     PULL_REQUEST_BODY = "Created by the cloud probe; closed by it again."
     COMMIT_MESSAGE = "Probe commit, never merged"
+    WORKFLOW_COMMIT_MESSAGE = "Probe workflow deleting the probe's branches"
 
 
 class BranchName(StrEnum):
@@ -92,6 +140,16 @@ class BranchName(StrEnum):
     PULL_REQUEST = "probe/pull-request-"
     """
     The head of the draft pull request the probe opens.
+    """
+
+    DELETED_BY_WORKFLOW = "probe/deleted-by-workflow-"
+    """
+    A branch only a workflow is to delete.
+    """
+
+    WORKFLOW = "probe/workflow-"
+    """
+    The branch carrying the branch deletion workflow.
     """
 
 
@@ -172,6 +230,14 @@ class Probe:
             f"{response.status} {detail if response.succeeded and detail else response.summary}".strip(),
             response.seconds,
         )
+
+    @staticmethod
+    def listed(values: dict[str, object]) -> str:
+        """
+        :param values: Settings or fields, by name.
+        :return: Them as ``name value`` pairs on one line.
+        """
+        return ", ".join(f"{name} {value}" for name, value in values.items())
 
     # %% the domain model, used live
 
@@ -461,6 +527,190 @@ class Probe:
             {RestJSONKey.STATE: IssueState.CLOSED},
         )
         self.record_response(CheckGroup.PULL_REQUEST, "close it", closed, f"#{number}")
+
+    # %% settings
+
+    def check_repository_settings(self) -> None:
+        """
+        Read the settings the workflow turns on, and write each back unchanged, to learn
+        whether the session may change them.
+        """
+        repository = self.caller.call(HttpMethod.GET, self.route.root)
+        body = repository.body if repository.succeeded else {}
+        settings = {
+            key: body[key]
+            for key in (ProbeJSONKey.HAS_ISSUES, ProbeJSONKey.DELETE_BRANCH_ON_MERGE)
+            if body.get(key) is not None
+        }
+        if not self.record_response(
+            CheckGroup.SETTINGS,
+            "read the repository settings",
+            repository,
+            self.listed(settings),
+        ):
+            return
+        written = self.caller.call(HttpMethod.PATCH, self.route.root, settings)
+        self.record_response(CheckGroup.SETTINGS, "write them back unchanged", written)
+        permissions = self.caller.call(HttpMethod.GET, self.route.actions_permissions)
+        if not self.record_response(
+            CheckGroup.SETTINGS,
+            "read the Actions permissions",
+            permissions,
+            self.listed(permissions.body),
+        ):
+            return
+        unchanged = {
+            key: permissions.body[key]
+            for key in (ProbeJSONKey.ENABLED, ProbeJSONKey.ALLOWED_ACTIONS)
+            if key in permissions.body
+        }
+        written = self.caller.call(
+            HttpMethod.PUT, self.route.actions_permissions, unchanged
+        )
+        self.record_response(CheckGroup.SETTINGS, "write them back unchanged", written)
+
+    # %% deleting branches from a workflow
+
+    def check_workflow_branch_deletion(self) -> None:
+        """
+        Push a branch for a workflow to delete, then the workflow on a branch of its own,
+        wait for its run, and see whether both branches are gone.
+        """
+        deleted = f"{BranchName.DELETED_BY_WORKFLOW}{self.stamp}"
+        workflow = f"{BranchName.WORKFLOW}{self.stamp}"
+        pushed = self.runner.run(
+            "git", "push", "--quiet", "origin", f"HEAD:refs/heads/{deleted}"
+        )
+        if not self.report.record(
+            CheckGroup.ACTIONS,
+            f"push {deleted}",
+            pushed.succeeded,
+            pushed.summary or "pushed",
+            pushed.seconds,
+        ):
+            return
+        commit = self.commit_with_workflow(workflow, deleted)
+        if commit is None:
+            return
+        pushed = self.runner.run(
+            "git", "push", "--quiet", "origin", f"{commit}:refs/heads/{workflow}"
+        )
+        if self.report.record(
+            CheckGroup.ACTIONS,
+            f"push the workflow on {workflow}",
+            pushed.succeeded,
+            pushed.summary or "pushed",
+            pushed.seconds,
+        ):
+            self.wait_for_run(workflow)
+        left = [
+            branch
+            for branch in (deleted, workflow)
+            if self.runner.run(
+                "git", "ls-remote", "origin", f"refs/heads/{branch}"
+            ).output
+        ]
+        self.report.record(
+            CheckGroup.ACTIONS,
+            "branches gone afterwards",
+            not left,
+            f"still there: {', '.join(left)}" if left else "both deleted",
+            0.0,
+        )
+
+    def commit_with_workflow(self, workflow: str, deleted: str) -> str | None:
+        """
+        Build a commit on top of the checked-out one that adds the filled-in workflow,
+        in an index of its own so the checkout is left untouched.
+
+        :param workflow: The branch the workflow will be pushed on.
+        :param deleted: The other branch it deletes.
+        :return: The commit, ``None`` when building it failed.
+        """
+        text = WorkflowPlaceholder.filled_workflow(workflow, deleted)
+        with tempfile.TemporaryDirectory() as directory:
+            index = {GitVariable.INDEX_FILE: str(Path(directory) / "index")}
+            blob = self.runner.run(
+                "git", "hash-object", "-w", "--stdin", standard_input=text
+            )
+            steps = [
+                blob,
+                self.runner.run("git", "read-tree", "HEAD", environment=index),
+                self.runner.run(
+                    "git",
+                    "update-index",
+                    "--add",
+                    "--cacheinfo",
+                    f"100644,{blob.output},{RepositoryFile.BRANCH_DELETION_WORKFLOW}",
+                    environment=index,
+                ),
+            ]
+            tree = self.runner.run("git", "write-tree", environment=index)
+        commit = self.runner.run(
+            "git",
+            "commit-tree",
+            tree.output,
+            "-p",
+            "HEAD",
+            "-m",
+            ProbeText.WORKFLOW_COMMIT_MESSAGE,
+        )
+        failed = [step for step in (*steps, tree, commit) if not step.succeeded]
+        detail = failed[0].summary if failed else commit.output
+        if not self.report.record(
+            CheckGroup.ACTIONS,
+            "build a commit carrying the workflow",
+            not failed,
+            detail,
+            0.0,
+        ):
+            return None
+        return commit.output
+
+    def wait_for_run(
+        self,
+        branch: str,
+        timeout_seconds: float = 300.0,
+        interval_seconds: float = 10.0,
+    ) -> None:
+        """
+        Wait for the workflow run the push to *branch* started, and record how it ended.
+
+        :param branch: The branch the run was triggered on.
+        :param timeout_seconds: How long to wait before giving up.
+        :param interval_seconds: How long to wait between looks.
+        """
+        started = time.monotonic()
+        seen = False
+        while time.monotonic() - started < timeout_seconds:
+            time.sleep(interval_seconds)
+            runs = self.caller.call(HttpMethod.GET, self.route.workflow_runs(branch))
+            entries = (
+                runs.body.get(ProbeJSONKey.WORKFLOW_RUNS, []) if runs.succeeded else []
+            )
+            seen = seen or bool(entries)
+            if entries and entries[0][ProbeJSONKey.STATUS] == RunStatus.COMPLETED:
+                run = entries[0]
+                self.report.record(
+                    CheckGroup.ACTIONS,
+                    "the workflow run",
+                    True,
+                    f"{run[RestJSONKey.CONCLUSION]} {run[RestJSONKey.HTML_URL]}",
+                    round(time.monotonic() - started, 2),
+                )
+                return
+        reason = (
+            "a run started but did not finish"
+            if seen
+            else "no run started: Actions may be off, or the workflow was not accepted"
+        )
+        self.report.record(
+            CheckGroup.ACTIONS,
+            "the workflow run",
+            False,
+            reason,
+            round(time.monotonic() - started, 2),
+        )
 
     # %% signals beside the repository
 

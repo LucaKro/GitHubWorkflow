@@ -11,6 +11,10 @@ contradicts one of these changes this file first.
   and on repositories of my own that have no upstream.
 - In both, work reaches the default branch only through branches and pull requests:
   nothing is ever pushed to the default branch directly.
+- Only on repositories owned by LucaKro. Every write - a push, a branch, an issue, a
+  label, a pull request, a comment - is refused before it is attempted when the
+  repository it targets, or the URL of the remote a push goes to, belongs to anyone
+  else. Reading other repositories is allowed.
 
 ## What a session starts with
 
@@ -48,6 +52,23 @@ them:
 - On a notes branch on each repository - the fork, or the repository itself - readable
   from any session on that project.
 
+## Cleaning up
+
+- A branch that is no longer needed - its pull request merged, closed or rejected - is
+  listed as ready for deletion in the notes, rather than deleted on the spot: a cloud
+  session cannot delete branches.
+- A local session deletes every listed branch itself. A GitHub Actions workflow that runs
+  when the notes branch is pushed deletes them too, so a cloud session only has to push
+  the notes.
+- The tool turns on GitHub's own deletion of a merged pull request's branch on every
+  repository it works on, so most branches never need listing.
+- Issues and pull requests are only ever closed, never deleted.
+
+## Where something is turned off
+
+- Where issues or Actions are turned off, as they are on a new fork, the tool turns them
+  on if it can, and otherwise tells me exactly where to do it, with the link.
+
 ## What the agent may do without asking
 
 - push its own work branch
@@ -65,6 +86,9 @@ Everything else written to GitHub needs my go-ahead.
 
 ## Open questions
 
-- Forks start with issues turned off, and a public repository shows its issues publicly.
-- A cloud session working in a fork cannot reach the upstream's API, so signals about my
-  upstream pull requests need another route.
+- A public repository shows its issues, the unreviewed findings included, publicly.
+
+## Deferred
+
+- Signals about my pull requests on an upstream: a cloud session working in a fork
+  cannot reach the upstream's API, so they need another route.

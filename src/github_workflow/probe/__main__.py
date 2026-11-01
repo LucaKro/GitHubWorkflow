@@ -45,6 +45,8 @@ def main() -> None:
     if default_branch is not None:
         probe.check_pull_request(default_branch)
     probe.check_signals()
+    probe.check_repository_settings()
+    probe.check_workflow_branch_deletion()
     (output / ProbeFile.REPORT).write_text(probe.report.markdown())
     (output / ProbeFile.RESULTS).write_text(probe.report.to_json())
     print(probe.report.markdown())

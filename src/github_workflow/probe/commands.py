@@ -4,9 +4,11 @@ Running a command and keeping what it said, whether or not it succeeded.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -76,10 +78,17 @@ class CommandRunner:
     The directory every command runs in.
     """
 
-    def run(self, *arguments: str, standard_input: str | None = None) -> CommandResult:
+    def run(
+        self,
+        *arguments: str,
+        standard_input: str | None = None,
+        environment: Mapping[str, str] | None = None,
+    ) -> CommandResult:
         """
         :param arguments: The command and its arguments.
         :param standard_input: What to write to its standard input, if anything.
+        :param environment: Variables to set for this command on top of the process's
+            own.
         :return: The finished command.
         """
         if shutil.which(arguments[0]) is None:
@@ -91,6 +100,7 @@ class CommandRunner:
             arguments,
             cwd=self.working_directory,
             input=standard_input,
+            env={**os.environ, **(environment or {})},
             capture_output=True,
             text=True,
         )
