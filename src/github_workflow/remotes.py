@@ -79,16 +79,14 @@ class OwnedRemotes:
         :param settings: Whose repositories count as owned.
         :return: The checkout's remotes, sorted into owned and the rest.
         """
-        names = tuple(git.run("remote").split())
-        owned = []
-        for name in names:
-            url = git.run("remote", "get-url", "--push", name)
-            if not Repository.names_a_repository(url):
-                continue
-            repository = Repository.from_remote_url(url)
-            if repository.owner.casefold() == settings.owner.casefold():
-                owned.append(OwnedRemote(name, repository))
-        return cls(tuple(owned), names, settings.owner)
+        remotes = git.remotes()
+        owned = tuple(
+            OwnedRemote(remote.name, remote.repository)
+            for remote in remotes
+            if remote.repository is not None
+            and remote.repository.owner.casefold() == settings.owner.casefold()
+        )
+        return cls(owned, tuple(remote.name for remote in remotes), settings.owner)
 
     @property
     def problem(self) -> NoOwnedRemoteError | AmbiguousOwnedRemoteError | None:

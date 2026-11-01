@@ -31,7 +31,7 @@ def main() -> None:
         print(f"github-workflow: notes not loaded: {remotes.problem.error_message()}")
         return
     remote = remotes.chosen
-    notes = NotesBranch(checkout.git, remote, settings)
+    notes = NotesBranch.on(checkout.git, remote, settings)
     exists = notes.fetch()
     branch = checkout.branch
     sections = {NotesSection.STANDING_NOTES: notes.read(NotesFile.STANDING_NOTES) or ""}

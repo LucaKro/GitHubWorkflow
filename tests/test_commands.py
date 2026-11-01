@@ -65,7 +65,7 @@ def saved_notes(
     :return: Its notes branch as a fresh clone sees it, fetched.
     """
     checkout = repositories.clone(url, "inspector")
-    notes = NotesBranch(
+    notes = NotesBranch.on(
         checkout.git, OwnedRemotes.read(checkout.git, settings).chosen, settings
     )
     notes.fetch()
@@ -79,7 +79,7 @@ def test_a_session_starts_with_the_notes_and_this_branch_s_progress(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ):
     writer = repositories.clone(owned_url, "writer")
-    NotesBranch(
+    NotesBranch.on(
         writer.git, OwnedRemotes.read(writer.git, settings).chosen, settings
     ).write(
         {

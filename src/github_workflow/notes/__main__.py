@@ -28,7 +28,7 @@ def main() -> None:
     settings = WorkflowSettings()
     checkout = ProjectCheckout.containing(Path.cwd())
     remote = OwnedRemotes.read(checkout.git, settings).chosen
-    saved = NotesSave(checkout, NotesBranch(checkout.git, remote, settings)).run()
+    saved = NotesSave(checkout, NotesBranch.on(checkout.git, remote, settings)).run()
     target = f"{remote.repository.full_name}, branch {settings.notes_branch}"
     if not saved:
         print(f"github-workflow: nothing changed since the last save to {target}")

@@ -66,29 +66,6 @@ class AmbiguousOwnedRemoteError(DataclassException, LookupError):
 
 
 @dataclass
-class NotesSaveRefusedError(DataclassException, RuntimeError):
-    """
-    Raised when the notes branch refuses a push even after building on its newest tip.
-    """
-
-    branch: str
-    """
-    The notes branch.
-    """
-
-    detail: str
-    """
-    What git said when it refused.
-    """
-
-    def error_message(self) -> str:
-        return f"pushing {self.branch} was refused: {self.detail}"
-
-    def suggest_correction(self) -> str:
-        return "Run the save again; if it keeps failing, check access to the remote."
-
-
-@dataclass
 class NotesBlockMissingError(DataclassException, LookupError):
     """
     Raised when saving finds no notes block in ``CLAUDE.local.md``.
