@@ -1,6 +1,6 @@
 {
   "name": "github-workflow",
-  "description": "Standing notes and per-branch progress every session starts with, kept on a notes branch of each repository.",
+  "description": "Standing notes and per-branch progress every session starts with, kept on a notes branch of each repository; every write to git and GitHub goes through the workflow's commands.",
   "author": {
     "name": "LucaKro"
   },

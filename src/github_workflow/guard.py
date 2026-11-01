@@ -1,0 +1,857 @@
+"""
+The guard every tool call passes before it runs: it denies writing to git or GitHub
+directly, so every write goes through the workflow's commands. Reading stays allowed.
+
+Run as a Claude Code ``PreToolUse`` hook: reads the hook's JSON on stdin and prints a
+denial, or nothing to leave the decision to the usual permissions.
+
+Usage: ``python -m github_workflow.guard < hook-input.json``
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import shlex
+import sys
+from abc import ABC, abstractmethod
+from collections.abc import Sequence
+from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import PurePath
+from typing import Any
+
+from basstler_domain_model.class_property import classproperty
+
+from github_workflow.command_line import WorkflowCommand
+
+# %% programs
+
+
+class Program(StrEnum):
+    """
+    The programs the guard judges, by their executable's name.
+    """
+
+    GIT = "git"
+    """
+    Git itself.
+    """
+
+    GITHUB_CLI = "gh"
+    """
+    GitHub's command-line client.
+    """
+
+    CURL = "curl"
+    """
+    An HTTP client that could call GitHub's API.
+    """
+
+    WGET = "wget"
+    """
+    Another HTTP client that could call GitHub's API.
+    """
+
+
+class Shell(StrEnum):
+    """
+    Programs that run commands given as a string or on their input, which are judged in
+    turn.
+    """
+
+    BASH = "bash"
+    """
+    Bash.
+    """
+
+    SH = "sh"
+    """
+    The POSIX shell.
+    """
+
+    ZSH = "zsh"
+    """
+    The Z shell.
+    """
+
+    EVAL = "eval"
+    """
+    The shell builtin running its arguments as a command line.
+    """
+
+
+class Wrapper(StrEnum):
+    """
+    Programs that run another command given after their own options and arguments.
+    """
+
+    ENV = "env"
+    """
+    Runs a command with a changed environment.
+    """
+
+    SUDO = "sudo"
+    """
+    Runs a command as another user.
+    """
+
+    NOHUP = "nohup"
+    """
+    Runs a command immune to hangups.
+    """
+
+    TIME = "time"
+    """
+    Runs a command and times it.
+    """
+
+    COMMAND = "command"
+    """
+    The shell builtin running a command past functions and aliases.
+    """
+
+    EXEC = "exec"
+    """
+    The shell builtin replacing the shell with a command.
+    """
+
+    NICE = "nice"
+    """
+    Runs a command at another priority.
+    """
+
+    TIMEOUT = "timeout"
+    """
+    Runs a command with a time limit.
+    """
+
+    XARGS = "xargs"
+    """
+    Runs a command with arguments read from its input.
+    """
+
+    WATCH = "watch"
+    """
+    Runs a command repeatedly.
+    """
+
+
+# %% git
+
+
+class GitGlobalOption(StrEnum):
+    """
+    The options before a git subcommand that change nothing it writes.
+    """
+
+    DIRECTORY = "-C"
+    """
+    Run as if started in another directory; takes the directory.
+    """
+
+    NO_PAGER = "--no-pager"
+    """
+    Print without a pager.
+    """
+
+    NO_PAGER_SHORT = "-P"
+    """
+    Print without a pager, short form.
+    """
+
+    VERSION = "--version"
+    """
+    Print git's version.
+    """
+
+    HELP = "--help"
+    """
+    Print git's help.
+    """
+
+
+class GitReading(StrEnum):
+    """
+    The git subcommands that only read, whatever their arguments.
+    """
+
+    STATUS = "status"
+    DIFF = "diff"
+    LOG = "log"
+    SHOW = "show"
+    BLAME = "blame"
+    GREP = "grep"
+    REV_PARSE = "rev-parse"
+    REV_LIST = "rev-list"
+    LS_FILES = "ls-files"
+    LS_TREE = "ls-tree"
+    LS_REMOTE = "ls-remote"
+    CAT_FILE = "cat-file"
+    MERGE_BASE = "merge-base"
+    DESCRIBE = "describe"
+    SHORTLOG = "shortlog"
+    FOR_EACH_REF = "for-each-ref"
+    SHOW_REF = "show-ref"
+    NAME_REV = "name-rev"
+    CHECK_IGNORE = "check-ignore"
+    VAR = "var"
+    VERSION = "version"
+    HELP = "help"
+
+
+class GitListing(StrEnum):
+    """
+    The git subcommands that read only in some of their forms.
+    """
+
+    BRANCH = "branch"
+    """
+    Reads when it lists branches.
+    """
+
+    TAG = "tag"
+    """
+    Reads when it lists tags.
+    """
+
+    REMOTE = "remote"
+    """
+    Reads when it lists remotes or shows one.
+    """
+
+    CONFIG = "config"
+    """
+    Reads when it gets or lists values.
+    """
+
+    STASH = "stash"
+    """
+    Reads when it lists or shows stashes.
+    """
+
+    WORKTREE = "worktree"
+    """
+    Reads when it lists worktrees.
+    """
+
+    REFLOG = "reflog"
+    """
+    Reads when it shows the reflog.
+    """
+
+    SUBMODULE = "submodule"
+    """
+    Reads when it reports submodules' status.
+    """
+
+    FETCH = "fetch"
+    """
+    Reads from a remote, moving only remote-tracking references, unless a refspec
+    names a local branch.
+    """
+
+    def reads(self, arguments: Sequence[str]) -> bool:
+        """
+        :param arguments: What follows the subcommand.
+        :return: Whether this form only reads.
+        """
+        options = {argument for argument in arguments if argument.startswith("-")}
+        positional = [argument for argument in arguments if argument not in options]
+        match self:
+            case GitListing.BRANCH | GitListing.TAG:
+                return self._lists(options, positional)
+            case GitListing.REMOTE:
+                return positional[:1] in ([], ["show"], ["get-url"]) and options <= {
+                    "-v",
+                    "--verbose",
+                    "--push",
+                    "--all",
+                    "-n",
+                }
+            case GitListing.CONFIG:
+                getting = {"--get", "--get-all", "--get-regexp", "--list", "-l"}
+                setting = {"--add", "--unset", "--unset-all", "--replace-all", "--edit"}
+                setting |= {"-e", "--rename-section", "--remove-section"}
+                gets = bool(options & getting) or positional[:1] in (["get"], ["list"])
+                return gets and not options & setting
+            case GitListing.STASH:
+                return positional[:1] in (["list"], ["show"])
+            case GitListing.WORKTREE:
+                return positional[:1] == ["list"]
+            case GitListing.REFLOG:
+                return positional[:1] in ([], ["show"])
+            case GitListing.SUBMODULE:
+                return positional[:1] == ["status"]
+            case GitListing.FETCH:
+                return not any(":" in argument for argument in positional)
+
+    @staticmethod
+    def _lists(options: set[str], positional: list[str]) -> bool:
+        """
+        :param options: The options given to ``branch`` or ``tag``.
+        :param positional: The other arguments.
+        :return: Whether the call lists rather than creates, moves or deletes.
+        """
+        listing = {"-l", "--list", "-a", "--all", "-r", "--remotes", "-v", "-vv"}
+        listing |= {"--show-current", "-n", "--no-color"}
+        filters = ("--contains", "--no-contains", "--merged", "--no-merged")
+        filters += ("--points-at", "--sort", "--format", "--color")
+        if any(
+            option not in listing and not option.startswith(filters)
+            for option in options
+        ):
+            return False
+        filtered = any(option.startswith(filters) for option in options)
+        return not positional or bool(options & {"-l", "--list"}) or filtered
+
+
+# %% GitHub
+
+
+class GitHubCliReading(StrEnum):
+    """
+    The ``gh`` commands that only read, by their first two words.
+    """
+
+    PULL_REQUEST_VIEW = "pr view"
+    PULL_REQUEST_LIST = "pr list"
+    PULL_REQUEST_DIFF = "pr diff"
+    PULL_REQUEST_CHECKS = "pr checks"
+    PULL_REQUEST_STATUS = "pr status"
+    ISSUE_VIEW = "issue view"
+    ISSUE_LIST = "issue list"
+    ISSUE_STATUS = "issue status"
+    RUN_VIEW = "run view"
+    RUN_LIST = "run list"
+    RUN_WATCH = "run watch"
+    REPOSITORY_VIEW = "repo view"
+    RELEASE_VIEW = "release view"
+    RELEASE_LIST = "release list"
+    WORKFLOW_VIEW = "workflow view"
+    WORKFLOW_LIST = "workflow list"
+    AUTHENTICATION_STATUS = "auth status"
+
+
+class GitHubCliSubcommand(StrEnum):
+    """
+    The ``gh`` subcommands judged by their arguments rather than their name.
+    """
+
+    API = "api"
+    """
+    A raw API call, which reads unless given a method, a field or an input.
+    """
+
+    SEARCH = "search"
+    """
+    A search, which only reads.
+    """
+
+
+class GitHubHost(StrEnum):
+    """
+    The hosts whose addresses mark a ``curl`` or ``wget`` call as one to GitHub.
+    """
+
+    WEB = "github.com"
+    """
+    GitHub and its API, ``api.github.com``.
+    """
+
+    CONTENT = "githubusercontent.com"
+    """
+    GitHub's raw file host.
+    """
+
+
+class GitHubToolReading(StrEnum):
+    """
+    How the names of GitHub MCP tools that only read start or end.
+    """
+
+    GET = "get_"
+    """
+    Reads one thing.
+    """
+
+    LIST = "list_"
+    """
+    Lists things.
+    """
+
+    SEARCH = "search_"
+    """
+    Searches.
+    """
+
+    READ = "_read"
+    """
+    Reads, in the newer tool names.
+    """
+
+
+# %% sending options
+
+
+@dataclass(frozen=True)
+class SendingOptions:
+    """
+    The options with which an HTTP client sends something rather than reads.
+    """
+
+    short: str
+    """
+    The single letters that send, wherever they stand in a cluster of short options.
+    """
+
+    long: tuple[str, ...]
+    """
+    The long options that send, matched as prefixes so ``--data-raw`` counts as
+    ``--data``.
+    """
+
+    method_short: str
+    """
+    The single letter naming the request method, which reads when it is ``GET``.
+    """
+
+    method_long: tuple[str, ...]
+    """
+    The long options naming the request method.
+    """
+
+    def present_in(self, arguments: Sequence[str]) -> bool:
+        """
+        :param arguments: A call's arguments.
+        :return: Whether one of them sends something.
+        """
+        for index, argument in enumerate(arguments):
+            following = "".join(arguments[index + 1 : index + 2])
+            if argument.startswith("--"):
+                option, _, value = argument.partition("=")
+                if option.startswith(self.long):
+                    return True
+                if option in self.method_long and (value or following).upper() != "GET":
+                    return True
+                continue
+            if not argument.startswith("-"):
+                continue
+            letters = argument[1:]
+            for position, letter in enumerate(letters):
+                if letter == self.method_short:
+                    method = letters[position + 1 :] or following
+                    if method.upper() != "GET":
+                        return True
+                    break
+                if letter in self.short:
+                    return True
+        return False
+
+
+# %% judging one program
+
+
+class ProgramCheck(ABC):
+    """
+    Judges the calls of one program.
+    """
+
+    @abstractmethod
+    def denial(self, arguments: Sequence[str]) -> str | None:
+        """
+        :param arguments: What follows the program's name.
+        :return: Why the call is denied, ``None`` when it may run.
+        """
+
+
+@dataclass(frozen=True)
+class GitCheck(ProgramCheck):
+    """
+    Lets git read, and denies every write.
+    """
+
+    def denial(self, arguments: Sequence[str]) -> str | None:
+        index = 0
+        while index < len(arguments) and arguments[index].startswith("-"):
+            option = arguments[index]
+            if option not in GitGlobalOption._value2member_map_:
+                return f"git {option} is not an option the guard lets through"
+            index += 2 if option == GitGlobalOption.DIRECTORY else 1
+        if index >= len(arguments):
+            return None
+        subcommand, rest = arguments[index], arguments[index + 1 :]
+        if subcommand == GitReading.GREP and any(
+            argument.startswith(("-O", "--open-files-in-pager")) for argument in rest
+        ):
+            return "git grep opening files runs a program"
+        if subcommand in GitReading._value2member_map_:
+            return None
+        if subcommand in GitListing._value2member_map_:
+            if GitListing(subcommand).reads(rest):
+                return None
+        return f"git {subcommand} writes, or is not a form the guard knows reads"
+
+
+@dataclass(frozen=True)
+class GitHubCliCheck(ProgramCheck):
+    """
+    Lets ``gh`` read, and denies every write.
+    """
+
+    @classproperty
+    def api_sending(cls) -> SendingOptions:
+        """
+        The options with which ``gh api`` sends something; a field alone makes it a
+        ``POST``.
+        """
+        return SendingOptions(
+            "fF", ("--field", "--raw-field", "--input"), "X", ("--method",)
+        )
+
+    def denial(self, arguments: Sequence[str]) -> str | None:
+        words = [argument for argument in arguments if not argument.startswith("-")]
+        if words[:1] == [GitHubCliSubcommand.API]:
+            if self.api_sending.present_in(arguments[1:]):
+                return "gh api with a method, a field or an input writes"
+            return None
+        if words[:1] == [GitHubCliSubcommand.SEARCH]:
+            return None
+        if " ".join(words[:2]) in GitHubCliReading._value2member_map_:
+            return None
+        return f"gh {' '.join(words[:2])} writes, or is not a command the guard knows reads"
+
+
+@dataclass(frozen=True)
+class HttpClientCheck(ProgramCheck):
+    """
+    Lets ``curl`` and ``wget`` read from GitHub, and denies sending anything to it.
+    """
+
+    sending: SendingOptions
+    """
+    The client's options that send something.
+    """
+
+    @classproperty
+    def curl(cls) -> HttpClientCheck:
+        """
+        The check of ``curl``.
+        """
+        return cls(
+            SendingOptions(
+                "dFT",
+                ("--data", "--json", "--form", "--upload-file"),
+                "X",
+                ("--request",),
+            )
+        )
+
+    @classproperty
+    def wget(cls) -> HttpClientCheck:
+        """
+        The check of ``wget``.
+        """
+        return cls(
+            SendingOptions(
+                "",
+                ("--post-data", "--post-file", "--body-data", "--body-file"),
+                "",
+                ("--method",),
+            )
+        )
+
+    def denial(self, arguments: Sequence[str]) -> str | None:
+        reaches_github = any(
+            host in argument for argument in arguments for host in GitHubHost
+        )
+        if reaches_github and self.sending.present_in(arguments):
+            return "sending to GitHub directly writes"
+        return None
+
+
+# %% judging a command line
+
+
+@dataclass(frozen=True)
+class CommandLine:
+    """
+    One Bash command line, split the way the shell runs it.
+    """
+
+    text: str
+    """
+    The command line.
+    """
+
+    @classproperty
+    def assignment(cls) -> re.Pattern[str]:
+        """
+        A word assigning an environment variable, as ``NAME=value``.
+        """
+        return re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*", re.DOTALL)
+
+    @classproperty
+    def here_document(cls) -> re.Pattern[str]:
+        """
+        The start of a here-document, capturing the word that ends it; a here-string
+        (``<<<``) is not one.
+        """
+        return re.compile(r"(?<!<)<<(?!<)-?\s*\\?['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?")
+
+    @classproperty
+    def shell_reading_input(cls) -> re.Pattern[str]:
+        """
+        A shell started without a command line, which runs what its input holds.
+        """
+        return re.compile(
+            r"(^|[;&|(]\s*|\s)(bash|sh|zsh)(\s+-[A-Za-z]+)*\s*($|[<|;&)])"
+        )
+
+    def simple_commands(self) -> list[list[str]]:
+        """
+        :return: The words of every simple command the line runs, those in command
+            substitutions included. A here-document is data unless a shell reads it.
+        :raises ValueError: If its quotes do not balance.
+        """
+        text = self._without_here_documents()
+        nested = re.findall(r"\$\(([^()]*)\)|<\(([^()]*)\)|`([^`]*)`", text)
+        commands = [
+            command
+            for groups in nested
+            for inner in groups
+            if inner
+            for command in CommandLine(inner).simple_commands()
+        ]
+        lexer = shlex.shlex(
+            text.replace("\n", " ; "), posix=True, punctuation_chars=True
+        )
+        lexer.whitespace_split = True
+        current: list[str] = []
+        for word in lexer:
+            if word and set(word) <= set(";&|()<>"):
+                commands.append(current)
+                current = []
+                continue
+            current.append(word)
+        commands.append(current)
+        return [command for command in commands if command]
+
+    def runs_input_through_a_shell(self) -> bool:
+        """
+        :return: Whether a shell runs whatever reaches its input, which the guard
+            cannot see.
+        """
+        return bool(self.shell_reading_input.search(self.text))
+
+    def _without_here_documents(self) -> str:
+        """
+        :return: The line with the body of every here-document no shell reads removed.
+        """
+        kept = []
+        ending: str | None = None
+        for line in self.text.split("\n"):
+            if ending is not None:
+                if line.strip() == ending:
+                    ending = None
+                continue
+            kept.append(line)
+            opened = self.here_document.search(line)
+            if opened and not self.shell_reading_input.search(line):
+                ending = opened.group(1)
+        return "\n".join(kept)
+
+
+@dataclass(frozen=True)
+class CommandGuard:
+    """
+    Judges whole command lines, looking through wrappers and shells into the programs
+    they run.
+    """
+
+    def denial(self, command_line: str) -> str | None:
+        """
+        :param command_line: A Bash command line.
+        :return: Why it is denied, ``None`` when it may run.
+        """
+        line = CommandLine(command_line)
+        if line.runs_input_through_a_shell() and re.search(
+            r"\b(git|gh)\b", command_line
+        ):
+            return "a shell reading its input could run git or gh unseen"
+        for words in line.simple_commands():
+            reason = self.denial_of(words)
+            if reason is not None:
+                return reason
+        return None
+
+    def denial_of(self, words: Sequence[str]) -> str | None:
+        """
+        :param words: One simple command's words.
+        :return: Why it is denied, ``None`` when it may run.
+        """
+        count = 0
+        while count < len(words) and CommandLine.assignment.fullmatch(words[count]):
+            count += 1
+        assignments, words = words[:count], words[count:]
+        if not words:
+            return None
+        program = PurePath(words[0]).name
+        arguments = list(words[1:])
+        if program in Wrapper._value2member_map_:
+            return self._denial_of_wrapped(arguments)
+        if program in Shell._value2member_map_:
+            return self._denial_of_shell(Shell(program), arguments)
+        if program == Program.GIT and any(
+            assignment.startswith("GIT_") for assignment in assignments
+        ):
+            return "setting git's environment can make it run a program"
+        match program:
+            case Program.GIT:
+                return GitCheck().denial(arguments)
+            case Program.GITHUB_CLI:
+                return GitHubCliCheck().denial(arguments)
+            case Program.CURL:
+                return HttpClientCheck.curl.denial(arguments)
+            case Program.WGET:
+                return HttpClientCheck.wget.denial(arguments)
+        return None
+
+    def _denial_of_wrapped(self, arguments: list[str]) -> str | None:
+        """
+        :param arguments: A wrapper's arguments, its options and the command it runs.
+        :return: Why the command it runs is denied, ``None`` when it may run.
+        """
+        judged = {*Program, *Shell, *Wrapper}
+        for index, argument in enumerate(arguments):
+            if " " in argument:
+                reason = self.denial(argument)
+                if reason is not None:
+                    return reason
+            if PurePath(argument).name in judged:
+                return self.denial_of(arguments[index:])
+        return None
+
+    def _denial_of_shell(self, shell: Shell, arguments: list[str]) -> str | None:
+        """
+        :param shell: The shell.
+        :param arguments: Its arguments.
+        :return: Why the command line it runs is denied, ``None`` when it may run.
+        """
+        if shell is Shell.EVAL:
+            return self.denial(" ".join(arguments))
+        for index, argument in enumerate(arguments[:-1]):
+            if re.fullmatch(r"-[A-Za-z]*c[A-Za-z]*", argument):
+                return self.denial(arguments[index + 1])
+        return None
+
+
+# %% the hook
+
+
+class HookKey(StrEnum):
+    """
+    The keys of the hook's input and output.
+    """
+
+    TOOL_NAME = "tool_name"
+    TOOL_INPUT = "tool_input"
+    COMMAND = "command"
+    HOOK_SPECIFIC_OUTPUT = "hookSpecificOutput"
+    HOOK_EVENT_NAME = "hookEventName"
+    PERMISSION_DECISION = "permissionDecision"
+    PERMISSION_DECISION_REASON = "permissionDecisionReason"
+
+
+class HookValue(StrEnum):
+    """
+    The fixed values the hook's input and output carry.
+    """
+
+    BASH_TOOL = "Bash"
+    """
+    The tool running shell commands.
+    """
+
+    MCP_TOOL_PREFIX = "mcp__"
+    """
+    How every MCP tool's name starts.
+    """
+
+    PRE_TOOL_USE = "PreToolUse"
+    """
+    The hook event the guard answers.
+    """
+
+    DENY = "deny"
+    """
+    The decision denying a call.
+    """
+
+
+@dataclass(frozen=True)
+class ToolGuard:
+    """
+    The hook's decision over one tool call.
+    """
+
+    hook_input: dict[str, Any]
+    """
+    The hook's input, as Claude Code sends it.
+    """
+
+    def denial(self) -> str | None:
+        """
+        :return: Why the call is denied, ``None`` when it may run.
+        """
+        tool = self.hook_input.get(HookKey.TOOL_NAME, "")
+        if tool == HookValue.BASH_TOOL:
+            command = self.hook_input[HookKey.TOOL_INPUT][HookKey.COMMAND]
+            return CommandGuard().denial(command)
+        if tool.startswith(HookValue.MCP_TOOL_PREFIX) and "github" in tool.casefold():
+            name = tool.rsplit("__", 1)[-1]
+            reading = (
+                GitHubToolReading.GET,
+                GitHubToolReading.LIST,
+                GitHubToolReading.SEARCH,
+            )
+            if name.startswith(reading) or name.endswith(GitHubToolReading.READ):
+                return None
+            return f"the GitHub tool {name} writes"
+        return None
+
+    def output(self) -> dict[str, Any] | None:
+        """
+        :return: The hook's output denying the call, ``None`` to leave it to the usual
+            permissions.
+        """
+        reason = self.denial()
+        if reason is None:
+            return None
+        return {
+            HookKey.HOOK_SPECIFIC_OUTPUT: {
+                HookKey.HOOK_EVENT_NAME: HookValue.PRE_TOOL_USE,
+                HookKey.PERMISSION_DECISION: HookValue.DENY,
+                HookKey.PERMISSION_DECISION_REASON: (
+                    f"github-workflow: {reason}. Read git directly, but write to git "
+                    f"and GitHub only through `{WorkflowCommand.command_line()}` "
+                    f"({', '.join(WorkflowCommand)}; --help for each)."
+                ),
+            }
+        }
+
+
+# %% entry point
+
+
+def main() -> None:
+    """
+    Read the hook's input and print its decision.
+    """
+    output = ToolGuard(json.load(sys.stdin)).output()
+    if output is not None:
+        print(json.dumps(output))
+
+
+if __name__ == "__main__":
+    main()
