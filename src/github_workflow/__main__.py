@@ -37,6 +37,7 @@ from github_workflow.work import (
     BranchSwitch,
     BranchSync,
     CommitWork,
+    DescriptionRewrite,
     DraftOpening,
     NotesSaving,
     PushWork,
@@ -127,6 +128,13 @@ class WorkflowSession(RepositoryDetails):
             case WorkflowCommand.NOTES, NotesSubcommand.SAVE:
                 notes = NotesBranch.on(self.checkout.git, self.remote, self.settings)
                 return NotesSaving(NotesSave(self.checkout, notes))
+            case WorkflowCommand.DESCRIBE, _:
+                return DescriptionRewrite(
+                    self.github,
+                    self.github,
+                    arguments.number,
+                    arguments.body_file.read_text(),
+                )
             case WorkflowCommand.UPDATE, _:
                 return RuntimeRebuild(
                     Runtime.installed(), Path(sys.executable).parent.parent
@@ -165,6 +173,11 @@ class WorkflowSession(RepositoryDetails):
         notes = commands.add_parser(WorkflowCommand.NOTES, help="save the notes")
         notes_actions = notes.add_subparsers(dest="action", required=True)
         notes_actions.add_parser(NotesSubcommand.SAVE, help="save the notes block")
+        describe = commands.add_parser(
+            WorkflowCommand.DESCRIBE, help="rewrite a draft's description"
+        )
+        describe.add_argument("number", type=int, help="the draft pull request")
+        describe.add_argument("--body-file", required=True, type=Path)
         commands.add_parser(
             WorkflowCommand.UPDATE, help="rebuild the runtime from main"
         )

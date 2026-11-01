@@ -579,6 +579,32 @@ class PullRequestOpening(StrEnum):
         )
 
 
+class DescriptionRewriting(StrEnum):
+    """
+    The ways of rewriting a pull request directly, whose description the workflow's
+    ``describe`` rewrites on a draft.
+    """
+
+    CLI = "pr edit"
+    """
+    ``gh pr edit``.
+    """
+
+    TOOL = "update_pull_request"
+    """
+    The GitHub MCP tool.
+    """
+
+    @classproperty
+    def instead(cls) -> str:
+        """
+        The workflow command line rewriting a draft's description.
+        """
+        return WorkflowCommand.command_line(
+            WorkflowCommand.DESCRIBE, "<number>", "--body-file", "<file>"
+        )
+
+
 # %% judging one program
 
 
@@ -656,6 +682,8 @@ class GitHubCliCheck(ProgramCheck):
         reason = f"gh {command} writes, or is not a command the guard knows reads"
         if command == PullRequestOpening.CLI:
             return Denial(reason, PullRequestOpening.instead)
+        if command == DescriptionRewriting.CLI:
+            return Denial(reason, DescriptionRewriting.instead)
         return Denial(reason)
 
 
@@ -917,6 +945,8 @@ class ToolGuard:
             reason = f"the GitHub tool {name} writes"
             if name == PullRequestOpening.TOOL:
                 return Denial(reason, PullRequestOpening.instead)
+            if name == DescriptionRewriting.TOOL:
+                return Denial(reason, DescriptionRewriting.instead)
             return Denial(reason)
         return None
 

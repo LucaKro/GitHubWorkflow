@@ -53,6 +53,11 @@ class WorkflowCommand(StrEnum):
     Save the notes block to the notes branch.
     """
 
+    DESCRIBE = "describe"
+    """
+    Rewrite the description of an open draft pull request.
+    """
+
     UPDATE = "update"
     """
     Rebuild the runtime the hooks run from, from main.

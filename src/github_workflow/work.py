@@ -11,12 +11,21 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from basstler_domain_model.git.commands import ProposedPush, RemoteBranch
-from basstler_domain_model.github.pull_request_fields import PullRequestHead
-from basstler_domain_model.github.repository_client import PullRequestOpener
+from basstler_domain_model.github.pull_request_fields import (
+    PullRequestField,
+    PullRequestHead,
+)
+from basstler_domain_model.github.repository_client import (
+    PullRequestOpener,
+    PullRequestReader,
+    PullRequestWriter,
+)
+from basstler_domain_model.github.vocabulary import IssueState
 
 from github_workflow.exceptions import (
     BranchNotPushedError,
     DetachedHeadError,
+    NotADraftError,
     PushRefusedError,
     UnpushedCommitsError,
 )
@@ -213,6 +222,42 @@ class DraftOpening(WorkflowStep):
             return opened
         stack = self.placement.place(self.below, number)
         return f"{opened}, in stack {stack.number}"
+
+
+@dataclass(frozen=True)
+class DescriptionRewrite(WorkflowStep):
+    """
+    A new description for an open draft pull request on the owner's repository; a pull
+    request that is ready for review or closed is the person's to change.
+    """
+
+    pull_requests: PullRequestReader
+    """
+    Reads the pull request.
+    """
+
+    writer: PullRequestWriter
+    """
+    Writes its description.
+    """
+
+    number: int
+    """
+    The pull request.
+    """
+
+    body: str
+    """
+    The new description.
+    """
+
+    def run(self) -> str:
+        record = self.pull_requests.pull_request(self.number)
+        is_open = PullRequestField.STATE.read(record, self.number) == IssueState.OPEN
+        if not is_open or not PullRequestField.DRAFT.read(record, self.number):
+            raise NotADraftError(self.number)
+        self.writer.set_description(self.number, self.body)
+        return f"rewrote the description of draft #{self.number}"
 
 
 # %% bringing a branch up to date

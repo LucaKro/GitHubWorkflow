@@ -17,6 +17,7 @@ from basstler_domain_model.locations import PathEnumeration
 from github_workflow.environment import WorkflowVariable
 from github_workflow.guard import (
     CommandGuard,
+    DescriptionRewriting,
     GitWrite,
     PullRequestOpening,
     ToolGuard,
@@ -135,6 +136,13 @@ def test_opening_a_pull_request_names_the_workflow_s_draft():
 
     assert denial is not None
     assert denial.instead == PullRequestOpening.instead
+
+
+def test_editing_a_pull_request_names_the_workflow_s_describe():
+    denial = CommandGuard().denial("gh pr edit 9 --body-file description.md")
+
+    assert denial is not None
+    assert denial.instead == DescriptionRewriting.instead
 
 
 def test_a_write_no_workflow_command_does_names_none():
