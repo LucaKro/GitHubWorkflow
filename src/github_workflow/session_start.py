@@ -13,7 +13,7 @@ from github_workflow.checkout import ProjectCheckout
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection
-from github_workflow.notes.saving import NotesCommand
+from github_workflow.command_line import NotesSubcommand, WorkflowCommand
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.settings import WorkflowSettings
 
@@ -39,7 +39,13 @@ def main() -> None:
     if branch:
         sections[NotesSection.BRANCH_PROGRESS] = progress or ""
     source = f"{remote.repository.full_name}, branch {settings.notes_branch}"
-    block = NotesBlock(source, NotesCommand.SAVE.command_line, branch, sections)
+    block = NotesBlock(
+        source,
+        WorkflowCommand.command_line(WorkflowCommand.NOTES, NotesSubcommand.SAVE),
+        WorkflowCommand.command_line(),
+        branch,
+        sections,
+    )
     existing = (
         checkout.claude_local.read_text() if checkout.claude_local.exists() else ""
     )

@@ -17,6 +17,7 @@ def block(branch: str = "feature") -> NotesBlock:
     return NotesBlock(
         source="an-owner/a-repository, branch notes",
         save_command="save",
+        workflow_command="workflow",
         branch=branch,
         sections={section: f"text of {section}" for section in NotesSection},
     )

@@ -1,0 +1,173 @@
+"""
+The workflow's commands, the only way its agent writes to git and GitHub; each checks
+the owner's rules before it writes and prints one line saying what it did.
+
+Usage: ``python -m github_workflow <command> ...``; ``--help`` lists the commands.
+"""
+
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+from functools import cached_property
+from pathlib import Path
+
+from basstler_domain_model.github.repository_client import (
+    GitHubRepository,
+    RepositoryDetails,
+)
+
+from github_workflow.checkout import ProjectCheckout
+from github_workflow.command_line import (
+    BranchSubcommand,
+    NotesSubcommand,
+    StackSubcommand,
+    WorkflowCommand,
+)
+from github_workflow.notes.branch import NotesBranch
+from github_workflow.notes.saving import NotesSave
+from github_workflow.policy import WritePolicy
+from github_workflow.remotes import OwnedRemote, OwnedRemotes
+from github_workflow.settings import WorkflowSettings
+from github_workflow.stacks import StackPlacement
+from github_workflow.work import (
+    BranchStart,
+    BranchSwitch,
+    BranchSync,
+    CommitWork,
+    DraftOpening,
+    NotesSaving,
+    PushWork,
+    StackPlacing,
+    WorkflowStep,
+)
+
+# %% the session
+
+
+@dataclass(frozen=True)
+class WorkflowSession(RepositoryDetails):
+    """
+    The checkout a command runs in, and GitHub reached only when the command needs it.
+    """
+
+    checkout: ProjectCheckout
+    """
+    The checkout the command runs in.
+    """
+
+    settings: WorkflowSettings
+    """
+    Whose repositories are written to.
+    """
+
+    @cached_property
+    def remote(self) -> OwnedRemote:
+        """
+        The owner's remote, the only one written to.
+        """
+        return OwnedRemotes.read(self.checkout.git, self.settings).chosen
+
+    @cached_property
+    def github(self) -> GitHubRepository:
+        """
+        The owner's repository on GitHub.
+        """
+        return GitHubRepository.from_environment(self.remote.repository)
+
+    def default_branch(self) -> str:
+        return self.github.default_branch()
+
+    @property
+    def policy(self) -> WritePolicy:
+        """:return: The rules the command's writes pass first."""
+        return WritePolicy(self.checkout, self.remote, self)
+
+    @property
+    def placement(self) -> StackPlacement:
+        """:return: Places pull requests in the repository's native stacks."""
+        return StackPlacement(self.github, self.github, self.github, self.github)
+
+    def step(self, arguments: argparse.Namespace) -> WorkflowStep:
+        """
+        :param arguments: The parsed command line.
+        :return: The step it asks for.
+        """
+        match WorkflowCommand(arguments.command), arguments.action:
+            case WorkflowCommand.BRANCH, BranchSubcommand.START:
+                return BranchStart(self.policy, arguments.name, arguments.on)
+            case WorkflowCommand.BRANCH, BranchSubcommand.SWITCH:
+                return BranchSwitch(self.policy, arguments.name)
+            case WorkflowCommand.COMMIT, _:
+                return CommitWork(self.policy, arguments.message, arguments.paths)
+            case WorkflowCommand.PUSH, _:
+                return PushWork(self.policy)
+            case WorkflowCommand.DRAFT, _:
+                return DraftOpening(
+                    self.policy,
+                    self.github,
+                    self.placement,
+                    arguments.title,
+                    arguments.body_file.read_text(),
+                    arguments.on,
+                )
+            case WorkflowCommand.SYNC, _:
+                return BranchSync(self.policy)
+            case WorkflowCommand.STACK, StackSubcommand.ON:
+                return StackPlacing(self.placement, arguments.below, arguments.above)
+            case WorkflowCommand.NOTES, NotesSubcommand.SAVE:
+                notes = NotesBranch.on(self.checkout.git, self.remote, self.settings)
+                return NotesSaving(NotesSave(self.checkout, notes))
+
+    @staticmethod
+    def parser() -> argparse.ArgumentParser:
+        """:return: The parser of every command's line."""
+        parser = argparse.ArgumentParser(
+            prog=WorkflowCommand.command_line(),
+            description=__doc__.strip().splitlines()[0],
+        )
+        parser.set_defaults(action=None)
+        commands = parser.add_subparsers(dest="command", required=True)
+        branch = commands.add_parser(WorkflowCommand.BRANCH, help="start or switch")
+        actions = branch.add_subparsers(dest="action", required=True)
+        start = actions.add_parser(BranchSubcommand.START, help="start a work branch")
+        start.add_argument("name")
+        start.add_argument("--on", help="the branch to start from")
+        switch = actions.add_parser(BranchSubcommand.SWITCH, help="switch to a branch")
+        switch.add_argument("name")
+        commit = commands.add_parser(WorkflowCommand.COMMIT, help="commit files")
+        commit.add_argument("-m", "--message", required=True)
+        commit.add_argument("paths", nargs="+", type=Path)
+        commands.add_parser(WorkflowCommand.PUSH, help="push the work branch")
+        draft = commands.add_parser(WorkflowCommand.DRAFT, help="open a draft")
+        draft.add_argument("--title", required=True)
+        draft.add_argument("--body-file", required=True, type=Path)
+        draft.add_argument("--on", type=int, help="the pull request to stack it on")
+        commands.add_parser(WorkflowCommand.SYNC, help="bring the branch up to date")
+        stack = commands.add_parser(WorkflowCommand.STACK, help="stack pull requests")
+        stack_actions = stack.add_subparsers(dest="action", required=True)
+        on = stack_actions.add_parser(StackSubcommand.ON, help="put above on below")
+        on.add_argument("below", type=int)
+        on.add_argument("above", type=int)
+        notes = commands.add_parser(WorkflowCommand.NOTES, help="save the notes")
+        notes_actions = notes.add_subparsers(dest="action", required=True)
+        notes_actions.add_parser(NotesSubcommand.SAVE, help="save the notes block")
+        return parser
+
+
+# %% entry point
+
+
+def main() -> None:
+    """
+    Run the command the command line names, and print what it did.
+    """
+    arguments = WorkflowSession.parser().parse_args()
+    session = WorkflowSession(
+        ProjectCheckout.containing(Path.cwd()), WorkflowSettings()
+    )
+    print(f"github-workflow: {session.step(arguments).run()}")
+
+
+if __name__ == "__main__":
+    main()

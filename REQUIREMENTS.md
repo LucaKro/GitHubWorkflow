@@ -72,6 +72,15 @@ them:
 - A local session can turn them on. A cloud session can see whether issues are on, but
   can neither change it nor see whether Actions are on, so there the tool tells me.
 
+## How the agent reaches git and GitHub
+
+- It reads git directly: status, diffs, history, and fetching.
+- Every write - a branch, a commit, a push, a pull request, a stack, the notes - goes
+  through the workflow's own commands, which check the rules above before writing. A
+  plugin hook denies every direct write, so the rules cannot be skipped by accident.
+- Nothing is ever force-pushed. A change low in a stack is an ordinary push; GitHub's
+  "Rebase stack" moves the pull requests above it, and I merge stacks on GitHub.
+
 ## What the agent may do without asking
 
 - push its own work branch
@@ -85,7 +94,8 @@ Everything else written to GitHub needs my go-ahead.
 - A task such as "do issue 1": small, clear tasks go straight to code, failing test
   first; larger ones get a plan I approve first.
 - Pull requests stay small through a standing note, not through a measured limit.
-- Dependent pull requests are rare, and use GitHub's native stacks when they happen.
+- Dependent pull requests are rare, and use GitHub's native stacks when they happen,
+  restacked and merged by GitHub.
 
 ## Open questions
 

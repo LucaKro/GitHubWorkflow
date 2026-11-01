@@ -10,14 +10,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-import github_workflow.notes
+import github_workflow
 import github_workflow.session_start
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.exceptions import NoOwnedRemoteError
 from github_workflow.locations import GitFile, NotesFile, ProjectFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection
-from github_workflow.notes.saving import NotesCommand
+from github_workflow.command_line import NotesSubcommand, WorkflowCommand
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.settings import WorkflowSettings
 
@@ -52,7 +52,9 @@ def start_session(checkout: ProjectCheckout) -> subprocess.CompletedProcess:
 def save(checkout: ProjectCheckout) -> subprocess.CompletedProcess:
     """:param checkout: The checkout whose notes block is saved.
     :return: The finished save."""
-    return run(github_workflow.notes.__name__, checkout, NotesCommand.SAVE)
+    return run(
+        github_workflow.__name__, checkout, WorkflowCommand.NOTES, NotesSubcommand.SAVE
+    )
 
 
 def saved_notes(
@@ -171,7 +173,7 @@ def test_saving_in_somebody_else_s_repository_is_refused(
 ):
     checkout = repositories.clone(foreign_url, "theirs")
     checkout.claude_local.write_text(
-        NotesBlock("", "", "", {NotesSection.STANDING_NOTES: "a note"}).render()
+        NotesBlock("", "", "", "", {NotesSection.STANDING_NOTES: "a note"}).render()
     )
     before = repositories.branches(foreign_url)
 

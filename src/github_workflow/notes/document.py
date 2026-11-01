@@ -8,6 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from github_workflow.command_line import WorkflowCommand
+
 # %% markers
 
 
@@ -66,6 +68,11 @@ class NotesBlock:
     The command that saves edits to the block, as the header gives it.
     """
 
+    workflow_command: str
+    """
+    The command every write to git and GitHub goes through, as the header gives it.
+    """
+
     branch: str
     """
     The checked-out branch, empty on a detached ``HEAD``, which has no progress section.
@@ -84,6 +91,10 @@ class NotesBlock:
             "",
             f"Read from {self.source}. Edit only between a section's markers, then save "
             f"with `{self.save_command}`.",
+            "",
+            f"Read git directly. Write to git and GitHub only through "
+            f"`{self.workflow_command}` ({', '.join(WorkflowCommand)}; `--help` "
+            f"for each).",
         ]
         for section in NotesSection:
             if section is NotesSection.BRANCH_PROGRESS and not self.branch:
