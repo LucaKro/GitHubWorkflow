@@ -53,6 +53,11 @@ class WorkflowCommand(StrEnum):
     Save the notes block to the notes branch.
     """
 
+    FINDING = "finding"
+    """
+    File, list, accept or reject findings.
+    """
+
     DETAILS = "details"
     """
     Show what a pull request's signals are about.
@@ -91,6 +96,32 @@ class BranchSubcommand(StrEnum):
     SWITCH = "switch"
     """
     Switch to an existing branch.
+    """
+
+
+class FindingSubcommand(StrEnum):
+    """
+    What ``finding`` does.
+    """
+
+    FILE = "file"
+    """
+    File something noticed outside the current work, as unreviewed.
+    """
+
+    LIST = "list"
+    """
+    List the open findings.
+    """
+
+    ACCEPT = "accept"
+    """
+    Accept an unreviewed finding, on the person's word.
+    """
+
+    REJECT = "reject"
+    """
+    Reject a finding with a reason, on the person's word.
     """
 
 
