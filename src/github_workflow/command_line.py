@@ -1,0 +1,101 @@
+"""
+The commands ``python -m github_workflow`` takes: the only way the workflow's agent
+writes to git and GitHub.
+"""
+
+from __future__ import annotations
+
+import sys
+from enum import StrEnum
+
+import github_workflow
+
+# %% the commands
+
+
+class WorkflowCommand(StrEnum):
+    """
+    The commands ``python -m github_workflow`` takes.
+    """
+
+    BRANCH = "branch"
+    """
+    Start a work branch, or switch to one.
+    """
+
+    COMMIT = "commit"
+    """
+    Commit named files on the work branch.
+    """
+
+    PUSH = "push"
+    """
+    Push the work branch to the owner's remote.
+    """
+
+    DRAFT = "draft"
+    """
+    Open a draft pull request for the work branch.
+    """
+
+    SYNC = "sync"
+    """
+    Bring the checked-out branch up to date with GitHub.
+    """
+
+    STACK = "stack"
+    """
+    Put one pull request on top of another in a native stack.
+    """
+
+    NOTES = "notes"
+    """
+    Save the notes block to the notes branch.
+    """
+
+    @classmethod
+    def command_line(cls, *arguments: str) -> str:
+        """
+        :param arguments: A command and its arguments, none for the bare entry point.
+        :return: The command line running it with the interpreter the package runs in.
+        """
+        return " ".join([sys.executable, "-m", github_workflow.__name__, *arguments])
+
+
+class BranchSubcommand(StrEnum):
+    """
+    What ``branch`` does.
+    """
+
+    START = "start"
+    """
+    Create a work branch from the default branch, or from another branch, and switch to
+    it.
+    """
+
+    SWITCH = "switch"
+    """
+    Switch to an existing branch.
+    """
+
+
+class StackSubcommand(StrEnum):
+    """
+    What ``stack`` does.
+    """
+
+    ON = "on"
+    """
+    Put the second pull request on top of the first.
+    """
+
+
+class NotesSubcommand(StrEnum):
+    """
+    What ``notes`` does.
+    """
+
+    SAVE = "save"
+    """
+    Push the edited notes block to the notes branch.
+    """

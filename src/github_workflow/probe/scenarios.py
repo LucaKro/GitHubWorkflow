@@ -37,7 +37,7 @@ from basstler_domain_model.repository import Repository
 
 from github_workflow.locations import ProbeTemplate, RepositoryFile
 from github_workflow.probe.library_check import LibraryCheck
-from github_workflow.stacks import StackCommand
+from github_workflow.command_line import StackSubcommand, WorkflowCommand
 from github_workflow.probe.results import CheckGroup, ProbeReport
 
 # %% vocabulary
@@ -653,8 +653,9 @@ class Probe:
         command = self.runner.run(
             sys.executable,
             "-m",
-            "github_workflow.stacks",
-            StackCommand.ON,
+            "github_workflow",
+            WorkflowCommand.STACK,
+            StackSubcommand.ON,
             str(lower),
             str(upper),
         )

@@ -11,9 +11,10 @@ import sys
 import pytest
 from basstler_domain_model.github.stack_models import Stack
 
-import github_workflow.stacks
+import github_workflow
 from github_workflow.exceptions import NoOwnedRemoteError, StackContinuesAboveError
-from github_workflow.stacks import StackCommand, StackPlacement
+from github_workflow.command_line import StackSubcommand, WorkflowCommand
+from github_workflow.stacks import StackPlacement
 
 from .repositories_by_owner import RepositoriesByOwner
 from .stacked_pull_requests import StackedPullRequestsInMemory
@@ -109,8 +110,9 @@ def test_stacking_in_somebody_else_s_repository_is_refused_before_any_call(
         [
             sys.executable,
             "-m",
-            github_workflow.stacks.__name__,
-            StackCommand.ON,
+            github_workflow.__name__,
+            WorkflowCommand.STACK,
+            StackSubcommand.ON,
             "1",
             "2",
         ],

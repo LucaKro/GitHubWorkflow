@@ -4,36 +4,14 @@ Saving the notes block of ``CLAUDE.local.md`` back to the notes branch.
 
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
-from enum import StrEnum
 from pathlib import Path
 
-import github_workflow.notes
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.exceptions import NotesBlockMissingError
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection
-
-# %% the commands
-
-
-class NotesCommand(StrEnum):
-    """
-    What ``python -m github_workflow.notes`` does.
-    """
-
-    SAVE = "save"
-    """
-    Push the edited notes block to the notes branch.
-    """
-
-    @property
-    def command_line(self) -> str:
-        """:return: The command, with the interpreter the package runs in."""
-        return f"{sys.executable} -m {github_workflow.notes.__name__} {self}"
-
 
 # %% saving
 

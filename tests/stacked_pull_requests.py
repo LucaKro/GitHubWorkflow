@@ -14,6 +14,7 @@ from basstler_domain_model.github.pull_request_fields import (
 )
 from basstler_domain_model.github.repository_client import (
     PullRequestBaseWriter,
+    PullRequestOpener,
     PullRequestReader,
     StackReader,
     StackWriter,
@@ -109,3 +110,19 @@ class StackedPullRequestsInMemory(
     def unstack(self, stack: Stack) -> Stack | None:
         self.writes.append(f"unstack {stack.number}")
         return None
+
+
+# %% opening drafts too
+
+
+@dataclass(frozen=True)
+class DraftsAndStacksInMemory(StackedPullRequestsInMemory, PullRequestOpener):
+    """
+    The stand-in, also opening draft pull requests, each numbered after the highest.
+    """
+
+    def open_draft(self, head: str, base: str, title: str, body: str) -> int:
+        number = max(self.bases, default=0) + 1
+        self.writes.append(f"open_draft {head} {base}")
+        self.bases[number] = base
+        return number
