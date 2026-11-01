@@ -8,6 +8,7 @@ Usage: ``python -m github_workflow <command> ...``; ``--help`` lists the command
 from __future__ import annotations
 
 import argparse
+import sys
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
@@ -28,6 +29,7 @@ from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
 from github_workflow.remotes import OwnedRemote, OwnedRemotes
+from github_workflow.runtime import Runtime, RuntimeRebuild
 from github_workflow.settings import WorkflowSettings
 from github_workflow.stacks import StackPlacement
 from github_workflow.work import (
@@ -51,15 +53,22 @@ class WorkflowSession(RepositoryDetails):
     The checkout a command runs in, and GitHub reached only when the command needs it.
     """
 
-    checkout: ProjectCheckout
+    directory: Path
     """
-    The checkout the command runs in.
+    Where the command runs, inside the checkout it works on.
     """
 
     settings: WorkflowSettings
     """
     Whose repositories are written to.
     """
+
+    @cached_property
+    def checkout(self) -> ProjectCheckout:
+        """
+        The checkout the command works on.
+        """
+        return ProjectCheckout.containing(self.directory)
 
     @cached_property
     def remote(self) -> OwnedRemote:
@@ -118,6 +127,10 @@ class WorkflowSession(RepositoryDetails):
             case WorkflowCommand.NOTES, NotesSubcommand.SAVE:
                 notes = NotesBranch.on(self.checkout.git, self.remote, self.settings)
                 return NotesSaving(NotesSave(self.checkout, notes))
+            case WorkflowCommand.UPDATE, _:
+                return RuntimeRebuild(
+                    Runtime.installed(), Path(sys.executable).parent.parent
+                )
 
     @staticmethod
     def parser() -> argparse.ArgumentParser:
@@ -152,6 +165,9 @@ class WorkflowSession(RepositoryDetails):
         notes = commands.add_parser(WorkflowCommand.NOTES, help="save the notes")
         notes_actions = notes.add_subparsers(dest="action", required=True)
         notes_actions.add_parser(NotesSubcommand.SAVE, help="save the notes block")
+        commands.add_parser(
+            WorkflowCommand.UPDATE, help="rebuild the runtime from main"
+        )
         return parser
 
 
@@ -163,9 +179,7 @@ def main() -> None:
     Run the command the command line names, and print what it did.
     """
     arguments = WorkflowSession.parser().parse_args()
-    session = WorkflowSession(
-        ProjectCheckout.containing(Path.cwd()), WorkflowSettings()
-    )
+    session = WorkflowSession(Path.cwd(), WorkflowSettings())
     print(f"github-workflow: {session.step(arguments).run()}")
 
 
