@@ -24,6 +24,7 @@ from basstler_domain_model.git.commands import (
     RemoteName,
 )
 from basstler_domain_model.github.clients import GitHubApi, RestAnswer
+from basstler_domain_model.github.pull_request_fields import PullRequestHeadKey
 from basstler_domain_model.github.routes import RepositoryRoute
 from basstler_domain_model.github.vocabulary import (
     IssueState,
@@ -35,6 +36,7 @@ from basstler_domain_model.repository import Repository
 
 from github_workflow.locations import ProbeTemplate, RepositoryFile
 from github_workflow.probe.library_check import LibraryCheck
+from github_workflow.stacks import StackCommand
 from github_workflow.probe.results import CheckGroup, ProbeReport
 
 # %% vocabulary
@@ -86,6 +88,8 @@ class ProbeText(StrEnum):
     PULL_REQUEST_BODY = "Created by the cloud probe; closed by it again."
     COMMIT_MESSAGE = "Probe commit, never merged"
     WORKFLOW_COMMIT_MESSAGE = "Probe workflow deleting the probe's branches"
+    STACK_LOWER_TITLE = "Probe: lower layer of a stack"
+    STACK_UPPER_TITLE = "Probe: upper layer of a stack"
 
 
 class BranchName(StrEnum):
@@ -116,6 +120,16 @@ class BranchName(StrEnum):
     WORKFLOW = "probe/workflow-"
     """
     The branch carrying the branch deletion workflow.
+    """
+
+    STACK_LOWER = "probe/stack-lower-"
+    """
+    The lower pull request of the stack the probe forms.
+    """
+
+    STACK_UPPER = "probe/stack-upper-"
+    """
+    The upper pull request of the stack the probe forms.
     """
 
 
@@ -569,6 +583,163 @@ class Probe:
             CheckGroup.PULL_REQUEST, "read the checks on its head", checks, runs
         )
         self.check_library_call(LibraryCheck.PULL_REQUEST_REVIEW_STATE, str(number))
+
+    # %% stacks
+
+    def check_stack(self, default_branch: str) -> None:
+        """
+        Open two chained draft pull requests, the upper one deliberately targeting the
+        default branch, and stack them with the stacks command, which has to retarget
+        the upper one first; check both on GitHub, then unstack and close them.
+
+        :param default_branch: The branch the lower pull request targets.
+        """
+        base = f"origin/{default_branch}"
+        self.runner.run("git", "fetch", "--quiet", "origin", default_branch)
+        lower_commit = self.runner.run(
+            "git",
+            "commit-tree",
+            f"{base}^{{tree}}",
+            "-p",
+            base,
+            "-m",
+            ProbeText.STACK_LOWER_TITLE,
+        ).output
+        upper_commit = self.runner.run(
+            "git",
+            "commit-tree",
+            f"{base}^{{tree}}",
+            "-p",
+            lower_commit,
+            "-m",
+            ProbeText.STACK_UPPER_TITLE,
+        ).output
+        lower, upper = (
+            f"{BranchName.STACK_LOWER}{self.stamp}",
+            f"{BranchName.STACK_UPPER}{self.stamp}",
+        )
+        pushed = self.runner.run(
+            "git",
+            "push",
+            "--quiet",
+            "origin",
+            f"{lower_commit}:refs/heads/{lower}",
+            f"{upper_commit}:refs/heads/{upper}",
+        )
+        if not self.report.record(
+            CheckGroup.STACKS,
+            "push two chained branches",
+            pushed.succeeded,
+            pushed.summary or "pushed",
+            pushed.seconds,
+        ):
+            return
+        numbers = [
+            self.open_draft(branch, default_branch, title)
+            for branch, title in (
+                (lower, ProbeText.STACK_LOWER_TITLE),
+                (upper, ProbeText.STACK_UPPER_TITLE),
+            )
+        ]
+        if None not in numbers:
+            self.stack_with_command(*numbers, lower)
+        for number in numbers:
+            if number is not None:
+                closed = self.call(
+                    HTTPMethod.PATCH,
+                    self.route.pull_request(number),
+                    {RestJSONKey.STATE: IssueState.CLOSED},
+                )
+                self.record_response(CheckGroup.STACKS, f"close #{number}", closed)
+        deleted = self.runner.run(
+            "git", "push", "--quiet", "origin", "--delete", lower, upper
+        )
+        self.report.record(
+            CheckGroup.STACKS,
+            "delete both branches",
+            deleted.succeeded,
+            deleted.summary or "deleted",
+            deleted.seconds,
+        )
+
+    def open_draft(self, branch: str, base: str, title: str) -> int | None:
+        """
+        :param branch: The branch the pull request merges.
+        :param base: The branch it targets.
+        :param title: Its title.
+        :return: Its number, ``None`` when it could not be opened.
+        """
+        created = self.call(
+            HTTPMethod.POST,
+            self.route.pull_requests,
+            {
+                RestJSONKey.TITLE: title,
+                RestJSONKey.BODY: ProbeText.PULL_REQUEST_BODY,
+                RestJSONKey.HEAD: branch,
+                RestJSONKey.BASE: base,
+                RestJSONKey.DRAFT: True,
+            },
+        )
+        if not self.record_response(
+            CheckGroup.STACKS, f"open a draft pull request for {branch}", created
+        ):
+            return None
+        return created.body[RestJSONKey.NUMBER]
+
+    def stack_with_command(self, lower: int, upper: int, lower_branch: str) -> None:
+        """
+        :param lower: The lower pull request.
+        :param upper: The upper pull request, targeting the default branch.
+        :param lower_branch: The lower pull request's branch, which the upper one must
+            end up targeting.
+        """
+        command = self.runner.run(
+            sys.executable,
+            "-m",
+            "github_workflow.stacks",
+            StackCommand.ON,
+            str(lower),
+            str(upper),
+        )
+        self.report.record(
+            CheckGroup.STACKS,
+            f"stacks on {lower} {upper}",
+            command.succeeded,
+            command.summary,
+            command.seconds,
+        )
+        upper_read = self.call(HTTPMethod.GET, self.route.pull_request(upper))
+        base = (
+            upper_read.body[RestJSONKey.BASE][PullRequestHeadKey.REFERENCE]
+            if upper_read.succeeded
+            else ""
+        )
+        self.report.record(
+            CheckGroup.STACKS,
+            "the upper pull request was retargeted",
+            base == lower_branch,
+            f"targets {base}",
+            upper_read.seconds,
+        )
+        holding = self.call(HTTPMethod.GET, self.route.stacks_holding(upper))
+        stacks = holding.body if holding.succeeded else []
+        detail = (
+            f"stack {stacks[0][RestJSONKey.NUMBER]}: {[entry[RestJSONKey.NUMBER] for entry in stacks[0][RestJSONKey.PULL_REQUESTS]]}"
+            if stacks
+            else ""
+        )
+        self.record_response(
+            CheckGroup.STACKS,
+            "read the stack holding the upper one",
+            holding,
+            detail or "in no stack",
+        )
+        if not stacks:
+            return
+        unstacked = self.call(
+            HTTPMethod.POST, self.route.unstacking(stacks[0][RestJSONKey.NUMBER])
+        )
+        self.record_response(CheckGroup.STACKS, "unstack it", unstacked)
 
     # %% settings
 
