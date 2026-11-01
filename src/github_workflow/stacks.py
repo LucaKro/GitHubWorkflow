@@ -26,9 +26,7 @@ from basstler_domain_model.github.repository_client import (
 from basstler_domain_model.github.stack_models import Stack
 
 from github_workflow.checkout import ProjectCheckout
-from basstler_domain_model.github.credential import GitHubToken
 from github_workflow.exceptions import StackContinuesAboveError
-from basstler_domain_model.commands import CommandRunner
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.settings import WorkflowSettings
 
@@ -116,9 +114,7 @@ def main() -> None:
     arguments = parser.parse_args()
     checkout = ProjectCheckout.containing(Path.cwd())
     remote = OwnedRemotes.read(checkout.git, WorkflowSettings()).chosen
-    github = GitHubRepository(
-        remote.repository, GitHubToken(CommandRunner(checkout.root)).find()
-    )
+    github = GitHubRepository.from_environment(remote.repository)
     stack = StackPlacement(github, github, github, github).place(
         arguments.below, arguments.above
     )
