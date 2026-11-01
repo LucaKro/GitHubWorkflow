@@ -1,18 +1,24 @@
 """
 Write the notes and this branch's progress into ``CLAUDE.local.md`` at the start of a.
 
-session, and answer the hook with one line saying what was loaded - and one more when
-the workflow's runtime is behind main - shown to the person and given to the model.
-Never writes to a remote.
+session, make sure GitHub deletes merged branches, and answer the hook with one line
+saying what was loaded - and one more when the deletion was turned on or has to be, and
+when the workflow's runtime is behind main - shown to the person and given to the
+model. Writes no file to a remote; turning the deletion on is the only change it makes
+on GitHub.
 
 Usage: ``python -m github_workflow.session_start``
 """
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from basstler_domain_model.commands import CommandRunner
+
+import github_workflow.merged_branch_deletion as merged_branch_deletion
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.hooks import SessionStartReport
 from github_workflow.locations import NotesFile
@@ -49,10 +55,29 @@ class SessionStart:
         :return: One line per thing the session should know.
         """
         lines = [self.load_notes()]
+        if OwnedRemotes.read(self.checkout.git, self.settings).problem is None:
+            lines += self.merged_branch_deletion()
         notice = Runtime.installed().notice(self.checkout.git)
         if notice is not None:
             lines.append(notice)
         return lines
+
+    def merged_branch_deletion(self) -> list[str]:
+        """
+        Make sure GitHub deletes merged branches, in a process of its own so a failure
+        costs only this line.
+
+        :return: What was done or is to be done, empty when nothing was.
+        """
+        checked = CommandRunner(self.checkout.root).run(
+            sys.executable, "-m", merged_branch_deletion.__name__
+        )
+        if not checked.succeeded:
+            return [
+                "github-workflow: could not check whether GitHub deletes merged "
+                f"branches: {checked.summary}"
+            ]
+        return checked.output.splitlines()
 
     def load_notes(self) -> str:
         """
