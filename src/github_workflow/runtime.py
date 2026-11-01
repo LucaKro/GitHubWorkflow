@@ -272,7 +272,9 @@ class RuntimeRebuild(WorkflowStep):
         )
         python = build / "bin" / "python"
         steps = [
-            [str(base), "-m", "venv", "--clear", str(build)],
+            [str(base), "-m", "venv", "--without-pip", str(build)],
+            [sys.executable, "-I", "-m", "pip", "--python", str(python)]
+            + ["install", "--quiet", "pip"],
             *(
                 [str(python), "-I", "-m", "pip", "install", "--quiet"]
                 + [package.source.requirement(package.distribution)]
@@ -283,7 +285,8 @@ class RuntimeRebuild(WorkflowStep):
             result = runner.run(*step)
             if not result.succeeded:
                 shutil.rmtree(build)
-                raise RuntimeBuildFailedError(" ".join(step), result.summary)
+                said = (result.error_output or result.output).splitlines()
+                raise RuntimeBuildFailedError(" ".join(step), "".join(said[-1:]))
         push = {
             HookKey.TOOL_NAME: HookValue.BASH_TOOL,
             HookKey.TOOL_INPUT: {HookKey.COMMAND: f"{Program.GIT} {GitWrite.PUSH}"},
