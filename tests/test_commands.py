@@ -6,6 +6,7 @@ repository.
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -13,7 +14,9 @@ from pathlib import Path
 import github_workflow
 import github_workflow.session_start
 from github_workflow.checkout import ProjectCheckout
+from github_workflow.environment import WorkflowVariable
 from github_workflow.exceptions import NoOwnedRemoteError
+from github_workflow.hooks import HookKey, HookValue
 from github_workflow.locations import GitFile, NotesFile, ProjectFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection
@@ -134,6 +137,42 @@ def test_a_session_in_somebody_else_s_repository_loads_nothing(
     refusal = NoOwnedRemoteError(settings.owner, ("origin",)).error_message()
     assert refusal in finished.stdout
     assert not checkout.claude_local.exists()
+
+
+def test_a_session_start_is_shown_to_the_person_and_given_to_the_model(
+    repositories: RepositoriesByOwner, owned_url: str
+):
+    finished = start_session(repositories.clone(owned_url, "session"))
+
+    answer = json.loads(finished.stdout)
+    given = answer[HookKey.HOOK_SPECIFIC_OUTPUT]
+    assert given[HookKey.HOOK_EVENT_NAME] == HookValue.SESSION_START
+    assert answer[HookKey.SYSTEM_MESSAGE] == given[HookKey.ADDITIONAL_CONTEXT]
+
+
+def test_a_session_outside_a_checkout_says_so_in_one_line(tmp_path: Path):
+    finished = subprocess.run(
+        [sys.executable, "-m", github_workflow.session_start.__name__],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+
+    assert finished.returncode == 0
+    assert len(json.loads(finished.stdout)[HookKey.SYSTEM_MESSAGE].splitlines()) == 1
+
+
+def test_the_hook_answers_even_without_the_package(tmp_path: Path):
+    finished = subprocess.run(
+        [str(Path(__file__).parents[1] / "plugin" / "hooks" / "session-start.sh")],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        env={WorkflowVariable.PYTHON: str(tmp_path / "no-interpreter")},
+    )
+
+    assert finished.returncode == 0
+    assert HookKey.SYSTEM_MESSAGE in json.loads(finished.stdout)
 
 
 # %% saving

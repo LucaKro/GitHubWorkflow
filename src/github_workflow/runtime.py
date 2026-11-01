@@ -23,7 +23,8 @@ import github_workflow.guard as guard
 from github_workflow.command_line import WorkflowCommand
 from github_workflow.environment import GitBatchVariable
 from github_workflow.exceptions import NotARuntimeError, RuntimeBuildFailedError
-from github_workflow.guard import GitWrite, HookKey, HookValue, Program
+from github_workflow.guard import GitWrite, Program
+from github_workflow.hooks import HookKey, HookValue
 from github_workflow.work import WorkflowStep
 
 # %% what is installed

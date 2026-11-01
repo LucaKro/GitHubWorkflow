@@ -271,3 +271,24 @@ class RuntimeBuildFailedError(DataclassException, RuntimeError):
 
     def suggest_correction(self) -> str:
         return "The runtime in use is unchanged; fix the cause and run update again."
+
+
+# %% the checkout
+
+
+@dataclass
+class NotACheckoutError(DataclassException, RuntimeError):
+    """
+    Raised when a command that works on a checkout runs outside one.
+    """
+
+    directory: str
+    """
+    Where it ran.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.directory} is not inside a git checkout"
+
+    def suggest_correction(self) -> str:
+        return "Run the command inside the checkout it is to work on."
