@@ -4,10 +4,11 @@
 # reported in that one line.
 #
 # Runs the package from the interpreter GITHUB_WORKFLOW_PYTHON names, by default the
-# githubworkflow virtual environment.
+# githubworkflow-runtime virtual environment, where the package is installed from main
+# rather than from a checkout that may be on any branch.
 set -uo pipefail
 
-PYTHON="${GITHUB_WORKFLOW_PYTHON:-${HOME}/.virtualenvs/githubworkflow/bin/python}"
+PYTHON="${GITHUB_WORKFLOW_PYTHON:-${HOME}/.virtualenvs/githubworkflow-runtime/bin/python}"
 if [ ! -x "${PYTHON}" ]; then
   echo "github-workflow: notes not loaded: no interpreter at ${PYTHON}; set GITHUB_WORKFLOW_PYTHON to one with the package installed"
   exit 0

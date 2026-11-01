@@ -23,7 +23,7 @@ from typing import Any
 
 from basstler_domain_model.class_property import classproperty
 
-from github_workflow.command_line import WorkflowCommand
+from github_workflow.command_line import BranchSubcommand, WorkflowCommand
 
 # %% programs
 
@@ -449,6 +449,135 @@ class SendingOptions:
         return False
 
 
+# %% what to do instead
+
+
+@dataclass(frozen=True)
+class Denial:
+    """
+    Why a call is denied, and the workflow command doing the same job.
+    """
+
+    reason: str
+    """
+    Why the call is denied.
+    """
+
+    instead: str | None = None
+    """
+    The workflow command line to run instead, ``None`` when no workflow command does
+    the job and the person running the tool has to.
+    """
+
+    def message(self) -> str:
+        """:return: What the hook tells the model: the reason, and what to run instead."""
+        instead = (
+            f"Instead run `{self.instead}`."
+            if self.instead
+            else "No workflow command does this: ask the person running the tool."
+        )
+        return (
+            f"github-workflow: {self.reason}. {instead} Read git directly, but write to "
+            f"git and GitHub only through `{WorkflowCommand.command_line()}` "
+            f"({', '.join(WorkflowCommand)}; --help for each)."
+        )
+
+
+class GitWrite(StrEnum):
+    """
+    The git subcommands that write and have a workflow command doing the same job.
+    """
+
+    PUSH = "push"
+    """
+    Publishing the branch.
+    """
+
+    COMMIT = "commit"
+    """
+    Recording changes.
+    """
+
+    ADD = "add"
+    """
+    Staging changes, which the workflow's commit does with the files it is given.
+    """
+
+    SWITCH = "switch"
+    """
+    Changing or creating the checked-out branch.
+    """
+
+    CHECKOUT = "checkout"
+    """
+    Changing or creating the checked-out branch, the older way.
+    """
+
+    BRANCH = "branch"
+    """
+    Creating a branch.
+    """
+
+    PULL = "pull"
+    """
+    Taking in GitHub's copy of the branch.
+    """
+
+    MERGE = "merge"
+    """
+    Taking in another branch, which for GitHub's copy is a sync.
+    """
+
+    @property
+    def instead(self) -> str:
+        """:return: The workflow command line doing the same job."""
+        match self:
+            case GitWrite.PUSH:
+                return WorkflowCommand.command_line(WorkflowCommand.PUSH)
+            case GitWrite.COMMIT | GitWrite.ADD:
+                return WorkflowCommand.command_line(
+                    WorkflowCommand.COMMIT, "-m", "<message>", "<paths>..."
+                )
+            case GitWrite.SWITCH | GitWrite.CHECKOUT:
+                return (
+                    WorkflowCommand.command_line(
+                        WorkflowCommand.BRANCH, BranchSubcommand.SWITCH, "<branch>"
+                    )
+                    + " (or `branch start <name>` for a new one)"
+                )
+            case GitWrite.BRANCH:
+                return WorkflowCommand.command_line(
+                    WorkflowCommand.BRANCH, BranchSubcommand.START, "<name>"
+                )
+            case GitWrite.PULL | GitWrite.MERGE:
+                return WorkflowCommand.command_line(WorkflowCommand.SYNC)
+
+
+class PullRequestOpening(StrEnum):
+    """
+    The ways of opening a pull request directly, all done by the workflow's ``draft``.
+    """
+
+    CLI = "pr create"
+    """
+    ``gh pr create``.
+    """
+
+    TOOL = "create_pull_request"
+    """
+    The GitHub MCP tool.
+    """
+
+    @classproperty
+    def instead(cls) -> str:
+        """
+        The workflow command line opening a draft pull request.
+        """
+        return WorkflowCommand.command_line(
+            WorkflowCommand.DRAFT, "--title", "<title>", "--body-file", "<file>"
+        )
+
+
 # %% judging one program
 
 
@@ -458,7 +587,7 @@ class ProgramCheck(ABC):
     """
 
     @abstractmethod
-    def denial(self, arguments: Sequence[str]) -> str | None:
+    def denial(self, arguments: Sequence[str]) -> Denial | None:
         """
         :param arguments: What follows the program's name.
         :return: Why the call is denied, ``None`` when it may run.
@@ -471,12 +600,12 @@ class GitCheck(ProgramCheck):
     Lets git read, and denies every write.
     """
 
-    def denial(self, arguments: Sequence[str]) -> str | None:
+    def denial(self, arguments: Sequence[str]) -> Denial | None:
         index = 0
         while index < len(arguments) and arguments[index].startswith("-"):
             option = arguments[index]
             if option not in GitGlobalOption._value2member_map_:
-                return f"git {option} is not an option the guard lets through"
+                return Denial(f"git {option} is not an option the guard lets through")
             index += 2 if option == GitGlobalOption.DIRECTORY else 1
         if index >= len(arguments):
             return None
@@ -484,13 +613,16 @@ class GitCheck(ProgramCheck):
         if subcommand == GitReading.GREP and any(
             argument.startswith(("-O", "--open-files-in-pager")) for argument in rest
         ):
-            return "git grep opening files runs a program"
+            return Denial("git grep opening files runs a program")
         if subcommand in GitReading._value2member_map_:
             return None
         if subcommand in GitListing._value2member_map_:
             if GitListing(subcommand).reads(rest):
                 return None
-        return f"git {subcommand} writes, or is not a form the guard knows reads"
+        reason = f"git {subcommand} writes, or is not a form the guard knows reads"
+        if subcommand in GitWrite._value2member_map_:
+            return Denial(reason, GitWrite(subcommand).instead)
+        return Denial(reason)
 
 
 @dataclass(frozen=True)
@@ -509,17 +641,21 @@ class GitHubCliCheck(ProgramCheck):
             "fF", ("--field", "--raw-field", "--input"), "X", ("--method",)
         )
 
-    def denial(self, arguments: Sequence[str]) -> str | None:
+    def denial(self, arguments: Sequence[str]) -> Denial | None:
         words = [argument for argument in arguments if not argument.startswith("-")]
         if words[:1] == [GitHubCliSubcommand.API]:
             if self.api_sending.present_in(arguments[1:]):
-                return "gh api with a method, a field or an input writes"
+                return Denial("gh api with a method, a field or an input writes")
             return None
         if words[:1] == [GitHubCliSubcommand.SEARCH]:
             return None
         if " ".join(words[:2]) in GitHubCliReading._value2member_map_:
             return None
-        return f"gh {' '.join(words[:2])} writes, or is not a command the guard knows reads"
+        command = " ".join(words[:2])
+        reason = f"gh {command} writes, or is not a command the guard knows reads"
+        if command == PullRequestOpening.CLI:
+            return Denial(reason, PullRequestOpening.instead)
+        return Denial(reason)
 
 
 @dataclass(frozen=True)
@@ -561,12 +697,12 @@ class HttpClientCheck(ProgramCheck):
             )
         )
 
-    def denial(self, arguments: Sequence[str]) -> str | None:
+    def denial(self, arguments: Sequence[str]) -> Denial | None:
         reaches_github = any(
             host in argument for argument in arguments for host in GitHubHost
         )
         if reaches_github and self.sending.present_in(arguments):
-            return "sending to GitHub directly writes"
+            return Denial("sending to GitHub directly writes")
         return None
 
 
@@ -669,7 +805,7 @@ class CommandGuard:
     they run.
     """
 
-    def denial(self, command_line: str) -> str | None:
+    def denial(self, command_line: str) -> Denial | None:
         """
         :param command_line: A Bash command line.
         :return: Why it is denied, ``None`` when it may run.
@@ -678,14 +814,14 @@ class CommandGuard:
         if line.runs_input_through_a_shell() and re.search(
             r"\b(git|gh)\b", command_line
         ):
-            return "a shell reading its input could run git or gh unseen"
+            return Denial("a shell reading its input could run git or gh unseen")
         for words in line.simple_commands():
             reason = self.denial_of(words)
             if reason is not None:
                 return reason
         return None
 
-    def denial_of(self, words: Sequence[str]) -> str | None:
+    def denial_of(self, words: Sequence[str]) -> Denial | None:
         """
         :param words: One simple command's words.
         :return: Why it is denied, ``None`` when it may run.
@@ -705,7 +841,7 @@ class CommandGuard:
         if program == Program.GIT and any(
             assignment.startswith("GIT_") for assignment in assignments
         ):
-            return "setting git's environment can make it run a program"
+            return Denial("setting git's environment can make it run a program")
         match program:
             case Program.GIT:
                 return GitCheck().denial(arguments)
@@ -717,7 +853,7 @@ class CommandGuard:
                 return HttpClientCheck.wget.denial(arguments)
         return None
 
-    def _denial_of_wrapped(self, arguments: list[str]) -> str | None:
+    def _denial_of_wrapped(self, arguments: list[str]) -> Denial | None:
         """
         :param arguments: A wrapper's arguments, its options and the command it runs.
         :return: Why the command it runs is denied, ``None`` when it may run.
@@ -732,7 +868,7 @@ class CommandGuard:
                 return self.denial_of(arguments[index:])
         return None
 
-    def _denial_of_shell(self, shell: Shell, arguments: list[str]) -> str | None:
+    def _denial_of_shell(self, shell: Shell, arguments: list[str]) -> Denial | None:
         """
         :param shell: The shell.
         :param arguments: Its arguments.
@@ -800,7 +936,7 @@ class ToolGuard:
     The hook's input, as Claude Code sends it.
     """
 
-    def denial(self) -> str | None:
+    def denial(self) -> Denial | None:
         """
         :return: Why the call is denied, ``None`` when it may run.
         """
@@ -817,7 +953,10 @@ class ToolGuard:
             )
             if name.startswith(reading) or name.endswith(GitHubToolReading.READ):
                 return None
-            return f"the GitHub tool {name} writes"
+            reason = f"the GitHub tool {name} writes"
+            if name == PullRequestOpening.TOOL:
+                return Denial(reason, PullRequestOpening.instead)
+            return Denial(reason)
         return None
 
     def output(self) -> dict[str, Any] | None:
@@ -825,18 +964,14 @@ class ToolGuard:
         :return: The hook's output denying the call, ``None`` to leave it to the usual
             permissions.
         """
-        reason = self.denial()
-        if reason is None:
+        denial = self.denial()
+        if denial is None:
             return None
         return {
             HookKey.HOOK_SPECIFIC_OUTPUT: {
                 HookKey.HOOK_EVENT_NAME: HookValue.PRE_TOOL_USE,
                 HookKey.PERMISSION_DECISION: HookValue.DENY,
-                HookKey.PERMISSION_DECISION_REASON: (
-                    f"github-workflow: {reason}. Read git directly, but write to git "
-                    f"and GitHub only through `{WorkflowCommand.command_line()}` "
-                    f"({', '.join(WorkflowCommand)}; --help for each)."
-                ),
+                HookKey.PERMISSION_DECISION_REASON: denial.message(),
             }
         }
 
