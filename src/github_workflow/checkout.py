@@ -9,6 +9,7 @@ from pathlib import Path
 
 from basstler_domain_model.git.commands import GitCommandRunner
 
+from github_workflow.exceptions import NotACheckoutError
 from github_workflow.locations import GitFile, ProjectFile
 
 # %% the checkout
@@ -30,10 +31,21 @@ class ProjectCheckout:
         """
         :param directory: Any directory inside the checkout.
         :return: The checkout.
-        :raises GitCommandFailed: If *directory* is not inside a git checkout.
+        :raises NotACheckoutError: If *directory* is not inside a git checkout.
         """
-        root = GitCommandRunner(directory).run("rev-parse", "--show-toplevel")
-        return cls(GitCommandRunner(Path(root)))
+        checkout = cls.around(directory)
+        if checkout is None:
+            raise NotACheckoutError(str(directory))
+        return checkout
+
+    @classmethod
+    def around(cls, directory: Path) -> ProjectCheckout | None:
+        """
+        :param directory: A directory.
+        :return: The checkout it is inside, ``None`` when it is inside none.
+        """
+        root = GitCommandRunner(directory).attempt("rev-parse", "--show-toplevel")
+        return cls(GitCommandRunner(Path(root.output))) if root.succeeded else None
 
     @property
     def root(self) -> Path:

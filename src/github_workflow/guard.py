@@ -24,6 +24,7 @@ from typing import Any
 from basstler_domain_model.class_property import classproperty
 
 from github_workflow.command_line import BranchSubcommand, WorkflowCommand
+from github_workflow.hooks import HookKey, HookValue
 
 # %% programs
 
@@ -883,46 +884,6 @@ class CommandGuard:
 
 
 # %% the hook
-
-
-class HookKey(StrEnum):
-    """
-    The keys of the hook's input and output.
-    """
-
-    TOOL_NAME = "tool_name"
-    TOOL_INPUT = "tool_input"
-    COMMAND = "command"
-    HOOK_SPECIFIC_OUTPUT = "hookSpecificOutput"
-    HOOK_EVENT_NAME = "hookEventName"
-    PERMISSION_DECISION = "permissionDecision"
-    PERMISSION_DECISION_REASON = "permissionDecisionReason"
-
-
-class HookValue(StrEnum):
-    """
-    The fixed values the hook's input and output carry.
-    """
-
-    BASH_TOOL = "Bash"
-    """
-    The tool running shell commands.
-    """
-
-    MCP_TOOL_PREFIX = "mcp__"
-    """
-    How every MCP tool's name starts.
-    """
-
-    PRE_TOOL_USE = "PreToolUse"
-    """
-    The hook event the guard answers.
-    """
-
-    DENY = "deny"
-    """
-    The decision denying a call.
-    """
 
 
 @dataclass(frozen=True)

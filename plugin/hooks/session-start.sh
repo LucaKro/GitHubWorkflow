@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SessionStart hook: writes the notes and this branch's progress into CLAUDE.local.md and
-# prints one line saying what was loaded. Never fails the session: whatever goes wrong is
-# reported in that one line.
+# answers with what was loaded, as JSON whose systemMessage the person is shown. Never
+# fails the session: whatever goes wrong is reported in that message.
 #
 # Runs the package from the interpreter GITHUB_WORKFLOW_PYTHON names, by default the
 # githubworkflow-runtime virtual environment, where the package is installed from main
@@ -9,14 +9,25 @@
 set -uo pipefail
 
 PYTHON="${GITHUB_WORKFLOW_PYTHON:-${HOME}/.virtualenvs/githubworkflow-runtime/bin/python}"
+
+# Answers the hook with one line shown to the person, when the package cannot answer.
+report() {
+  local text="${1//\\/\\\\}"
+  text="${text//\"/\\\"}"
+  printf '{"systemMessage": "%s"}\n' "${text}"
+}
+
 if [ ! -x "${PYTHON}" ]; then
-  echo "github-workflow: notes not loaded: no interpreter at ${PYTHON}; set GITHUB_WORKFLOW_PYTHON to one with the package installed"
+  report "github-workflow: notes not loaded: no interpreter at ${PYTHON}; set GITHUB_WORKFLOW_PYTHON to one with the package installed"
   exit 0
 fi
 
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
-if ! OUTPUT="$("${PYTHON}" -m github_workflow.session_start 2>&1)"; then
-  echo "github-workflow: notes not loaded: $(printf '%s\n' "${OUTPUT}" | tail -n 1)"
+ERRORS="$(mktemp)"
+if ! OUTPUT="$("${PYTHON}" -m github_workflow.session_start 2>"${ERRORS}")"; then
+  report "github-workflow: notes not loaded: $(tail -n 1 "${ERRORS}")"
+  rm -f "${ERRORS}"
   exit 0
 fi
-echo "${OUTPUT}"
+rm -f "${ERRORS}"
+printf '%s\n' "${OUTPUT}"

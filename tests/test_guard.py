@@ -18,11 +18,10 @@ from github_workflow.environment import WorkflowVariable
 from github_workflow.guard import (
     CommandGuard,
     GitWrite,
-    HookKey,
-    HookValue,
     PullRequestOpening,
     ToolGuard,
 )
+from github_workflow.hooks import HookKey, HookValue
 
 # %% the dataset
 
