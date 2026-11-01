@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Measures what this session can do on git and GitHub, then commits what it found and
-# pushes it, so it can be pulled and read elsewhere: to the checked-out branch, or to a
-# branch of its own when that is the default branch.
+# Measures what this session can do on git and GitHub, and publishes what it found to the
+# github-workflow/probe-results branch, outside every code branch, so it can be fetched and
+# read elsewhere and the branch deleted afterwards. The checked-out branch is never
+# committed to.
 #
 # Installs this package and basstler-domain-model into a fresh environment of its own,
-# runs `python -m github_workflow.probe`, and records the install log, the run log, the
-# report and the results under probe-results/<UTC stamp>/. The checks create a label, an
+# runs `python -m github_workflow.probe`, which publishes the report and the results under
+# <UTC stamp>/ on that branch. The checks create a label, an
 # issue, a draft pull request and a few branches on the repository, write two settings
 # back unchanged, and run one short Actions workflow that deletes its own branches. The
 # issue and the pull request are closed rather than deleted, and a branch a session may
@@ -14,10 +15,10 @@
 # Usage: bash scripts/cloud-probe.sh
 set -uo pipefail
 
-DOMAIN_MODEL="basstler-domain-model @ git+https://github.com/LucaKro/basstler_domain_model@extract-from-basstler"
+DOMAIN_MODEL="basstler-domain-model @ git+https://github.com/LucaKro/basstler_domain_model@main"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-RESULTS="${ROOT}/probe-results/${STAMP}"
+RESULTS="$(mktemp -d)/${STAMP}"
 ENVIRONMENT="$(mktemp -d)/environment"
 
 cd "${ROOT}" || exit 1
@@ -47,25 +48,8 @@ if {
     "${ENVIRONMENT}/bin/python" -m pip install --quiet "${DOMAIN_MODEL}" &&
     "${ENVIRONMENT}/bin/python" -m pip install --quiet --editable "${ROOT}"
 } >"${RESULTS}/install.log" 2>&1; then
-  "${ENVIRONMENT}/bin/python" -m github_workflow.probe "${RESULTS}" >"${RESULTS}/run.log" 2>&1
-  echo "probe finished with status $?"
+  "${ENVIRONMENT}/bin/python" -m github_workflow.probe "${RESULTS}"
 else
-  echo "installing failed; see ${RESULTS}/install.log"
-fi
-
-# Results never go to the default branch directly: on it, or on no branch at all, they go
-# to a branch of their own.
-BRANCH="$(git branch --show-current)"
-DEFAULT_BRANCH="$(git ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\(.*\)\tHEAD$|\1|p')"
-if [ -z "${BRANCH}" ] || [ "${BRANCH}" = "${DEFAULT_BRANCH}" ]; then
-  BRANCH="probe/results-${STAMP}"
-  git switch --quiet --create "${BRANCH}"
-fi
-git add "${RESULTS}"
-git commit --quiet --message "Record cloud probe results ${STAMP}" --message "Made with AI assistance"
-if git push --quiet origin "HEAD:refs/heads/${BRANCH}"; then
-  echo "pushed probe-results/${STAMP} to ${BRANCH}"
-else
-  echo "pushing failed; the results follow, to paste back by hand:"
-  cat "${RESULTS}"/*.md "${RESULTS}"/*.log 2>/dev/null
+  echo "installing failed; the install log follows, to paste back by hand:"
+  cat "${RESULTS}/install.log"
 fi

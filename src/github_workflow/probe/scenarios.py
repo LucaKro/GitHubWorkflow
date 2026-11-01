@@ -7,60 +7,32 @@ from __future__ import annotations
 
 import platform
 import sys
-import tempfile
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from enum import StrEnum
+from http import HTTPMethod
 
 from basstler_domain_model.environment import (
     ClaudeCodeVariable,
     GitHubCredentialVariable,
 )
-from basstler_domain_model.github.vocabulary import RestJSONKey
+from basstler_domain_model.commands import CommandRunner
+from basstler_domain_model.git.commands import GitCommandRunner
+from basstler_domain_model.github.clients import GitHubApi, RestAnswer
+from basstler_domain_model.github.routes import RepositoryRoute
+from basstler_domain_model.github.vocabulary import (
+    IssueState,
+    IssueStateReason,
+    RestJSONKey,
+    WorkflowRunStatus,
+)
 from basstler_domain_model.repository import Repository
 
-from github_workflow.environment import GitVariable
 from github_workflow.locations import ProbeTemplate, RepositoryFile
-from github_workflow.probe.commands import CommandRunner
 from github_workflow.probe.library_check import LibraryCheck
-from github_workflow.probe.rest import (
-    HttpMethod,
-    RepositoryRoute,
-    RestCaller,
-    RestResponse,
-)
 from github_workflow.probe.results import CheckGroup, ProbeReport
 
 # %% vocabulary
-
-
-class ProbeJSONKey(StrEnum):
-    """
-    The REST fields the probe reads that the domain model does not read yet.
-    """
-
-    DEFAULT_BRANCH = "default_branch"
-    HAS_ISSUES = "has_issues"
-    STATE_REASON = "state_reason"
-    REQUESTED_REVIEWERS = "requested_reviewers"
-    AHEAD_BY = "ahead_by"
-    BEHIND_BY = "behind_by"
-    TOTAL_COUNT = "total_count"
-    COLOR = "color"
-    DELETE_BRANCH_ON_MERGE = "delete_branch_on_merge"
-    ENABLED = "enabled"
-    ALLOWED_ACTIONS = "allowed_actions"
-    WORKFLOW_RUNS = "workflow_runs"
-    STATUS = "status"
-
-
-class RunStatus(StrEnum):
-    """
-    The workflow run status the probe waits for.
-    """
-
-    COMPLETED = "completed"
 
 
 class WorkflowPlaceholder(StrEnum):
@@ -90,17 +62,6 @@ class WorkflowPlaceholder(StrEnum):
             .replace(cls.WORKFLOW_BRANCH, workflow)
             .replace(cls.DELETED_BRANCH, deleted)
         )
-
-
-class IssueState(StrEnum):
-    """
-    The issue states and close reasons the finding boards use.
-    """
-
-    OPEN = "open"
-    CLOSED = "closed"
-    NOT_PLANNED = "not_planned"
-    ALL = "all"
 
 
 class ProbeText(StrEnum):
@@ -153,6 +114,34 @@ class BranchName(StrEnum):
     """
 
 
+# %% one timed answer
+
+
+@dataclass(frozen=True)
+class TimedAnswer(RestAnswer):
+    """
+    What the API answered one call with, and how long it took.
+    """
+
+    seconds: float = 0.0
+    """
+    How long the call took.
+    """
+
+    @property
+    def summary(self) -> str:
+        """:return: The API's own message on a refusal, a count for a list, else the
+        start of the text."""
+        if not self.text.strip().startswith(("{", "[")):
+            return self.text[:200]
+        body = self.body
+        if isinstance(body, dict) and "message" in body:
+            return str(body["message"])
+        if isinstance(body, list):
+            return f"{len(body)} entries"
+        return ""
+
+
 # %% the probe
 
 
@@ -164,12 +153,12 @@ class Probe:
 
     runner: CommandRunner
     """
-    Runs git, curl and the library checks in the checkout.
+    Runs git and the library checks in the checkout.
     """
 
-    caller: RestCaller
+    github: GitHubApi
     """
-    Calls the REST API.
+    Calls GitHub's API.
     """
 
     repository: Repository
@@ -214,7 +203,7 @@ class Probe:
         }
 
     def record_response(
-        self, group: CheckGroup, check: str, response: RestResponse, detail: str = ""
+        self, group: CheckGroup, check: str, response: TimedAnswer, detail: str = ""
     ) -> bool:
         """
         :param group: What part of the workflow the call answers for.
@@ -229,6 +218,24 @@ class Probe:
             response.succeeded,
             f"{response.status} {detail if response.succeeded and detail else response.summary}".strip(),
             response.seconds,
+        )
+
+    def call(
+        self, method: HTTPMethod, path: str, payload: dict[str, object] | None = None
+    ) -> TimedAnswer:
+        """
+        :param method: The HTTP method.
+        :param path: The path below the API root.
+        :param payload: The JSON body, absent for a read.
+        :return: What the API answered, and how long it took.
+        """
+        started = time.monotonic()
+        answer = self.github.attempt(method, path, payload)
+        return TimedAnswer(
+            answer.status,
+            answer.text,
+            answer.headers,
+            round(time.monotonic() - started, 2),
         )
 
     @staticmethod
@@ -318,29 +325,29 @@ class Probe:
         Take one finding through the board: unreviewed, then rejected with a reason,
         then found again among the rejected.
         """
-        repository = self.caller.call(HttpMethod.GET, self.route.root)
+        repository = self.call(HTTPMethod.GET, self.route.root)
         has_issues = repository.succeeded and bool(
-            repository.body.get(ProbeJSONKey.HAS_ISSUES)
+            repository.body.get(RestJSONKey.HAS_ISSUES)
         )
         self.record_response(
             CheckGroup.ISSUE_BOARD, "issues enabled", repository, str(has_issues)
         )
         if not has_issues:
             return
-        label = self.caller.call(
-            HttpMethod.POST,
+        label = self.call(
+            HTTPMethod.POST,
             self.route.labels,
             {
                 RestJSONKey.NAME: ProbeText.LABEL,
-                ProbeJSONKey.COLOR: ProbeText.LABEL_COLOR,
+                RestJSONKey.COLOR: ProbeText.LABEL_COLOR,
                 RestJSONKey.DESCRIPTION: ProbeText.LABEL_DESCRIPTION,
             },
         )
         self.record_response(
             CheckGroup.ISSUE_BOARD, "create the unreviewed label", label
         )
-        issue = self.caller.call(
-            HttpMethod.POST,
+        issue = self.call(
+            HTTPMethod.POST,
             self.route.issues(),
             {
                 RestJSONKey.TITLE: f"{ProbeText.ISSUE_TITLE} {self.stamp}",
@@ -352,15 +359,15 @@ class Probe:
             CheckGroup.ISSUE_BOARD, "file a finding as unreviewed", issue
         ):
             self.walk_finding(issue.body[RestJSONKey.NUMBER])
-        deleted = self.caller.call(HttpMethod.DELETE, self.route.label(ProbeText.LABEL))
+        deleted = self.call(HTTPMethod.DELETE, self.route.label(ProbeText.LABEL))
         self.record_response(CheckGroup.ISSUE_BOARD, "delete the label", deleted)
 
     def walk_finding(self, number: int) -> None:
         """
         :param number: The finding's issue.
         """
-        unreviewed = self.caller.call(
-            HttpMethod.GET,
+        unreviewed = self.call(
+            HTTPMethod.GET,
             self.route.issues(labels=ProbeText.LABEL, state=IssueState.OPEN),
         )
         listed = unreviewed.succeeded and any(
@@ -372,41 +379,41 @@ class Probe:
             unreviewed,
             f"finding listed: {listed}",
         )
-        comment = self.caller.call(
-            HttpMethod.POST,
+        comment = self.call(
+            HTTPMethod.POST,
             self.route.issue_comments(number),
             {RestJSONKey.BODY: ProbeText.REJECTION},
         )
         self.record_response(
             CheckGroup.ISSUE_BOARD, "comment the rejection reason", comment
         )
-        closed = self.caller.call(
-            HttpMethod.PATCH,
+        closed = self.call(
+            HTTPMethod.PATCH,
             self.route.issue(number),
             {
                 RestJSONKey.STATE: IssueState.CLOSED,
-                ProbeJSONKey.STATE_REASON: IssueState.NOT_PLANNED,
+                RestJSONKey.STATE_REASON: IssueStateReason.NOT_PLANNED,
             },
         )
         self.record_response(
             CheckGroup.ISSUE_BOARD, "close it as not planned", closed, f"#{number}"
         )
-        read = self.caller.call(HttpMethod.GET, self.route.issue(number))
+        read = self.call(HTTPMethod.GET, self.route.issue(number))
         reason = (
-            f"state {read.body.get(RestJSONKey.STATE)}, reason {read.body.get(ProbeJSONKey.STATE_REASON)}"
+            f"state {read.body.get(RestJSONKey.STATE)}, reason {read.body.get(RestJSONKey.STATE_REASON)}"
             if read.succeeded
             else ""
         )
         self.record_response(
             CheckGroup.ISSUE_BOARD, "read it back directly", read, reason
         )
-        rejected = self.caller.call(
-            HttpMethod.GET,
+        rejected = self.call(
+            HTTPMethod.GET,
             self.route.issues(labels=ProbeText.LABEL, state=IssueState.CLOSED),
         )
         reasons = (
             [
-                entry.get(ProbeJSONKey.STATE_REASON)
+                entry.get(RestJSONKey.STATE_REASON)
                 for entry in rejected.body
                 if entry[RestJSONKey.NUMBER] == number
             ]
@@ -452,8 +459,8 @@ class Probe:
             pushed.seconds,
         ):
             return
-        created = self.caller.call(
-            HttpMethod.POST,
+        created = self.call(
+            HTTPMethod.POST,
             self.route.pull_requests,
             {
                 RestJSONKey.TITLE: ProbeText.PULL_REQUEST_TITLE,
@@ -487,10 +494,10 @@ class Probe:
         :param head: The branch it merges.
         :param commit: The commit at its head.
         """
-        pull_request = self.caller.call(HttpMethod.GET, self.route.pull_request(number))
+        pull_request = self.call(HTTPMethod.GET, self.route.pull_request(number))
         if pull_request.succeeded:
             body = pull_request.body
-            detail = f"draft {body[RestJSONKey.DRAFT]}, mergeable_state {body[RestJSONKey.MERGEABLE_STATE]}, {len(body[ProbeJSONKey.REQUESTED_REVIEWERS])} review requests"
+            detail = f"draft {body[RestJSONKey.DRAFT]}, mergeable_state {body[RestJSONKey.MERGEABLE_STATE]}, {len(body[RestJSONKey.REQUESTED_REVIEWERS])} review requests"
             self.record_response(
                 CheckGroup.PULL_REQUEST, "read its state", pull_request, detail
             )
@@ -498,22 +505,22 @@ class Probe:
             self.record_response(
                 CheckGroup.PULL_REQUEST, "read its state", pull_request
             )
-        threads = self.caller.call(HttpMethod.GET, self.route.review_threads(number))
+        threads = self.call(HTTPMethod.GET, self.route.review_threads(number))
         self.record_response(
             CheckGroup.PULL_REQUEST, "count its review threads (proxy route)", threads
         )
-        comparison = self.caller.call(HttpMethod.GET, self.route.comparison(base, head))
+        comparison = self.call(HTTPMethod.GET, self.route.comparison(base, head))
         stale = (
-            f"ahead {comparison.body.get(ProbeJSONKey.AHEAD_BY)}, behind {comparison.body.get(ProbeJSONKey.BEHIND_BY)}"
+            f"ahead {comparison.body.get(RestJSONKey.AHEAD_BY)}, behind {comparison.body.get(RestJSONKey.BEHIND_BY)}"
             if comparison.succeeded
             else ""
         )
         self.record_response(
             CheckGroup.PULL_REQUEST, "compare it with its base", comparison, stale
         )
-        checks = self.caller.call(HttpMethod.GET, self.route.check_runs(commit))
+        checks = self.call(HTTPMethod.GET, self.route.check_runs(commit))
         runs = (
-            f"{checks.body.get(ProbeJSONKey.TOTAL_COUNT)} check runs"
+            f"{checks.body.get(RestJSONKey.TOTAL_COUNT)} check runs"
             if checks.succeeded
             else ""
         )
@@ -521,8 +528,8 @@ class Probe:
             CheckGroup.PULL_REQUEST, "read the checks on its head", checks, runs
         )
         self.check_library_call(LibraryCheck.PULL_REQUEST_REVIEW_STATE, str(number))
-        closed = self.caller.call(
-            HttpMethod.PATCH,
+        closed = self.call(
+            HTTPMethod.PATCH,
             self.route.pull_request(number),
             {RestJSONKey.STATE: IssueState.CLOSED},
         )
@@ -535,11 +542,11 @@ class Probe:
         Read the settings the workflow turns on, and write each back unchanged, to learn
         whether the session may change them.
         """
-        repository = self.caller.call(HttpMethod.GET, self.route.root)
+        repository = self.call(HTTPMethod.GET, self.route.root)
         body = repository.body if repository.succeeded else {}
         settings = {
             key: body[key]
-            for key in (ProbeJSONKey.HAS_ISSUES, ProbeJSONKey.DELETE_BRANCH_ON_MERGE)
+            for key in (RestJSONKey.HAS_ISSUES, RestJSONKey.DELETE_BRANCH_ON_MERGE)
             if body.get(key) is not None
         }
         if not self.record_response(
@@ -549,9 +556,9 @@ class Probe:
             self.listed(settings),
         ):
             return
-        written = self.caller.call(HttpMethod.PATCH, self.route.root, settings)
+        written = self.call(HTTPMethod.PATCH, self.route.root, settings)
         self.record_response(CheckGroup.SETTINGS, "write them back unchanged", written)
-        permissions = self.caller.call(HttpMethod.GET, self.route.actions_permissions)
+        permissions = self.call(HTTPMethod.GET, self.route.actions_permissions)
         if not self.record_response(
             CheckGroup.SETTINGS,
             "read the Actions permissions",
@@ -561,12 +568,10 @@ class Probe:
             return
         unchanged = {
             key: permissions.body[key]
-            for key in (ProbeJSONKey.ENABLED, ProbeJSONKey.ALLOWED_ACTIONS)
+            for key in (RestJSONKey.ENABLED, RestJSONKey.ALLOWED_ACTIONS)
             if key in permissions.body
         }
-        written = self.caller.call(
-            HttpMethod.PUT, self.route.actions_permissions, unchanged
-        )
+        written = self.call(HTTPMethod.PUT, self.route.actions_permissions, unchanged)
         self.record_response(CheckGroup.SETTINGS, "write them back unchanged", written)
 
     # %% deleting branches from a workflow
@@ -590,8 +595,6 @@ class Probe:
         ):
             return
         commit = self.commit_with_workflow(workflow, deleted)
-        if commit is None:
-            return
         pushed = self.runner.run(
             "git", "push", "--quiet", "origin", f"{commit}:refs/heads/{workflow}"
         )
@@ -618,54 +621,29 @@ class Probe:
             0.0,
         )
 
-    def commit_with_workflow(self, workflow: str, deleted: str) -> str | None:
+    def commit_with_workflow(self, workflow: str, deleted: str) -> str:
         """
         Build a commit on top of the checked-out one that adds the filled-in workflow,
-        in an index of its own so the checkout is left untouched.
+        leaving the checkout untouched.
 
         :param workflow: The branch the workflow will be pushed on.
         :param deleted: The other branch it deletes.
-        :return: The commit, ``None`` when building it failed.
+        :return: The commit.
         """
         text = WorkflowPlaceholder.filled_workflow(workflow, deleted)
-        with tempfile.TemporaryDirectory() as directory:
-            index = {GitVariable.INDEX_FILE: str(Path(directory) / "index")}
-            blob = self.runner.run(
-                "git", "hash-object", "-w", "--stdin", standard_input=text
-            )
-            steps = [
-                blob,
-                self.runner.run("git", "read-tree", "HEAD", environment=index),
-                self.runner.run(
-                    "git",
-                    "update-index",
-                    "--add",
-                    "--cacheinfo",
-                    f"100644,{blob.output},{RepositoryFile.BRANCH_DELETION_WORKFLOW}",
-                    environment=index,
-                ),
-            ]
-            tree = self.runner.run("git", "write-tree", environment=index)
-        commit = self.runner.run(
-            "git",
-            "commit-tree",
-            tree.output,
-            "-p",
+        commit = GitCommandRunner(self.runner.working_directory).commit_files(
             "HEAD",
-            "-m",
+            {RepositoryFile.BRANCH_DELETION_WORKFLOW: text},
             ProbeText.WORKFLOW_COMMIT_MESSAGE,
         )
-        failed = [step for step in (*steps, tree, commit) if not step.succeeded]
-        detail = failed[0].summary if failed else commit.output
-        if not self.report.record(
+        self.report.record(
             CheckGroup.ACTIONS,
             "build a commit carrying the workflow",
-            not failed,
-            detail,
+            True,
+            commit,
             0.0,
-        ):
-            return None
-        return commit.output
+        )
+        return commit
 
     def wait_for_run(
         self,
@@ -684,12 +662,15 @@ class Probe:
         seen = False
         while time.monotonic() - started < timeout_seconds:
             time.sleep(interval_seconds)
-            runs = self.caller.call(HttpMethod.GET, self.route.workflow_runs(branch))
+            runs = self.call(HTTPMethod.GET, self.route.workflow_runs(branch))
             entries = (
-                runs.body.get(ProbeJSONKey.WORKFLOW_RUNS, []) if runs.succeeded else []
+                runs.body.get(RestJSONKey.WORKFLOW_RUNS, []) if runs.succeeded else []
             )
             seen = seen or bool(entries)
-            if entries and entries[0][ProbeJSONKey.STATUS] == RunStatus.COMPLETED:
+            if (
+                entries
+                and entries[0][RestJSONKey.STATUS] == WorkflowRunStatus.COMPLETED
+            ):
                 run = entries[0]
                 self.report.record(
                     CheckGroup.ACTIONS,
@@ -719,9 +700,9 @@ class Probe:
         Read the signals that are not below the repository, which a cloud session's
         proxy may not answer.
         """
-        waiting = self.caller.call(HttpMethod.GET, self.route.review_requests())
+        waiting = self.call(HTTPMethod.GET, self.route.review_requests())
         count = (
-            f"{waiting.body.get(ProbeJSONKey.TOTAL_COUNT)} waiting"
+            f"{waiting.body.get(RestJSONKey.TOTAL_COUNT)} waiting"
             if waiting.succeeded
             else ""
         )
@@ -738,7 +719,7 @@ class Probe:
         """
         :return: The repository's default branch, ``None`` when the API does not say.
         """
-        repository = self.caller.call(HttpMethod.GET, self.route.root)
+        repository = self.call(HTTPMethod.GET, self.route.root)
         if not repository.succeeded:
             return None
-        return repository.body[ProbeJSONKey.DEFAULT_BRANCH]
+        return repository.body[RestJSONKey.DEFAULT_BRANCH]

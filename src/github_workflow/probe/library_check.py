@@ -11,7 +11,7 @@ from __future__ import annotations
 import sys
 from enum import StrEnum
 
-from basstler_domain_model.github.clients import GitHubCommandLineClient
+from basstler_domain_model.github.clients import GitHubApi
 from basstler_domain_model.github.readers import ReadSource
 from basstler_domain_model.github.repository_client import GitHubRepository
 from basstler_domain_model.repository import Repository
@@ -59,7 +59,7 @@ class LibraryCheck(StrEnum):
         if self is LibraryCheck.PULL_REQUEST_REVIEW_STATE:
             source = ReadSource.detect()
             snapshot = source.reader(
-                GitHubCommandLineClient(), repository, repository.owner
+                GitHubApi.from_environment(), repository, repository.owner
             ).read_current_state(int(argument))
             checks = snapshot.checks.state if snapshot.checks else "not reported"
             return (
