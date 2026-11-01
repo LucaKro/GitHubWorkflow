@@ -41,12 +41,20 @@ class RepositoriesByOwner:
         """
         return "main"
 
-    def create(self, owner: str, name: str = "project") -> str:
+    @classproperty
+    def repository_name(cls) -> str:
+        """
+        The name every repository is created under unless given another.
+        """
+        return "project"
+
+    def create(self, owner: str, name: str | None = None) -> str:
         """
         :param owner: The account the repository belongs to.
         :param name: The repository's name.
         :return: The URL of a new bare repository holding one commit.
         """
+        name = name or self.repository_name
         bare = self.root / owner / f"{name}.git"
         GitCommandRunner(self.root).run(
             "init",

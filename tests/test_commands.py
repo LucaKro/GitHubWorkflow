@@ -9,7 +9,20 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from collections.abc import Iterator
+from http import HTTPStatus
 from pathlib import Path
+
+import pytest
+
+from basstler_domain_model.environment import (
+    GitHubActionsVariable,
+    GitHubCredentialVariable,
+)
+from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
+from basstler_domain_model.github.routes import RepositoryRoute
+from basstler_domain_model.github.vocabulary import RestJSONKey
+from basstler_domain_model.repository import Repository
 
 import github_workflow
 import github_workflow.session_start
@@ -25,6 +38,40 @@ from github_workflow.remotes import OwnedRemotes
 from github_workflow.settings import WorkflowSettings
 
 from .repositories_by_owner import RepositoriesByOwner
+
+# %% GitHub, replayed
+
+
+@pytest.fixture(autouse=True)
+def github(
+    monkeypatch: pytest.MonkeyPatch, settings: WorkflowSettings
+) -> Iterator[ReplayedApi]:
+    """
+    :return: GitHub as every command run here reaches it, answering that the owner's
+        repository already deletes merged branches.
+    """
+    with ReplayedApi() as api:
+        api.answers[("GET", root_path(settings))] = setting(HTTPStatus.OK, True)
+        monkeypatch.setenv(GitHubActionsVariable.API_URL, api.url)
+        monkeypatch.setenv(GitHubCredentialVariable.GH_TOKEN, "a-token")
+        yield api
+
+
+def root_path(settings: WorkflowSettings) -> str:
+    """:param settings: The workflow's settings.
+    :return: The REST path of the owner's scratch repository."""
+    repository = Repository(settings.owner, RepositoriesByOwner.repository_name)
+    return f"/{RepositoryRoute(repository).root}"
+
+
+def setting(status: HTTPStatus, deletes: bool) -> RecordedAnswer:
+    """:param status: The status to answer with.
+    :param deletes: Whether merged branches are deleted.
+    :return: An answer carrying the merged-branch deletion setting."""
+    return RecordedAnswer(
+        status, json.dumps({RestJSONKey.DELETE_BRANCH_ON_MERGE: deletes})
+    )
+
 
 # %% helpers
 
@@ -173,6 +220,51 @@ def test_the_hook_answers_even_without_the_package(tmp_path: Path):
 
     assert finished.returncode == 0
     assert HookKey.SYSTEM_MESSAGE in json.loads(finished.stdout)
+
+
+# %% merged branches
+
+
+def test_a_session_turns_on_github_s_deletion_of_merged_branches(
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+    github: ReplayedApi,
+):
+    github.answers[("GET", root_path(settings))] = setting(HTTPStatus.OK, False)
+    github.answers[("PATCH", root_path(settings))] = setting(HTTPStatus.OK, True)
+
+    start_session(repositories.clone(owned_url, "session"))
+
+    [change] = [sent for sent in github.sent if sent.method == "PATCH"]
+    assert change.payload == {RestJSONKey.DELETE_BRANCH_ON_MERGE: True}
+
+
+def test_a_session_that_may_not_change_settings_links_to_them(
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+    github: ReplayedApi,
+):
+    github.answers[("GET", root_path(settings))] = setting(HTTPStatus.OK, False)
+    github.answers[("PATCH", root_path(settings))] = setting(
+        HTTPStatus.FORBIDDEN, False
+    )
+    repository = Repository(settings.owner, RepositoriesByOwner.repository_name)
+
+    finished = start_session(repositories.clone(owned_url, "session"))
+
+    assert (
+        repository.settings_url in json.loads(finished.stdout)[HookKey.SYSTEM_MESSAGE]
+    )
+
+
+def test_a_session_whose_repository_deletes_merged_branches_changes_nothing(
+    repositories: RepositoriesByOwner, owned_url: str, github: ReplayedApi
+):
+    start_session(repositories.clone(owned_url, "session"))
+
+    assert [sent.method for sent in github.sent] == ["GET"]
 
 
 # %% saving
