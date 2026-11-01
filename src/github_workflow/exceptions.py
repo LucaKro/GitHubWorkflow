@@ -81,3 +81,31 @@ class NotesBlockMissingError(DataclassException, LookupError):
 
     def suggest_correction(self) -> str:
         return "Start a session first, which writes the block, then edit inside it."
+
+
+# %% stacking
+
+
+@dataclass
+class StackContinuesAboveError(DataclassException, ValueError):
+    """
+    Raised when a pull request is to go on top of one that other pull requests in its
+    stack already build on.
+    """
+
+    below: int
+    """
+    The pull request that was to be built on.
+    """
+
+    above: tuple[int, ...]
+    """
+    The pull requests the stack already holds above it.
+    """
+
+    def error_message(self) -> str:
+        holders = ", ".join(f"#{number}" for number in self.above)
+        return f"#{self.below} already has {holders} stacked on it; a stack is a single line"
+
+    def suggest_correction(self) -> str:
+        return "Stack the pull request on the top of that stack instead."
