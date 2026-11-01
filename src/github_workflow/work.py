@@ -48,7 +48,8 @@ class WorkflowStep(ABC):
 class BranchStart(WorkflowStep):
     """
     A new work branch, started from GitHub's copy of the default branch or of another
-    branch, and checked out.
+    branch - or from the local branch, when GitHub has none of that name - and checked
+    out.
     """
 
     policy: WritePolicy
@@ -71,9 +72,14 @@ class BranchStart(WorkflowStep):
             self.policy.remote.name, self.base or self.policy.default_branch
         )
         git = self.policy.checkout.git
-        git.fetch_branch(base.remote, base.name, base.remote).raise_if_failed()
-        git.create_branch(self.name, base.tracking_reference)
-        return f"on {self.name}, started from {base.remote}/{base.name}"
+        fetched = git.fetch_branch(base.remote, base.name, base.remote)
+        if fetched.succeeded:
+            git.create_branch(self.name, base.tracking_reference)
+            return f"on {self.name}, started from {base.remote}/{base.name}"
+        if git.commit_or_none(base.reference) is None:
+            fetched.raise_if_failed()
+        git.create_branch(self.name, base.name)
+        return f"on {self.name}, started from the local {base.name}"
 
 
 @dataclass(frozen=True)

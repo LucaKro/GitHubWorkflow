@@ -117,6 +117,18 @@ def test_a_work_branch_starts_on_another_branch_when_asked(work: WritePolicy):
     assert git.commit_at("upper") == git.commit_at("feature")
 
 
+def test_a_work_branch_starts_on_a_local_branch_github_does_not_have(
+    work: WritePolicy,
+):
+    git = work.checkout.git
+    BranchStart(work, "unpushed").run()
+    CommitWork(work, "Add b", [write(work.checkout, "b.txt")]).run()
+
+    BranchStart(work, "upper", "unpushed").run()
+
+    assert git.commit_at("upper") == git.commit_at("unpushed")
+
+
 def test_switching_checks_out_the_branch(work: WritePolicy):
     BranchSwitch(work, RepositoriesByOwner.default_branch).run()
 
