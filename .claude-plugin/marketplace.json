@@ -1,0 +1,13 @@
+{
+  "name": "github-workflow",
+  "owner": {
+    "name": "LucaKro"
+  },
+  "plugins": [
+    {
+      "name": "github-workflow",
+      "source": "./plugin",
+      "description": "Standing notes and per-branch progress every session starts with, kept on a notes branch of each repository."
+    }
+  ]
+}

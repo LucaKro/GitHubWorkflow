@@ -8,6 +8,58 @@ from pathlib import Path
 
 from basstler_domain_model.locations import PathEnumeration
 
+# %% the notes branch
+
+
+class NotesFile(PathEnumeration):
+    """
+    The files on the notes branch.
+    """
+
+    STANDING_NOTES = Path("notes.md")
+    """
+    The notes every session on the repository starts with.
+    """
+
+    PROGRESS_DIRECTORY = Path("progress")
+    """
+    One file per work branch, named after it.
+    """
+
+    @classmethod
+    def progress_of(cls, branch: str) -> Path:
+        """
+        :param branch: A work branch.
+        :return: Where its progress is kept.
+        """
+        return cls.PROGRESS_DIRECTORY / f"{branch}.md"
+
+
+# %% the project
+
+
+class ProjectFile(PathEnumeration):
+    """
+    The files the workflow writes into a checkout, relative to its root.
+    """
+
+    CLAUDE_LOCAL = Path("CLAUDE.local.md")
+    """
+    The personal memory file Claude Code loads, which the notes are written into.
+    """
+
+
+class GitFile(PathEnumeration):
+    """
+    The files inside a repository's git directory the workflow writes, relative to it.
+    """
+
+    EXCLUDE = Path("info/exclude")
+    """
+    The repository's own ignore list, which is never committed.
+    """
+
+
 # %% what a probe writes
 
 
