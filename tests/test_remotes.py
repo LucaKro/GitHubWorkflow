@@ -62,3 +62,48 @@ def test_two_owned_remotes_without_origin_are_not_guessed_between(
 
     with pytest.raises(AmbiguousOwnedRemoteError):
         OwnedRemotes.read(checkout.git, settings).chosen
+
+
+# %% hosts
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "https://gitlab.com/{owner}/anything.git",
+        "git@evil.example:{owner}/anything.git",
+        "https://example.com/mirror/{owner}/anything.git",
+    ],
+)
+def test_a_remote_off_github_is_not_owned_whatever_its_path(
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+    path: str,
+):
+    checkout = repositories.clone(owned_url, "mine")
+    checkout.git.run("remote", "add", "elsewhere", path.format(owner=settings.owner))
+
+    owned = OwnedRemotes.read(checkout.git, settings).owned
+
+    assert [remote.name for remote in owned] == [RemoteName.ORIGIN]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "https://github.com/{owner}/anything.git",
+        "git@github.com:{owner}/anything.git",
+        "http://local_proxy@127.0.0.1:41729/git/{owner}/anything",
+    ],
+)
+def test_a_remote_on_github_or_the_cloud_proxy_is_owned(
+    repositories: RepositoriesByOwner,
+    foreign_url: str,
+    settings: WorkflowSettings,
+    path: str,
+):
+    checkout = repositories.clone(foreign_url, "theirs")
+    checkout.git.run("remote", "add", "fork", path.format(owner=settings.owner))
+
+    assert OwnedRemotes.read(checkout.git, settings).chosen.name == "fork"
