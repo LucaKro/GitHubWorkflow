@@ -15,6 +15,7 @@ from pathlib import Path
 from basstler_domain_model.github.repository_client import GitHubRepository
 
 from github_workflow.checkout import ProjectCheckout
+from github_workflow.findings import FindingsSummary
 from github_workflow.pull_request_overview import (
     PullRequestOverview,
     PullRequestSignalReader,
@@ -42,6 +43,11 @@ class SectionName(StrEnum):
     The open pull requests and their signals.
     """
 
+    FINDINGS = "findings"
+    """
+    The findings waiting for the person.
+    """
+
     def section(self, context: SectionContext) -> ReportSection:
         """
         :param context: Where the section looks.
@@ -56,6 +62,8 @@ class SectionName(StrEnum):
                     context.github,
                     context.checkout.git.checked_out_branch(),
                 )
+            case SectionName.FINDINGS:
+                return FindingsSummary(context.github)
 
 
 # %% entry point

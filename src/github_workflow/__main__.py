@@ -21,6 +21,7 @@ from basstler_domain_model.github.repository_client import (
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.command_line import (
     BranchSubcommand,
+    FindingSubcommand,
     NotesSubcommand,
     StackSubcommand,
     WorkflowCommand,
@@ -28,6 +29,13 @@ from github_workflow.command_line import (
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
+from github_workflow.findings import (
+    FindingAcceptance,
+    FindingFiling,
+    FindingListing,
+    FindingRejection,
+    Priority,
+)
 from github_workflow.pull_request_overview import (
     PullRequestDetails,
     PullRequestSignalReader,
@@ -132,6 +140,20 @@ class WorkflowSession(RepositoryDetails):
             case WorkflowCommand.NOTES, NotesSubcommand.SAVE:
                 notes = NotesBranch.on(self.checkout.git, self.remote, self.settings)
                 return NotesSaving(NotesSave(self.checkout, notes))
+            case WorkflowCommand.FINDING, FindingSubcommand.FILE:
+                return FindingFiling(
+                    self.github,
+                    self.github,
+                    arguments.title,
+                    arguments.body_file.read_text(),
+                    Priority[arguments.priority.upper()],
+                )
+            case WorkflowCommand.FINDING, FindingSubcommand.LIST:
+                return FindingListing(self.github)
+            case WorkflowCommand.FINDING, FindingSubcommand.ACCEPT:
+                return FindingAcceptance(self.github, arguments.number)
+            case WorkflowCommand.FINDING, FindingSubcommand.REJECT:
+                return FindingRejection(self.github, arguments.number, arguments.reason)
             case WorkflowCommand.DETAILS, _:
                 return PullRequestDetails(
                     PullRequestSignalReader.of(self.github), arguments.number
@@ -181,6 +203,32 @@ class WorkflowSession(RepositoryDetails):
         notes = commands.add_parser(WorkflowCommand.NOTES, help="save the notes")
         notes_actions = notes.add_subparsers(dest="action", required=True)
         notes_actions.add_parser(NotesSubcommand.SAVE, help="save the notes block")
+        finding = commands.add_parser(
+            WorkflowCommand.FINDING, help="file, list, accept or reject findings"
+        )
+        finding_actions = finding.add_subparsers(dest="action", required=True)
+        filing = finding_actions.add_parser(
+            FindingSubcommand.FILE,
+            help="file something noticed outside the current work",
+            description=Priority.guide(),
+        )
+        filing.add_argument("--title", required=True)
+        filing.add_argument("--body-file", required=True, type=Path)
+        filing.add_argument(
+            "--priority",
+            required=True,
+            choices=[priority.level for priority in Priority],
+        )
+        finding_actions.add_parser(FindingSubcommand.LIST, help="list open findings")
+        accept = finding_actions.add_parser(
+            FindingSubcommand.ACCEPT, help="accept a finding, on the person's word"
+        )
+        accept.add_argument("number", type=int)
+        reject = finding_actions.add_parser(
+            FindingSubcommand.REJECT, help="reject a finding, on the person's word"
+        )
+        reject.add_argument("number", type=int)
+        reject.add_argument("--reason", required=True)
         details = commands.add_parser(
             WorkflowCommand.DETAILS, help="what a pull request's signals are about"
         )

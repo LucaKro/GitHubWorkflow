@@ -313,3 +313,25 @@ class NotADraftError(DataclassException, RuntimeError):
 
     def suggest_correction(self) -> str:
         return "Changing it needs the go-ahead of the person running the tool."
+
+
+# %% findings
+
+
+@dataclass
+class NotAFindingError(DataclassException, LookupError):
+    """
+    Raised when a finding to be accepted or rejected is none, or not in a stage that
+    allows it.
+    """
+
+    number: int
+    """
+    The issue asked for.
+    """
+
+    def error_message(self) -> str:
+        return f"#{self.number} is not an open finding that can be decided this way"
+
+    def suggest_correction(self) -> str:
+        return "List the findings to see which are unreviewed or accepted."

@@ -73,6 +73,11 @@ class NotesBlock:
     The command every write to git and GitHub goes through, as the header gives it.
     """
 
+    finding_guide: str
+    """
+    What each finding priority means, as the header gives it.
+    """
+
     branch: str
     """
     The checked-out branch, empty on a detached ``HEAD``, which has no progress section.
@@ -95,6 +100,9 @@ class NotesBlock:
             f"Read git directly. Write to git and GitHub only through "
             f"`{self.workflow_command}` ({', '.join(WorkflowCommand)}; `--help` "
             f"for each).",
+            f"File what you notice outside this work with `{self.workflow_command} "
+            f"finding file` instead of acting on it ({self.finding_guide}); accept or "
+            f"reject a finding only when the person says so.",
         ]
         for section in NotesSection:
             if section is NotesSection.BRANCH_PROGRESS and not self.branch:

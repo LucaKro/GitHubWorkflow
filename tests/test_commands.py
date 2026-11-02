@@ -22,7 +22,7 @@ from basstler_domain_model.environment import (
 from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
 from basstler_domain_model.github.repository_client import PullRequestListState
 from basstler_domain_model.github.routes import QueryParameter, RepositoryRoute
-from basstler_domain_model.github.vocabulary import RestJSONKey
+from basstler_domain_model.github.vocabulary import IssueState, RestJSONKey
 from basstler_domain_model.repository import Repository
 
 import github_workflow
@@ -30,6 +30,7 @@ import github_workflow.session_start
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.environment import WorkflowVariable
 from github_workflow.exceptions import NoOwnedRemoteError
+from github_workflow.findings import FindingStage
 from github_workflow.hooks import HookKey, HookValue, Tone
 from github_workflow.locations import GitFile, NotesFile, ProjectFile
 from github_workflow.notes.branch import NotesBranch
@@ -50,7 +51,7 @@ def github(
     """
     :return: GitHub as every command run here reaches it, answering that the owner's
         repository has everything the workflow relies on set up, no open pull request,
-        and nothing waiting on the person's review.
+        nothing waiting on the person's review, and no findings.
     """
     with ReplayedApi() as api:
         api.answers[("GET", root_path(settings))] = setting(HTTPStatus.OK, True)
@@ -69,6 +70,12 @@ def github(
         api.answers[("GET", f"/{route.review_requests()}")] = RecordedAnswer(
             HTTPStatus.OK, json.dumps({RestJSONKey.TOTAL_COUNT: 0})
         )
+        for stage in FindingStage:
+            findings = route.listing(
+                route.issues(),
+                {QueryParameter.LABELS: stage, QueryParameter.STATE: IssueState.OPEN},
+            )
+            api.answers[("GET", f"/{findings}")] = RecordedAnswer(HTTPStatus.OK, "[]")
         monkeypatch.setenv(GitHubActionsVariable.API_URL, api.url)
         monkeypatch.setenv(GitHubCredentialVariable.GH_TOKEN, "a-token")
         yield api
@@ -334,7 +341,7 @@ def test_saving_in_somebody_else_s_repository_is_refused(
 ):
     checkout = repositories.clone(foreign_url, "theirs")
     checkout.claude_local.write_text(
-        NotesBlock("", "", "", "", {NotesSection.STANDING_NOTES: "a note"}).render()
+        NotesBlock("", "", "", "", "", {NotesSection.STANDING_NOTES: "a note"}).render()
     )
     before = repositories.branches(foreign_url)
 

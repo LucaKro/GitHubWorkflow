@@ -21,6 +21,7 @@ from basstler_domain_model.commands import CommandRunner
 
 import github_workflow.report as report
 from github_workflow.checkout import ProjectCheckout
+from github_workflow.findings import Priority
 from github_workflow.hooks import ReportLine, SessionStartReport, Tone
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
@@ -118,6 +119,7 @@ class SessionStart:
             source,
             WorkflowCommand.command_line(WorkflowCommand.NOTES, NotesSubcommand.SAVE),
             WorkflowCommand.command_line(),
+            Priority.guide(),
             branch,
             sections,
         )
