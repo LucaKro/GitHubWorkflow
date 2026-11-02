@@ -38,29 +38,48 @@ class Attribution(StrEnum):
     """
 
 
-class AssistantMarker(StrEnum):
+class GitIdentity(StrEnum):
     """
-    Words that, in an author or a co-author trailer, name an assistant; compared in
-    lower case.
+    The identities a commit records, as ``git var`` names them.
     """
 
-    ANTHROPIC = "anthropic"
+    AUTHOR = "GIT_AUTHOR_IDENT"
     """
-    The company, as an assistant's commit address names it.
+    Who wrote the change.
+    """
+
+    COMMITTER = "GIT_COMMITTER_IDENT"
+    """
+    Who recorded the commit.
+    """
+
+
+class AssistantMarker(StrEnum):
+    """
+    What marks an identity, written as ``Name <address>``, as an assistant's; compared
+    in lower case.
+    """
+
+    ANTHROPIC = "anthropic.com"
+    """
+    The domain an assistant's commit address is at.
     """
 
     CLAUDE = "claude"
     """
-    The assistant, by name.
+    The assistant's name, when it is the whole name.
     """
 
     @classmethod
-    def names_an_assistant(cls, text: str) -> bool:
+    def names_an_assistant(cls, identity: str) -> bool:
         """
-        :param text: An author identity or a trailer line.
-        :return: Whether it names an assistant.
+        :param identity: An identity, as ``Name <address>`` with anything after it.
+        :return: Whether it is an assistant's.
         """
-        return any(marker in text.casefold() for marker in cls)
+        name, _, rest = identity.partition("<")
+        domain = rest.partition(">")[0].rpartition("@")[2].casefold()
+        on_the_domain = domain == cls.ANTHROPIC or domain.endswith(f".{cls.ANTHROPIC}")
+        return on_the_domain or name.strip().casefold() == cls.CLAUDE
 
 
 # %% the rules
@@ -111,17 +130,19 @@ class WritePolicy:
         """
         :param message: The message asked for.
         :return: It, acknowledging the assistant's help.
-        :raises AssistantCreditError: If the commit's author or a trailer of the message
-            credits an assistant.
+        :raises AssistantCreditError: If the commit's author or committer, or a trailer
+            of the message, credits an assistant.
         """
-        author = self.checkout.git.run("var", "GIT_AUTHOR_IDENT")
-        if AssistantMarker.names_an_assistant(author):
-            raise AssistantCreditError(author)
+        for identity in GitIdentity:
+            recorded = self.checkout.git.run("var", identity)
+            if AssistantMarker.names_an_assistant(recorded):
+                raise AssistantCreditError(recorded)
         for line in message.splitlines():
+            trailer, _, co_author = line.strip().partition(":")
             credits_co_author = (
-                line.strip().casefold().startswith(Attribution.CO_AUTHOR_TRAILER)
+                f"{trailer.casefold()}:" == Attribution.CO_AUTHOR_TRAILER
             )
-            if credits_co_author and AssistantMarker.names_an_assistant(line):
+            if credits_co_author and AssistantMarker.names_an_assistant(co_author):
                 raise AssistantCreditError(line.strip())
         if Attribution.ACKNOWLEDGEMENT in message:
             return message
