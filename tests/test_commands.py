@@ -7,6 +7,7 @@ repository.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -263,6 +264,57 @@ def test_the_hook_answers_even_without_the_package(tmp_path: Path):
 
     assert finished.returncode == 0
     assert HookKey.SYSTEM_MESSAGE in json.loads(finished.stdout)
+
+
+# %% a plugin that arrived late
+
+
+def run_session_hook(
+    checkout: ProjectCheckout, event: HookValue, session: str, markers: Path
+) -> subprocess.CompletedProcess:
+    """
+    :param checkout: The checkout the session works in.
+    :param event: The hook event the hook runs for.
+    :param session: The session's id.
+    :param markers: Where the hook keeps which sessions it reported.
+    :return: The finished hook.
+    """
+    return subprocess.run(
+        [str(Path(__file__).parents[1] / "hooks" / "session-start.sh"), event],
+        input=json.dumps({"session_id": session}),
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            WorkflowVariable.PYTHON: sys.executable,
+            "TMPDIR": str(markers),
+            "CLAUDE_PROJECT_DIR": str(checkout.root),
+        },
+    )
+
+
+def test_a_session_whose_start_was_missed_is_reported_on_its_first_prompt(
+    repositories: RepositoriesByOwner, owned_url: str, tmp_path: Path
+):
+    checkout = repositories.clone(owned_url, "session")
+
+    first = run_session_hook(checkout, HookValue.USER_PROMPT_SUBMIT, "s1", tmp_path)
+    second = run_session_hook(checkout, HookValue.USER_PROMPT_SUBMIT, "s1", tmp_path)
+
+    given = json.loads(first.stdout)[HookKey.HOOK_SPECIFIC_OUTPUT]
+    assert given[HookKey.HOOK_EVENT_NAME] == HookValue.USER_PROMPT_SUBMIT
+    assert second.stdout == ""
+
+
+def test_a_session_reported_at_its_start_is_not_reported_again(
+    repositories: RepositoriesByOwner, owned_url: str, tmp_path: Path
+):
+    checkout = repositories.clone(owned_url, "session")
+    run_session_hook(checkout, HookValue.SESSION_START, "s2", tmp_path)
+
+    prompt = run_session_hook(checkout, HookValue.USER_PROMPT_SUBMIT, "s2", tmp_path)
+
+    assert prompt.stdout == ""
 
 
 # %% merged branches

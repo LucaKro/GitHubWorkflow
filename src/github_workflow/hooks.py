@@ -60,6 +60,12 @@ class HookValue(StrEnum):
     The hook event the session start answers.
     """
 
+    USER_PROMPT_SUBMIT = "UserPromptSubmit"
+    """
+    The hook event the session start answers instead, on the first prompt, when the
+    plugin arrived too late for the session's start.
+    """
+
     DENY = "deny"
     """
     The decision denying a call.
@@ -148,13 +154,18 @@ class SessionStartReport:
     One line per thing to report.
     """
 
+    event: HookValue = HookValue.SESSION_START
+    """
+    The hook event the report answers.
+    """
+
     def json(self) -> str:
         """:return: The hook's output."""
         return json.dumps(
             {
                 HookKey.SYSTEM_MESSAGE: "\n".join(line.shown for line in self.lines),
                 HookKey.HOOK_SPECIFIC_OUTPUT: {
-                    HookKey.HOOK_EVENT_NAME: HookValue.SESSION_START,
+                    HookKey.HOOK_EVENT_NAME: self.event,
                     HookKey.ADDITIONAL_CONTEXT: "\n".join(
                         line.text for line in self.lines
                     ),

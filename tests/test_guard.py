@@ -6,6 +6,7 @@ every read is let through, and the hook fails closed.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -223,6 +224,29 @@ def test_the_hook_blocks_the_call_when_the_guard_cannot_run():
     finished = run_hook(GuardDataset.ALLOWED.lines()[0], interpreter="/nonexistent")
 
     assert finished.returncode == 2
+
+
+def test_the_hook_installs_a_missing_runtime_and_blocks_when_that_fails(
+    tmp_path: Path,
+):
+    """
+    A plugin without the installer stands in for an install that fails, so nothing is
+    downloaded.
+    """
+    finished = subprocess.run(
+        [str(GuardDataset.HOOK_SCRIPT.value)],
+        input=json.dumps(hook_input(GuardDataset.ALLOWED.lines()[0])),
+        capture_output=True,
+        text=True,
+        env={
+            "HOME": str(tmp_path / "home"),
+            "PATH": os.environ["PATH"],
+            "CLAUDE_PLUGIN_ROOT": str(tmp_path / "plugin"),
+        },
+    )
+
+    assert finished.returncode == 2
+    assert "could not install the runtime" in finished.stderr
 
 
 def test_the_hook_blocks_the_call_when_the_guard_fails():
