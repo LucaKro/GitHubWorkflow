@@ -12,6 +12,8 @@ from basstler_domain_model.exceptions import DataclassException
 if TYPE_CHECKING:
     from basstler_domain_model.repository import Repository
 
+    from github_workflow.proofs import BranchTip
+
 # %% whose repository
 
 
@@ -363,8 +365,8 @@ class NothingToDiscardError(DataclassException, LookupError):
 @dataclass
 class NotAFindingError(DataclassException, LookupError):
     """
-    Raised when a finding to be accepted, shelved or rejected is none, or not in a stage
-    that allows it.
+    Raised when a finding to be accepted, shelved, rejected, proven or marked unproven
+    is none, or not in a stage that allows it.
     """
 
     number: int
@@ -373,7 +375,174 @@ class NotAFindingError(DataclassException, LookupError):
     """
 
     def error_message(self) -> str:
-        return f"#{self.number} is not an open finding that can be decided this way"
+        return f"#{self.number} is not an open finding that can be changed this way"
 
     def suggest_correction(self) -> str:
         return "List the findings to see the stage each one is in."
+
+
+@dataclass
+class FindingNotAcceptedError(DataclassException, PermissionError):
+    """
+    Raised when work on a finding is asked for before the person accepted it.
+    """
+
+    number: int
+    """
+    The issue asked for.
+    """
+
+    def error_message(self) -> str:
+        return f"#{self.number} is not an open, accepted finding"
+
+    def suggest_correction(self) -> str:
+        return "Only the person running the tool accepts a finding; ask them."
+
+
+@dataclass
+class AlreadyProvenError(DataclassException, ValueError):
+    """
+    Raised when a proven finding is to be marked unproven.
+    """
+
+    number: int
+    """
+    The finding.
+    """
+
+    def error_message(self) -> str:
+        return f"#{self.number} is already proven"
+
+    def suggest_correction(self) -> str:
+        return (
+            "If its test no longer fails, ask the person running the tool whether the "
+            "finding is fixed."
+        )
+
+
+# %% proofs
+
+
+@dataclass
+class FileOutsideCheckoutError(DataclassException, ValueError):
+    """
+    Raised when a finding's test is not inside the checkout it would be committed to.
+    """
+
+    file: str
+    """
+    The test file.
+    """
+
+    checkout: str
+    """
+    The checkout's root.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.file} is not inside the checkout {self.checkout}"
+
+    def suggest_correction(self) -> str:
+        return "Write the test inside the checkout, where it would be committed."
+
+
+@dataclass
+class PassingTestError(DataclassException, ValueError):
+    """
+    Raised when a finding's test passes on the default branch, so it proves nothing.
+    """
+
+    test: str
+    """
+    The test file, relative to the repository's root.
+    """
+
+    tip: BranchTip
+    """
+    The default branch's commit it passed on.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.test} passes on {self.tip}: it shows no finding there"
+
+    def suggest_correction(self) -> str:
+        return (
+            "A bug only on a work branch is no finding. Otherwise write a test that "
+            "fails on the default branch, or, when none can be written, mark the "
+            "finding unproven with the reason."
+        )
+
+
+@dataclass
+class BrokenTestError(DataclassException, ValueError):
+    """
+    Raised when a finding's test cannot run, or fails only because the test itself is
+    broken.
+    """
+
+    test: str
+    """
+    The test file, relative to the repository's root.
+    """
+
+    detail: str
+    """
+    What pytest said went wrong.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.test} is broken rather than failing: {self.detail}"
+
+    def suggest_correction(self) -> str:
+        return (
+            "Fix the test, and run it with the interpreter the project's tests run "
+            "with (--python)."
+        )
+
+
+@dataclass
+class MissingProofError(DataclassException, LookupError):
+    """
+    Raised when a finding carries no proof to run again: it is not labelled proven, or
+    no trusted account posted a proof on it.
+    """
+
+    number: int
+    """
+    The finding.
+    """
+
+    def error_message(self) -> str:
+        return f"#{self.number} is not proven by a test posted on it"
+
+    def suggest_correction(self) -> str:
+        return "Prove it first, if the person running the tool asked for work on it."
+
+
+@dataclass
+class ProofNoLongerHoldsError(DataclassException, RuntimeError):
+    """
+    Raised when the test proving a finding no longer fails on the default branch.
+    """
+
+    number: int
+    """
+    The finding.
+    """
+
+    tip: BranchTip
+    """
+    The default branch's commit the test was run on.
+    """
+
+    detail: str
+    """
+    What pytest said went wrong, empty when the test passed.
+    """
+
+    def error_message(self) -> str:
+        detail = f": {self.detail}" if self.detail else ""
+        return f"the test proving #{self.number} no longer fails on {self.tip}{detail}"
+
+    def suggest_correction(self) -> str:
+        return "Stop, and ask the person running the tool whether the finding is fixed."

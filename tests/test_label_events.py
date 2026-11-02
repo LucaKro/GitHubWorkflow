@@ -1,7 +1,7 @@
 """
-Tests for :mod:`github_workflow.label_events`: a stage or priority label picked on
-GitHub replaces the others of its kind, and the Actions workflow running that is written
-into a checkout.
+Tests for :mod:`github_workflow.label_events`: a stage, priority or evidence label
+picked on GitHub replaces the others of its kind, and the Actions workflow running that
+is written into a checkout.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from basstler_domain_model.locations import PathEnumeration
 from basstler_domain_model.repository import Repository
 
 from github_workflow import label_events
-from github_workflow.findings import FindingStage, Priority
+from github_workflow.findings import Evidence, FindingLabel, FindingStage, Priority
 from github_workflow.label_events import (
     ActionRequirement,
     FindingAutomation,
@@ -53,7 +53,7 @@ def labelled(issue: Issue, label: str) -> Issue:
 def board_with(issue: Issue) -> IssuesInMemory:
     """:param issue: The one issue on the board.
     :return: A board carrying every finding label already."""
-    return IssuesInMemory({issue.number: issue}, {*FindingStage, *Priority})
+    return IssuesInMemory({issue.number: issue}, set(FindingLabel.every_label))
 
 
 # %% the event
@@ -115,6 +115,17 @@ def test_a_priority_picked_on_a_plain_issue_makes_it_an_unreviewed_finding():
     FindingLabelCompletion(board, board, 1, Priority.MEDIUM).run()
 
     assert board.writes == [f"add_labels 1 {[FindingStage.UNREVIEWED]}"]
+
+
+def test_picked_evidence_replaces_the_previous_evidence():
+    unproven = labelled(
+        finding(1, FindingStage.ACCEPTED, Priority.LOW), Evidence.UNPROVEN
+    )
+    board = board_with(labelled(unproven, Evidence.PROVEN))
+
+    FindingLabelCompletion(board, board, 1, Evidence.PROVEN).run()
+
+    assert board.writes == [f"remove_label 1 {Evidence.UNPROVEN}"]
 
 
 def test_a_label_removed_again_since_changes_nothing():
