@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # PreToolUse hook: denies writing to git or GitHub directly, so every write goes through
-# the workflow's commands; reading stays allowed. Prints the guard's denial, or nothing
-# to leave the call to the usual permissions.
+# the workflow's commands; reading stays allowed. Prints the guard's denial, its request
+# that the person confirm a workflow command needing their go-ahead, or nothing to leave
+# the call to the usual permissions.
 #
 # Fails closed: when the guard cannot run or fails, the call is blocked (exit 2) with the
 # reason, rather than let through unjudged.
