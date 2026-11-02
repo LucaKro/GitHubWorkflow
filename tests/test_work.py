@@ -195,6 +195,14 @@ def test_a_pushed_branch_is_on_the_owner_s_repository(work: WritePolicy):
     assert work.checkout.git.has_remote_branch(branch)
 
 
+def test_a_pushed_branch_tracks_its_copy_on_the_owner_s_repository(
+    work: WritePolicy,
+):
+    tracked = work.checkout.git.run("rev-parse", "--abbrev-ref", "feature@{upstream}")
+
+    assert tracked == f"{work.remote.name}/feature"
+
+
 def test_pushing_the_default_branch_is_refused(work: WritePolicy):
     BranchSwitch(work, RepositoriesByOwner.default_branch).run()
 
