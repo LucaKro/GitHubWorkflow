@@ -51,6 +51,7 @@ def pull_request(
     commit: str,
     state: IssueState,
     repository: str | None = REPOSITORY,
+    base: str = "main",
 ) -> PullRequestPayload:
     """
     :param number: The pull request.
@@ -58,6 +59,7 @@ def pull_request(
     :param commit: The commit its head is at.
     :param state: Whether it is open.
     :param repository: The repository its head is in, ``None`` when deleted.
+    :param base: The branch it merges into.
     :return: The pull request as GitHub lists it.
     """
     head_repository = (
@@ -71,6 +73,7 @@ def pull_request(
             PullRequestHeadKey.HEAD_REPOSITORY: head_repository,
             RestJSONKey.SHA: commit,
         },
+        RestJSONKey.BASE: {PullRequestHeadKey.REFERENCE: base},
     }
 
 
@@ -105,6 +108,20 @@ def test_a_branch_with_an_open_pull_request_is_kept():
         {"again": "c1"},
         pull_request(1, "again", "c1", IssueState.CLOSED),
         pull_request(2, "again", "c1", IssueState.OPEN),
+    )
+
+    assert branches.ready() == []
+
+
+def test_the_base_of_an_open_pull_request_is_kept():
+    """
+    Deleting the branch of a closed, unmerged lower pull request would close the open
+    one stacked on it, for good.
+    """
+    branches = kept(
+        {"lower": "h1", "upper": "h2"},
+        pull_request(1, "lower", "h1", IssueState.CLOSED),
+        pull_request(2, "upper", "h2", IssueState.OPEN, base="lower"),
     )
 
     assert branches.ready() == []

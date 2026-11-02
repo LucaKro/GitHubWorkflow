@@ -156,24 +156,27 @@ class KeptBranches:
         """
         :return: Each branch whose pull request is closed, or that was discarded, and
             that is still at the commit it was closed or discarded at, with no open pull
-            request; never a protected one.
+            request from or into it; never a protected one.
         """
-        open_branches = set()
+        in_use = set()
         closed_heads: dict[str, set[str]] = {}
         for record in self.pull_requests:
             number = PullRequestField.NUMBER.read(record)
+            is_open = PullRequestField.STATE.read(record, number) == IssueState.OPEN
+            if is_open:
+                in_use.add(PullRequestField.BASE.read(record, number))
             head = PullRequestHead.from_record(record, number)
             if head.repository != self.repository:
                 continue
-            if PullRequestField.STATE.read(record, number) == IssueState.OPEN:
-                open_branches.add(head.branch)
+            if is_open:
+                in_use.add(head.branch)
             else:
                 closed_heads.setdefault(head.branch, set()).add(head.commit)
         return sorted(
             branch
             for branch, tip in self.tips.items()
             if branch not in self.protected
-            and branch not in open_branches
+            and branch not in in_use
             and (
                 tip in closed_heads.get(branch, set())
                 or tip == self.discarded.commits.get(branch)
