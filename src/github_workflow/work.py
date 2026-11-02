@@ -148,7 +148,8 @@ class CommitWork(WorkflowStep):
 @dataclass(frozen=True)
 class PushWork(WorkflowStep):
     """
-    A push of the work branch to the owner's remote, never forced.
+    A push of the work branch to the owner's remote, never forced, after which the
+    branch tracks its copy there.
     """
 
     policy: WritePolicy
@@ -159,7 +160,9 @@ class PushWork(WorkflowStep):
     def run(self) -> str:
         branch = RemoteBranch(self.policy.remote.name, self.policy.work_branch())
         pushed = self.policy.checkout.git.push(
-            ProposedPush(branch.remote, f"{branch.name}:{branch.reference}")
+            ProposedPush(
+                branch.remote, f"{branch.name}:{branch.reference}", sets_upstream=True
+            )
         )
         if not pushed.succeeded:
             raise PushRefusedError(branch.name, pushed.error_output)
