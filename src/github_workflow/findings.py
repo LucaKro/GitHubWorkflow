@@ -2,14 +2,17 @@
 Findings: what a session notices outside the work it is doing, kept as GitHub issues
 rather than acted on.
 
-Filed as unreviewed with a priority; only the person accepts or rejects them.
+Filed or prioritized as unreviewed with a priority; only the person accepts or rejects
+them.
 """
 
 from __future__ import annotations
 
+from abc import ABC
 from collections import Counter
 from dataclasses import dataclass
 from enum import ReprEnum
+from typing import Self
 
 from basstler_domain_model.github.issue_models import Issue
 from basstler_domain_model.github.labels import GitHubLabel, LabelWrite
@@ -45,6 +48,14 @@ class FindingLabel(GitHubLabel, ReprEnum):
         member.description = description
         member.color = color
         return member
+
+    @classmethod
+    def of(cls, issue: Issue) -> Self | None:
+        """
+        :param issue: An issue.
+        :return: The first of these labels it carries, ``None`` when it carries none.
+        """
+        return next((label for label in cls if label in issue.labels), None)
 
 
 class FindingStage(FindingLabel):
@@ -116,33 +127,44 @@ class Priority(FindingLabel):
             f"{priority.level}: {priority.description}" for priority in cls
         )
 
-    @classmethod
-    def of(cls, issue: Issue) -> Priority | None:
+
+# %% labelling issues as findings
+
+
+@dataclass(frozen=True)
+class FindingLabelling(WorkflowStep, ABC):
+    """
+    A write that labels an issue as a finding, creating the finding labels the
+    repository lacks.
+    """
+
+    board: IssueBoard
+    """
+    Writes the issue.
+    """
+
+    labels: RepositoryLabels
+    """
+    Lists and creates the repository's labels.
+    """
+
+    def create_missing_labels(self) -> None:
         """
-        :param issue: An issue.
-        :return: Its priority, ``None`` when it carries none.
+        Create every stage and priority label the repository does not carry yet.
         """
-        return next((priority for priority in cls if priority in issue.labels), None)
+        present = self.labels.labels()
+        for label in [*FindingStage, *Priority]:
+            if label not in present:
+                self.labels.create_label(label)
 
 
 # %% filing and listing
 
 
 @dataclass(frozen=True)
-class FindingFiling(WorkflowStep):
+class FindingFiling(FindingLabelling):
     """
-    A finding filed as an unreviewed issue with its priority, creating the labels the
-    repository lacks.
-    """
-
-    board: IssueBoard
-    """
-    Files the issue.
-    """
-
-    labels: RepositoryLabels
-    """
-    Lists and creates the repository's labels.
+    A finding filed as an unreviewed issue with its priority.
     """
 
     title: str
@@ -161,10 +183,7 @@ class FindingFiling(WorkflowStep):
     """
 
     def run(self) -> str:
-        present = self.labels.labels()
-        for label in [*FindingStage, *Priority]:
-            if label not in present:
-                self.labels.create_label(label)
+        self.create_missing_labels()
         number = self.board.open_issue(
             self.title, self.body, [FindingStage.UNREVIEWED, self.priority]
         )
@@ -199,6 +218,40 @@ class FindingListing(WorkflowStep):
                 level = priority.level if priority else "no priority"
                 lines.append(f"#{issue.number} [{level}] {issue.title} ({stage})")
         return "\n".join(lines) or "no open findings"
+
+
+# %% prioritizing
+
+
+@dataclass(frozen=True)
+class FindingPrioritization(FindingLabelling):
+    """
+    An existing issue given a priority, replacing any other it carries, and made an
+    unreviewed finding when it carries no stage yet.
+    """
+
+    number: int
+    """
+    The issue.
+    """
+
+    priority: Priority
+    """
+    How urgent it is.
+    """
+
+    def run(self) -> str:
+        self.create_missing_labels()
+        issue = self.board.issue(self.number)
+        added = [] if self.priority in issue.labels else [self.priority]
+        if FindingStage.of(issue) is None:
+            added.append(FindingStage.UNREVIEWED)
+        if added:
+            self.board.add_labels(self.number, added)
+        for replaced in Priority:
+            if replaced is not self.priority and replaced in issue.labels:
+                self.board.remove_label(self.number, replaced)
+        return f"prioritized #{self.number} as {self.priority.level}"
 
 
 # %% the person's decisions

@@ -55,7 +55,7 @@ class WorkflowCommand(StrEnum):
 
     FINDING = "finding"
     """
-    File, list, accept or reject findings.
+    File, prioritize, list, accept or reject findings.
     """
 
     CLEANUP = "cleanup"
@@ -119,6 +119,12 @@ class FindingSubcommand(StrEnum):
     FILE = "file"
     """
     File something noticed outside the current work, as unreviewed.
+    """
+
+    PRIORITIZE = "prioritize"
+    """
+    Give an existing issue a priority, replacing any other, making it an unreviewed
+    finding when it is none yet.
     """
 
     LIST = "list"

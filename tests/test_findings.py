@@ -1,6 +1,7 @@
 """
-Tests for :mod:`github_workflow.findings`: findings are filed as unreviewed with a
-priority, listed most urgent first, and moved on only by the person's accept or reject.
+Tests for :mod:`github_workflow.findings`: findings are filed or prioritized as
+unreviewed with a priority, listed most urgent first, and moved on only by the person's
+accept or reject.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from github_workflow.findings import (
     FindingAcceptance,
     FindingFiling,
     FindingListing,
+    FindingPrioritization,
     FindingRejection,
     FindingsSummary,
     FindingStage,
@@ -74,8 +76,17 @@ class IssuesInMemory(IssueBoard, RepositoryLabels):
             if issue.state is state and all(label in issue.labels for label in labels)
         ]
 
+    def issue(self, number: int) -> Issue:
+        return self.open_issues[number]
+
     def replace_labels(self, number: int, labels: Sequence[str]) -> None:
         self.writes.append(f"replace_labels {number} {list(labels)}")
+
+    def add_labels(self, number: int, labels: Sequence[str]) -> None:
+        self.writes.append(f"add_labels {number} {list(labels)}")
+
+    def remove_label(self, number: int, label: str) -> None:
+        self.writes.append(f"remove_label {number} {label}")
 
     def add_comment(self, number: int, body: str) -> str:
         self.writes.append(f"add_comment {number} {body}")
@@ -113,6 +124,56 @@ def test_labels_the_repository_has_are_not_created_again():
     FindingFiling(board, board, "A title", "A body", Priority.LOW).run()
 
     assert board.writes == [f"open_issue 1 {[FindingStage.UNREVIEWED, Priority.LOW]}"]
+
+
+# %% prioritizing
+
+
+def test_an_issue_without_a_stage_is_prioritized_as_an_unreviewed_finding():
+    board = IssuesInMemory(
+        {1: Issue(1, "An issue", ("bug",), IssueState.OPEN)},
+        {*FindingStage, *Priority},
+    )
+
+    FindingPrioritization(board, board, 1, Priority.HIGH).run()
+
+    assert board.writes == [f"add_labels 1 {[Priority.HIGH, FindingStage.UNREVIEWED]}"]
+
+
+def test_a_new_priority_replaces_the_old_one_and_keeps_the_stage():
+    board = IssuesInMemory(
+        {1: finding(1, FindingStage.ACCEPTED, Priority.LOW)},
+        {*FindingStage, *Priority},
+    )
+
+    FindingPrioritization(board, board, 1, Priority.MEDIUM).run()
+
+    assert board.writes == [
+        f"add_labels 1 {[Priority.MEDIUM]}",
+        f"remove_label 1 {Priority.LOW}",
+    ]
+
+
+def test_the_priority_a_finding_already_has_writes_nothing():
+    board = IssuesInMemory(
+        {1: finding(1, FindingStage.UNREVIEWED, Priority.HIGH)},
+        {*FindingStage, *Priority},
+    )
+
+    FindingPrioritization(board, board, 1, Priority.HIGH).run()
+
+    assert board.writes == []
+
+
+def test_prioritizing_creates_the_labels_the_repository_lacks():
+    board = IssuesInMemory({1: Issue(1, "An issue", (), IssueState.OPEN)})
+
+    FindingPrioritization(board, board, 1, Priority.LOW).run()
+
+    created = [f"create_label {label}" for label in [*FindingStage, *Priority]]
+    assert board.writes == created + [
+        f"add_labels 1 {[Priority.LOW, FindingStage.UNREVIEWED]}"
+    ]
 
 
 # %% listing
