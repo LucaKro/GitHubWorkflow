@@ -15,6 +15,7 @@ from pathlib import Path
 from basstler_domain_model.github.repository_client import GitHubRepository
 
 from github_workflow.checkout import ProjectCheckout
+from github_workflow.cleanup import CleanupReminder, KeptBranches
 from github_workflow.findings import FindingsSummary
 from github_workflow.pull_request_overview import (
     PullRequestOverview,
@@ -48,6 +49,11 @@ class SectionName(StrEnum):
     The findings waiting for the person.
     """
 
+    CLEANUP = "cleanup"
+    """
+    The branches ready for deletion.
+    """
+
     def section(self, context: SectionContext) -> ReportSection:
         """
         :param context: Where the section looks.
@@ -64,6 +70,15 @@ class SectionName(StrEnum):
                 )
             case SectionName.FINDINGS:
                 return FindingsSummary(context.github)
+            case SectionName.CLEANUP:
+                return CleanupReminder(
+                    KeptBranches.read(
+                        context.checkout.git,
+                        context.remote,
+                        context.github,
+                        WorkflowSettings().notes_branch,
+                    )
+                )
 
 
 # %% entry point

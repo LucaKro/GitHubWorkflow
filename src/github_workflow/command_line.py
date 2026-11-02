@@ -58,6 +58,11 @@ class WorkflowCommand(StrEnum):
     File, list, accept or reject findings.
     """
 
+    CLEANUP = "cleanup"
+    """
+    Delete the branches GitHub kept although their pull request is closed.
+    """
+
     DETAILS = "details"
     """
     Show what a pull request's signals are about.
