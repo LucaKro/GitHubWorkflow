@@ -35,7 +35,8 @@ class WorkflowCommand(StrEnum):
 
     DRAFT = "draft"
     """
-    Open a draft pull request for the work branch.
+    Open a draft pull request for the work branch, working on an accepted, proven
+    finding when one is named.
     """
 
     SYNC = "sync"
@@ -55,8 +56,8 @@ class WorkflowCommand(StrEnum):
 
     FINDING = "finding"
     """
-    File, prioritize, list, accept, shelve or reject findings, or have GitHub complete
-    the finding labels picked there.
+    File, prioritize, list, accept, shelve, reject, prove or recheck findings, or have
+    GitHub complete the finding labels picked there.
     """
 
     CLEANUP = "cleanup"
@@ -119,7 +120,8 @@ class FindingSubcommand(StrEnum):
 
     FILE = "file"
     """
-    File something noticed outside the current work, as unreviewed.
+    File something noticed outside the current work, as unreviewed, and proven when a
+    test failing on the default branch is given.
     """
 
     PRIORITIZE = "prioritize"
@@ -146,6 +148,21 @@ class FindingSubcommand(StrEnum):
     REJECT = "reject"
     """
     Reject a finding as incorrect, with a reason, on the person's word.
+    """
+
+    PROVE = "prove"
+    """
+    Prove an open finding with a test failing on the default branch.
+    """
+
+    MARK_UNPROVEN = "mark-unproven"
+    """
+    Mark an open finding unproven, with the reason no failing test could be written.
+    """
+
+    RECHECK = "recheck"
+    """
+    Run the test proving a finding again on the default branch, writing nothing.
     """
 
     AUTOMATE = "automate"

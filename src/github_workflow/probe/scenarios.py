@@ -23,7 +23,7 @@ from basstler_domain_model.git.commands import (
     RemoteBranch,
 )
 from basstler_domain_model.github.clients import GitHubApi, RestAnswer
-from basstler_domain_model.github.pull_request_fields import PullRequestField
+from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.routes import RepositoryRoute, StackAction
 from basstler_domain_model.github.stack_models import Stack
 from basstler_domain_model.github.vocabulary import (
@@ -664,7 +664,7 @@ class Probe:
         )
         upper_read = self.call(HTTPMethod.GET, self.route.pull_request(upper))
         base = (
-            PullRequestField.BASE.read(upper_read.body, upper)
+            RestPullRequest.from_json(upper_read.body).base
             if upper_read.succeeded
             else ""
         )
