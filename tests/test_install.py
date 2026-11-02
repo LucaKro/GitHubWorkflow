@@ -5,22 +5,74 @@ one in use came from another, and a build that fails leaves the runtime in use a
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import threading
 from pathlib import Path
 
 import pytest
+from basstler_domain_model.locations import PathEnumeration
 
 import github_workflow.install
 from github_workflow.install import (
     DirectoryLock,
+    Requirement,
     RuntimeFile,
     RuntimeInstallation,
     RuntimeSwitch,
+    UnstampedDirectory,
 )
 
+# %% the dataset
+
+
+class RuntimeDataset(PathEnumeration):
+    """
+    The files the installer is tried with.
+    """
+
+    FAILING_STEP = Path(__file__).parent / "dataset" / "runtime" / "failing_step.sh"
+    """
+    A build step that fails, saying why on its error output.
+    """
+
+
 # %% which plugin a runtime came from
+
+
+def test_a_runtime_built_from_a_plugin_whose_content_changed_since_is_not_current(
+    tmp_path: Path,
+):
+    plugin = tmp_path / "plugin"
+    plugin.mkdir()
+    (plugin / "module.py").write_text("before\n")
+    runtime = built_from(tmp_path / "environments" / "runtime", plugin)
+    (plugin / "module.py").write_text("after\n")
+
+    assert not RuntimeInstallation(plugin, runtime).current
+
+
+@pytest.mark.parametrize("directory", list(UnstampedDirectory))
+def test_a_change_outside_what_the_runtime_is_built_from_keeps_it_current(
+    tmp_path: Path, directory: UnstampedDirectory
+):
+    plugin = tmp_path / "plugin"
+    (plugin / directory).mkdir(parents=True)
+    runtime = built_from(tmp_path / "environments" / "runtime", plugin)
+    (plugin / directory / "written").write_text("since\n")
+
+    assert RuntimeInstallation(plugin, runtime).current
+
+
+def test_the_domain_model_is_pinned_to_one_commit():
+    """
+    A push to the domain model's default branch must not change what a new runtime
+    runs, the guard included, without a change here.
+    """
+    revision = Requirement.DOMAIN_MODEL.rpartition("@")[2]
+
+    assert re.fullmatch(r"[0-9a-f]{40}", revision)
 
 
 def built_from(location: Path, plugin: Path) -> Path:
@@ -28,7 +80,9 @@ def built_from(location: Path, plugin: Path) -> Path:
     :param plugin: The plugin it was built from.
     :return: The runtime, a directory that says so."""
     location.mkdir(parents=True)
-    (location / RuntimeFile.PLUGIN).write_text(str(plugin))
+    (location / RuntimeFile.PLUGIN).write_text(
+        RuntimeInstallation(plugin, location).stamp
+    )
     return location
 
 
@@ -73,7 +127,23 @@ def test_a_failing_build_leaves_the_runtime_in_use_alone(
         RuntimeInstallation(tmp_path / "new", runtime).install()
 
     assert [path.name for path in runtime.parent.iterdir()] == [runtime.name]
-    assert (runtime / RuntimeFile.PLUGIN).read_text() == str(tmp_path / "old")
+    assert (runtime / RuntimeFile.PLUGIN).read_text() == (
+        RuntimeInstallation(tmp_path / "old", runtime).stamp
+    )
+
+
+def test_a_failing_step_is_reported_with_what_it_said_on_its_error_output(
+    tmp_path: Path,
+):
+    build = tmp_path / "build"
+    build.mkdir()
+
+    with pytest.raises(SystemExit) as failed:
+        RuntimeInstallation(tmp_path / "plugin", tmp_path / "runtime")._run(
+            [str(RuntimeDataset.FAILING_STEP.value)], build
+        )
+
+    assert str(failed.value).endswith(": the reason the step failed")
 
 
 # %% one install at a time

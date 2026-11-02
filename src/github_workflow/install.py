@@ -1,8 +1,8 @@
 """
 Install the runtime the plugin's hooks run: a virtual environment holding this plugin's
-own copy of the workflow and the domain model, built beside the one in use and switched
-over to only once its guard works. A runtime built from this plugin already is left
-alone.
+own copy of the workflow and the pinned domain model, built beside the one in use and
+switched over to only once its guard works. A runtime built from this plugin, as its
+content is now, is left alone.
 
 Runs on the standard library alone, before any runtime exists, so it is run as a file
 rather than imported from the package. A step that fails ends it with the step and what
@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 import shutil
@@ -40,7 +41,25 @@ class RuntimeFile(StrEnum):
 
     PLUGIN = "github-workflow-plugin"
     """
-    Holds the directory of the plugin the runtime was built from.
+    Holds the directory of the plugin the runtime was built from, and a digest of its
+    content.
+    """
+
+
+class UnstampedDirectory(StrEnum):
+    """
+    The directories in a plugin whose content is not part of what a runtime is built
+    from.
+    """
+
+    GIT = ".git"
+    """
+    The plugin's history, when it is a checkout.
+    """
+
+    BYTECODE = "__pycache__"
+    """
+    Compiled modules, written as the plugin's code runs.
     """
 
 
@@ -49,9 +68,10 @@ class Requirement(StrEnum):
     What the runtime installs besides the plugin itself.
     """
 
-    DOMAIN_MODEL = "basstler-domain-model @ git+https://github.com/LucaKro/basstler_domain_model@main"
+    DOMAIN_MODEL = "basstler-domain-model @ git+https://github.com/LucaKro/basstler_domain_model@720e5daad0e0cc93f718b6fff1594f0d147e7c57"
     """
-    The shared GitHub and git model, public, which no index serves.
+    The shared GitHub and git model, public, which no index serves, pinned to one
+    commit so that only a change here changes what a runtime runs.
     """
 
 
@@ -151,10 +171,33 @@ class RuntimeInstallation:
     """
 
     @property
+    def stamp(self) -> str:
+        """
+        What a runtime built from this plugin records: the plugin's directory, and a
+        digest of its content, the domain model's pin among it.
+        """
+        files = []
+        for directory, subdirectories, names in os.walk(self.plugin):
+            subdirectories[:] = [
+                name
+                for name in subdirectories
+                if name not in UnstampedDirectory._value2member_map_
+            ]
+            files += [Path(directory) / name for name in names]
+        digest = hashlib.sha256()
+        for path in sorted(files):
+            digest.update(f"{path.relative_to(self.plugin)}\0".encode())
+            digest.update(path.read_bytes())
+        return f"{self.plugin}\n{digest.hexdigest()}"
+
+    @property
     def current(self) -> bool:
-        """:return: Whether the runtime in use was built from this plugin."""
+        """
+        :return: Whether the runtime in use was built from this plugin, as its content
+            is now.
+        """
         stamp = self.location / RuntimeFile.PLUGIN
-        return stamp.exists() and stamp.read_text() == str(self.plugin)
+        return stamp.exists() and stamp.read_text() == self.stamp
 
     def start(self) -> str | None:
         """
@@ -195,11 +238,13 @@ class RuntimeInstallation:
 
         :return: What was installed.
         """
+        stamp = self.stamp
         build = Path(
             tempfile.mkdtemp(prefix=f".{self.location.name}-", dir=self.location.parent)
         )
         python = build / "bin" / "python"
-        if not self._ran([sys.executable, "-m", "venv", str(build)], build, quiet=True):
+        created = self._ran([sys.executable, "-m", "venv", str(build)])
+        if created is None or created.returncode != 0:
             shutil.rmtree(build)
             build.mkdir()
             self._run(
@@ -217,7 +262,7 @@ class RuntimeInstallation:
         )
         if '"deny"' not in checked.stdout:
             self._fail("checking the new runtime's guard", checked, build)
-        (build / RuntimeFile.PLUGIN).write_text(str(self.plugin))
+        (build / RuntimeFile.PLUGIN).write_text(stamp)
         RuntimeSwitch(self.location).to(build)
         return f"github-workflow: runtime installed from the plugin at {self.plugin}"
 
@@ -226,27 +271,20 @@ class RuntimeInstallation:
         :param command: One step of the build.
         :param build: The build, removed when the step fails.
         """
-        if not self._ran(command, build):
-            self._fail(" ".join(command[:4]), None, build)
+        finished = self._ran(command)
+        if finished is None or finished.returncode != 0:
+            self._fail(" ".join(command[:4]), finished, build)
 
     @staticmethod
-    def _ran(command: list[str], build: Path, quiet: bool = False) -> bool:
+    def _ran(command: list[str]) -> subprocess.CompletedProcess[str] | None:
         """
         :param command: One step of the build.
-        :param build: The build the step works on.
-        :param quiet: Whether to keep the step's output to itself, for a step whose
-            failure is expected.
-        :return: Whether the step succeeded; a program that is not there fails it.
+        :return: The finished step, its output kept, ``None`` when its program is not
+            there.
         """
         if shutil.which(command[0]) is None:
-            return False
-        finished = subprocess.run(
-            command,
-            capture_output=quiet,
-            stdout=None if quiet else subprocess.DEVNULL,
-            text=True,
-        )
-        return finished.returncode == 0
+            return None
+        return subprocess.run(command, capture_output=True, text=True)
 
     @staticmethod
     def _fail(
@@ -254,9 +292,9 @@ class RuntimeInstallation:
     ) -> None:
         """
         :param step: The step that failed.
-        :param finished: What it said, when it was captured.
+        :param finished: What it said, ``None`` when its program is not there.
         :param build: The build, removed.
-        :raises SystemExit: Always, with the step and its last line.
+        :raises SystemExit: Always, with the step and the last line it said.
         """
         shutil.rmtree(build, ignore_errors=True)
         said = (finished.stderr or finished.stdout).splitlines() if finished else []
