@@ -101,8 +101,8 @@ class NotesBlock:
             f"`{self.workflow_command}` ({', '.join(WorkflowCommand)}; `--help` "
             f"for each).",
             f"File what you notice outside this work with `{self.workflow_command} "
-            f"finding file` instead of acting on it ({self.finding_guide}); accept or "
-            f"reject a finding only when the person says so.",
+            f"finding file` instead of acting on it ({self.finding_guide}); accept, "
+            f"shelve or reject a finding only when the person says so.",
             f"Mark a branch you pushed but no longer need with "
             f"`{self.workflow_command} branch discard`; the cleanup deletes it.",
         ]

@@ -36,6 +36,7 @@ from github_workflow.findings import (
     FindingListing,
     FindingPrioritization,
     FindingRejection,
+    FindingShelving,
     Priority,
 )
 from github_workflow.pull_request_overview import (
@@ -163,9 +164,13 @@ class WorkflowSession(RepositoryDetails):
             case WorkflowCommand.FINDING, FindingSubcommand.LIST:
                 return FindingListing(self.github)
             case WorkflowCommand.FINDING, FindingSubcommand.ACCEPT:
-                return FindingAcceptance(self.github, arguments.number)
+                return FindingAcceptance(self.github, self.github, arguments.number)
+            case WorkflowCommand.FINDING, FindingSubcommand.SHELVE:
+                return FindingShelving(self.github, self.github, arguments.number)
             case WorkflowCommand.FINDING, FindingSubcommand.REJECT:
-                return FindingRejection(self.github, arguments.number, arguments.reason)
+                return FindingRejection(
+                    self.github, self.github, arguments.number, arguments.reason
+                )
             case WorkflowCommand.CLEANUP, _:
                 git = self.checkout.git
                 notes = NotesBranch.on(git, self.remote, self.settings)
@@ -236,7 +241,7 @@ class WorkflowSession(RepositoryDetails):
         notes_actions.add_parser(NotesSubcommand.SAVE, help="save the notes block")
         finding = commands.add_parser(
             WorkflowCommand.FINDING,
-            help="file, prioritize, list, accept or reject findings",
+            help="file, prioritize, list, accept, shelve or reject findings",
         )
         finding_actions = finding.add_subparsers(dest="action", required=True)
         priority_argument = argparse.ArgumentParser(add_help=False)
@@ -265,8 +270,13 @@ class WorkflowSession(RepositoryDetails):
             FindingSubcommand.ACCEPT, help="accept a finding, on the person's word"
         )
         accept.add_argument("number", type=int)
+        shelve = finding_actions.add_parser(
+            FindingSubcommand.SHELVE, help="set a finding aside, on the person's word"
+        )
+        shelve.add_argument("number", type=int)
         reject = finding_actions.add_parser(
-            FindingSubcommand.REJECT, help="reject a finding, on the person's word"
+            FindingSubcommand.REJECT,
+            help="reject a finding as incorrect, on the person's word",
         )
         reject.add_argument("number", type=int)
         reject.add_argument("--reason", required=True)

@@ -55,13 +55,15 @@ them:
 
 - *unreviewed*: an open issue labelled for triage, until I look at it
 - *accepted*: an open issue I confirmed; working on it starts with a failing test
-- *rejected*: closed as not planned, with the reason, so later sessions do not raise it
-  again
+- *shelved*: an open issue I set aside for now; it stays on the board, apart from the
+  findings waiting on me or on work
+- *incorrect*: a finding I rejected, labelled so and closed as not planned, with the
+  reason, so later sessions do not raise it again
 - Each finding carries a priority the filing session judges: *critical* (breaks the
   default branch, security, or data), *high* (wrong behaviour in normal use), *medium*
   (wrong in edge cases, or a maintainability risk), *low* (cosmetic, or cleanup).
-- Only I move a finding out of *unreviewed*; a session accepts or rejects one only when
-  I say so.
+- Only I move a finding out of *unreviewed*; a session accepts, shelves or rejects one
+  only when I say so.
 
 ## Notes and progress
 
