@@ -357,7 +357,7 @@ class DefaultBranchProofRunner(ProofRunner):
         :raises GitCommandFailed: If the default branch cannot be fetched.
         """
         branch = RemoteBranch(self.remote, self.default_branch)
-        fetched = self.git.fetch_branch(branch.remote, branch.name, branch.remote)
+        fetched = self.git.fetch_branch(branch)
         fetched.raise_if_failed()
         tip = BranchTip(branch.name, self.git.commit_at(branch.tracking_reference))
         with tempfile.TemporaryDirectory() as directory:

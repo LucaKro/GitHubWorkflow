@@ -90,7 +90,7 @@ class BranchStart(WorkflowStep):
             self.policy.remote.name, self.base or self.policy.default_branch
         )
         git = self.policy.checkout.git
-        fetched = git.fetch_branch(base.remote, base.name, base.remote)
+        fetched = git.fetch_branch(base)
         if fetched.succeeded:
             git.create_branch(self.name, base.tracking_reference)
             started = f"on {self.name}, started from {base.remote}/{base.name}"
@@ -321,7 +321,7 @@ class BranchSync(WorkflowStep):
             raise DetachedHeadError()
         branch = RemoteBranch(self.policy.remote.name, name)
         last_seen = git.commit_or_none(branch.tracking_reference)
-        fetched = git.fetch_branch(branch.remote, name, branch.remote)
+        fetched = git.fetch_branch(branch)
         if not fetched.succeeded and git.has_remote_branch(branch):
             fetched.raise_if_failed()
         if not fetched.succeeded and last_seen is not None:
