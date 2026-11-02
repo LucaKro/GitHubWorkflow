@@ -15,16 +15,12 @@ from basstler_domain_model.git.commands import (
     ProposedPush,
     RemoteBranch,
 )
-from basstler_domain_model.github.pull_request_fields import (
-    PullRequestField,
-    PullRequestHead,
-)
 from basstler_domain_model.github.repository_client import (
     PullRequestOpener,
     PullRequestReader,
     PullRequestWriter,
 )
-from basstler_domain_model.github.vocabulary import IssueState
+from basstler_domain_model.github.vocabulary import PullRequestState
 from basstler_domain_model.repository import GitHubAddress, Repository
 
 from github_workflow.exceptions import (
@@ -247,9 +243,7 @@ class DraftOpening(WorkflowStep):
         base = (
             self.policy.default_branch
             if self.below is None
-            else PullRequestHead.from_record(
-                self.placement.pull_requests.pull_request(self.below), self.below
-            ).branch
+            else self.placement.pull_requests.pull_request(self.below).head.branch
         )
         number = self.opener.open_draft(branch.name, base, self.title, self.body)
         opened = f"opened draft #{number}: {branch.name} onto {base}"
@@ -287,9 +281,8 @@ class DescriptionRewrite(WorkflowStep):
     """
 
     def run(self) -> str:
-        record = self.pull_requests.pull_request(self.number)
-        is_open = PullRequestField.STATE.read(record, self.number) == IssueState.OPEN
-        if not is_open or not PullRequestField.DRAFT.read(record, self.number):
+        pull_request = self.pull_requests.pull_request(self.number)
+        if pull_request.state is not PullRequestState.OPEN or not pull_request.draft:
             raise NotADraftError(self.number)
         self.writer.set_description(self.number, self.body)
         return f"rewrote the description of draft #{self.number}"
