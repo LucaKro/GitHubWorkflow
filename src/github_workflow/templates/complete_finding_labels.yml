@@ -1,6 +1,6 @@
-# Completes a finding label picked on GitHub: a stage or priority label replaces the
-# others of its kind, a priority on a plain issue makes it an unreviewed finding, and
-# "finding: incorrect" closes the issue as not planned. Written by
+# Completes a finding label picked on GitHub: a stage, priority or evidence label
+# replaces the others of its kind, a priority on a plain issue makes it an unreviewed
+# finding, and "finding: incorrect" closes the issue as not planned. Written by
 # `python -m github_workflow finding automate`.
 name: Complete finding labels
 on:

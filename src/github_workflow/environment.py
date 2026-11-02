@@ -29,3 +29,17 @@ class WorkflowVariable(EnvironmentVariable):
     """
     Where the plugin is, set for the session's commands, such as the cloud check.
     """
+
+
+# %% Python
+
+
+class PythonVariable(EnvironmentVariable):
+    """
+    The variables the Python interpreter reads when it starts.
+    """
+
+    MODULE_SEARCH_PATH = "PYTHONPATH"
+    """
+    Directories searched for modules before the installed packages.
+    """
