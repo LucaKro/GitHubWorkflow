@@ -1,7 +1,7 @@
 """
-Run every probe check against the repository checked out in the current directory,
-write what was found into the directory given as the only argument, and publish it to
-the probe results branch.
+Run every probe check against the repository checked out in the current directory, write
+what was found into the directory given as the only argument, and publish it to the
+probe results branch.
 
 Usage: ``python -m github_workflow.probe <output directory>``
 """
@@ -9,35 +9,18 @@ Usage: ``python -m github_workflow.probe <output directory>``
 from __future__ import annotations
 
 import sys
-from enum import StrEnum
 from pathlib import Path
 
 from basstler_domain_model.git.commands import (
     GitCommandRunner,
-    RemoteBranch,
     RemoteName,
 )
-from basstler_domain_model.git.storage_branch import StorageBranch
 from basstler_domain_model.github.clients import GitHubApi
 
 from github_workflow.locations import ProbeFile
+from github_workflow.probe.publish import ResultsPublication
 from github_workflow.probe.results import ProbeReport
 from github_workflow.probe.scenarios import Probe
-
-# %% where results go
-
-
-class ResultsBranch(StrEnum):
-    """
-    The branch probe results are published to, outside every code branch, and deleted
-    once they have been read.
-    """
-
-    NAME = "github-workflow/probe-results"
-    """
-    The branch on the remote.
-    """
-
 
 # %% entry point
 
@@ -70,17 +53,8 @@ def main() -> None:
     probe.check_workflow_branch_deletion()
     (output / ProbeFile.REPORT).write_text(probe.report.markdown())
     (output / ProbeFile.RESULTS).write_text(probe.report.to_json())
-    results = StorageBranch(git, RemoteBranch(RemoteName.ORIGIN, ResultsBranch.NAME))
-    results.fetch()
-    results.write(
-        {
-            Path(output.name) / file.name: (output / file).read_text()
-            for file in (ProbeFile.REPORT, ProbeFile.RESULTS)
-        },
-        f"Record probe results {output.name}",
-    )
     print(probe.report.markdown())
-    print(f"published to {ResultsBranch.NAME}: {output.name}/")
+    print(ResultsPublication(git, output).publish())
 
 
 if __name__ == "__main__":
