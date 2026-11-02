@@ -1,0 +1,25 @@
+# Deletes the branches listed in ready-for-deletion.md on this notes branch, whenever it is
+# pushed. Written by `python -m github_workflow cleanup` where the session itself may not
+# delete branches. Never deletes the default branch or this notes branch.
+name: Delete branches ready for deletion
+on:
+  push:
+    branches: [github-workflow/notes]
+permissions:
+  contents: write
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Delete the listed branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          while read -r branch; do
+            if [ -z "${branch}" ] || [ "${branch}" = "${DEFAULT_BRANCH}" ] || [ "${branch}" = "${GITHUB_REF_NAME}" ]; then
+              continue
+            fi
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${branch}" || true
+          done < "ready-for-deletion.md"
