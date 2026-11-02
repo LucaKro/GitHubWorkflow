@@ -15,6 +15,10 @@ from pathlib import Path
 from basstler_domain_model.github.repository_client import GitHubRepository
 
 from github_workflow.checkout import ProjectCheckout
+from github_workflow.pull_request_overview import (
+    PullRequestOverview,
+    PullRequestSignalReader,
+)
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.report_section import ReportSection, SectionContext
 from github_workflow.repository_setup import RepositorySetup
@@ -33,6 +37,11 @@ class SectionName(StrEnum):
     The repository features the workflow relies on.
     """
 
+    PULL_REQUESTS = "pull-requests"
+    """
+    The open pull requests and their signals.
+    """
+
     def section(self, context: SectionContext) -> ReportSection:
         """
         :param context: Where the section looks.
@@ -41,6 +50,12 @@ class SectionName(StrEnum):
         match self:
             case SectionName.SETUP:
                 return RepositorySetup(context.remote.repository, context.github)
+            case SectionName.PULL_REQUESTS:
+                return PullRequestOverview(
+                    PullRequestSignalReader.of(context.github),
+                    context.github,
+                    context.checkout.git.checked_out_branch(),
+                )
 
 
 # %% entry point

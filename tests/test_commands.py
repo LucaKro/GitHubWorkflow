@@ -20,7 +20,8 @@ from basstler_domain_model.environment import (
     GitHubCredentialVariable,
 )
 from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
-from basstler_domain_model.github.routes import RepositoryRoute
+from basstler_domain_model.github.repository_client import PullRequestListState
+from basstler_domain_model.github.routes import QueryParameter, RepositoryRoute
 from basstler_domain_model.github.vocabulary import RestJSONKey
 from basstler_domain_model.repository import Repository
 
@@ -29,7 +30,7 @@ import github_workflow.session_start
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.environment import WorkflowVariable
 from github_workflow.exceptions import NoOwnedRemoteError
-from github_workflow.hooks import HookKey, HookValue
+from github_workflow.hooks import HookKey, HookValue, Tone
 from github_workflow.locations import GitFile, NotesFile, ProjectFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection
@@ -48,12 +49,25 @@ def github(
 ) -> Iterator[ReplayedApi]:
     """
     :return: GitHub as every command run here reaches it, answering that the owner's
-        repository has everything the workflow relies on set up.
+        repository has everything the workflow relies on set up, no open pull request,
+        and nothing waiting on the person's review.
     """
     with ReplayedApi() as api:
         api.answers[("GET", root_path(settings))] = setting(HTTPStatus.OK, True)
         api.answers[("GET", actions_path(settings))] = RecordedAnswer(
             HTTPStatus.OK, json.dumps({RestJSONKey.ENABLED: True})
+        )
+        route = RepositoryRoute(
+            Repository(settings.owner, RepositoriesByOwner.repository_name)
+        )
+        open_pull_requests = route.listing(
+            route.pull_requests, {QueryParameter.STATE: PullRequestListState.OPEN.query}
+        )
+        api.answers[("GET", f"/{open_pull_requests}")] = RecordedAnswer(
+            HTTPStatus.OK, "[]"
+        )
+        api.answers[("GET", f"/{route.review_requests()}")] = RecordedAnswer(
+            HTTPStatus.OK, json.dumps({RestJSONKey.TOTAL_COUNT: 0})
         )
         monkeypatch.setenv(GitHubActionsVariable.API_URL, api.url)
         monkeypatch.setenv(GitHubCredentialVariable.GH_TOKEN, "a-token")
@@ -210,6 +224,7 @@ def test_a_session_start_is_shown_to_the_person_and_given_to_the_model(
     shown = answer[HookKey.SYSTEM_MESSAGE].splitlines()
     plain = given[HookKey.ADDITIONAL_CONTEXT].splitlines()
     assert [line for line in plain if any(line in seen for seen in shown)] == plain
+    assert not [line for line in shown if line.startswith(f"\033[1;{Tone.PROBLEM}m")]
 
 
 def test_a_session_outside_a_checkout_says_so_in_one_line(tmp_path: Path):

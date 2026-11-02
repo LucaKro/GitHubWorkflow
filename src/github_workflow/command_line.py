@@ -53,6 +53,11 @@ class WorkflowCommand(StrEnum):
     Save the notes block to the notes branch.
     """
 
+    DETAILS = "details"
+    """
+    Show what a pull request's signals are about.
+    """
+
     DESCRIBE = "describe"
     """
     Rewrite the description of an open draft pull request.
