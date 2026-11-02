@@ -20,6 +20,9 @@ class HookKey(StrEnum):
     TOOL_NAME = "tool_name"
     TOOL_INPUT = "tool_input"
     COMMAND = "command"
+    FILE_PATH = "file_path"
+    HOOKS = "hooks"
+    MATCHER = "matcher"
     HOOK_SPECIFIC_OUTPUT = "hookSpecificOutput"
     HOOK_EVENT_NAME = "hookEventName"
     PERMISSION_DECISION = "permissionDecision"
@@ -70,6 +73,16 @@ class HookValue(StrEnum):
     """
     The decision denying a call.
     """
+
+
+class FileWritingTool(StrEnum):
+    """
+    The Claude Code tools that write a file, by their names.
+    """
+
+    WRITE = "Write"
+    EDIT = "Edit"
+    MULTI_EDIT = "MultiEdit"
 
 
 # %% the session start's answer

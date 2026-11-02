@@ -24,7 +24,7 @@ from typing import Any
 from basstler_domain_model.class_property import classproperty
 
 from github_workflow.command_line import BranchSubcommand, WorkflowCommand
-from github_workflow.hooks import HookKey, HookValue
+from github_workflow.hooks import FileWritingTool, HookKey, HookValue
 
 # %% programs
 
@@ -138,6 +138,16 @@ class Wrapper(StrEnum):
     """
 
 
+class VariableExport(StrEnum):
+    """
+    The shell builtins that can export a variable to every program run after them.
+    """
+
+    EXPORT = "export"
+    DECLARE = "declare"
+    TYPESET = "typeset"
+
+
 class ShellKeyword(StrEnum):
     """
     The words the shell reads as syntax where a command's program would stand.
@@ -209,6 +219,67 @@ class GitGlobalOption(StrEnum):
     """
     Print git's help.
     """
+
+
+class GitProgramOption(StrEnum):
+    """
+    The options with which a git subcommand that otherwise reads runs a program of the
+    caller's choosing, or writes a file.
+    """
+
+    UPLOAD_PACK = "--upload-pack"
+    """
+    Runs the given program as the remote's end of a fetch.
+    """
+
+    RECEIVE_PACK = "--receive-pack"
+    """
+    Runs the given program as the remote's end of a push.
+    """
+
+    EXEC = "--exec"
+    """
+    Runs the given program as the remote's end, the older spelling.
+    """
+
+    OUTPUT = "--output"
+    """
+    Writes the output to the given file.
+    """
+
+    EXTERNAL_DIFF = "--ext-diff"
+    """
+    Runs the configured external diff program.
+    """
+
+    TEXT_CONVERSION = "--textconv"
+    """
+    Runs the configured program converting files to text.
+    """
+
+    @classproperty
+    def short_letter(cls) -> str:
+        """
+        The single letter with which ``ls-remote`` runs the program given and ``fetch``
+        moves the checked-out branch.
+        """
+        return "u"
+
+    @classmethod
+    def present_in(cls, subcommand: str, arguments: Sequence[str]) -> bool:
+        """
+        :param subcommand: The git subcommand.
+        :param arguments: What follows it.
+        :return: Whether one of the arguments runs a program or writes a file.
+        """
+        remote = (GitReading.LS_REMOTE, GitListing.FETCH)
+        for argument in arguments:
+            if argument.partition("=")[0] in cls._value2member_map_:
+                return True
+            short = argument.startswith("-") and not argument.startswith("--")
+            if short and subcommand in remote and cls.short_letter in argument:
+                return True
+        return False
 
 
 class GitReading(StrEnum):
@@ -429,6 +500,31 @@ class GitHubToolReading(StrEnum):
     """
     Reads, in the newer tool names.
     """
+
+
+class GitConfigurationLocation(StrEnum):
+    """
+    The names marking a file git reads its configuration or hooks from, and so runs
+    the programs it names.
+    """
+
+    REPOSITORY = ".git"
+    """
+    A repository's own directory, its configuration and hooks among it.
+    """
+
+    USER = ".gitconfig"
+    """
+    The user's configuration file.
+    """
+
+    @classmethod
+    def holds(cls, path: PurePath) -> bool:
+        """
+        :param path: A file's path.
+        :return: Whether git reads its configuration or hooks from the file.
+        """
+        return cls.REPOSITORY in path.parts or path.name == cls.USER
 
 
 # %% sending options
@@ -685,6 +781,8 @@ class GitCheck(ProgramCheck):
         if index >= len(arguments):
             return None
         subcommand, rest = arguments[index], arguments[index + 1 :]
+        if GitProgramOption.present_in(subcommand, rest):
+            return Denial(f"git {subcommand} with this option runs a program or writes")
         if subcommand == GitReading.GREP and any(
             argument.startswith(("-O", "--open-files-in-pager")) for argument in rest
         ):
@@ -966,16 +1064,18 @@ class CommandGuard:
         """
         command = SimpleCommand(words)
         program, arguments = command.program, command.arguments
+        if any(assignment.startswith("GIT_") for assignment in command.assignments):
+            return Denial("setting git's environment can make it run a program")
         if not program:
             return None
+        if program in VariableExport._value2member_map_ and any(
+            argument.startswith("GIT_") for argument in arguments
+        ):
+            return Denial("exporting git's environment can make it run a program")
         if program in Wrapper._value2member_map_:
             return self._denial_of_wrapped(Wrapper(program), arguments)
         if program in Shell._value2member_map_:
             return self._denial_of_shell(Shell(program), arguments)
-        if program == Program.GIT and any(
-            assignment.startswith("GIT_") for assignment in command.assignments
-        ):
-            return Denial("setting git's environment can make it run a program")
         match program:
             case Program.GIT:
                 return GitCheck().denial(arguments)
@@ -1001,6 +1101,10 @@ class CommandGuard:
                 reason = self.denial(argument)
                 if reason is not None:
                     return reason
+            if argument.startswith("GIT_") and CommandLine.assignment.fullmatch(
+                argument
+            ):
+                return Denial("setting git's environment can make it run a program")
             program = PurePath(argument).name
             if wrapper is Wrapper.XARGS and program in Program._value2member_map_:
                 return Denial(f"xargs gives {program} arguments the guard cannot see")
@@ -1041,6 +1145,11 @@ class ToolGuard:
         :return: Why the call is denied, ``None`` when it may run.
         """
         tool = self.hook_input.get(HookKey.TOOL_NAME, "")
+        if tool in FileWritingTool._value2member_map_:
+            path = PurePath(self.hook_input[HookKey.TOOL_INPUT][HookKey.FILE_PATH])
+            if GitConfigurationLocation.holds(path):
+                return Denial(f"git runs programs that {path} names")
+            return None
         if tool == HookValue.BASH_TOOL:
             command = self.hook_input[HookKey.TOOL_INPUT][HookKey.COMMAND]
             return CommandGuard().denial(command)

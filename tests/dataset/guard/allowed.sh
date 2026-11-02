@@ -30,3 +30,6 @@ python -m github_workflow push
 if git diff --quiet; then echo clean; fi
 { git status; }
 git ls-files | xargs grep pattern
+git diff -u HEAD~1
+git log -p --no-textconv
+export PATH=/usr/bin
