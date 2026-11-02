@@ -28,7 +28,7 @@ from github_workflow.command_line import (
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
-from github_workflow.cleanup import BranchCleanup, KeptBranches
+from github_workflow.cleanup import BranchCleanup, BranchDiscard, KeptBranches
 from github_workflow.findings import (
     FindingAcceptance,
     FindingFiling,
@@ -119,6 +119,9 @@ class WorkflowSession(RepositoryDetails):
                 return BranchStart(self.policy, arguments.name, arguments.on)
             case WorkflowCommand.BRANCH, BranchSubcommand.SWITCH:
                 return BranchSwitch(self.policy, arguments.name)
+            case WorkflowCommand.BRANCH, BranchSubcommand.DISCARD:
+                notes = NotesBranch.on(self.checkout.git, self.remote, self.settings)
+                return BranchDiscard(self.policy, notes, arguments.name)
             case WorkflowCommand.COMMIT, _:
                 return CommitWork(self.policy, arguments.message, arguments.paths)
             case WorkflowCommand.PUSH, _:
@@ -155,13 +158,13 @@ class WorkflowSession(RepositoryDetails):
                 return FindingRejection(self.github, arguments.number, arguments.reason)
             case WorkflowCommand.CLEANUP, _:
                 git = self.checkout.git
+                notes = NotesBranch.on(git, self.remote, self.settings)
+                notes.fetch()
                 return BranchCleanup(
                     git,
                     self.remote,
-                    KeptBranches.read(
-                        git, self.remote, self.github, self.settings.notes_branch
-                    ),
-                    NotesBranch.on(git, self.remote, self.settings),
+                    KeptBranches.read(git, self.remote, self.github, notes),
+                    notes,
                 )
             case WorkflowCommand.DETAILS, _:
                 return PullRequestDetails(
@@ -191,6 +194,13 @@ class WorkflowSession(RepositoryDetails):
         start.add_argument("--on", help="the branch to start from")
         switch = actions.add_parser(BranchSubcommand.SWITCH, help="switch to a branch")
         switch.add_argument("name")
+        discard = actions.add_parser(
+            BranchSubcommand.DISCARD,
+            help="mark a pushed branch as thrown away, for the cleanup to delete",
+        )
+        discard.add_argument(
+            "name", nargs="?", help="the branch, the checked-out one when left out"
+        )
         commit = commands.add_parser(WorkflowCommand.COMMIT, help="commit files")
         commit.add_argument("-m", "--message", required=True)
         commit.add_argument("paths", nargs="+", type=Path)

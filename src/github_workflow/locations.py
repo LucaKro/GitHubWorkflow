@@ -32,6 +32,11 @@ class NotesFile(PathEnumeration):
     workflow.
     """
 
+    DISCARDED_BRANCHES = Path("discarded-branches.md")
+    """
+    The branches thrown away, one per line with the commit each was at when discarded.
+    """
+
     DELETION_WORKFLOW = Path(".github/workflows/delete-ready-branches.yml")
     """
     The Actions workflow deleting those branches whenever the notes branch is pushed.

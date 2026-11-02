@@ -103,6 +103,8 @@ class NotesBlock:
             f"File what you notice outside this work with `{self.workflow_command} "
             f"finding file` instead of acting on it ({self.finding_guide}); accept or "
             f"reject a finding only when the person says so.",
+            f"Mark a branch you pushed but no longer need with "
+            f"`{self.workflow_command} branch discard`; the cleanup deletes it.",
         ]
         for section in NotesSection:
             if section is NotesSection.BRANCH_PROGRESS and not self.branch:

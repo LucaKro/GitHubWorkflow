@@ -1,12 +1,15 @@
 """
-Tests for :mod:`github_workflow.cleanup`: only branches of closed pull requests, still
-at the commit they were closed at, are ready for deletion; they are deleted, or handed
-to the notes branch's workflow where deleting is refused.
+Tests for :mod:`github_workflow.cleanup`: only branches of closed pull requests and
+discarded branches, still at the commit they were closed or discarded at, are ready for
+deletion; they are deleted, or handed to the notes branch's workflow where deleting is
+refused.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+
+import pytest
 
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
 from basstler_domain_model.github.pull_request_fields import (
@@ -15,14 +18,24 @@ from basstler_domain_model.github.pull_request_fields import (
 )
 from basstler_domain_model.github.vocabulary import IssueState, RestJSONKey
 
-from github_workflow.cleanup import BranchCleanup, CleanupReminder, KeptBranches
+from github_workflow.cleanup import (
+    BranchCleanup,
+    BranchDiscard,
+    CleanupReminder,
+    DiscardedBranches,
+    KeptBranches,
+)
+from github_workflow.exceptions import NothingToDiscardError, UndiscardableBranchError
 from github_workflow.hooks import Tone
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.remotes import OwnedRemotes
+from github_workflow.policy import WritePolicy
 from github_workflow.settings import WorkflowSettings
+from github_workflow.work import BranchStart, CommitWork, PushWork
 
 from .repositories_by_owner import RepositoriesByOwner
+from .test_work import policy_in, write
 
 REPOSITORY = "LucaKro/project"
 """
@@ -120,6 +133,36 @@ def test_a_pull_request_from_another_repository_says_nothing_about_this_one():
     assert branches.ready() == []
 
 
+def test_a_discarded_branch_still_at_its_commit_is_ready():
+    branches = KeptBranches(
+        {"tried": "g1"},
+        [],
+        REPOSITORY,
+        frozenset({"main", "notes"}),
+        DiscardedBranches({"tried": "g1"}),
+    )
+
+    assert branches.ready() == ["tried"]
+
+
+def test_a_discarded_branch_with_new_commits_is_kept():
+    branches = KeptBranches(
+        {"tried": "g2"},
+        [],
+        REPOSITORY,
+        frozenset({"main", "notes"}),
+        DiscardedBranches({"tried": "g1"}),
+    )
+
+    assert branches.ready() == []
+
+
+def test_the_discarded_list_reads_back_what_it_wrote():
+    discarded = DiscardedBranches({"one": "a1", "two": "b2"})
+
+    assert DiscardedBranches.from_text(discarded.to_text()) == discarded
+
+
 def test_the_reminder_names_how_many_and_the_command():
     branches = kept(
         {"one": "a", "two": "b"},
@@ -188,3 +231,54 @@ def test_a_branch_the_session_may_not_delete_is_listed_for_the_workflow(
     notes.fetch()
     assert notes.read(NotesFile.READY_FOR_DELETION.value) == "closed-work"
     assert settings.notes_branch in notes.read(NotesFile.DELETION_WORKFLOW.value)
+
+
+# %% discarding
+
+
+def pushed_work(
+    repositories: RepositoriesByOwner, url: str, settings: WorkflowSettings
+) -> tuple[WritePolicy, NotesBranch]:
+    """
+    :param repositories: Where to clone.
+    :param url: The owner's repository.
+    :param settings: The workflow's settings.
+    :return: The rules of a clone on a pushed branch ``tried``, and its notes branch.
+    """
+    policy = policy_in(repositories.clone(url, "thrower"), settings)
+    BranchStart(policy, "tried").run()
+    CommitWork(policy, "Try", [write(policy.checkout, "tried.txt")]).run()
+    PushWork(policy).run()
+    return policy, NotesBranch.on(policy.checkout.git, policy.remote, settings)
+
+
+def test_a_discarded_branch_is_listed_with_its_commit(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    policy, notes = pushed_work(repositories, owned_url, settings)
+
+    BranchDiscard(policy, notes).run()
+
+    listed = notes.read(NotesFile.DISCARDED_BRANCHES.value)
+    assert DiscardedBranches.from_text(listed) == DiscardedBranches(
+        {"tried": policy.checkout.git.commit_at("tried")}
+    )
+
+
+def test_discarding_the_default_branch_is_refused(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    policy, notes = pushed_work(repositories, owned_url, settings)
+
+    with pytest.raises(UndiscardableBranchError):
+        BranchDiscard(policy, notes, policy.default_branch).run()
+
+
+def test_discarding_a_branch_github_lacks_is_refused(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    policy, notes = pushed_work(repositories, owned_url, settings)
+    BranchStart(policy, "never-pushed").run()
+
+    with pytest.raises(NothingToDiscardError):
+        BranchDiscard(policy, notes).run()

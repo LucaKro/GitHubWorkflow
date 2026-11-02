@@ -17,6 +17,7 @@ from basstler_domain_model.github.repository_client import GitHubRepository
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.cleanup import CleanupReminder, KeptBranches
 from github_workflow.findings import FindingsSummary
+from github_workflow.notes.branch import NotesBranch
 from github_workflow.pull_request_overview import (
     PullRequestOverview,
     PullRequestSignalReader,
@@ -76,7 +77,9 @@ class SectionName(StrEnum):
                         context.checkout.git,
                         context.remote,
                         context.github,
-                        WorkflowSettings().notes_branch,
+                        NotesBranch.on(
+                            context.checkout.git, context.remote, WorkflowSettings()
+                        ),
                     )
                 )
 

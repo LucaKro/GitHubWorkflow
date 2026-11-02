@@ -73,8 +73,11 @@ them:
 - A branch that is no longer needed - its pull request merged, closed or rejected - is
   listed as ready for deletion in the notes, rather than deleted on the spot: a cloud
   session cannot delete branches.
-- `cleanup` deletes the branches ready for deletion: those whose pull request is closed
-  and that are still at the commit it was closed at. Where the session may not delete
+- A throwaway branch - pushed, but no longer needed and never merged - is marked with
+  `branch discard`, which lists it on the notes branch with the commit it is at.
+- `cleanup` deletes the branches ready for deletion: those whose pull request is closed,
+  or that were discarded, and that are still at the commit they were closed or
+  discarded at. Where the session may not delete
   branches (a cloud session), it lists them on the notes branch with a GitHub Actions
   workflow that deletes them when the notes branch is pushed.
 - The tool turns on GitHub's own deletion of a merged pull request's branch on every
@@ -102,6 +105,7 @@ them:
 
 - push its own work branch
 - save notes and progress
+- mark its own throwaway branches as discarded
 - open draft pull requests
 
 Everything else written to GitHub needs my go-ahead.
@@ -124,3 +128,9 @@ Everything else written to GitHub needs my go-ahead.
 
 - Signals about my pull requests on an upstream: a cloud session working in a fork
   cannot reach the upstream's API, so they need another route.
+- One working copy per local session. Parallel local sessions share a checkout, so one
+  session's branch switch moves the branch under every other session - and, where the
+  development environment installs the packages from those checkouts, the code they
+  run. Each session should work in a git worktree of its own (Claude Code's
+  `--worktree`): the workflow tested inside one, and the guard naming that route when it
+  blocks `git worktree` or `git clone`.

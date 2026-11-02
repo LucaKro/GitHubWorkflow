@@ -290,6 +290,46 @@ class NotADraftError(DataclassException, RuntimeError):
         return "Changing it needs the go-ahead of the person running the tool."
 
 
+# %% discarding branches
+
+
+@dataclass
+class UndiscardableBranchError(DataclassException, ValueError):
+    """
+    Raised when the branch to discard is the default branch or the notes branch, which
+    are never deleted.
+    """
+
+    branch: str
+    """
+    The branch.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.branch} is never deleted, so it cannot be discarded"
+
+    def suggest_correction(self) -> str:
+        return "Name the work branch to discard."
+
+
+@dataclass
+class NothingToDiscardError(DataclassException, LookupError):
+    """
+    Raised when the branch to discard is not on GitHub, so there is nothing to delete.
+    """
+
+    branch: str
+    """
+    The branch.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.branch} is not on GitHub, so there is nothing to delete"
+
+    def suggest_correction(self) -> str:
+        return "Only a branch on GitHub is discarded; leave this one as it is."
+
+
 # %% findings
 
 
