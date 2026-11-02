@@ -1,11 +1,11 @@
 """
-Write the notes and this branch's progress into ``CLAUDE.local.md`` at the start of a.
+What a session starts with, answered to the Claude Code hook.
 
-session, make sure GitHub deletes merged branches, and answer the hook with one line
-saying what was loaded - and one more when the deletion was turned on or has to be, and
-when the workflow's runtime is behind main - shown to the person and given to the
-model. Writes no file to a remote; turning the deletion on is the only change it makes
-on GitHub.
+Writes the notes and this branch's progress into ``CLAUDE.local.md``, computes the
+sections that read the owner's repository on GitHub, and checks the runtime; one line
+per thing the session should know is shown to the person and given to the model. Writes
+no file to a remote; turning on the repository features the workflow relies on is the
+only change it makes on GitHub.
 
 Usage: ``python -m github_workflow.session_start``
 """
@@ -19,7 +19,7 @@ from pathlib import Path
 
 from basstler_domain_model.commands import CommandRunner
 
-import github_workflow.merged_branch_deletion as merged_branch_deletion
+import github_workflow.report as report
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.hooks import ReportLine, SessionStartReport, Tone
 from github_workflow.locations import NotesFile
@@ -27,6 +27,7 @@ from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection
 from github_workflow.command_line import NotesSubcommand, WorkflowCommand
 from github_workflow.remotes import OwnedRemotes
+from github_workflow.report import SectionName
 from github_workflow.runtime import Runtime
 from github_workflow.settings import WorkflowSettings
 
@@ -51,42 +52,43 @@ class SessionStart:
 
     def report(self) -> list[ReportLine]:
         """
-        Load the notes into ``CLAUDE.local.md``, make sure GitHub deletes merged
-        branches and check the runtime, all at once, since each mostly waits on GitHub.
+        Load the notes into ``CLAUDE.local.md``, compute the sections that read the
+        owner's repository on GitHub, and check the runtime, all at once, since each
+        mostly waits on GitHub.
 
         :return: One line per thing the session should know.
         """
         owned = OwnedRemotes.read(self.checkout.git, self.settings).problem is None
+        sections = list(SectionName) if owned else []
         with ThreadPoolExecutor() as pool:
             notes = pool.submit(self.load_notes)
-            deletion = pool.submit(self.merged_branch_deletion) if owned else None
+            computed = [pool.submit(self.section, name) for name in sections]
             notice = pool.submit(Runtime.installed().notice, self.checkout.git)
         lines = [notes.result()]
-        if deletion is not None:
-            lines += deletion.result()
+        for section in computed:
+            lines += section.result()
         if notice.result() is not None:
             lines.append(ReportLine(notice.result(), Tone.ACTION))
         return lines
 
-    def merged_branch_deletion(self) -> list[ReportLine]:
+    def section(self, name: SectionName) -> list[ReportLine]:
         """
-        Make sure GitHub deletes merged branches, in a process of its own so a failure
-        costs only this line.
-
-        :return: What was done or is to be done, empty when nothing was.
+        :param name: A section that reads the owner's repository on GitHub.
+        :return: Its lines, computed in a process of its own so a failure costs only
+            this section, and then one red line saying so.
         """
-        checked = CommandRunner(self.checkout.root).run(
-            sys.executable, "-m", merged_branch_deletion.__name__
+        computed = CommandRunner(self.checkout.root).run(
+            sys.executable, "-m", report.__name__, name
         )
-        if not checked.succeeded:
+        if not computed.succeeded:
             return [
                 ReportLine(
-                    "github-workflow: could not check whether GitHub deletes merged "
-                    f"branches: {checked.summary}",
+                    f"github-workflow: could not compute the {name} section: "
+                    f"{computed.summary}",
                     Tone.PROBLEM,
                 )
             ]
-        return [ReportLine.from_json(line) for line in checked.output.splitlines()]
+        return [ReportLine.from_json(line) for line in computed.output.splitlines()]
 
     def load_notes(self) -> ReportLine:
         """
