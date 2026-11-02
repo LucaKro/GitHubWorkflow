@@ -64,6 +64,11 @@ class ProjectFile(PathEnumeration):
     The personal memory file Claude Code loads, which the notes are written into.
     """
 
+    LABEL_COMPLETION_WORKFLOW = Path(".github/workflows/complete-finding-labels.yml")
+    """
+    The Actions workflow completing finding labels picked on GitHub.
+    """
+
 
 class GitFile(PathEnumeration):
     """
@@ -89,6 +94,13 @@ class WorkflowTemplate(PathEnumeration):
     )
     """
     The Actions workflow deleting the branches listed on the notes branch.
+    """
+
+    LABEL_COMPLETION_WORKFLOW = (
+        Path(__file__).parent / "templates" / "complete_finding_labels.yml"
+    )
+    """
+    The Actions workflow completing finding labels picked on GitHub.
     """
 
 

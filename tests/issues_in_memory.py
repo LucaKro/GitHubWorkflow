@@ -1,0 +1,90 @@
+"""
+A repository's issues and labels in memory, for the tests of what the workflow writes to
+them.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+
+from basstler_domain_model.github.issue_models import Issue
+from basstler_domain_model.github.labels import GitHubLabel
+from basstler_domain_model.github.repository_client import (
+    IssueBoard,
+    RepositoryLabels,
+)
+from basstler_domain_model.github.vocabulary import IssueState, IssueStateReason
+
+from github_workflow.findings import FindingStage, Priority
+
+# %% an issue board in memory
+
+
+@dataclass(frozen=True)
+class IssuesInMemory(IssueBoard, RepositoryLabels):
+    """
+    A repository's issues and labels, recording every write.
+    """
+
+    open_issues: dict[int, Issue] = field(default_factory=dict)
+    """
+    The open issues, by number.
+    """
+
+    present_labels: set[str] = field(default_factory=set)
+    """
+    The labels the repository carries.
+    """
+
+    writes: list[str] = field(default_factory=list)
+    """
+    Every write, in a word and its arguments.
+    """
+
+    def labels(self) -> set[str]:
+        return set(self.present_labels)
+
+    def create_label(self, label: GitHubLabel) -> None:
+        self.writes.append(f"create_label {label}")
+        self.present_labels.add(label)
+
+    def open_issue(self, title: str, body: str, labels: Sequence[str]) -> int:
+        number = max(self.open_issues, default=0) + 1
+        self.open_issues[number] = Issue(number, title, tuple(labels), IssueState.OPEN)
+        self.writes.append(f"open_issue {number} {list(labels)}")
+        return number
+
+    def issues(self, labels: Sequence[str], state: IssueState) -> list[Issue]:
+        return [
+            issue
+            for issue in self.open_issues.values()
+            if issue.state is state and all(label in issue.labels for label in labels)
+        ]
+
+    def issue(self, number: int) -> Issue:
+        return self.open_issues[number]
+
+    def replace_labels(self, number: int, labels: Sequence[str]) -> None:
+        self.writes.append(f"replace_labels {number} {list(labels)}")
+
+    def add_labels(self, number: int, labels: Sequence[str]) -> None:
+        self.writes.append(f"add_labels {number} {list(labels)}")
+
+    def remove_label(self, number: int, label: str) -> None:
+        self.writes.append(f"remove_label {number} {label}")
+
+    def add_comment(self, number: int, body: str) -> str:
+        self.writes.append(f"add_comment {number} {body}")
+        return ""
+
+    def close_issue(self, number: int, reason: IssueStateReason) -> None:
+        self.writes.append(f"close_issue {number} {reason}")
+
+
+def finding(number: int, stage: FindingStage, priority: Priority) -> Issue:
+    """:param number: The issue's number.
+    :param stage: Where the finding stands.
+    :param priority: How urgent it is.
+    :return: The finding as an open issue."""
+    return Issue(number, f"Finding {number}", (stage, priority), IssueState.OPEN)

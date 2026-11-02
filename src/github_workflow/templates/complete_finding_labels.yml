@@ -1,0 +1,26 @@
+# Completes a finding label picked on GitHub: a stage or priority label replaces the
+# others of its kind, a priority on a plain issue makes it an unreviewed finding, and
+# "finding: incorrect" closes the issue as not planned. Written by
+# `python -m github_workflow finding automate`.
+name: Complete finding labels
+on:
+  issues:
+    types: [labeled]
+permissions:
+  issues: write
+concurrency:
+  group: complete-finding-labels-${{ github.event.issue.number }}
+  cancel-in-progress: false
+jobs:
+  complete:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the workflow
+        run: python -m pip install --quiet __REQUIREMENTS__
+      - name: Complete the label
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: __ENTRY_POINT__ "${GITHUB_EVENT_PATH}"
