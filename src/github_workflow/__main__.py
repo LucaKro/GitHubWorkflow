@@ -34,6 +34,7 @@ from github_workflow.findings import (
     FindingAcceptance,
     FindingFiling,
     FindingListing,
+    FindingPrioritization,
     FindingRejection,
     Priority,
 )
@@ -152,6 +153,13 @@ class WorkflowSession(RepositoryDetails):
                     arguments.body_file.read_text(),
                     Priority[arguments.priority.upper()],
                 )
+            case WorkflowCommand.FINDING, FindingSubcommand.PRIORITIZE:
+                return FindingPrioritization(
+                    self.github,
+                    self.github,
+                    arguments.number,
+                    Priority[arguments.priority.upper()],
+                )
             case WorkflowCommand.FINDING, FindingSubcommand.LIST:
                 return FindingListing(self.github)
             case WorkflowCommand.FINDING, FindingSubcommand.ACCEPT:
@@ -227,21 +235,31 @@ class WorkflowSession(RepositoryDetails):
         notes_actions = notes.add_subparsers(dest="action", required=True)
         notes_actions.add_parser(NotesSubcommand.SAVE, help="save the notes block")
         finding = commands.add_parser(
-            WorkflowCommand.FINDING, help="file, list, accept or reject findings"
+            WorkflowCommand.FINDING,
+            help="file, prioritize, list, accept or reject findings",
         )
         finding_actions = finding.add_subparsers(dest="action", required=True)
-        filing = finding_actions.add_parser(
-            FindingSubcommand.FILE,
-            help="file something noticed outside the current work",
-            description=Priority.guide(),
-        )
-        filing.add_argument("--title", required=True)
-        filing.add_argument("--body-file", required=True, type=Path)
-        filing.add_argument(
+        priority_argument = argparse.ArgumentParser(add_help=False)
+        priority_argument.add_argument(
             "--priority",
             required=True,
             choices=[priority.level for priority in Priority],
         )
+        filing = finding_actions.add_parser(
+            FindingSubcommand.FILE,
+            help="file something noticed outside the current work",
+            description=Priority.guide(),
+            parents=[priority_argument],
+        )
+        filing.add_argument("--title", required=True)
+        filing.add_argument("--body-file", required=True, type=Path)
+        prioritizing = finding_actions.add_parser(
+            FindingSubcommand.PRIORITIZE,
+            help="give an existing issue a priority, as a finding",
+            description=Priority.guide(),
+            parents=[priority_argument],
+        )
+        prioritizing.add_argument("number", type=int, help="the issue")
         finding_actions.add_parser(FindingSubcommand.LIST, help="list open findings")
         accept = finding_actions.add_parser(
             FindingSubcommand.ACCEPT, help="accept a finding, on the person's word"
