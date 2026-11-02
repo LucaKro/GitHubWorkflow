@@ -23,6 +23,7 @@ from basstler_domain_model.github.repository_client import (
 from basstler_domain_model.github.vocabulary import IssueState
 
 from github_workflow.exceptions import (
+    BranchDeletedFromGitHubError,
     BranchNotPushedError,
     DetachedHeadError,
     NotADraftError,
@@ -268,6 +269,8 @@ class BranchSync(WorkflowStep):
     """
     The checked-out branch brought up to date with GitHub's copy: fast-forwarded, or
     moved to the copy GitHub rebased when every local commit had been pushed.
+
+    :raises BranchDeletedFromGitHubError: If GitHub had the branch and no longer has it.
     """
 
     policy: WritePolicy
@@ -282,7 +285,10 @@ class BranchSync(WorkflowStep):
             raise DetachedHeadError()
         branch = RemoteBranch(self.policy.remote.name, name)
         last_seen = git.commit_or_none(branch.tracking_reference)
-        if not git.fetch_branch(branch.remote, name, branch.remote).succeeded:
+        fetched = git.fetch_branch(branch.remote, name, branch.remote).succeeded
+        if not fetched and last_seen is not None:
+            raise BranchDeletedFromGitHubError(name)
+        if not fetched:
             return f"{name} is not on GitHub yet"
         on_github = git.commit_at(branch.tracking_reference)
         local = git.commit_at("HEAD")

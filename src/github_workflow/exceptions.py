@@ -226,6 +226,28 @@ class UnpushedCommitsError(DataclassException, RuntimeError):
         return "Ask the person running the tool how to bring the two together."
 
 
+@dataclass
+class BranchDeletedFromGitHubError(DataclassException, LookupError):
+    """
+    Raised when a branch that was on GitHub is no longer there, as after its pull
+    request was merged.
+    """
+
+    branch: str
+    """
+    The branch.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.branch} was on GitHub and has been deleted there"
+
+    def suggest_correction(self) -> str:
+        return (
+            "Do not push it again; ask the person running the tool whether its work "
+            "is finished."
+        )
+
+
 # %% the checkout
 
 

@@ -19,6 +19,7 @@ from github_workflow.checkout import ProjectCheckout
 from github_workflow.command_line import WorkflowCommand
 from github_workflow.exceptions import (
     AssistantCreditError,
+    BranchDeletedFromGitHubError,
     BranchNotPushedError,
     DefaultBranchWriteError,
     DetachedHeadError,
@@ -344,6 +345,20 @@ def test_a_branch_with_unpushed_commits_github_diverged_from_is_left_alone(
         BranchSync(work).run()
 
     assert work.checkout.git.commit_at("HEAD") == before
+
+
+def test_a_branch_deleted_from_github_is_not_reported_as_never_pushed(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+):
+    """
+    GitHub deletes a branch once its pull request is merged; pushing it again would
+    bring it back.
+    """
+    deleter = repositories.clone(owned_url, "deleter").git
+    deleter.run("push", "--quiet", "origin", "--delete", "feature")
+
+    with pytest.raises(BranchDeletedFromGitHubError):
+        BranchSync(work).run()
 
 
 # %% rewriting a draft's description
