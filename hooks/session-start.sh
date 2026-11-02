@@ -7,9 +7,12 @@
 # shown. Never fails the session: whatever goes wrong is reported in that message.
 #
 # Reports once per session: a plugin synced from the claude.ai account can arrive after
-# the session started, so the first prompt reports when the start did not. Run with
-# "UserPromptSubmit" as its argument for that, it does nothing once the session was
-# reported.
+# the session started, and a session start that runs too long is cut off, so the first
+# prompt reports when the start did not. Run with "UserPromptSubmit" as its argument for
+# that, it does nothing once the session was reported.
+#
+# The session start never installs itself: it starts the install in a process of its own
+# and leaves the report to the first prompt, which waits for that install.
 #
 # GITHUB_WORKFLOW_PYTHON names an interpreter to run instead, with the package already
 # installed, and skips the install; development uses it.
@@ -23,15 +26,30 @@ REPORTED="${TMPDIR:-/tmp}/github-workflow-sessions/${SESSION:-unknown}"
 if [ "${EVENT}" != "SessionStart" ] && { [ -z "${SESSION}" ] || [ -e "${REPORTED}" ]; }; then
   exit 0
 fi
-mkdir -p "$(dirname "${REPORTED}")" && touch "${REPORTED}"
 
-# Answers the hook with one line shown to the person in bold red, when the package cannot
-# answer.
-report() {
+# Records that the session got its report.
+reported() {
+  mkdir -p "$(dirname "${REPORTED}")" && touch "${REPORTED}"
+}
+
+# Answers the hook with one line shown to the person, bold in the colour the second
+# argument names as an ANSI code: red (31) unless given.
+say() {
   local text="${1//\\/\\\\}"
   text="${text//\"/\\\"}"
-  printf '{"systemMessage": "\\u001b[1;31m%s\\u001b[0m"}\n' "${text}"
+  printf '{"systemMessage": "\\u001b[1;%sm%s\\u001b[0m"}\n' "${2:-31}" "${text}"
 }
+
+# Answers the hook with what went wrong, which counts as the session's report.
+report() {
+  reported
+  say "$1"
+}
+
+# Tells the session's later commands where the plugin is.
+if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+  printf 'export GITHUB_WORKFLOW_PLUGIN_ROOT=%q\n' "${PLUGIN_ROOT}" >>"${CLAUDE_ENV_FILE}"
+fi
 
 ERRORS="$(mktemp)"
 trap 'rm -f "${ERRORS}"' EXIT
@@ -40,8 +58,16 @@ if [ -n "${GITHUB_WORKFLOW_PYTHON:-}" ]; then
   PYTHON="${GITHUB_WORKFLOW_PYTHON}"
 else
   RUNTIME="${HOME}/.virtualenvs/githubworkflow-runtime"
-  if ! GITHUB_WORKFLOW_INSTALLED="$(python3 -I "${PLUGIN_ROOT}/src/github_workflow/install.py" "${PLUGIN_ROOT}" "${RUNTIME}" 2>"${ERRORS}")"; then
+  INSTALL=(python3 -I "${PLUGIN_ROOT}/src/github_workflow/install.py")
+  if [ "${EVENT}" = "SessionStart" ]; then
+    INSTALL+=(--background)
+  fi
+  if ! GITHUB_WORKFLOW_INSTALLED="$("${INSTALL[@]}" "${PLUGIN_ROOT}" "${RUNTIME}" 2>"${ERRORS}")"; then
     report "github-workflow: notes not loaded: $(tail -n 1 "${ERRORS}")"
+    exit 0
+  fi
+  if [ "${EVENT}" = "SessionStart" ] && [ -n "${GITHUB_WORKFLOW_INSTALLED}" ]; then
+    say "${GITHUB_WORKFLOW_INSTALLED}; the notes follow with the first prompt" 36
     exit 0
   fi
   export GITHUB_WORKFLOW_INSTALLED
@@ -52,14 +78,10 @@ if [ ! -x "${PYTHON}" ]; then
   exit 0
 fi
 
-# Tells the session's later commands where the plugin is.
-if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
-  printf 'export GITHUB_WORKFLOW_PLUGIN_ROOT=%q\n' "${PLUGIN_ROOT}" >>"${CLAUDE_ENV_FILE}"
-fi
-
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 if ! OUTPUT="$("${PYTHON}" -m github_workflow.session_start "${EVENT}" 2>"${ERRORS}")"; then
   report "github-workflow: notes not loaded: $(tail -n 1 "${ERRORS}")"
   exit 0
 fi
+reported
 printf '%s\n' "${OUTPUT}"
