@@ -9,10 +9,6 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from basstler_domain_model.github.pull_request_fields import (
-    PullRequestHeadKey,
-    PullRequestPayload,
-)
 from basstler_domain_model.github.pull_request_models import (
     CheckResult,
     CheckStatus,
@@ -23,16 +19,13 @@ from basstler_domain_model.github.repository_client import (
     PullRequestReader,
     ReviewRequests,
 )
+from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.review_models import (
     Author,
     ReviewThread,
     ThreadComment,
 )
-from basstler_domain_model.github.vocabulary import (
-    CheckOutcome,
-    MergeableState,
-    RestJSONKey,
-)
+from basstler_domain_model.github.vocabulary import CheckOutcome, MergeableState
 
 from github_workflow.hooks import Tone
 from github_workflow.pull_request_overview import (
@@ -40,6 +33,8 @@ from github_workflow.pull_request_overview import (
     PullRequestOverview,
     PullRequestSignalReader,
 )
+
+from .pull_requests import pull_request
 
 # %% pull requests in memory
 
@@ -71,7 +66,7 @@ class PullRequestsWithSignals(PullRequestReader, PullRequestSource, ReviewReques
     the person's review.
     """
 
-    mergeable: dict[int, str] = field(default_factory=dict)
+    mergeable: dict[int, MergeableState] = field(default_factory=dict)
     """
     Each pull request's merge state, by number.
     """
@@ -96,21 +91,17 @@ class PullRequestsWithSignals(PullRequestReader, PullRequestSource, ReviewReques
     How many pull requests wait on the person's review.
     """
 
-    def open_pull_requests(self) -> list[PullRequestPayload]:
+    def open_pull_requests(self) -> list[RestPullRequest]:
         return [self.pull_request(number) for number in self.mergeable]
 
-    def pull_request(self, number: int) -> PullRequestPayload:
-        return {
-            RestJSONKey.NUMBER: number,
-            RestJSONKey.TITLE: f"Change {number}",
-            RestJSONKey.DRAFT: number in self.drafts,
-            RestJSONKey.MERGEABLE_STATE: self.mergeable[number],
-            RestJSONKey.HEAD: {
-                PullRequestHeadKey.REFERENCE: f"branch-{number}",
-                PullRequestHeadKey.HEAD_REPOSITORY: None,
-                RestJSONKey.SHA: "0" * 40,
-            },
-        }
+    def pull_request(self, number: int) -> RestPullRequest:
+        return pull_request(
+            number,
+            f"branch-{number}",
+            title=f"Change {number}",
+            draft=number in self.drafts,
+            mergeable_state=self.mergeable[number],
+        )
 
     def resolve_pull_request_number(self, branch: str) -> int:
         return int(branch.removeprefix("branch-"))

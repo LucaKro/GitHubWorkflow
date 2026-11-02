@@ -69,6 +69,11 @@ class ProjectFile(PathEnumeration):
     The Actions workflow completing finding labels picked on GitHub.
     """
 
+    SOURCE_DIRECTORY = Path("src")
+    """
+    Where a Python project laid out with a source directory keeps its packages.
+    """
+
 
 class GitFile(PathEnumeration):
     """
@@ -86,7 +91,8 @@ class GitFile(PathEnumeration):
 
 class WorkflowTemplate(PathEnumeration):
     """
-    The files the workflow fills in and pushes, as shipped in the package.
+    The files the workflow fills in and writes to git or GitHub, as shipped in the
+    package.
     """
 
     DELETION_WORKFLOW = (
@@ -101,6 +107,30 @@ class WorkflowTemplate(PathEnumeration):
     )
     """
     The Actions workflow completing finding labels picked on GitHub.
+    """
+
+    PROOF_COMMENT = Path(__file__).parent / "templates" / "proof_comment.md"
+    """
+    The comment posting a finding's proof on its issue.
+    """
+
+
+# %% proving a finding
+
+
+class ProofFile(PathEnumeration):
+    """
+    The files a proof run writes into the scratch directory it is handed.
+    """
+
+    DEFAULT_BRANCH = Path("default-branch")
+    """
+    The default branch's files, with the finding's test written among them.
+    """
+
+    REPORT = Path("report.xml")
+    """
+    pytest's JUnit XML report on the test.
     """
 
 

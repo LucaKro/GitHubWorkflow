@@ -10,11 +10,6 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
-from basstler_domain_model.github.pull_request_fields import (
-    PullRequestField,
-    PullRequestHead,
-    PullRequestPayload,
-)
 from basstler_domain_model.github.pull_request_models import (
     UpstreamPullRequestSnapshot,
 )
@@ -24,6 +19,7 @@ from basstler_domain_model.github.repository_client import (
     PullRequestReader,
     ReviewRequests,
 )
+from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import MergeableState
 
 from github_workflow.hooks import ReportLine, Tone
@@ -59,7 +55,7 @@ class PullRequestSignals:
     Whether it is a draft.
     """
 
-    mergeable: str | None
+    mergeable: MergeableState | None
     """
     GitHub's word on merging it, ``None`` while GitHub has not worked it out.
     """
@@ -137,26 +133,25 @@ class PullRequestSignalReader:
         :return: What in it asks for attention.
         """
         with ThreadPoolExecutor() as pool:
-            record = pool.submit(self.pull_requests.pull_request, number)
+            pull_request = pool.submit(self.pull_requests.pull_request, number)
             snapshot = pool.submit(self.reviews.read_current_state, number)
-        return self.signals_of(record.result(), snapshot.result())
+        return self.signals_of(pull_request.result(), snapshot.result())
 
     @staticmethod
     def signals_of(
-        record: PullRequestPayload, snapshot: UpstreamPullRequestSnapshot
+        pull_request: RestPullRequest, snapshot: UpstreamPullRequestSnapshot
     ) -> PullRequestSignals:
         """
-        :param record: The pull request, as read on its own.
+        :param pull_request: The pull request, as read on its own.
         :param snapshot: Its checks and review threads.
         :return: What in it asks for attention.
         """
-        number = PullRequestField.NUMBER.read(record)
         return PullRequestSignals(
-            number,
-            PullRequestField.TITLE.read(record, number),
-            PullRequestHead.from_record(record, number).branch,
-            bool(PullRequestField.DRAFT.read(record, number)),
-            PullRequestField.MERGEABLE_STATE.read(record, number),
+            pull_request.number,
+            pull_request.title,
+            pull_request.head.branch,
+            pull_request.draft,
+            pull_request.mergeable_state,
             snapshot,
         )
 
@@ -189,8 +184,8 @@ class PullRequestOverview(ReportSection):
         with ThreadPoolExecutor() as pool:
             counted = pool.submit(self.requests.awaiting_my_review)
             numbers = [
-                PullRequestField.NUMBER.read(record)
-                for record in self.reader.pull_requests.open_pull_requests()
+                pull_request.number
+                for pull_request in self.reader.pull_requests.open_pull_requests()
             ]
             read = list(pool.map(self.reader.signals, numbers))
         waiting = counted.result()

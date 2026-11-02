@@ -1,6 +1,6 @@
 """
-A repository's issues and labels in memory, for the tests of what the workflow writes to
-them.
+A repository's issues, their comments and labels in memory, for the tests of what the
+workflow writes to them, and a stand-in for running a finding's test.
 """
 
 from __future__ import annotations
@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from basstler_domain_model.github.issue_models import Issue
+from basstler_domain_model.github.issue_models import Issue, IssueComment
 from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.repository_client import (
     IssueBoard,
@@ -16,7 +16,9 @@ from basstler_domain_model.github.repository_client import (
 )
 from basstler_domain_model.github.vocabulary import IssueState, IssueStateReason
 
-from github_workflow.findings import FindingStage, Priority
+from github_workflow.findings import FindingLabel, FindingStage, Priority
+from github_workflow.proofs import FindingTest, ProofAttempt, ProofRunner
+from github_workflow.settings import WorkflowSettings
 
 # %% an issue board in memory
 
@@ -35,6 +37,16 @@ class IssuesInMemory(IssueBoard, RepositoryLabels):
     present_labels: set[str] = field(default_factory=set)
     """
     The labels the repository carries.
+    """
+
+    posted: dict[int, list[IssueComment]] = field(default_factory=dict)
+    """
+    The comments on each issue, by number, oldest first.
+    """
+
+    author: str = WorkflowSettings().owner
+    """
+    The login every comment added is posted as.
     """
 
     writes: list[str] = field(default_factory=list)
@@ -76,7 +88,11 @@ class IssuesInMemory(IssueBoard, RepositoryLabels):
 
     def add_comment(self, number: int, body: str) -> str:
         self.writes.append(f"add_comment {number} {body}")
+        self.posted.setdefault(number, []).append(IssueComment(self.author, body))
         return ""
+
+    def comments(self, number: int) -> list[IssueComment]:
+        return list(self.posted.get(number, []))
 
     def close_issue(self, number: int, reason: IssueStateReason) -> None:
         self.writes.append(f"close_issue {number} {reason}")
@@ -88,3 +104,35 @@ def finding(number: int, stage: FindingStage, priority: Priority) -> Issue:
     :param priority: How urgent it is.
     :return: The finding as an open issue."""
     return Issue(number, f"Finding {number}", (stage, priority), IssueState.OPEN)
+
+
+def labelled_board(*issues: Issue) -> IssuesInMemory:
+    """:param issues: The issues on the board.
+    :return: A board holding them, carrying every finding label already."""
+    return IssuesInMemory(
+        {issue.number: issue for issue in issues}, set(FindingLabel.every_label)
+    )
+
+
+# %% running a finding's test
+
+
+@dataclass(frozen=True)
+class PresetOutcomeRunner(ProofRunner):
+    """
+    Answers every test with one attempt set in advance, recording the tests it ran.
+    """
+
+    outcome: ProofAttempt
+    """
+    The attempt every test is answered with.
+    """
+
+    ran: list[FindingTest] = field(default_factory=list)
+    """
+    The tests it was asked to run, in order.
+    """
+
+    def attempt(self, test: FindingTest) -> ProofAttempt:
+        self.ran.append(test)
+        return self.outcome

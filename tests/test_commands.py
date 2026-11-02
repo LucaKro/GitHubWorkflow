@@ -1,7 +1,7 @@
 """
-Tests for the two commands: the session start reads the notes into ``CLAUDE.local.md``
-and never pushes, the save pushes them back, and neither writes to anyone else's
-repository.
+Tests for the commands: the session start reads the notes into ``CLAUDE.local.md`` and
+never pushes, the save pushes them back, neither writes to anyone else's repository, and
+the finding commands that run a test run it on the owner's default branch.
 """
 
 from __future__ import annotations
@@ -21,8 +21,12 @@ from basstler_domain_model.environment import (
     GitHubActionsVariable,
     GitHubCredentialVariable,
 )
+from basstler_domain_model.git.commands import RemoteName
 from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
-from basstler_domain_model.github.repository_client import PullRequestListState
+from basstler_domain_model.github.repository_client import (
+    GitHubRepository,
+    PullRequestListState,
+)
 from basstler_domain_model.github.routes import QueryParameter, RepositoryRoute
 from basstler_domain_model.github.vocabulary import IssueState, RestJSONKey
 from basstler_domain_model.locations import PathEnumeration
@@ -30,14 +34,26 @@ from basstler_domain_model.repository import Repository
 
 import github_workflow
 import github_workflow.session_start
+from github_workflow.__main__ import WorkflowSession
 from github_workflow.checkout import ProjectCheckout
+from github_workflow.command_line import FindingSubcommand
 from github_workflow.environment import WorkflowVariable
 from github_workflow.exceptions import NoOwnedRemoteError
-from github_workflow.findings import FindingStage
+from github_workflow.findings import (
+    FindingDraftOpening,
+    FindingFiling,
+    FindingProving,
+    FindingRecheck,
+    FindingStage,
+    FindingUnproving,
+    Priority,
+    ProvenFindingFiling,
+)
 from github_workflow.hooks import HookKey, HookValue, Tone
 from github_workflow.locations import GitFile, NotesFile, ProjectFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection
+from github_workflow.proofs import DefaultBranchProofRunner, FindingTest
 from github_workflow.command_line import NotesSubcommand, WorkflowCommand
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.settings import WorkflowSettings
@@ -480,3 +496,185 @@ def test_saving_in_somebody_else_s_repository_is_refused(
 
     assert finished.returncode != 0
     assert repositories.branches(foreign_url) == before
+
+
+# %% finding commands that run a test
+
+
+@pytest.fixture
+def finding_checkout(
+    repositories: RepositoriesByOwner, owned_url: str, monkeypatch: pytest.MonkeyPatch
+) -> ProjectCheckout:
+    """:return: A clone of the owner's repository holding an uncommitted finding test
+    and a finding's description, the command's working directory."""
+    checkout = repositories.clone(owned_url, "session")
+    monkeypatch.chdir(checkout.root)
+    (checkout.root / "tests").mkdir()
+    (checkout.root / "tests" / "test_finding.py").write_text("def test_it(): ...\n")
+    (checkout.root / "finding.md").write_text("What was found.\n")
+    return checkout
+
+
+@pytest.fixture
+def signed_in(github: ReplayedApi) -> str:
+    """:return: The login GitHub answers the workflow's token belongs to."""
+    login = "a-signed-in-account"
+    github.answers[("GET", f"/{RepositoryRoute.authenticated_user()}")] = (
+        RecordedAnswer(HTTPStatus.OK, json.dumps({RestJSONKey.LOGIN: login}))
+    )
+    return login
+
+
+def step_for(checkout: ProjectCheckout, *arguments: str) -> object:
+    """:param checkout: The checkout the command runs in.
+    :param arguments: The command line.
+    :return: The step it asks for."""
+    parsed = WorkflowSession.parser().parse_args(list(arguments))
+    return WorkflowSession(checkout.root, WorkflowSettings()).step(parsed)
+
+
+def owner_s_github(settings: WorkflowSettings) -> GitHubRepository:
+    """:param settings: The workflow's settings.
+    :return: The owner's scratch repository, as the replayed GitHub serves it."""
+    return GitHubRepository.from_environment(
+        Repository(settings.owner, RepositoriesByOwner.repository_name)
+    )
+
+
+def runner_in(checkout: ProjectCheckout) -> DefaultBranchProofRunner:
+    """:param checkout: The checkout.
+    :return: Runs tests on its owner's default branch with an interpreter named
+    ``project-python``."""
+    return DefaultBranchProofRunner(
+        checkout.git,
+        RemoteName.ORIGIN,
+        RepositoriesByOwner.default_branch,
+        "project-python",
+    )
+
+
+def finding_test_in(checkout: ProjectCheckout) -> FindingTest:
+    """:param checkout: The checkout.
+    :return: The finding test it holds."""
+    return FindingTest.read(checkout, checkout.root / "tests" / "test_finding.py")
+
+
+def test_a_finding_filed_with_a_test_is_proven_on_the_default_branch(
+    finding_checkout: ProjectCheckout, settings: WorkflowSettings
+):
+    step = step_for(
+        finding_checkout,
+        WorkflowCommand.FINDING,
+        FindingSubcommand.FILE,
+        "--title=A title",
+        "--body-file=finding.md",
+        f"--priority={Priority.HIGH.level}",
+        "--test=tests/test_finding.py",
+        "--python=project-python",
+    )
+
+    github = owner_s_github(settings)
+    assert step == ProvenFindingFiling(
+        github,
+        github,
+        "A title",
+        "What was found.\n",
+        Priority.HIGH,
+        finding_test_in(finding_checkout),
+        runner_in(finding_checkout),
+    )
+
+
+def test_a_finding_filed_without_a_test_runs_none(
+    finding_checkout: ProjectCheckout, settings: WorkflowSettings
+):
+    step = step_for(
+        finding_checkout,
+        WorkflowCommand.FINDING,
+        FindingSubcommand.FILE,
+        "--title=A title",
+        "--body-file=finding.md",
+        f"--priority={Priority.HIGH.level}",
+    )
+
+    github = owner_s_github(settings)
+    assert step == FindingFiling(
+        github, github, "A title", "What was found.\n", Priority.HIGH
+    )
+
+
+def test_proving_runs_the_test_on_the_default_branch(
+    finding_checkout: ProjectCheckout, settings: WorkflowSettings
+):
+    step = step_for(
+        finding_checkout,
+        WorkflowCommand.FINDING,
+        FindingSubcommand.PROVE,
+        "3",
+        "--test=tests/test_finding.py",
+        "--python=project-python",
+    )
+
+    github = owner_s_github(settings)
+    assert step == FindingProving(
+        github,
+        github,
+        3,
+        finding_test_in(finding_checkout),
+        runner_in(finding_checkout),
+    )
+
+
+def test_marking_unproven_keeps_the_reason(
+    finding_checkout: ProjectCheckout, settings: WorkflowSettings
+):
+    step = step_for(
+        finding_checkout,
+        WorkflowCommand.FINDING,
+        FindingSubcommand.MARK_UNPROVEN,
+        "3",
+        "--reason=Needs a live server",
+    )
+
+    github = owner_s_github(settings)
+    assert step == FindingUnproving(github, github, 3, "Needs a live server")
+
+
+def test_a_recheck_trusts_the_owner_and_the_signed_in_account(
+    finding_checkout: ProjectCheckout, settings: WorkflowSettings, signed_in: str
+):
+    step = step_for(
+        finding_checkout,
+        WorkflowCommand.FINDING,
+        FindingSubcommand.RECHECK,
+        "3",
+        "--python=project-python",
+    )
+
+    assert step == FindingRecheck(
+        owner_s_github(settings),
+        runner_in(finding_checkout),
+        {settings.owner, signed_in},
+        3,
+    )
+
+
+def test_a_draft_naming_a_finding_rechecks_it_first(
+    finding_checkout: ProjectCheckout, settings: WorkflowSettings, signed_in: str
+):
+    step = step_for(
+        finding_checkout,
+        WorkflowCommand.DRAFT,
+        "--title=A title",
+        "--body-file=finding.md",
+        "--finding=3",
+        "--python=project-python",
+    )
+
+    assert isinstance(step, FindingDraftOpening)
+    assert step.recheck == FindingRecheck(
+        owner_s_github(settings),
+        runner_in(finding_checkout),
+        {settings.owner, signed_in},
+        3,
+    )
