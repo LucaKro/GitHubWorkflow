@@ -1,6 +1,6 @@
 """
 Fixtures shared by every test: scratch repositories laid out by owner, standing in for
-GitHub accounts.
+GitHub accounts, committed to under their configured identity.
 """
 
 from __future__ import annotations
@@ -8,10 +8,24 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from basstler_domain_model.environment import GitIdentityVariable
 
 from github_workflow.settings import WorkflowSettings
 
 from .repositories_by_owner import RepositoriesByOwner
+
+# %% identity
+
+
+@pytest.fixture(autouse=True)
+def configured_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Clears the identity variables the environment may set, so every commit is made under
+    the identity its checkout configures.
+    """
+    for variable in GitIdentityVariable:
+        monkeypatch.delenv(variable, raising=False)
+
 
 # %% repositories
 
