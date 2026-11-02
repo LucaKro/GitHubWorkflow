@@ -75,7 +75,7 @@ def test_progress_is_saved_for_the_branch_it_was_loaded_for(
     NotesSave(checkout, notes_of(checkout, settings)).run()
 
     notes = notes_of(checkout, settings)
-    assert notes.read(NotesFile.progress_of("feature-a")) == "progress on a"
+    assert notes.read(NotesFile.progress_of("feature-a")) == "progress on a\n"
     assert notes.read(NotesFile.progress_of("feature-b")) is None
 
 
