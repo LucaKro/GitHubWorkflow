@@ -69,7 +69,7 @@ class NotesSave:
         changed = {
             path: f"{text}\n"
             for path, text in files.items()
-            if (self.notes.read(path) or "") != text
+            if (self.notes.read(path) or "").strip() != text
         }
         if changed:
             self.notes.write(changed, f"Save notes from {branch or 'a detached HEAD'}")

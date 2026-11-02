@@ -109,11 +109,13 @@ class SessionStart:
         exists = notes.fetch()
         branch = git.checked_out_branch()
         sections = {
-            NotesSection.STANDING_NOTES: notes.read(NotesFile.STANDING_NOTES) or ""
+            NotesSection.STANDING_NOTES: (
+                notes.read(NotesFile.STANDING_NOTES) or ""
+            ).strip()
         }
         progress = notes.read(NotesFile.progress_of(branch)) if branch else None
         if branch:
-            sections[NotesSection.BRANCH_PROGRESS] = progress or ""
+            sections[NotesSection.BRANCH_PROGRESS] = (progress or "").strip()
         source = f"{remote.repository.full_name}, branch {self.settings.notes_branch}"
         block = NotesBlock(
             source,

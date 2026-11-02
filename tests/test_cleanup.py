@@ -199,7 +199,7 @@ def test_a_branch_the_session_may_not_delete_is_listed_for_the_workflow(
 
     notes = cleanup.notes
     notes.fetch()
-    assert notes.read(NotesFile.READY_FOR_DELETION.value) == "closed-work"
+    assert notes.read(NotesFile.READY_FOR_DELETION.value) == "closed-work\n"
     assert settings.notes_branch in notes.read(NotesFile.DELETION_WORKFLOW.value)
 
 

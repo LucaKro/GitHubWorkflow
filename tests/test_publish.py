@@ -31,5 +31,5 @@ def test_results_land_on_the_results_branch_under_their_directory_s_name(
     reader = repositories.clone(owned_url, "reader").git
     results = StorageBranch(reader, RemoteBranch(RemoteName.ORIGIN, ResultsBranch.NAME))
     results.fetch()
-    assert results.read(Path("check-1/report.md")) == "all well"
+    assert results.read(Path("check-1/report.md")) == "all well\n"
     assert checkout.git.run("status", "--porcelain") == before

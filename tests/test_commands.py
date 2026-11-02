@@ -225,6 +225,25 @@ def test_a_session_starts_with_the_notes_and_this_branch_s_progress(
     assert sections[NotesSection.BRANCH_PROGRESS] == "halfway there"
 
 
+def test_a_loaded_note_sits_between_its_markers_as_written(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    note = "a standing note"
+    writer = repositories.clone(owned_url, "writer")
+    NotesBranch.on(
+        writer.git, OwnedRemotes.read(writer.git, settings).chosen, settings
+    ).write({Path(NotesFile.STANDING_NOTES): f"{note}\n"}, "Save")
+    checkout = repositories.clone(owned_url, "session")
+
+    start_session(checkout)
+
+    section = NotesSection.STANDING_NOTES
+    assert (
+        f"{section.start_marker}\n{note}\n{section.end_marker}"
+        in checkout.claude_local.read_text()
+    )
+
+
 def test_claude_local_md_is_excluded_from_git_once(
     repositories: RepositoriesByOwner, owned_url: str
 ):
@@ -467,7 +486,7 @@ def test_an_edited_note_is_saved_to_the_notes_branch(
 
     assert (
         saved_notes(repositories, owned_url, settings).read(NotesFile.STANDING_NOTES)
-        == "a new note"
+        == "a new note\n"
     )
 
 
@@ -476,6 +495,22 @@ def test_saving_without_changes_pushes_nothing(
 ):
     checkout = repositories.clone(owned_url, "session")
     start_session(checkout)
+    before = repositories.branches(owned_url)
+
+    save(checkout)
+
+    assert repositories.branches(owned_url) == before
+
+
+def test_saving_a_saved_note_again_pushes_nothing(
+    repositories: RepositoriesByOwner, owned_url: str
+):
+    checkout = repositories.clone(owned_url, "session")
+    start_session(checkout)
+    document = checkout.claude_local.read_text()
+    marker = NotesSection.STANDING_NOTES.start_marker
+    checkout.claude_local.write_text(document.replace(marker, f"{marker}\na new note"))
+    save(checkout)
     before = repositories.branches(owned_url)
 
     save(checkout)
