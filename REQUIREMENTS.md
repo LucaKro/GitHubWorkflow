@@ -16,6 +16,15 @@ contradicts one of these changes this file first.
   repository it targets, or the URL of the remote a push goes to, belongs to anyone
   else. Reading other repositories is allowed.
 
+## Cloud sessions
+
+- A cloud environment gets the workflow through `scripts/cloud-setup.sh` as its setup
+  script, with GitHubWorkflow attached to the environment (it stays private): the
+  runtime is installed, and the hooks and the workflow's permission are written into
+  the session's user settings, since a cloud session loads no plugin from a marketplace.
+- `scripts/cloud-check.sh` checks a cloud session end to end and publishes its report
+  to the results branch.
+
 ## What a session starts with
 
 Loaded automatically, kept as small as possible and produced by code rather than by the
@@ -62,9 +71,10 @@ them:
 - A branch that is no longer needed - its pull request merged, closed or rejected - is
   listed as ready for deletion in the notes, rather than deleted on the spot: a cloud
   session cannot delete branches.
-- A local session deletes every listed branch itself. A GitHub Actions workflow that runs
-  when the notes branch is pushed deletes them too, so a cloud session only has to push
-  the notes.
+- `cleanup` deletes the branches ready for deletion: those whose pull request is closed
+  and that are still at the commit it was closed at. Where the session may not delete
+  branches (a cloud session), it lists them on the notes branch with a GitHub Actions
+  workflow that deletes them when the notes branch is pushed.
 - The tool turns on GitHub's own deletion of a merged pull request's branch on every
   repository it works on, so most branches never need listing. Only a local session can:
   a cloud session may read a repository's settings but not change them.
