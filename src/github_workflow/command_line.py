@@ -55,7 +55,8 @@ class WorkflowCommand(StrEnum):
 
     FINDING = "finding"
     """
-    File, prioritize, list, accept, shelve or reject findings.
+    File, prioritize, list, accept, shelve or reject findings, or have GitHub complete
+    the finding labels picked there.
     """
 
     CLEANUP = "cleanup"
@@ -145,6 +146,12 @@ class FindingSubcommand(StrEnum):
     REJECT = "reject"
     """
     Reject a finding as incorrect, with a reason, on the person's word.
+    """
+
+    AUTOMATE = "automate"
+    """
+    Write the Actions workflow completing finding labels picked on GitHub into the
+    checkout.
     """
 
 

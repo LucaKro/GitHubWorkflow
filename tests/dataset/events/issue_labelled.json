@@ -1,0 +1,16 @@
+{
+  "action": "labeled",
+  "issue": {
+    "number": 20,
+    "title": "No timeouts on HTTP or subprocess calls",
+    "state": "open",
+    "labels": [
+      {"name": "finding: unreviewed"},
+      {"name": "priority: high"},
+      {"name": "finding: shelved"}
+    ]
+  },
+  "label": {"name": "finding: shelved", "color": "d4c5f9"},
+  "repository": {"name": "basstler_domain_model", "full_name": "LucaKro/basstler_domain_model"},
+  "sender": {"login": "LucaKro"}
+}

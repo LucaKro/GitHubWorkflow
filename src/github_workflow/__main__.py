@@ -39,6 +39,7 @@ from github_workflow.findings import (
     FindingShelving,
     Priority,
 )
+from github_workflow.label_events import FindingAutomation
 from github_workflow.pull_request_overview import (
     PullRequestDetails,
     PullRequestSignalReader,
@@ -171,6 +172,8 @@ class WorkflowSession(RepositoryDetails):
                 return FindingRejection(
                     self.github, self.github, arguments.number, arguments.reason
                 )
+            case WorkflowCommand.FINDING, FindingSubcommand.AUTOMATE:
+                return FindingAutomation(self.checkout.root)
             case WorkflowCommand.CLEANUP, _:
                 git = self.checkout.git
                 notes = NotesBranch.on(git, self.remote, self.settings)
@@ -280,6 +283,10 @@ class WorkflowSession(RepositoryDetails):
         )
         reject.add_argument("number", type=int)
         reject.add_argument("--reason", required=True)
+        finding_actions.add_parser(
+            FindingSubcommand.AUTOMATE,
+            help="write the Actions workflow completing finding labels picked on GitHub",
+        )
         commands.add_parser(
             WorkflowCommand.CLEANUP, help="delete branches of closed pull requests"
         )
