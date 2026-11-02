@@ -298,6 +298,8 @@ class BranchSync(WorkflowStep):
     moved to the copy GitHub rebased when every local commit had been pushed.
 
     :raises BranchDeletedFromGitHubError: If GitHub had the branch and no longer has it.
+    :raises GitCommandFailed: If GitHub cannot be reached, or the fetch fails although
+        GitHub has the branch.
     """
 
     policy: WritePolicy
@@ -312,10 +314,12 @@ class BranchSync(WorkflowStep):
             raise DetachedHeadError()
         branch = RemoteBranch(self.policy.remote.name, name)
         last_seen = git.commit_or_none(branch.tracking_reference)
-        fetched = git.fetch_branch(branch.remote, name, branch.remote).succeeded
-        if not fetched and last_seen is not None:
+        fetched = git.fetch_branch(branch.remote, name, branch.remote)
+        if not fetched.succeeded and git.has_remote_branch(branch):
+            fetched.raise_if_failed()
+        if not fetched.succeeded and last_seen is not None:
             raise BranchDeletedFromGitHubError(name)
-        if not fetched:
+        if not fetched.succeeded:
             return f"{name} is not on GitHub yet"
         on_github = git.commit_at(branch.tracking_reference)
         local = git.commit_at("HEAD")

@@ -13,6 +13,7 @@ import pytest
 
 import github_workflow
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
+from basstler_domain_model.git.exceptions import GitCommandFailed
 from basstler_domain_model.github.repository_client import RepositoryDetails
 
 from github_workflow.checkout import ProjectCheckout
@@ -423,6 +424,39 @@ def test_a_branch_deleted_from_github_is_not_reported_as_never_pushed(
     deleter.run("push", "--quiet", "origin", "--delete", "feature")
 
     with pytest.raises(BranchDeletedFromGitHubError):
+        BranchSync(work).run()
+
+
+def cut_off_from_github(policy: WritePolicy, repositories: RepositoriesByOwner) -> None:
+    """
+    :param policy: The rules of a clone, whose remote then points where no repository
+        is.
+    :param repositories: The scratch repositories.
+    """
+    unreachable = (
+        repositories.root / "unreachable" / f"{repositories.repository_name}.git"
+    )
+    policy.checkout.git.run(
+        "remote", "set-url", policy.remote.name, f"file://{unreachable}"
+    )
+
+
+def test_a_pushed_branch_is_not_reported_deleted_when_github_cannot_be_reached(
+    work: WritePolicy, repositories: RepositoriesByOwner
+) -> None:
+    cut_off_from_github(work, repositories)
+
+    with pytest.raises(GitCommandFailed):
+        BranchSync(work).run()
+
+
+def test_a_branch_is_not_reported_unpushed_when_github_cannot_be_reached(
+    work: WritePolicy, repositories: RepositoriesByOwner
+) -> None:
+    BranchStart(work, "unpushed").run()
+    cut_off_from_github(work, repositories)
+
+    with pytest.raises(GitCommandFailed):
         BranchSync(work).run()
 
 
