@@ -63,8 +63,7 @@ class OwnedRemotes:
         owned = tuple(
             OwnedRemote(remote.name, remote.push_url, remote.repository)
             for remote in remotes
-            if remote.repository is not None
-            and remote.repository.owner.casefold() == settings.owner.casefold()
+            if remote.repository is not None and settings.owns(remote.repository)
         )
         return cls(owned, tuple(remote.name for remote in remotes), settings.owner)
 

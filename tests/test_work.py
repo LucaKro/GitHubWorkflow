@@ -15,7 +15,9 @@ import github_workflow
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
 from basstler_domain_model.git.exceptions import GitCommandFailed
 from basstler_domain_model.github.repository_client import RepositoryDetails
+from basstler_domain_model.repository import Repository
 
+from github_workflow.__main__ import WorkflowSession
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.command_line import WorkflowCommand
 from github_workflow.exceptions import (
@@ -24,6 +26,7 @@ from github_workflow.exceptions import (
     BranchNotPushedError,
     DefaultBranchWriteError,
     DetachedHeadError,
+    ForeignRepositoryCloneError,
     NotADraftError,
     PushRefusedError,
     UnpushedCommitsError,
@@ -40,6 +43,7 @@ from github_workflow.work import (
     DescriptionRewrite,
     DraftOpening,
     PushWork,
+    RepositoryCloning,
 )
 
 from .repositories_by_owner import RepositoriesByOwner
@@ -492,3 +496,64 @@ def test_a_pull_request_that_is_no_open_draft_keeps_its_description(
         DescriptionRewrite(github, github, 1, "A new body").run()
 
     assert github.writes == []
+
+
+# %% cloning
+
+
+def test_a_repository_of_the_owner_s_is_cloned_into_the_directory(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    repository = Repository(settings.owner, RepositoriesByOwner.repository_name)
+    directory = repositories.root / "session"
+
+    RepositoryCloning(
+        repository, directory, settings, f"file://{repositories.root}"
+    ).run()
+
+    [published] = repositories.branches(owned_url).splitlines()
+    clone = GitCommandRunner(directory / repository.name)
+    assert clone.commit_at("HEAD") == published.split()[0]
+
+
+def test_cloning_somebody_else_s_repository_is_refused_before_it_is_tried(
+    repositories: RepositoriesByOwner, foreign_url: str, settings: WorkflowSettings
+):
+    repository = Repository(
+        RepositoriesByOwner.foreign_owner, RepositoriesByOwner.repository_name
+    )
+    directory = repositories.root / "session"
+
+    with pytest.raises(ForeignRepositoryCloneError):
+        RepositoryCloning(
+            repository, directory, settings, f"file://{repositories.root}"
+        ).run()
+
+    assert not directory.exists()
+
+
+def test_a_clone_from_inside_a_checkout_goes_next_to_it(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    checkout = repositories.clone(owned_url, "mine")
+    repository = Repository(settings.owner, "another")
+    arguments = WorkflowSession.parser().parse_args(
+        [WorkflowCommand.CLONE, repository.full_name]
+    )
+
+    step = WorkflowSession(checkout.root, settings).step(arguments)
+
+    assert step == RepositoryCloning(repository, checkout.root.parent, settings)
+
+
+def test_a_clone_from_outside_a_checkout_goes_into_the_directory(
+    tmp_path: Path, settings: WorkflowSettings
+):
+    repository = Repository(settings.owner, "another")
+    arguments = WorkflowSession.parser().parse_args(
+        [WorkflowCommand.CLONE, repository.full_name]
+    )
+
+    step = WorkflowSession(tmp_path, settings).step(arguments)
+
+    assert step == RepositoryCloning(repository, tmp_path, settings)

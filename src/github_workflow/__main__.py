@@ -16,6 +16,7 @@ from basstler_domain_model.github.repository_client import (
     GitHubRepository,
     RepositoryDetails,
 )
+from basstler_domain_model.repository import Repository
 
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.command_line import (
@@ -52,6 +53,7 @@ from github_workflow.work import (
     DraftOpening,
     NotesSaving,
     PushWork,
+    RepositoryCloning,
     StackPlacing,
     WorkflowStep,
 )
@@ -177,6 +179,12 @@ class WorkflowSession(RepositoryDetails):
                     arguments.number,
                     arguments.body_file.read_text(),
                 )
+            case WorkflowCommand.CLONE, _:
+                around = ProjectCheckout.around(self.directory)
+                directory = self.directory if around is None else around.root.parent
+                return RepositoryCloning(
+                    Repository.parse(arguments.repository), directory, self.settings
+                )
 
     @staticmethod
     def parser() -> argparse.ArgumentParser:
@@ -256,6 +264,10 @@ class WorkflowSession(RepositoryDetails):
         )
         describe.add_argument("number", type=int, help="the draft pull request")
         describe.add_argument("--body-file", required=True, type=Path)
+        clone = commands.add_parser(
+            WorkflowCommand.CLONE, help="clone another of the owner's repositories"
+        )
+        clone.add_argument("repository", help="the repository, as owner/name")
         return parser
 
 
