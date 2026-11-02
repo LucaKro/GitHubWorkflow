@@ -254,7 +254,7 @@ def test_a_session_outside_a_checkout_says_so_in_one_line(tmp_path: Path):
 
 def test_the_hook_answers_even_without_the_package(tmp_path: Path):
     finished = subprocess.run(
-        [str(Path(__file__).parents[1] / "plugin" / "hooks" / "session-start.sh")],
+        [str(Path(__file__).parents[1] / "hooks" / "session-start.sh")],
         cwd=tmp_path,
         capture_output=True,
         text=True,

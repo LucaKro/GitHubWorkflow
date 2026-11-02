@@ -6,7 +6,7 @@
   "plugins": [
     {
       "name": "github-workflow",
-      "source": "./plugin",
+      "source": "./",
       "description": "Standing notes and per-branch progress every session starts with, kept on a notes branch of each repository."
     }
   ]

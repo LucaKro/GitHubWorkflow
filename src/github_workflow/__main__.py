@@ -8,7 +8,6 @@ Usage: ``python -m github_workflow <command> ...``; ``--help`` lists the command
 from __future__ import annotations
 
 import argparse
-import sys
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
@@ -42,7 +41,6 @@ from github_workflow.pull_request_overview import (
     PullRequestSignalReader,
 )
 from github_workflow.remotes import OwnedRemote, OwnedRemotes
-from github_workflow.runtime import Runtime, RuntimeRebuild
 from github_workflow.settings import WorkflowSettings
 from github_workflow.stacks import StackPlacement
 from github_workflow.work import (
@@ -176,10 +174,6 @@ class WorkflowSession(RepositoryDetails):
                     arguments.number,
                     arguments.body_file.read_text(),
                 )
-            case WorkflowCommand.UPDATE, _:
-                return RuntimeRebuild(
-                    Runtime.installed(), Path(sys.executable).parent.parent
-                )
 
     @staticmethod
     def parser() -> argparse.ArgumentParser:
@@ -252,9 +246,6 @@ class WorkflowSession(RepositoryDetails):
         )
         describe.add_argument("number", type=int, help="the draft pull request")
         describe.add_argument("--body-file", required=True, type=Path)
-        commands.add_parser(
-            WorkflowCommand.UPDATE, help="rebuild the runtime from main"
-        )
         return parser
 
 

@@ -29,7 +29,7 @@ from github_workflow.notes.document import NotesBlock, NotesSection
 from github_workflow.command_line import NotesSubcommand, WorkflowCommand
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.report import SectionName
-from github_workflow.runtime import Runtime
+from github_workflow.environment import WorkflowVariable
 from github_workflow.settings import WorkflowSettings
 
 # %% the session start
@@ -64,12 +64,11 @@ class SessionStart:
         with ThreadPoolExecutor() as pool:
             notes = pool.submit(self.load_notes)
             computed = [pool.submit(self.section, name) for name in sections]
-            notice = pool.submit(Runtime.installed().notice, self.checkout.git)
-        lines = [notes.result()]
+        installed = WorkflowVariable.INSTALLED.read()
+        lines = [ReportLine(installed, Tone.NEWS)] if installed else []
+        lines.append(notes.result())
         for section in computed:
             lines += section.result()
-        if notice.result() is not None:
-            lines.append(ReportLine(notice.result(), Tone.ACTION))
         return lines
 
     def section(self, name: SectionName) -> list[ReportLine]:

@@ -226,53 +226,6 @@ class UnpushedCommitsError(DataclassException, RuntimeError):
         return "Ask the person running the tool how to bring the two together."
 
 
-# %% the runtime
-
-
-@dataclass
-class NotARuntimeError(DataclassException, RuntimeError):
-    """
-    Raised when the runtime is to be rebuilt from an interpreter running the workflow
-    from a checkout.
-    """
-
-    location: str
-    """
-    The interpreter's environment.
-    """
-
-    def error_message(self) -> str:
-        return f"{self.location} runs the workflow from a checkout, not from main"
-
-    def suggest_correction(self) -> str:
-        return (
-            "Update the checkout instead, or run update with the runtime's interpreter."
-        )
-
-
-@dataclass
-class RuntimeBuildFailedError(DataclassException, RuntimeError):
-    """
-    Raised when building the new runtime fails; the runtime in use is left as it was.
-    """
-
-    step: str
-    """
-    The step that failed.
-    """
-
-    detail: str
-    """
-    What it said.
-    """
-
-    def error_message(self) -> str:
-        return f"rebuilding the runtime failed at {self.step}: {self.detail}"
-
-    def suggest_correction(self) -> str:
-        return "The runtime in use is unchanged; fix the cause and run update again."
-
-
 # %% the checkout
 
 

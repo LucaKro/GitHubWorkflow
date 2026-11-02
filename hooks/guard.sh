@@ -7,8 +7,8 @@
 # reason, rather than let through unjudged.
 #
 # Runs the package from the interpreter GITHUB_WORKFLOW_PYTHON names, by default the
-# githubworkflow-runtime virtual environment, where the package is installed from main
-# rather than from a checkout that may be on any branch.
+# githubworkflow-runtime virtual environment, which the session start installs from this
+# plugin.
 set -uo pipefail
 
 PYTHON="${GITHUB_WORKFLOW_PYTHON:-${HOME}/.virtualenvs/githubworkflow-runtime/bin/python}"
