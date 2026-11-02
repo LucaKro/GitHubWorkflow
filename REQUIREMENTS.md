@@ -18,10 +18,12 @@ contradicts one of these changes this file first.
 
 ## Cloud sessions
 
-- A cloud environment gets the workflow through `scripts/cloud-setup.sh` as its setup
-  script, with GitHubWorkflow attached to the environment (it stays private): the
-  runtime is installed, and the hooks and the workflow's permission are written into
-  the session's user settings, since a cloud session loads no plugin from a marketplace.
+- A cloud session gets the workflow as a plugin enabled on my claude.ai account
+  (Customize > Plugins, from the private GitHubWorkflow marketplace): its session start
+  installs the runtime from the plugin's own copy, so neither an attached GitHubWorkflow
+  nor a setup script is needed, and the repository worked in can be any of mine.
+- The cloud environment sets the git identity commits are authored with
+  (`GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, `GIT_COMMITTER_EMAIL`).
 - `scripts/cloud-check.sh` checks a cloud session end to end and publishes its report
   to the results branch.
 

@@ -63,7 +63,7 @@ class GuardDataset(PathEnumeration):
     A push after a here-document has ended.
     """
 
-    HOOK_SCRIPT = Path(__file__).parents[1] / "plugin" / "hooks" / "guard.sh"
+    HOOK_SCRIPT = Path(__file__).parents[1] / "hooks" / "guard.sh"
     """
     The hook the plugin runs.
     """

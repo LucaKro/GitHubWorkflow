@@ -19,21 +19,13 @@ class WorkflowVariable(EnvironmentVariable):
     The interpreter the package is installed in, for the hooks to run it with.
     """
 
-
-# %% git, run without a person at the keyboard
-
-
-class GitBatchVariable(EnvironmentVariable):
+    INSTALLED = "GITHUB_WORKFLOW_INSTALLED"
     """
-    The variables that keep git from asking for credentials when nobody can answer.
+    What the session start's hook installed before the session began, empty when
+    nothing.
     """
 
-    TERMINAL_PROMPT = "GIT_TERMINAL_PROMPT"
+    PLUGIN_ROOT = "GITHUB_WORKFLOW_PLUGIN_ROOT"
     """
-    Whether git may prompt on the terminal; ``0`` makes it fail instead.
-    """
-
-    SSH_COMMAND = "GIT_SSH_COMMAND"
-    """
-    The ssh command git runs, here one that fails instead of asking.
+    Where the plugin is, set for the session's commands, such as the cloud check.
     """

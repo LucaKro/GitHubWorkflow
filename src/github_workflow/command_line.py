@@ -73,11 +73,6 @@ class WorkflowCommand(StrEnum):
     Rewrite the description of an open draft pull request.
     """
 
-    UPDATE = "update"
-    """
-    Rebuild the runtime the hooks run from, from main.
-    """
-
     @classmethod
     def command_line(cls, *arguments: str) -> str:
         """
