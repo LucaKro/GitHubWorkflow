@@ -60,7 +60,8 @@ class WorkflowCommand(StrEnum):
 
     CLEANUP = "cleanup"
     """
-    Delete the branches GitHub kept although their pull request is closed.
+    Delete the branches GitHub kept although their pull request is closed, and the
+    branches discarded.
     """
 
     DETAILS = "details"
@@ -96,6 +97,11 @@ class BranchSubcommand(StrEnum):
     SWITCH = "switch"
     """
     Switch to an existing branch.
+    """
+
+    DISCARD = "discard"
+    """
+    Mark a pushed branch as thrown away, so the cleanup deletes it.
     """
 
 

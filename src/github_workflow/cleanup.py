@@ -1,15 +1,15 @@
 """
-Branches GitHub kept although their pull request is closed: closed without merging, or
-merged before GitHub deleted merged branches. Listed at session start, deleted by the
-cleanup command - or, where the session may not delete branches, handed to an Actions
-workflow on the notes branch.
+Branches GitHub kept although their pull request is closed - closed without merging, or
+merged before GitHub deleted merged branches - and branches discarded as thrown away.
+Listed at session start, deleted by the cleanup command - or, where the session may not
+delete branches, handed to an Actions workflow on the notes branch.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
@@ -22,12 +22,99 @@ from basstler_domain_model.github.repository_client import GitHubRepository
 from basstler_domain_model.github.vocabulary import IssueState
 
 from github_workflow.command_line import WorkflowCommand
+from github_workflow.exceptions import (
+    DetachedHeadError,
+    NothingToDiscardError,
+    UndiscardableBranchError,
+)
 from github_workflow.hooks import ReportLine, Tone
 from github_workflow.locations import NotesFile, WorkflowTemplate
 from github_workflow.notes.branch import NotesBranch
+from github_workflow.policy import WritePolicy
 from github_workflow.remotes import OwnedRemote
 from github_workflow.report_section import ReportSection
 from github_workflow.work import WorkflowStep
+
+# %% discarded branches
+
+
+@dataclass(frozen=True)
+class DiscardedBranches:
+    """
+    The branches discarded as thrown away, as the notes branch lists them.
+    """
+
+    commits: Mapping[str, str] = field(default_factory=dict)
+    """
+    Each discarded branch, and the commit it was at when discarded.
+    """
+
+    @classmethod
+    def from_text(cls, text: str | None) -> DiscardedBranches:
+        """
+        :param text: The list as the notes branch keeps it, ``None`` when it has none.
+        :return: The branches it names.
+        """
+        pairs = (line.split() for line in (text or "").splitlines() if line.strip())
+        return cls({branch: commit for branch, commit in pairs})
+
+    def to_text(self) -> str:
+        """:return: The list as the notes branch keeps it."""
+        return "".join(
+            f"{branch} {commit}\n" for branch, commit in sorted(self.commits.items())
+        )
+
+    def with_branch(self, branch: str, commit: str) -> DiscardedBranches:
+        """
+        :param branch: A branch to discard.
+        :param commit: The commit it is at.
+        :return: These branches and that one.
+        """
+        return DiscardedBranches({**self.commits, branch: commit})
+
+
+@dataclass(frozen=True)
+class BranchDiscard(WorkflowStep):
+    """
+    A pushed branch marked as thrown away on the notes branch, so the cleanup deletes it
+    while it is still at the commit it was discarded at.
+    """
+
+    policy: WritePolicy
+    """
+    The checkout and the owner's remote the branch is on.
+    """
+
+    notes: NotesBranch
+    """
+    The notes branch, which lists the discarded branches.
+    """
+
+    name: str | None = None
+    """
+    The branch to discard, the checked-out one when ``None``.
+    """
+
+    def run(self) -> str:
+        git = self.policy.checkout.git
+        branch = self.name or git.checked_out_branch()
+        if not branch:
+            raise DetachedHeadError()
+        if branch in {self.policy.default_branch, self.notes.branch.name}:
+            raise UndiscardableBranchError(branch)
+        tip = git.remote_branch_tip(RemoteBranch(self.policy.remote.name, branch))
+        if tip is None:
+            raise NothingToDiscardError(branch)
+        self.notes.fetch()
+        listed = self.notes.read(NotesFile.DISCARDED_BRANCHES.value)
+        discarded = DiscardedBranches.from_text(listed).with_branch(branch, tip)
+        self.notes.write(
+            {NotesFile.DISCARDED_BRANCHES.value: discarded.to_text()},
+            f"Discard {branch}",
+        )
+        command = WorkflowCommand.command_line(WorkflowCommand.CLEANUP)
+        return f"{branch} marked for deletion; `{command}` deletes it"
+
 
 # %% which branches
 
@@ -60,10 +147,16 @@ class KeptBranches:
     The branches never deleted: the default branch and the notes branch.
     """
 
+    discarded: DiscardedBranches = field(default_factory=DiscardedBranches)
+    """
+    The branches discarded as thrown away.
+    """
+
     def ready(self) -> list[str]:
         """
-        :return: Each branch whose pull request is closed and that is still at the
-            commit it was closed at, with no open pull request; never a protected one.
+        :return: Each branch whose pull request is closed, or that was discarded, and
+            that is still at the commit it was closed or discarded at, with no open pull
+            request; never a protected one.
         """
         open_branches = set()
         closed_heads: dict[str, set[str]] = {}
@@ -81,7 +174,10 @@ class KeptBranches:
             for branch, tip in self.tips.items()
             if branch not in self.protected
             and branch not in open_branches
-            and tip in closed_heads.get(branch, set())
+            and (
+                tip in closed_heads.get(branch, set())
+                or tip == self.discarded.commits.get(branch)
+            )
         )
 
     @classmethod
@@ -90,14 +186,15 @@ class KeptBranches:
         git: GitCommandRunner,
         remote: OwnedRemote,
         github: GitHubRepository,
-        notes_branch: str,
+        notes: NotesBranch,
     ) -> KeptBranches:
         """
         :param git: Runs git in the checkout.
         :param remote: The owner's remote.
         :param github: The owner's repository on GitHub.
-        :param notes_branch: The branch the notes live on.
-        :return: The repository's branches and pull requests, read at once.
+        :param notes: The notes branch, as last fetched.
+        :return: The repository's branches and pull requests, read at once, and the
+            branches the notes branch lists as discarded.
         """
         with ThreadPoolExecutor() as pool:
             listed = pool.submit(git.run, "ls-remote", "--heads", remote.name)
@@ -113,7 +210,8 @@ class KeptBranches:
             tips,
             pull_requests.result(),
             remote.repository.full_name,
-            frozenset({default_branch.result(), notes_branch}),
+            frozenset({default_branch.result(), notes.branch.name}),
+            DiscardedBranches.from_text(notes.read(NotesFile.DISCARDED_BRANCHES.value)),
         )
 
 
