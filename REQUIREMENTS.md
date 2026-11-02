@@ -64,6 +64,26 @@ them:
   (wrong in edge cases, or a maintainability risk), *low* (cosmetic, or cleanup).
 - Only I move a finding out of *unreviewed*; a session accepts, shelves or rejects one
   only when I say so.
+- Apart from its stage, a finding may be *proven*: a test fails on the default branch
+  as GitHub has it, and is posted on the issue - with the commit it failed on - but
+  never committed. A finding stays *unreviewed* when proven; being proven never
+  replaces my review.
+- The filing session proves a finding when a failing test is easy to write; otherwise
+  it files it unproven.
+- A test passing on the default branch proves nothing: a bug only on a work branch is
+  no finding. Neither does a test that is broken rather than failing - one that cannot
+  be collected or set up, or fails on its own import, name or syntax error.
+- The code runs the test and decides whether it proves the finding; the agent's word
+  is not taken for it. A proof counts only when posted by me or by the account the
+  workflow writes as.
+- A session works on a finding only when I ask it to, never because it found one easy
+  to prove. Working on an *accepted* finding starts with proving it; when no failing
+  test can be written, the session marks it *unproven* with the reason, and leaves it
+  to me.
+- A draft pull request works on a finding only when the finding is *accepted* and
+  *proven*, and its test, run again on the default branch, still fails; the draft
+  closes the finding when merged. A proof that no longer holds stops the work: the
+  session asks me whether the finding is fixed.
 
 ## Notes and progress
 
@@ -119,7 +139,8 @@ Everything else written to GitHub needs my go-ahead.
 ## How work is done
 
 - A task such as "do issue 1": small, clear tasks go straight to code, failing test
-  first; larger ones get a plan I approve first.
+  first; larger ones get a plan I approve first. For a finding, that failing test is
+  its proof.
 - Pull requests stay small through a standing note, not through a measured limit.
 - Starting a work branch from the default branch also fast-forwards my local default
   branch to GitHub's, unless it has commits of its own.
