@@ -5,8 +5,12 @@ The errors the workflow's commands end in.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from basstler_domain_model.exceptions import DataclassException
+
+if TYPE_CHECKING:
+    from basstler_domain_model.repository import Repository
 
 # %% whose repository
 
@@ -60,6 +64,29 @@ class AmbiguousOwnedRemoteError(DataclassException, LookupError):
 
     def suggest_correction(self) -> str:
         return "Rename the one to work with to origin."
+
+
+@dataclass
+class ForeignRepositoryCloneError(DataclassException, PermissionError):
+    """
+    Raised when a clone is asked for of a repository the owner does not own.
+    """
+
+    repository: Repository
+    """
+    The repository asked for.
+    """
+
+    owner: str
+    """
+    The account whose repositories alone are cloned.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.repository} belongs to {self.repository.owner}, not {self.owner}"
+
+    def suggest_correction(self) -> str:
+        return f"Fork it to {self.owner}'s account and clone the fork."
 
 
 # %% saving notes

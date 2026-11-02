@@ -74,6 +74,12 @@ class WorkflowCommand(StrEnum):
     Rewrite the description of an open draft pull request.
     """
 
+    CLONE = "clone"
+    """
+    Clone another of the owner's repositories, next to the checkout the command runs
+    in.
+    """
+
     @classmethod
     def command_line(cls, *arguments: str) -> str:
         """

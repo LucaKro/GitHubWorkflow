@@ -529,6 +529,11 @@ class GitWrite(StrEnum):
     Taking in another branch, which for GitHub's copy is a sync.
     """
 
+    CLONE = "clone"
+    """
+    Making a checkout of another repository.
+    """
+
     @property
     def instead(self) -> str:
         """:return: The workflow command line doing the same job."""
@@ -552,6 +557,10 @@ class GitWrite(StrEnum):
                 )
             case GitWrite.PULL | GitWrite.MERGE:
                 return WorkflowCommand.command_line(WorkflowCommand.SYNC)
+            case GitWrite.CLONE:
+                return WorkflowCommand.command_line(
+                    WorkflowCommand.CLONE, "<owner>/<name>"
+                )
 
 
 class PullRequestOpening(StrEnum):

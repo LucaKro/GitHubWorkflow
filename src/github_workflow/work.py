@@ -10,7 +10,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from basstler_domain_model.git.commands import ProposedPush, RemoteBranch
+from basstler_domain_model.git.commands import (
+    GitCommandRunner,
+    ProposedPush,
+    RemoteBranch,
+)
 from basstler_domain_model.github.pull_request_fields import (
     PullRequestField,
     PullRequestHead,
@@ -21,17 +25,20 @@ from basstler_domain_model.github.repository_client import (
     PullRequestWriter,
 )
 from basstler_domain_model.github.vocabulary import IssueState
+from basstler_domain_model.repository import GitHubAddress, Repository
 
 from github_workflow.exceptions import (
     BranchDeletedFromGitHubError,
     BranchNotPushedError,
     DetachedHeadError,
+    ForeignRepositoryCloneError,
     NotADraftError,
     PushRefusedError,
     UnpushedCommitsError,
 )
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
+from github_workflow.settings import WorkflowSettings
 from github_workflow.stacks import StackPlacement
 
 # %% one step
@@ -387,3 +394,42 @@ class NotesSaving(WorkflowStep):
                 f"nothing changed since the last save to {self.save.notes.branch.name}"
             )
         return f"saved {', '.join(map(str, saved))} to {self.save.notes.branch.name}"
+
+
+# %% other repositories
+
+
+@dataclass(frozen=True)
+class RepositoryCloning(WorkflowStep):
+    """
+    A clone of another of the owner's repositories, refused for anyone else's.
+    """
+
+    repository: Repository
+    """
+    The repository to clone.
+    """
+
+    directory: Path
+    """
+    The directory the clone is made in, under the repository's name.
+    """
+
+    settings: WorkflowSettings
+    """
+    Whose repositories may be cloned.
+    """
+
+    hosting_root: str = GitHubAddress.WEB
+    """
+    Where repositories are kept as ``<root>/owner/name.git``.
+    """
+
+    def run(self) -> str:
+        if not self.settings.owns(self.repository):
+            raise ForeignRepositoryCloneError(self.repository, self.settings.owner)
+        checkout = self.directory / self.repository.name
+        GitCommandRunner.clone(
+            self.repository.clone_url_under(self.hosting_root), checkout
+        )
+        return f"cloned {self.repository} into {checkout}"
