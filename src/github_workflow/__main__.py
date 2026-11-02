@@ -29,15 +29,21 @@ from github_workflow.command_line import (
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
+from github_workflow.proofs import DefaultBranchProofRunner, FindingTest
 from github_workflow.cleanup import BranchCleanup, BranchDiscard, KeptBranches
 from github_workflow.findings import (
     FindingAcceptance,
+    FindingDraftOpening,
     FindingFiling,
     FindingListing,
     FindingPrioritization,
+    FindingProving,
+    FindingRecheck,
     FindingRejection,
     FindingShelving,
+    FindingUnproving,
     Priority,
+    ProvenFindingFiling,
 )
 from github_workflow.label_events import FindingAutomation
 from github_workflow.pull_request_overview import (
@@ -121,6 +127,25 @@ class WorkflowSession(RepositoryDetails):
         """:return: Places pull requests in the repository's native stacks."""
         return StackPlacement(self.github, self.github, self.github, self.github)
 
+    def proof_runner(self, python: str) -> DefaultBranchProofRunner:
+        """
+        :param python: The interpreter the project's tests run with.
+        :return: Runs a finding's test on the owner's default branch.
+        """
+        return DefaultBranchProofRunner(
+            self.checkout.git, self.remote.name, self.default_branch(), python
+        )
+
+    def recheck(self, number: int, python: str) -> FindingRecheck:
+        """
+        :param number: A finding.
+        :param python: The interpreter the project's tests run with.
+        :return: Runs its proof again, trusting proofs the owner or the account the
+            workflow writes as posted.
+        """
+        authors = {self.settings.owner, self.github.authenticated_login()}
+        return FindingRecheck(self.github, self.proof_runner(python), authors, number)
+
     def step(self, arguments: argparse.Namespace) -> WorkflowStep:
         """
         :param arguments: The parsed command line.
@@ -139,13 +164,18 @@ class WorkflowSession(RepositoryDetails):
             case WorkflowCommand.PUSH, _:
                 return PushWork(self.policy)
             case WorkflowCommand.DRAFT, _:
-                return DraftOpening(
+                draft = DraftOpening(
                     self.policy,
                     self.github,
                     self.placement,
                     arguments.title,
                     arguments.body_file.read_text(),
                     arguments.on,
+                )
+                if arguments.finding is None:
+                    return draft
+                return FindingDraftOpening(
+                    self.recheck(arguments.finding, arguments.python), draft
                 )
             case WorkflowCommand.SYNC, _:
                 return BranchSync(self.policy)
@@ -155,12 +185,20 @@ class WorkflowSession(RepositoryDetails):
                 notes = NotesBranch.on(self.checkout.git, self.remote, self.settings)
                 return NotesSaving(NotesSave(self.checkout, notes))
             case WorkflowCommand.FINDING, FindingSubcommand.FILE:
-                return FindingFiling(
+                body = arguments.body_file.read_text()
+                priority = Priority[arguments.priority.upper()]
+                if arguments.test is None:
+                    return FindingFiling(
+                        self.github, self.github, arguments.title, body, priority
+                    )
+                return ProvenFindingFiling(
                     self.github,
                     self.github,
                     arguments.title,
-                    arguments.body_file.read_text(),
-                    Priority[arguments.priority.upper()],
+                    body,
+                    priority,
+                    FindingTest.read(self.checkout, arguments.test),
+                    self.proof_runner(arguments.python),
                 )
             case WorkflowCommand.FINDING, FindingSubcommand.PRIORITIZE:
                 return FindingPrioritization(
@@ -179,6 +217,20 @@ class WorkflowSession(RepositoryDetails):
                 return FindingRejection(
                     self.github, self.github, arguments.number, arguments.reason
                 )
+            case WorkflowCommand.FINDING, FindingSubcommand.PROVE:
+                return FindingProving(
+                    self.github,
+                    self.github,
+                    arguments.number,
+                    FindingTest.read(self.checkout, arguments.test),
+                    self.proof_runner(arguments.python),
+                )
+            case WorkflowCommand.FINDING, FindingSubcommand.MARK_UNPROVEN:
+                return FindingUnproving(
+                    self.github, self.github, arguments.number, arguments.reason
+                )
+            case WorkflowCommand.FINDING, FindingSubcommand.RECHECK:
+                return self.recheck(arguments.number, arguments.python)
             case WorkflowCommand.FINDING, FindingSubcommand.AUTOMATE:
                 return FindingAutomation(self.checkout.root)
             case WorkflowCommand.CLEANUP, _:
@@ -218,6 +270,12 @@ class WorkflowSession(RepositoryDetails):
         )
         parser.set_defaults(action=None)
         commands = parser.add_subparsers(dest="command", required=True)
+        python_argument = argparse.ArgumentParser(add_help=False)
+        python_argument.add_argument(
+            "--python",
+            default="python",
+            help="the interpreter the project's tests run with (default: %(default)s)",
+        )
         branch = commands.add_parser(WorkflowCommand.BRANCH, help="start or switch")
         actions = branch.add_subparsers(dest="action", required=True)
         start = actions.add_parser(BranchSubcommand.START, help="start a work branch")
@@ -236,10 +294,17 @@ class WorkflowSession(RepositoryDetails):
         commit.add_argument("-m", "--message", required=True)
         commit.add_argument("paths", nargs="+", type=Path)
         commands.add_parser(WorkflowCommand.PUSH, help="push the work branch")
-        draft = commands.add_parser(WorkflowCommand.DRAFT, help="open a draft")
+        draft = commands.add_parser(
+            WorkflowCommand.DRAFT, help="open a draft", parents=[python_argument]
+        )
         draft.add_argument("--title", required=True)
         draft.add_argument("--body-file", required=True, type=Path)
         draft.add_argument("--on", type=int, help="the pull request to stack it on")
+        draft.add_argument(
+            "--finding",
+            type=int,
+            help="the accepted, proven finding it works on, rechecked first",
+        )
         commands.add_parser(WorkflowCommand.SYNC, help="bring the branch up to date")
         stack = commands.add_parser(WorkflowCommand.STACK, help="stack pull requests")
         stack_actions = stack.add_subparsers(dest="action", required=True)
@@ -251,7 +316,8 @@ class WorkflowSession(RepositoryDetails):
         notes_actions.add_parser(NotesSubcommand.SAVE, help="save the notes block")
         finding = commands.add_parser(
             WorkflowCommand.FINDING,
-            help="file, prioritize, list, accept, shelve or reject findings",
+            help="file, prioritize, list, accept, shelve, reject, prove or recheck "
+            "findings",
         )
         finding_actions = finding.add_subparsers(dest="action", required=True)
         priority_argument = argparse.ArgumentParser(add_help=False)
@@ -264,10 +330,15 @@ class WorkflowSession(RepositoryDetails):
             FindingSubcommand.FILE,
             help="file something noticed outside the current work",
             description=Priority.guide(),
-            parents=[priority_argument],
+            parents=[priority_argument, python_argument],
         )
         filing.add_argument("--title", required=True)
         filing.add_argument("--body-file", required=True, type=Path)
+        filing.add_argument(
+            "--test",
+            type=Path,
+            help="an uncommitted test file failing on the default branch, proving it",
+        )
         prioritizing = finding_actions.add_parser(
             FindingSubcommand.PRIORITIZE,
             help="give an existing issue a priority, as a finding",
@@ -290,6 +361,27 @@ class WorkflowSession(RepositoryDetails):
         )
         reject.add_argument("number", type=int)
         reject.add_argument("--reason", required=True)
+        prove = finding_actions.add_parser(
+            FindingSubcommand.PROVE,
+            help="prove an open finding with a test failing on the default branch",
+            parents=[python_argument],
+        )
+        prove.add_argument("number", type=int)
+        prove.add_argument(
+            "--test", required=True, type=Path, help="the uncommitted test file"
+        )
+        unproven = finding_actions.add_parser(
+            FindingSubcommand.MARK_UNPROVEN,
+            help="mark an open finding no failing test could be written for",
+        )
+        unproven.add_argument("number", type=int)
+        unproven.add_argument("--reason", required=True)
+        recheck = finding_actions.add_parser(
+            FindingSubcommand.RECHECK,
+            help="run a finding's proof again on the default branch",
+            parents=[python_argument],
+        )
+        recheck.add_argument("number", type=int)
         finding_actions.add_parser(
             FindingSubcommand.AUTOMATE,
             help="write the Actions workflow completing finding labels picked on GitHub",
