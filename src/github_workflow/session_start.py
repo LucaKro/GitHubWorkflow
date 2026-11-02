@@ -7,7 +7,8 @@ per thing the session should know is shown to the person and given to the model.
 no file to a remote; turning on the repository features the workflow relies on is the
 only change it makes on GitHub.
 
-Usage: ``python -m github_workflow.session_start``
+Usage: ``python -m github_workflow.session_start [<hook event>]``, the event being
+``SessionStart`` unless named.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from basstler_domain_model.commands import CommandRunner
 import github_workflow.report as report
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.findings import Priority
-from github_workflow.hooks import ReportLine, SessionStartReport, Tone
+from github_workflow.hooks import HookValue, ReportLine, SessionStartReport, Tone
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection
@@ -155,7 +156,8 @@ def main() -> None:
         ]
     else:
         lines = SessionStart(checkout, WorkflowSettings()).report()
-    print(SessionStartReport(lines).json())
+    event = HookValue(sys.argv[1]) if sys.argv[1:] else HookValue.SESSION_START
+    print(SessionStartReport(lines, event).json())
 
 
 if __name__ == "__main__":
