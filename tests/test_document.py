@@ -4,6 +4,7 @@ Tests for :mod:`github_workflow.notes.document`: the notes block in ``CLAUDE.loc
 
 from __future__ import annotations
 
+from github_workflow.command_line import FindingSubcommand, WorkflowCommand
 from github_workflow.notes.document import NotesBlock, NotesSection
 
 # %% helpers
@@ -46,3 +47,20 @@ def test_a_detached_head_has_no_progress_section():
     assert NotesSection.BRANCH_PROGRESS not in NotesBlock.read_sections(
         block(branch="").render()
     )
+
+
+# %% the rules the header states
+
+
+def test_the_header_names_every_command_a_finding_is_proven_and_worked_on_with():
+    rendered = block().render()
+
+    finding = f"workflow {WorkflowCommand.FINDING}"
+    named = [
+        f"`{finding} {FindingSubcommand.FILE}`",
+        f"`{finding} {FindingSubcommand.PROVE}`",
+        f"`{finding} {FindingSubcommand.MARK_UNPROVEN}`",
+        f"`{finding} {FindingSubcommand.RECHECK}`",
+        f"`workflow {WorkflowCommand.DRAFT} --finding`",
+    ]
+    assert [command for command in named if command not in rendered] == []

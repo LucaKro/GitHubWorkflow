@@ -1,8 +1,8 @@
 """
 Finding labels picked on GitHub, completed by an Actions workflow.
 
-A stage or priority label replaces the others of its kind, so changing a finding by hand
-takes one pick.
+A stage, priority or evidence label replaces the others of its kind, so changing a
+finding by hand takes one pick.
 
 Usage: ``python -m github_workflow.label_events <event file>``, with the ``issues``
 event GitHub hands the workflow.
@@ -28,6 +28,7 @@ from basstler_domain_model.github.vocabulary import (
 from basstler_domain_model.repository import Repository
 
 from github_workflow.findings import (
+    Evidence,
     FindingLabelling,
     FindingPrioritization,
     FindingStage,
@@ -103,8 +104,9 @@ class IssueLabelled(JSONModel):
 class FindingLabelCompletion(FindingLabelling):
     """
     A label just added to an issue, completed: a priority as :class:`FindingPrioritization`
-    gives it, a stage replacing the other stages, and an incorrect finding closed as not
-    planned. A label removed again since, or one outside the findings, changes nothing.
+    gives it, a stage or evidence replacing the others of its kind, and an incorrect
+    finding closed as not planned. A label removed again since, or one outside the
+    findings, changes nothing.
     """
 
     number: int
@@ -125,6 +127,9 @@ class FindingLabelCompletion(FindingLabelling):
             return FindingPrioritization(
                 self.board, self.labels, self.number, Priority(self.label)
             ).run()
+        if self.label in Evidence:
+            self.relabel(issue, [Evidence(self.label)])
+            return f"marked #{self.number} {self.label}"
         if self.label not in FindingStage:
             return f"{self.label} is no finding label"
         stage = FindingStage(self.label)

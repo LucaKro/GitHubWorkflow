@@ -6,12 +6,8 @@ recording every write made to them.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
-from basstler_domain_model.github.pull_request_fields import (
-    PullRequestHeadKey,
-    PullRequestPayload,
-)
 from basstler_domain_model.github.repository_client import (
     PullRequestBaseWriter,
     PullRequestOpener,
@@ -20,8 +16,11 @@ from basstler_domain_model.github.repository_client import (
     StackReader,
     StackWriter,
 )
+from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.stack_models import Stack, StackedPullRequest
-from basstler_domain_model.github.vocabulary import PullRequestState, RestJSONKey
+from basstler_domain_model.github.vocabulary import PullRequestState
+
+from .pull_requests import pull_request
 
 # %% the stand-in
 
@@ -65,19 +64,11 @@ class StackedPullRequestsInMemory(
             for number in numbers
         ]
 
-    def open_pull_requests(self) -> list[PullRequestPayload]:
+    def open_pull_requests(self) -> list[RestPullRequest]:
         return [self.pull_request(number) for number in self.bases]
 
-    def pull_request(self, number: int) -> PullRequestPayload:
-        return {
-            RestJSONKey.NUMBER: number,
-            RestJSONKey.HEAD: {
-                PullRequestHeadKey.REFERENCE: self.branch_of(number),
-                PullRequestHeadKey.HEAD_REPOSITORY: None,
-                RestJSONKey.SHA: "0" * 40,
-            },
-            RestJSONKey.BASE: {PullRequestHeadKey.REFERENCE: self.bases[number]},
-        }
+    def pull_request(self, number: int) -> RestPullRequest:
+        return pull_request(number, self.branch_of(number), base=self.bases[number])
 
     def set_base(self, number: int, branch: str) -> None:
         self.writes.append(f"set_base {number} {branch}")
@@ -149,15 +140,13 @@ class DraftsInMemory(DraftsAndStacksInMemory, PullRequestWriter):
     The pull requests that are closed.
     """
 
-    def pull_request(self, number: int) -> PullRequestPayload:
+    def pull_request(self, number: int) -> RestPullRequest:
         state = (
             PullRequestState.CLOSED if number in self.closed else PullRequestState.OPEN
         )
-        return {
-            **super().pull_request(number),
-            RestJSONKey.DRAFT: number in self.drafts,
-            RestJSONKey.STATE: state.value,
-        }
+        return replace(
+            super().pull_request(number), draft=number in self.drafts, state=state
+        )
 
     def replace_labels(self, number: int, labels: Sequence[str]) -> None:
         self.writes.append(f"replace_labels {number}")
