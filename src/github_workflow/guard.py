@@ -138,6 +138,45 @@ class Wrapper(StrEnum):
     """
 
 
+class ShellKeyword(StrEnum):
+    """
+    The words the shell reads as syntax where a command's program would stand.
+    """
+
+    IF = "if"
+    THEN = "then"
+    ELIF = "elif"
+    ELSE = "else"
+    FI = "fi"
+    WHILE = "while"
+    UNTIL = "until"
+    DO = "do"
+    DONE = "done"
+    OPENING_BRACE = "{"
+    CLOSING_BRACE = "}"
+    NEGATION = "!"
+
+    FUNCTION = "function"
+    """
+    Defines the function the following word names.
+    """
+
+    FOR = "for"
+    """
+    Starts a loop whose header names a variable and its values, and runs nothing.
+    """
+
+    SELECT = "select"
+    """
+    Starts a menu whose header names a variable and its values, and runs nothing.
+    """
+
+    CASE = "case"
+    """
+    Starts a branching whose header names the word matched, and runs nothing.
+    """
+
+
 # %% git
 
 
@@ -748,6 +787,66 @@ class HttpClientCheck(ProgramCheck):
 
 
 @dataclass(frozen=True)
+class SimpleCommand:
+    """
+    One simple command, split into words the way the shell runs it.
+    """
+
+    words: Sequence[str]
+    """
+    The command's words, shell syntax and variable assignments before its program
+    included.
+    """
+
+    @property
+    def program_start(self) -> int:
+        """
+        The position of the word naming the program run, past shell syntax, a defined
+        function's name and variable assignments; the number of words when none runs.
+        """
+        index = 0
+        while index < len(self.words):
+            word = self.words[index]
+            if word in (ShellKeyword.FOR, ShellKeyword.SELECT, ShellKeyword.CASE):
+                return len(self.words)
+            if word == ShellKeyword.FUNCTION:
+                index += 2
+                continue
+            syntax = word in ShellKeyword._value2member_map_
+            if not syntax and not CommandLine.assignment.fullmatch(word):
+                return index
+            index += 1
+        return index
+
+    @property
+    def assignments(self) -> list[str]:
+        """
+        The variables assigned for the program, as ``NAME=value``.
+        """
+        return [
+            word
+            for word in self.words[: self.program_start]
+            if CommandLine.assignment.fullmatch(word)
+        ]
+
+    @property
+    def program(self) -> str:
+        """
+        The name of the program run, empty when none runs.
+        """
+        if self.program_start == len(self.words):
+            return ""
+        return PurePath(self.words[self.program_start]).name
+
+    @property
+    def arguments(self) -> list[str]:
+        """
+        What follows the program's name.
+        """
+        return list(self.words[self.program_start + 1 :])
+
+
+@dataclass(frozen=True)
 class CommandLine:
     """
     One Bash command line, split the way the shell runs it.
@@ -849,11 +948,12 @@ class CommandGuard:
         :return: Why it is denied, ``None`` when it may run.
         """
         line = CommandLine(command_line)
-        if line.runs_input_through_a_shell() and re.search(
-            r"\b(git|gh)\b", command_line
-        ):
+        mentions_git = re.search(r"\b(git|gh)\b", command_line)
+        if line.runs_input_through_a_shell() and mentions_git:
             return Denial("a shell reading its input could run git or gh unseen")
         for words in line.simple_commands():
+            if mentions_git and "$" in SimpleCommand(words).program:
+                return Denial("a program named by an expansion could be git or gh")
             reason = self.denial_of(words)
             if reason is not None:
                 return reason
@@ -864,20 +964,16 @@ class CommandGuard:
         :param words: One simple command's words.
         :return: Why it is denied, ``None`` when it may run.
         """
-        count = 0
-        while count < len(words) and CommandLine.assignment.fullmatch(words[count]):
-            count += 1
-        assignments, words = words[:count], words[count:]
-        if not words:
+        command = SimpleCommand(words)
+        program, arguments = command.program, command.arguments
+        if not program:
             return None
-        program = PurePath(words[0]).name
-        arguments = list(words[1:])
         if program in Wrapper._value2member_map_:
-            return self._denial_of_wrapped(arguments)
+            return self._denial_of_wrapped(Wrapper(program), arguments)
         if program in Shell._value2member_map_:
             return self._denial_of_shell(Shell(program), arguments)
         if program == Program.GIT and any(
-            assignment.startswith("GIT_") for assignment in assignments
+            assignment.startswith("GIT_") for assignment in command.assignments
         ):
             return Denial("setting git's environment can make it run a program")
         match program:
@@ -891,9 +987,12 @@ class CommandGuard:
                 return HttpClientCheck.wget.denial(arguments)
         return None
 
-    def _denial_of_wrapped(self, arguments: list[str]) -> Denial | None:
+    def _denial_of_wrapped(
+        self, wrapper: Wrapper, arguments: list[str]
+    ) -> Denial | None:
         """
-        :param arguments: A wrapper's arguments, its options and the command it runs.
+        :param wrapper: The wrapper.
+        :param arguments: Its arguments, its options and the command it runs.
         :return: Why the command it runs is denied, ``None`` when it may run.
         """
         judged = {*Program, *Shell, *Wrapper}
@@ -902,7 +1001,10 @@ class CommandGuard:
                 reason = self.denial(argument)
                 if reason is not None:
                     return reason
-            if PurePath(argument).name in judged:
+            program = PurePath(argument).name
+            if wrapper is Wrapper.XARGS and program in Program._value2member_map_:
+                return Denial(f"xargs gives {program} arguments the guard cannot see")
+            if program in judged:
                 return self.denial_of(arguments[index:])
         return None
 
