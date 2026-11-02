@@ -2,20 +2,21 @@
 Findings: what a session notices outside the work it is doing, kept as GitHub issues
 rather than acted on.
 
-Filed or prioritized as unreviewed with a priority; only the person accepts or rejects
-them.
+Filed or prioritized as unreviewed with a priority; only the person accepts, shelves or
+rejects them.
 """
 
 from __future__ import annotations
 
 from abc import ABC
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import ReprEnum
 from typing import Self
 
 from basstler_domain_model.github.issue_models import Issue
-from basstler_domain_model.github.labels import GitHubLabel, LabelWrite
+from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.repository_client import (
     IssueBoard,
     RepositoryLabels,
@@ -60,7 +61,7 @@ class FindingLabel(GitHubLabel, ReprEnum):
 
 class FindingStage(FindingLabel):
     """
-    Where a finding stands; a rejected finding is a closed issue instead.
+    Where a finding stands; an incorrect finding is also closed.
     """
 
     UNREVIEWED = (
@@ -79,6 +80,20 @@ class FindingStage(FindingLabel):
     )
     """
     Confirmed by the person.
+    """
+
+    SHELVED = ("finding: shelved", "Set aside for now; stays open", "d4c5f9")
+    """
+    Set aside by the person, apart from the findings waiting on them or on work.
+    """
+
+    INCORRECT = (
+        "finding: incorrect",
+        "Rejected as incorrect; closed as not planned",
+        "e4e669",
+    )
+    """
+    Rejected by the person, and closed.
     """
 
 
@@ -157,6 +172,23 @@ class FindingLabelling(WorkflowStep, ABC):
             if label not in present:
                 self.labels.create_label(label)
 
+    def relabel(self, issue: Issue, labels: Sequence[FindingLabel]) -> None:
+        """
+        Give an issue these labels, removing every other label of their kinds it
+        carries.
+
+        :param issue: The issue as it is labelled now.
+        :param labels: At most one stage and one priority.
+        """
+        self.create_missing_labels()
+        added = [label for label in labels if label not in issue.labels]
+        if added:
+            self.board.add_labels(issue.number, added)
+        for label in labels:
+            for replaced in type(label):
+                if replaced not in labels and replaced in issue.labels:
+                    self.board.remove_label(issue.number, replaced)
+
 
 # %% filing and listing
 
@@ -193,7 +225,7 @@ class FindingFiling(FindingLabelling):
 @dataclass(frozen=True)
 class FindingListing(WorkflowStep):
     """
-    The open findings, unreviewed first, most urgent first.
+    The open findings, unreviewed first and shelved last, most urgent first.
     """
 
     board: IssueBoard
@@ -241,16 +273,9 @@ class FindingPrioritization(FindingLabelling):
     """
 
     def run(self) -> str:
-        self.create_missing_labels()
         issue = self.board.issue(self.number)
-        added = [] if self.priority in issue.labels else [self.priority]
-        if FindingStage.of(issue) is None:
-            added.append(FindingStage.UNREVIEWED)
-        if added:
-            self.board.add_labels(self.number, added)
-        for replaced in Priority:
-            if replaced is not self.priority and replaced in issue.labels:
-                self.board.remove_label(self.number, replaced)
+        stage = [] if FindingStage.of(issue) else [FindingStage.UNREVIEWED]
+        self.relabel(issue, [self.priority, *stage])
         return f"prioritized #{self.number} as {self.priority.level}"
 
 
@@ -258,14 +283,9 @@ class FindingPrioritization(FindingLabelling):
 
 
 @dataclass(frozen=True)
-class FindingAcceptance(WorkflowStep):
+class FindingDecision(FindingLabelling, ABC):
     """
-    An unreviewed finding accepted, on the person's word.
-    """
-
-    board: IssueBoard
-    """
-    Relabels the issue.
+    A finding moved to another stage, on the person's word.
     """
 
     number: int
@@ -273,37 +293,47 @@ class FindingAcceptance(WorkflowStep):
     The finding.
     """
 
-    def run(self) -> str:
-        unreviewed = self.board.issues([FindingStage.UNREVIEWED], IssueState.OPEN)
-        issue = next(
-            (issue for issue in unreviewed if issue.number == self.number), None
-        )
-        if issue is None:
+    def open_finding(self, stages: Sequence[FindingStage]) -> Issue:
+        """
+        :param stages: The stages the decision moves a finding out of.
+        :return: The finding, open in one of them.
+        :raises NotAFindingError: If it is no open finding in one of them.
+        """
+        issue = self.board.issue(self.number)
+        if issue.state is not IssueState.OPEN or FindingStage.of(issue) not in stages:
             raise NotAFindingError(self.number)
-        write = LabelWrite.replacing(
-            issue.labels,
-            added=[FindingStage.ACCEPTED],
-            removed=[FindingStage.UNREVIEWED],
-        )
-        self.board.replace_labels(self.number, write.labels)
+        return issue
+
+
+@dataclass(frozen=True)
+class FindingAcceptance(FindingDecision):
+    """
+    An unreviewed or shelved finding accepted.
+    """
+
+    def run(self) -> str:
+        issue = self.open_finding([FindingStage.UNREVIEWED, FindingStage.SHELVED])
+        self.relabel(issue, [FindingStage.ACCEPTED])
         return f"accepted finding #{self.number}"
 
 
 @dataclass(frozen=True)
-class FindingRejection(WorkflowStep):
+class FindingShelving(FindingDecision):
     """
-    A finding rejected, on the person's word: the reason commented, the issue closed as
-    not planned, so later sessions do not raise it again.
-    """
-
-    board: IssueBoard
-    """
-    Comments on and closes the issue.
+    An unreviewed or accepted finding set aside, left open.
     """
 
-    number: int
+    def run(self) -> str:
+        issue = self.open_finding([FindingStage.UNREVIEWED, FindingStage.ACCEPTED])
+        self.relabel(issue, [FindingStage.SHELVED])
+        return f"shelved finding #{self.number}"
+
+
+@dataclass(frozen=True)
+class FindingRejection(FindingDecision):
     """
-    The finding.
+    An open finding rejected: marked incorrect, the reason commented, the issue closed
+    as not planned, so later sessions do not raise it again.
     """
 
     reason: str
@@ -312,13 +342,10 @@ class FindingRejection(WorkflowStep):
     """
 
     def run(self) -> str:
-        open_findings = [
-            issue.number
-            for stage in FindingStage
-            for issue in self.board.issues([stage], IssueState.OPEN)
-        ]
-        if self.number not in open_findings:
-            raise NotAFindingError(self.number)
+        issue = self.open_finding(
+            [FindingStage.UNREVIEWED, FindingStage.ACCEPTED, FindingStage.SHELVED]
+        )
+        self.relabel(issue, [FindingStage.INCORRECT])
         self.board.add_comment(self.number, f"Rejected: {self.reason}")
         self.board.close_issue(self.number, IssueStateReason.NOT_PLANNED)
         return f"rejected finding #{self.number}"
@@ -330,7 +357,8 @@ class FindingRejection(WorkflowStep):
 @dataclass(frozen=True)
 class FindingsSummary(ReportSection):
     """
-    How many findings wait for the person, by priority, and how many are accepted.
+    How many findings wait for the person, by priority, how many are accepted, and how
+    many are shelved.
     """
 
     board: IssueBoard
@@ -341,7 +369,8 @@ class FindingsSummary(ReportSection):
     def lines(self) -> list[ReportLine]:
         unreviewed = self.board.issues([FindingStage.UNREVIEWED], IssueState.OPEN)
         accepted = self.board.issues([FindingStage.ACCEPTED], IssueState.OPEN)
-        if not unreviewed and not accepted:
+        shelved = self.board.issues([FindingStage.SHELVED], IssueState.OPEN)
+        if not unreviewed and not accepted and not shelved:
             return []
         counted = Counter(Priority.of(issue) for issue in unreviewed)
         by_priority = ", ".join(
@@ -350,10 +379,11 @@ class FindingsSummary(ReportSection):
             if counted[priority]
         )
         detail = f" ({by_priority})" if by_priority else ""
+        set_aside = f", {len(shelved)} shelved" if shelved else ""
         return [
             ReportLine(
                 f"github-workflow: findings: {len(unreviewed)} unreviewed{detail}, "
-                f"{len(accepted)} accepted",
+                f"{len(accepted)} accepted{set_aside}",
                 Tone.ACTION if unreviewed else Tone.NEWS,
             )
         ]

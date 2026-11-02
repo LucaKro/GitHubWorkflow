@@ -1,7 +1,7 @@
 """
 Tests for :mod:`github_workflow.findings`: findings are filed or prioritized as
 unreviewed with a priority, listed most urgent first, and moved on only by the person's
-accept or reject.
+accept, shelve or reject.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from github_workflow.findings import (
     FindingListing,
     FindingPrioritization,
     FindingRejection,
+    FindingShelving,
     FindingsSummary,
     FindingStage,
     Priority,
@@ -193,16 +194,47 @@ def test_findings_are_listed_unreviewed_first_and_most_urgent_first():
     assert [line.split()[0] for line in listed] == ["#3", "#2", "#1"]
 
 
+def test_shelved_findings_are_listed_after_the_accepted():
+    board = IssuesInMemory(
+        {
+            1: finding(1, FindingStage.SHELVED, Priority.CRITICAL),
+            2: finding(2, FindingStage.ACCEPTED, Priority.LOW),
+        }
+    )
+
+    listed = FindingListing(board).run().splitlines()
+
+    assert [line.split()[0] for line in listed] == ["#2", "#1"]
+
+
 # %% the person's decisions
 
 
 def test_an_accepted_finding_keeps_its_priority():
-    board = IssuesInMemory({1: finding(1, FindingStage.UNREVIEWED, Priority.MEDIUM)})
+    board = IssuesInMemory(
+        {1: finding(1, FindingStage.UNREVIEWED, Priority.MEDIUM)},
+        {*FindingStage, *Priority},
+    )
 
-    FindingAcceptance(board, 1).run()
+    FindingAcceptance(board, board, 1).run()
 
     assert board.writes == [
-        f"replace_labels 1 {[Priority.MEDIUM, FindingStage.ACCEPTED]}"
+        f"add_labels 1 {[FindingStage.ACCEPTED]}",
+        f"remove_label 1 {FindingStage.UNREVIEWED}",
+    ]
+
+
+def test_a_shelved_finding_can_be_accepted():
+    board = IssuesInMemory(
+        {1: finding(1, FindingStage.SHELVED, Priority.MEDIUM)},
+        {*FindingStage, *Priority},
+    )
+
+    FindingAcceptance(board, board, 1).run()
+
+    assert board.writes == [
+        f"add_labels 1 {[FindingStage.ACCEPTED]}",
+        f"remove_label 1 {FindingStage.SHELVED}",
     ]
 
 
@@ -210,20 +242,59 @@ def test_accepting_what_is_no_unreviewed_finding_is_refused():
     board = IssuesInMemory({1: finding(1, FindingStage.ACCEPTED, Priority.MEDIUM)})
 
     with pytest.raises(NotAFindingError):
-        FindingAcceptance(board, 1).run()
+        FindingAcceptance(board, board, 1).run()
 
     assert board.writes == []
 
 
-def test_a_rejected_finding_is_closed_as_not_planned_with_its_reason():
-    board = IssuesInMemory({1: finding(1, FindingStage.UNREVIEWED, Priority.LOW)})
+def test_a_shelved_finding_stays_open_with_its_priority():
+    board = IssuesInMemory(
+        {1: finding(1, FindingStage.ACCEPTED, Priority.HIGH)},
+        {*FindingStage, *Priority},
+    )
 
-    FindingRejection(board, 1, "Intended behaviour").run()
+    FindingShelving(board, board, 1).run()
 
     assert board.writes == [
+        f"add_labels 1 {[FindingStage.SHELVED]}",
+        f"remove_label 1 {FindingStage.ACCEPTED}",
+    ]
+
+
+def test_shelving_what_is_no_finding_is_refused():
+    board = IssuesInMemory({1: Issue(1, "An issue", ("bug",), IssueState.OPEN)})
+
+    with pytest.raises(NotAFindingError):
+        FindingShelving(board, board, 1).run()
+
+    assert board.writes == []
+
+
+def test_a_rejected_finding_is_marked_incorrect_and_closed_with_its_reason():
+    board = IssuesInMemory(
+        {1: finding(1, FindingStage.UNREVIEWED, Priority.LOW)},
+        {*FindingStage, *Priority},
+    )
+
+    FindingRejection(board, board, 1, "Intended behaviour").run()
+
+    assert board.writes == [
+        f"add_labels 1 {[FindingStage.INCORRECT]}",
+        f"remove_label 1 {FindingStage.UNREVIEWED}",
         "add_comment 1 Rejected: Intended behaviour",
         f"close_issue 1 {IssueStateReason.NOT_PLANNED}",
     ]
+
+
+def test_rejecting_a_closed_finding_is_refused():
+    board = IssuesInMemory(
+        {1: Issue(1, "Finding 1", (FindingStage.ACCEPTED,), IssueState.CLOSED)}
+    )
+
+    with pytest.raises(NotAFindingError):
+        FindingRejection(board, board, 1, "Done already").run()
+
+    assert board.writes == []
 
 
 # %% the section
@@ -244,6 +315,21 @@ def test_the_summary_counts_unreviewed_findings_by_priority():
         "github-workflow: findings: 2 unreviewed (1 critical, 1 medium), 1 accepted"
     )
     assert line.tone is Tone.ACTION
+
+
+def test_the_summary_counts_shelved_findings_apart():
+    board = IssuesInMemory(
+        {
+            1: finding(1, FindingStage.UNREVIEWED, Priority.LOW),
+            2: finding(2, FindingStage.SHELVED, Priority.HIGH),
+        }
+    )
+
+    [line] = FindingsSummary(board).lines()
+
+    assert line.text == (
+        "github-workflow: findings: 1 unreviewed (1 low), 0 accepted, 1 shelved"
+    )
 
 
 def test_a_repository_without_findings_says_nothing():

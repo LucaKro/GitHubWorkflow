@@ -363,8 +363,8 @@ class NothingToDiscardError(DataclassException, LookupError):
 @dataclass
 class NotAFindingError(DataclassException, LookupError):
     """
-    Raised when a finding to be accepted or rejected is none, or not in a stage that
-    allows it.
+    Raised when a finding to be accepted, shelved or rejected is none, or not in a stage
+    that allows it.
     """
 
     number: int
@@ -376,4 +376,4 @@ class NotAFindingError(DataclassException, LookupError):
         return f"#{self.number} is not an open finding that can be decided this way"
 
     def suggest_correction(self) -> str:
-        return "List the findings to see which are unreviewed or accepted."
+        return "List the findings to see the stage each one is in."

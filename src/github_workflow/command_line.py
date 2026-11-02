@@ -55,7 +55,7 @@ class WorkflowCommand(StrEnum):
 
     FINDING = "finding"
     """
-    File, prioritize, list, accept or reject findings.
+    File, prioritize, list, accept, shelve or reject findings.
     """
 
     CLEANUP = "cleanup"
@@ -134,12 +134,17 @@ class FindingSubcommand(StrEnum):
 
     ACCEPT = "accept"
     """
-    Accept an unreviewed finding, on the person's word.
+    Accept an unreviewed or shelved finding, on the person's word.
+    """
+
+    SHELVE = "shelve"
+    """
+    Set an unreviewed or accepted finding aside, on the person's word.
     """
 
     REJECT = "reject"
     """
-    Reject a finding with a reason, on the person's word.
+    Reject a finding as incorrect, with a reason, on the person's word.
     """
 
 
