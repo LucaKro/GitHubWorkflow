@@ -393,7 +393,14 @@ class NotesSaving(WorkflowStep):
             return (
                 f"nothing changed since the last save to {self.save.notes.branch.name}"
             )
-        return f"saved {', '.join(map(str, saved))} to {self.save.notes.branch.name}"
+        line = f"saved {', '.join(map(str, saved))} to {self.save.notes.branch.name}"
+        checked_out = self.save.checkout.git.checked_out_branch()
+        if self.save.progress_branch in {"", checked_out}:
+            return line
+        return (
+            f"{line}; the progress is {self.save.progress_branch}'s, loaded at session "
+            f"start, not the checked-out {checked_out}'s"
+        )
 
 
 # %% other repositories

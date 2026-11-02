@@ -103,6 +103,16 @@ class SessionStart:
                 f"github-workflow: notes not loaded: {remotes.problem.error_message()}",
                 Tone.NEWS,
             )
+        local = self.checkout.claude_local
+        if NotesBlock.holds_unsaved_edits(local.read_text() if local.exists() else ""):
+            save = WorkflowCommand.command_line(
+                WorkflowCommand.NOTES, NotesSubcommand.SAVE
+            )
+            return ReportLine(
+                f"github-workflow: notes not reloaded: {local.name} holds edits not "
+                f"saved yet, kept as they are; save them with `{save}`",
+                Tone.ACTION,
+            )
         remote = remotes.chosen
         git = self.checkout.git
         notes = NotesBranch.on(git, remote, self.settings)
@@ -123,7 +133,6 @@ class SessionStart:
             branch,
             sections,
         )
-        local = self.checkout.claude_local
         local.write_text(
             block.written_into(local.read_text() if local.exists() else "")
         )

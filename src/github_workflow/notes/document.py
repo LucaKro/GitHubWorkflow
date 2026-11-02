@@ -5,6 +5,9 @@ never touching anything outside its markers.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -49,6 +52,37 @@ class NotesSection(StrEnum):
         return f"<!-- github-workflow:{self._name_.lower()}:end -->"
 
 
+class BlockRecord(StrEnum):
+    """
+    The lines recording what the block was loaded with, each its value's prefix.
+    """
+
+    BRANCH = "<!-- github-workflow:branch "
+    """
+    The branch whose progress the block holds, empty for none.
+    """
+
+    LOADED = "<!-- github-workflow:loaded "
+    """
+    A digest of the sections as loaded, or as last saved.
+    """
+
+    def line(self, value: str) -> str:
+        """
+        :param value: What the line records.
+        :return: The line.
+        """
+        return f"{self}{value} -->"
+
+    def read(self, document: str) -> str | None:
+        """
+        :param document: ``CLAUDE.local.md``'s text.
+        :return: What the line records, ``None`` when the document has no such line.
+        """
+        recorded = re.search(f"{re.escape(self)}(\\S*) -->", document)
+        return recorded.group(1) if recorded else None
+
+
 # %% the block
 
 
@@ -88,6 +122,17 @@ class NotesBlock:
     The text of each section.
     """
 
+    @property
+    def rendered_sections(self) -> dict[NotesSection, str]:
+        """
+        The sections the block shows, in order: the progress section only for a branch.
+        """
+        return {
+            section: self.sections.get(section, "")
+            for section in NotesSection
+            if section is not NotesSection.BRANCH_PROGRESS or self.branch
+        }
+
     def render(self) -> str:
         """:return: The block, markers included."""
         lines = [
@@ -105,10 +150,10 @@ class NotesBlock:
             f"shelve or reject a finding only when the person says so.",
             f"Mark a branch you pushed but no longer need with "
             f"`{self.workflow_command} branch discard`; the cleanup deletes it.",
+            BlockRecord.BRANCH.line(self.branch),
+            BlockRecord.LOADED.line(self.digest(self.rendered_sections)),
         ]
-        for section in NotesSection:
-            if section is NotesSection.BRANCH_PROGRESS and not self.branch:
-                continue
+        for section, text in self.rendered_sections.items():
             title = (
                 f"{section} ({self.branch})"
                 if section is NotesSection.BRANCH_PROGRESS
@@ -118,7 +163,7 @@ class NotesBlock:
                 "",
                 f"## {title}",
                 section.start_marker,
-                self.sections.get(section, ""),
+                text,
                 section.end_marker,
             ]
         lines.append(BlockMarker.END)
@@ -167,3 +212,38 @@ class NotesBlock:
                 start + len(section.start_marker) : end
             ].strip()
         return sections
+
+    @staticmethod
+    def digest(sections: dict[NotesSection, str]) -> str:
+        """
+        :param sections: The text of each section.
+        :return: A digest that differs whenever a section's text, leading and trailing
+            whitespace aside, does.
+        """
+        texts = {section.name: text.strip() for section, text in sections.items()}
+        return hashlib.sha256(json.dumps(texts, sort_keys=True).encode()).hexdigest()
+
+    @classmethod
+    def holds_unsaved_edits(cls, document: str) -> bool:
+        """
+        :param document: ``CLAUDE.local.md``'s text.
+        :return: Whether its block was edited since it was loaded or last saved.
+        """
+        loaded = BlockRecord.LOADED.read(document)
+        if not cls.holds_block(document) or loaded is None:
+            return False
+        return loaded != cls.digest(cls.read_sections(document))
+
+    @classmethod
+    def marked_saved(cls, document: str) -> str:
+        """
+        :param document: ``CLAUDE.local.md``'s text, its block just saved.
+        :return: It, recording its sections as saved.
+        """
+        loaded = BlockRecord.LOADED.read(document)
+        if loaded is None:
+            return document
+        return document.replace(
+            BlockRecord.LOADED.line(loaded),
+            BlockRecord.LOADED.line(cls.digest(cls.read_sections(document))),
+        )
