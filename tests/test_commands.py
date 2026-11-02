@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -24,6 +25,7 @@ from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedAp
 from basstler_domain_model.github.repository_client import PullRequestListState
 from basstler_domain_model.github.routes import QueryParameter, RepositoryRoute
 from basstler_domain_model.github.vocabulary import IssueState, RestJSONKey
+from basstler_domain_model.locations import PathEnumeration
 from basstler_domain_model.repository import Repository
 
 import github_workflow
@@ -41,6 +43,22 @@ from github_workflow.remotes import OwnedRemotes
 from github_workflow.settings import WorkflowSettings
 
 from .repositories_by_owner import RepositoriesByOwner
+
+# %% datasets
+
+
+class SessionDataset(PathEnumeration):
+    """
+    The stand-ins the session hook is run with.
+    """
+
+    INSTALLER_STILL_INSTALLING = (
+        Path(__file__).parent / "dataset" / "session" / "installer_still_installing.py"
+    )
+    """
+    An installer whose install, started in the background, still runs.
+    """
+
 
 # %% GitHub, replayed
 
@@ -270,27 +288,54 @@ def test_the_hook_answers_even_without_the_package(tmp_path: Path):
 
 
 def run_session_hook(
-    checkout: ProjectCheckout, event: HookValue, session: str, markers: Path
+    checkout: ProjectCheckout,
+    event: HookValue,
+    session: str,
+    markers: Path,
+    installation: Path | None = None,
 ) -> subprocess.CompletedProcess:
     """
     :param checkout: The checkout the session works in.
     :param event: The hook event the hook runs for.
     :param session: The session's id.
     :param markers: Where the hook keeps which sessions it reported.
+    :param installation: Holds the plugin the hook installs the runtime from and the
+        home it installs it into; ``None`` runs the test's interpreter, installing
+        nothing.
     :return: The finished hook.
     """
+    environment = {
+        **os.environ,
+        WorkflowVariable.PYTHON: sys.executable,
+        "TMPDIR": str(markers),
+        "CLAUDE_PROJECT_DIR": str(checkout.root),
+    }
+    if installation is not None:
+        del environment[WorkflowVariable.PYTHON]
+        environment["CLAUDE_PLUGIN_ROOT"] = str(installation / "plugin")
+        environment["HOME"] = str(installation / "home")
     return subprocess.run(
         [str(Path(__file__).parents[1] / "hooks" / "session-start.sh"), event],
         input=json.dumps({"session_id": session}),
         capture_output=True,
         text=True,
-        env={
-            **os.environ,
-            WorkflowVariable.PYTHON: sys.executable,
-            "TMPDIR": str(markers),
-            "CLAUDE_PROJECT_DIR": str(checkout.root),
-        },
+        env=environment,
     )
+
+
+@pytest.fixture
+def installation_still_running(tmp_path: Path) -> Path:
+    """
+    :return: A plugin whose installer is still installing, and a home whose runtime is
+        the test's virtual environment.
+    """
+    installer = tmp_path / "plugin" / "src" / "github_workflow" / "install.py"
+    installer.parent.mkdir(parents=True)
+    shutil.copy(SessionDataset.INSTALLER_STILL_INSTALLING.value, installer)
+    runtime = tmp_path / "home" / ".virtualenvs" / "githubworkflow-runtime"
+    runtime.parent.mkdir(parents=True)
+    runtime.symlink_to(sys.prefix)
+    return tmp_path
 
 
 def test_a_session_whose_start_was_missed_is_reported_on_its_first_prompt(
@@ -304,6 +349,34 @@ def test_a_session_whose_start_was_missed_is_reported_on_its_first_prompt(
     given = json.loads(first.stdout)[HookKey.HOOK_SPECIFIC_OUTPUT]
     assert given[HookKey.HOOK_EVENT_NAME] == HookValue.USER_PROMPT_SUBMIT
     assert second.stdout == ""
+
+
+def test_a_session_start_that_starts_an_install_leaves_the_report_to_the_first_prompt(
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    tmp_path: Path,
+    installation_still_running: Path,
+):
+    checkout = repositories.clone(owned_url, "session")
+
+    start = run_session_hook(
+        checkout,
+        HookValue.SESSION_START,
+        "s3",
+        tmp_path,
+        installation_still_running,
+    )
+    prompt = run_session_hook(
+        checkout,
+        HookValue.USER_PROMPT_SUBMIT,
+        "s3",
+        tmp_path,
+        installation_still_running,
+    )
+
+    assert HookKey.HOOK_SPECIFIC_OUTPUT not in json.loads(start.stdout)
+    given = json.loads(prompt.stdout)[HookKey.HOOK_SPECIFIC_OUTPUT]
+    assert given[HookKey.HOOK_EVENT_NAME] == HookValue.USER_PROMPT_SUBMIT
 
 
 def test_a_session_reported_at_its_start_is_not_reported_again(

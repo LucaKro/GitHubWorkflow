@@ -26,7 +26,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh UserPromptSubmit"
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh UserPromptSubmit",
+            "timeout": 120
           }
         ]
       }

@@ -5,12 +5,20 @@ one in use came from another, and a build that fails leaves the runtime in use a
 
 from __future__ import annotations
 
+import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
 
-from github_workflow.install import RuntimeFile, RuntimeInstallation, RuntimeSwitch
+import github_workflow.install
+from github_workflow.install import (
+    DirectoryLock,
+    RuntimeFile,
+    RuntimeInstallation,
+    RuntimeSwitch,
+)
 
 # %% which plugin a runtime came from
 
@@ -66,6 +74,65 @@ def test_a_failing_build_leaves_the_runtime_in_use_alone(
 
     assert [path.name for path in runtime.parent.iterdir()] == [runtime.name]
     assert (runtime / RuntimeFile.PLUGIN).read_text() == str(tmp_path / "old")
+
+
+# %% one install at a time
+
+
+def test_an_install_waits_for_the_one_running_and_takes_its_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """
+    An interpreter that does not exist makes an install that does not wait fail at once,
+    so a running install is what keeps it waiting.
+    """
+    plugin = tmp_path / "plugin"
+    runtime = tmp_path / "environments" / "runtime"
+    runtime.parent.mkdir()
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "no-interpreter"))
+    installed: list[str | None] = []
+    waiting = threading.Thread(
+        target=lambda: installed.append(RuntimeInstallation(plugin, runtime).install())
+    )
+
+    with DirectoryLock(runtime.parent):
+        waiting.start()
+        waiting.join(timeout=0.5)
+        assert waiting.is_alive()
+        built_from(runtime, plugin)
+    waiting.join()
+
+    assert installed == [None]
+
+
+def test_a_current_runtime_is_not_started_again(tmp_path: Path):
+    plugin = tmp_path / "plugin"
+    runtime = built_from(tmp_path / "environments" / "runtime", plugin)
+
+    assert RuntimeInstallation(plugin, runtime).start() is None
+
+
+def test_a_started_install_runs_this_installer_on_its_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    plugin = tmp_path / "plugin"
+    runtime = tmp_path / "runtime"
+    started: list[list[str]] = []
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda command, **options: started.append(command)
+    )
+
+    RuntimeInstallation(plugin, runtime).start()
+
+    assert started == [
+        [
+            sys.executable,
+            "-I",
+            github_workflow.install.__file__,
+            str(plugin),
+            str(runtime),
+        ]
+    ]
 
 
 # %% switching over

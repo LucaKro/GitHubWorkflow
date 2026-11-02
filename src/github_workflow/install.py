@@ -8,12 +8,18 @@ Runs on the standard library alone, before any runtime exists, so it is run as a
 rather than imported from the package. A step that fails ends it with the step and what
 the step said; the runtime in use is left as it was.
 
-Usage: ``python3 install.py <plugin directory> <runtime path>``; prints one line when it
-installed, nothing when the runtime already came from this plugin.
+Installs one at a time: an install started while another runs waits for it, and finds
+the runtime current when that one built it.
+
+Usage: ``python3 install.py [--background] <plugin directory> <runtime path>``; prints
+one line when it installed, or started installing in a process of its own, nothing when
+the runtime already came from this plugin.
 """
 
 from __future__ import annotations
 
+import argparse
+import fcntl
 import json
 import os
 import shutil
@@ -49,6 +55,17 @@ class Requirement(StrEnum):
     """
 
 
+class InstallOption(StrEnum):
+    """
+    The installer's command-line options.
+    """
+
+    BACKGROUND = "--background"
+    """
+    Install in a process of its own and return at once.
+    """
+
+
 # %% switching over
 
 
@@ -65,8 +82,8 @@ class RuntimeSwitch:
 
     def to(self, build: Path) -> None:
         """
-        Point the runtime's path at a build in one step, and remove the build it
-        pointed at before.
+        Point the runtime's path at a build in one step, and remove the build it pointed
+        at before.
 
         :param build: The new build, beside the runtime's path.
         """
@@ -82,6 +99,36 @@ class RuntimeSwitch:
         os.replace(link, self.location)
         if previous is not None and previous.resolve() != build.resolve():
             shutil.rmtree(previous, ignore_errors=True)
+
+
+# %% one install at a time
+
+
+@dataclass
+class DirectoryLock:
+    """
+    An exclusive lock on a directory, held while the ``with`` block runs; taking it
+    waits until no other process holds it.
+    """
+
+    directory: Path
+    """
+    The directory locked.
+    """
+
+    descriptor: int | None = None
+    """
+    The directory opened while the lock is held, ``None`` otherwise.
+    """
+
+    def __enter__(self) -> DirectoryLock:
+        self.descriptor = os.open(self.directory, os.O_RDONLY)
+        fcntl.flock(self.descriptor, fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *exception: object) -> None:
+        os.close(self.descriptor)
+        self.descriptor = None
 
 
 # %% installing
@@ -109,16 +156,45 @@ class RuntimeInstallation:
         stamp = self.location / RuntimeFile.PLUGIN
         return stamp.exists() and stamp.read_text() == str(self.plugin)
 
-    def install(self) -> str | None:
+    def start(self) -> str | None:
         """
-        Build the runtime from this plugin and switch over to it, unless it already
-        came from this plugin.
+        Start :meth:`install` in a process of its own that outlives this one, unless the
+        runtime already came from this plugin.
 
-        :return: What was installed, ``None`` when nothing was.
+        :return: What is being installed, ``None`` when nothing is.
         """
         if self.current:
             return None
+        subprocess.Popen(
+            [sys.executable, "-I", __file__, str(self.plugin), str(self.location)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        return (
+            f"github-workflow: installing the runtime from the plugin at {self.plugin}"
+        )
+
+    def install(self) -> str | None:
+        """
+        Build the runtime from this plugin and switch over to it, unless it already came
+        from this plugin, once no other install runs.
+
+        :return: What was installed, ``None`` when nothing was.
+        """
         self.location.parent.mkdir(parents=True, exist_ok=True)
+        with DirectoryLock(self.location.parent):
+            if self.current:
+                return None
+            return self._build()
+
+    def _build(self) -> str:
+        """
+        Build the runtime from this plugin and switch over to it.
+
+        :return: What was installed.
+        """
         build = Path(
             tempfile.mkdtemp(prefix=f".{self.location.name}-", dir=self.location.parent)
         )
@@ -196,9 +272,13 @@ def main() -> None:
     """
     Install the runtime the command line names from the plugin it names.
     """
-    installed = RuntimeInstallation(
-        Path(sys.argv[1]).resolve(), Path(sys.argv[2])
-    ).install()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(InstallOption.BACKGROUND, action="store_true")
+    parser.add_argument("plugin", type=Path)
+    parser.add_argument("location", type=Path)
+    arguments = parser.parse_args()
+    installation = RuntimeInstallation(arguments.plugin.resolve(), arguments.location)
+    installed = installation.start() if arguments.background else installation.install()
     if installed is not None:
         print(installed)
 
