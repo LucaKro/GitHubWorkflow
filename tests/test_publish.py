@@ -11,6 +11,8 @@ from basstler_domain_model.git.commands import RemoteBranch, RemoteName
 from basstler_domain_model.git.storage_branch import StorageBranch
 
 from github_workflow.probe.publish import ResultsBranch, ResultsPublication
+from github_workflow.remotes import OwnedRemotes
+from github_workflow.settings import WorkflowSettings
 
 from .repositories_by_owner import RepositoriesByOwner
 
@@ -18,7 +20,10 @@ from .repositories_by_owner import RepositoriesByOwner
 
 
 def test_results_land_on_the_results_branch_under_their_directory_s_name(
-    repositories: RepositoriesByOwner, owned_url: str, tmp_path: Path
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+    tmp_path: Path,
 ):
     checkout = repositories.clone(owned_url, "session")
     directory = tmp_path / "check-1"
@@ -26,7 +31,9 @@ def test_results_land_on_the_results_branch_under_their_directory_s_name(
     (directory / "report.md").write_text("all well\n")
     before = checkout.git.run("status", "--porcelain")
 
-    ResultsPublication(checkout.git, directory).publish()
+    remote = OwnedRemotes.read(checkout.git, settings).chosen
+
+    ResultsPublication(checkout.git, remote, directory).publish()
 
     reader = repositories.clone(owned_url, "reader").git
     results = StorageBranch(reader, RemoteBranch(RemoteName.ORIGIN, ResultsBranch.NAME))

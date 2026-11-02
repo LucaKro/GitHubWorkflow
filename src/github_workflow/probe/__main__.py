@@ -11,16 +11,15 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from basstler_domain_model.git.commands import (
-    GitCommandRunner,
-    RemoteName,
-)
+from basstler_domain_model.git.commands import GitCommandRunner
 from basstler_domain_model.github.clients import GitHubApi
 
 from github_workflow.locations import ProbeFile
 from github_workflow.probe.publish import ResultsPublication
 from github_workflow.probe.results import ProbeReport
 from github_workflow.probe.scenarios import Probe
+from github_workflow.remotes import OwnedRemotes
+from github_workflow.settings import WorkflowSettings
 
 # %% entry point
 
@@ -28,19 +27,22 @@ from github_workflow.probe.scenarios import Probe
 def main() -> None:
     """
     Run the checks in order, write the report and the results, and publish both.
+
+    :raises NoOwnedRemoteError: If no remote is the owner's.
+    :raises AmbiguousOwnedRemoteError: If several are, and none is ``origin``.
     """
     output = Path(sys.argv[1])
     git = GitCommandRunner(Path.cwd())
-    [origin] = [remote for remote in git.remotes() if remote.name == RemoteName.ORIGIN]
+    remote = OwnedRemotes.read(git, WorkflowSettings()).chosen
     probe = Probe(
         git=git,
         github=GitHubApi.from_environment(),
-        repository=origin.repository,
+        remote=remote,
         stamp=output.name,
         report=ProbeReport(Probe.describe_environment(git)),
     )
     default_branch = probe.default_branch()
-    probe.report.environment["repository"] = probe.repository.full_name
+    probe.report.environment["repository"] = probe.remote.repository.full_name
     probe.report.environment["default branch"] = str(default_branch)
     probe.check_library(git.commit_at("HEAD"))
     probe.check_notes_branch()
@@ -54,7 +56,7 @@ def main() -> None:
     (output / ProbeFile.REPORT).write_text(probe.report.markdown())
     (output / ProbeFile.RESULTS).write_text(probe.report.to_json())
     print(probe.report.markdown())
-    print(ResultsPublication(git, output).publish())
+    print(ResultsPublication(git, remote, output).publish())
 
 
 if __name__ == "__main__":
