@@ -59,7 +59,8 @@ class BranchStart(WorkflowStep):
     """
     A new work branch, started from GitHub's copy of the default branch or of another
     branch - or from the local branch, when GitHub has none of that name - and checked
-    out.
+    out. Started from GitHub's default branch, it also fast-forwards the local default
+    branch to it.
     """
 
     policy: WritePolicy
@@ -85,11 +86,34 @@ class BranchStart(WorkflowStep):
         fetched = git.fetch_branch(base.remote, base.name, base.remote)
         if fetched.succeeded:
             git.create_branch(self.name, base.tracking_reference)
-            return f"on {self.name}, started from {base.remote}/{base.name}"
+            started = f"on {self.name}, started from {base.remote}/{base.name}"
+            if base.name != self.policy.default_branch:
+                return started
+            return f"{started}{self._fast_forward_local(base)}"
         if git.commit_or_none(base.reference) is None:
             fetched.raise_if_failed()
         git.create_branch(self.name, base.name)
         return f"on {self.name}, started from the local {base.name}"
+
+    def _fast_forward_local(self, base: RemoteBranch) -> str:
+        """
+        Fast-forward the local copy of *base* to GitHub's, unless it has commits of its
+        own.
+
+        :param base: The default branch, as just fetched.
+        :return: What happened to the local copy, as an addition to the report; empty
+            when there is none or it is up to date.
+        """
+        git = self.policy.checkout.git
+        local = git.commit_or_none(base.reference)
+        if local is None or local == git.commit_at(base.tracking_reference):
+            return ""
+        if not git.contains(local, base.tracking_reference):
+            return f"; local {base.name} kept: it has commits GitHub's lacks"
+        moved = git.fast_forward_branch(base.name, base.tracking_reference)
+        if not moved.succeeded:
+            return f"; local {base.name} kept: it is checked out in another worktree"
+        return f"; local {base.name} fast-forwarded to it"
 
 
 @dataclass(frozen=True)

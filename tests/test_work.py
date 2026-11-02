@@ -132,6 +132,63 @@ def test_a_work_branch_starts_on_a_local_branch_github_does_not_have(
     assert git.commit_at("upper") == git.commit_at("unpushed")
 
 
+def github_s_default_branch_moved_on(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+) -> str:
+    """:return: The commit GitHub's default branch moved on to, pushed from a second
+    clone."""
+    mover = policy_in(repositories.clone(owned_url, "mover"), settings)
+    git = mover.checkout.git
+    write(mover.checkout, "moved.txt")
+    git.run("add", "moved.txt")
+    git.run("commit", "--quiet", "--message", "Move on")
+    default = RemoteBranch(mover.remote.name, RepositoriesByOwner.default_branch)
+    git.run("push", "--quiet", default.remote, f"HEAD:{default.reference}")
+    return git.commit_at("HEAD")
+
+
+def test_starting_from_the_default_branch_fast_forwards_the_local_one(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    policy = policy_in(repositories.clone(owned_url, "work"), settings)
+    moved = github_s_default_branch_moved_on(repositories, owned_url, settings)
+
+    BranchStart(policy, "feature").run()
+
+    assert policy.checkout.git.commit_at(policy.default_branch) == moved
+
+
+def test_a_local_default_branch_with_commits_of_its_own_is_kept(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    policy = policy_in(repositories.clone(owned_url, "work"), settings)
+    git = policy.checkout.git
+    write(policy.checkout, "own.txt")
+    git.run("add", "own.txt")
+    git.run("commit", "--quiet", "--message", "Own")
+    own = git.commit_at("HEAD")
+    github_s_default_branch_moved_on(repositories, owned_url, settings)
+
+    BranchStart(policy, "feature").run()
+
+    assert git.commit_at(policy.default_branch) == own
+
+
+def test_starting_from_another_branch_leaves_the_local_default_branch_alone(
+    work: WritePolicy,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+):
+    git = work.checkout.git
+    before = git.commit_at(work.default_branch)
+    github_s_default_branch_moved_on(repositories, owned_url, settings)
+
+    BranchStart(work, "upper", "feature").run()
+
+    assert git.commit_at(work.default_branch) == before
+
+
 def test_switching_checks_out_the_branch(work: WritePolicy):
     BranchSwitch(work, RepositoriesByOwner.default_branch).run()
 

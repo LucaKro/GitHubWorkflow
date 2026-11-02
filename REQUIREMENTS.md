@@ -111,6 +111,8 @@ Everything else written to GitHub needs my go-ahead.
 - A task such as "do issue 1": small, clear tasks go straight to code, failing test
   first; larger ones get a plan I approve first.
 - Pull requests stay small through a standing note, not through a measured limit.
+- Starting a work branch from the default branch also fast-forwards my local default
+  branch to GitHub's, unless it has commits of its own.
 - Dependent pull requests are rare, and use GitHub's native stacks when they happen,
   restacked and merged by GitHub.
 
