@@ -13,13 +13,9 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
-from basstler_domain_model.github.pull_request_fields import (
-    PullRequestField,
-    PullRequestHead,
-    PullRequestPayload,
-)
 from basstler_domain_model.github.repository_client import GitHubRepository
-from basstler_domain_model.github.vocabulary import IssueState
+from basstler_domain_model.github.rest_models import RestPullRequest
+from basstler_domain_model.github.vocabulary import PullRequestState
 
 from github_workflow.command_line import WorkflowCommand
 from github_workflow.exceptions import (
@@ -131,7 +127,7 @@ class KeptBranches:
     Each branch on the repository, and the commit it is at.
     """
 
-    pull_requests: Sequence[PullRequestPayload]
+    pull_requests: Sequence[RestPullRequest]
     """
     Every pull request on the repository, open or closed.
     """
@@ -160,12 +156,11 @@ class KeptBranches:
         """
         open_branches = set()
         closed_heads: dict[str, set[str]] = {}
-        for record in self.pull_requests:
-            number = PullRequestField.NUMBER.read(record)
-            head = PullRequestHead.from_record(record, number)
+        for pull_request in self.pull_requests:
+            head = pull_request.head
             if head.repository != self.repository:
                 continue
-            if PullRequestField.STATE.read(record, number) == IssueState.OPEN:
+            if pull_request.state is PullRequestState.OPEN:
                 open_branches.add(head.branch)
             else:
                 closed_heads.setdefault(head.branch, set()).add(head.commit)

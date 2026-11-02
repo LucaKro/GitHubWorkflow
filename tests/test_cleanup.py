@@ -12,11 +12,8 @@ from pathlib import Path
 import pytest
 
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
-from basstler_domain_model.github.pull_request_fields import (
-    PullRequestHeadKey,
-    PullRequestPayload,
-)
-from basstler_domain_model.github.vocabulary import IssueState, RestJSONKey
+from basstler_domain_model.github.rest_models import RestPullRequest
+from basstler_domain_model.github.vocabulary import PullRequestState
 
 from github_workflow.cleanup import (
     BranchCleanup,
@@ -34,47 +31,14 @@ from github_workflow.policy import WritePolicy
 from github_workflow.settings import WorkflowSettings
 from github_workflow.work import BranchStart, CommitWork, PushWork
 
+from .pull_requests import REPOSITORY, pull_request
 from .repositories_by_owner import RepositoriesByOwner
 from .test_work import policy_in, write
-
-REPOSITORY = "LucaKro/project"
-"""
-The full name of the repository the pull requests here are on.
-"""
 
 # %% helpers
 
 
-def pull_request(
-    number: int,
-    branch: str,
-    commit: str,
-    state: IssueState,
-    repository: str | None = REPOSITORY,
-) -> PullRequestPayload:
-    """
-    :param number: The pull request.
-    :param branch: The branch it merges.
-    :param commit: The commit its head is at.
-    :param state: Whether it is open.
-    :param repository: The repository its head is in, ``None`` when deleted.
-    :return: The pull request as GitHub lists it.
-    """
-    head_repository = (
-        None if repository is None else {PullRequestHeadKey.FULL_NAME: repository}
-    )
-    return {
-        RestJSONKey.NUMBER: number,
-        RestJSONKey.STATE: state.value,
-        RestJSONKey.HEAD: {
-            PullRequestHeadKey.REFERENCE: branch,
-            PullRequestHeadKey.HEAD_REPOSITORY: head_repository,
-            RestJSONKey.SHA: commit,
-        },
-    }
-
-
-def kept(tips: dict[str, str], *pull_requests: PullRequestPayload) -> KeptBranches:
+def kept(tips: dict[str, str], *pull_requests: RestPullRequest) -> KeptBranches:
     """:param tips: Each branch and its commit.
     :param pull_requests: The repository's pull requests.
     :return: Them, with ``main`` and the notes branch protected."""
@@ -87,14 +51,16 @@ def kept(tips: dict[str, str], *pull_requests: PullRequestPayload) -> KeptBranch
 
 
 def test_a_closed_pull_request_s_branch_is_ready():
-    branches = kept({"done": "a1"}, pull_request(1, "done", "a1", IssueState.CLOSED))
+    branches = kept(
+        {"done": "a1"}, pull_request(1, "done", "a1", PullRequestState.CLOSED)
+    )
 
     assert branches.ready() == ["done"]
 
 
 def test_a_branch_with_new_commits_since_closing_is_kept():
     branches = kept(
-        {"reused": "b2"}, pull_request(1, "reused", "b1", IssueState.CLOSED)
+        {"reused": "b2"}, pull_request(1, "reused", "b1", PullRequestState.CLOSED)
     )
 
     assert branches.ready() == []
@@ -103,8 +69,8 @@ def test_a_branch_with_new_commits_since_closing_is_kept():
 def test_a_branch_with_an_open_pull_request_is_kept():
     branches = kept(
         {"again": "c1"},
-        pull_request(1, "again", "c1", IssueState.CLOSED),
-        pull_request(2, "again", "c1", IssueState.OPEN),
+        pull_request(1, "again", "c1", PullRequestState.CLOSED),
+        pull_request(2, "again", "c1", PullRequestState.OPEN),
     )
 
     assert branches.ready() == []
@@ -117,8 +83,8 @@ def test_a_branch_that_never_had_a_pull_request_is_kept():
 def test_a_protected_branch_is_never_ready():
     branches = kept(
         {"main": "e1", "notes": "e2"},
-        pull_request(1, "main", "e1", IssueState.CLOSED),
-        pull_request(2, "notes", "e2", IssueState.CLOSED),
+        pull_request(1, "main", "e1", PullRequestState.CLOSED),
+        pull_request(2, "notes", "e2", PullRequestState.CLOSED),
     )
 
     assert branches.ready() == []
@@ -127,7 +93,7 @@ def test_a_protected_branch_is_never_ready():
 def test_a_pull_request_from_another_repository_says_nothing_about_this_one():
     branches = kept(
         {"same-name": "f1"},
-        pull_request(1, "same-name", "f1", IssueState.CLOSED, "someone/fork"),
+        pull_request(1, "same-name", "f1", PullRequestState.CLOSED, "someone/fork"),
     )
 
     assert branches.ready() == []
@@ -166,8 +132,8 @@ def test_the_discarded_list_reads_back_what_it_wrote():
 def test_the_reminder_names_how_many_and_the_command():
     branches = kept(
         {"one": "a", "two": "b"},
-        pull_request(1, "one", "a", IssueState.CLOSED),
-        pull_request(2, "two", "b", IssueState.CLOSED),
+        pull_request(1, "one", "a", PullRequestState.CLOSED),
+        pull_request(2, "two", "b", PullRequestState.CLOSED),
     )
 
     [line] = CleanupReminder(branches).lines()
@@ -198,7 +164,11 @@ def cleanup_in(
         {branch.name: commit},
         [
             pull_request(
-                1, branch.name, commit, IssueState.CLOSED, remote.repository.full_name
+                1,
+                branch.name,
+                commit,
+                PullRequestState.CLOSED,
+                remote.repository.full_name,
             )
         ],
         remote.repository.full_name,
