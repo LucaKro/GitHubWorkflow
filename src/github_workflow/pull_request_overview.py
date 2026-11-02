@@ -168,6 +168,11 @@ class PullRequestSignalReader:
 class PullRequestOverview(ReportSection):
     """
     One line per open pull request, and how many wait on the person's review.
+
+    .. note::
+        Reads every open pull request's signals on each run, several API requests
+        apiece, and counts the waiting reviews with the search API, which allows 30
+        requests a minute.
     """
 
     reader: PullRequestSignalReader
@@ -243,6 +248,7 @@ class PullRequestDetails(WorkflowStep):
             first = (
                 thread.comments[0].body.strip().splitlines() if thread.comments else []
             )
-            place = f"{thread.path}:{thread.line}" if thread.line else thread.path
-            lines.append(f"unresolved thread at {place}: {''.join(first[:1])}")
+            lines.append(
+                f"unresolved thread at {thread.location}: {''.join(first[:1])}"
+            )
         return "\n".join(lines)
