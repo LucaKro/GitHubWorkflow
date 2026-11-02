@@ -72,14 +72,21 @@ class SessionStart:
             lines += section.result()
         return lines
 
-    def section(self, name: SectionName) -> list[ReportLine]:
+    def section(
+        self, name: SectionName, timeout_seconds: float = 30.0
+    ) -> list[ReportLine]:
         """
         :param name: A section that reads the owner's repository on GitHub.
-        :return: Its lines, computed in a process of its own so a failure costs only
-            this section, and then one red line saying so.
+        :param timeout_seconds: How long the section may take before it is stopped.
+        :return: Its lines, computed in a process of its own so a failure or a slow
+            answer costs only this section, and then one red line saying so.
         """
         computed = CommandRunner(self.checkout.root).run(
-            sys.executable, "-m", report.__name__, name
+            sys.executable,
+            "-m",
+            report.__name__,
+            name,
+            timeout_seconds=timeout_seconds,
         )
         if not computed.succeeded:
             return [
