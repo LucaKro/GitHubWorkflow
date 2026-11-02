@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from github_workflow.command_line import WorkflowCommand
+from github_workflow.command_line import FindingSubcommand, WorkflowCommand
 
 # %% markers
 
@@ -90,6 +90,7 @@ class NotesBlock:
 
     def render(self) -> str:
         """:return: The block, markers included."""
+        finding = f"{self.workflow_command} {WorkflowCommand.FINDING}"
         lines = [
             BlockMarker.START,
             "# GitHub workflow notes",
@@ -100,9 +101,19 @@ class NotesBlock:
             f"Read git directly. Write to git and GitHub only through "
             f"`{self.workflow_command}` ({', '.join(WorkflowCommand)}; `--help` "
             f"for each).",
-            f"File what you notice outside this work with `{self.workflow_command} "
-            f"finding file` instead of acting on it ({self.finding_guide}); accept, "
-            f"shelve or reject a finding only when the person says so.",
+            f"File what you notice outside this work with `{finding} "
+            f"{FindingSubcommand.FILE}` instead of acting on it ({self.finding_guide}); "
+            f"when a test failing on the default branch is easy to write, pass it, "
+            f"uncommitted, with `--test`. Accept, shelve or reject a finding only when "
+            f"the person says so.",
+            f"Work on a finding only when the person asks you to. Prove it first with "
+            f"`{finding} {FindingSubcommand.PROVE}`, or, when no failing test can be "
+            f"written, `{finding} {FindingSubcommand.MARK_UNPROVEN}` with the reason; "
+            f"run a proven finding's test again with `{finding} "
+            f"{FindingSubcommand.RECHECK}` before working on it. Open its draft only "
+            f"with `{self.workflow_command} {WorkflowCommand.DRAFT} --finding`, which "
+            f"needs it accepted and proven. Give the commands running a test the "
+            f"project's interpreter with `--python`.",
             f"Mark a branch you pushed but no longer need with "
             f"`{self.workflow_command} branch discard`; the cleanup deletes it.",
         ]

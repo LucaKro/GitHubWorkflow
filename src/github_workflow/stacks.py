@@ -7,10 +7,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from basstler_domain_model.github.pull_request_fields import (
-    PullRequestField,
-    PullRequestHead,
-)
 from basstler_domain_model.github.repository_client import (
     PullRequestBaseWriter,
     PullRequestReader,
@@ -58,12 +54,8 @@ class StackPlacement:
         :return: The stack holding both, *above* right on top of *below*.
         :raises StackContinuesAboveError: If other pull requests already sit on *below*.
         """
-        below_branch = PullRequestHead.from_record(
-            self.pull_requests.pull_request(below), below
-        ).branch
-        above_base = PullRequestField.BASE.read(
-            self.pull_requests.pull_request(above), above
-        )
+        below_branch = self.pull_requests.pull_request(below).head.branch
+        above_base = self.pull_requests.pull_request(above).base
         if above_base != below_branch:
             self.retargeting.set_base(above, below_branch)
         stack = self.stacks.stack_of(below)
