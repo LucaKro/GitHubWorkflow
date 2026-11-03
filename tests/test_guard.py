@@ -26,6 +26,8 @@ from github_workflow.guard import (
 )
 from github_workflow.hooks import FileWritingTool, HookKey, HookValue
 
+from .test_coarse_guard import CoarseGuardDataset
+
 # %% the dataset
 
 
@@ -297,18 +299,30 @@ def test_the_hook_says_nothing_about_a_read():
     assert (finished.returncode, finished.stdout) == (0, "")
 
 
-def test_the_hook_blocks_the_call_when_the_guard_cannot_run():
+def test_the_hook_denies_a_command_naming_git_when_the_guard_cannot_run():
     finished = run_hook(GuardDataset.ALLOWED.lines()[0], interpreter="/nonexistent")
 
-    assert finished.returncode == 2
+    output = json.loads(finished.stdout)[HookKey.HOOK_SPECIFIC_OUTPUT]
+    assert output[HookKey.PERMISSION_DECISION] == HookValue.DENY
 
 
-def test_the_hook_installs_a_missing_runtime_and_blocks_when_that_fails(
+def test_the_hook_lets_other_work_run_when_the_guard_cannot_run():
+    """
+    A broken runtime stops only what could reach git or GitHub, not every command.
+    """
+    finished = run_hook(
+        CoarseGuardDataset.ALLOWED.lines()[0], interpreter="/nonexistent"
+    )
+
+    assert (finished.returncode, finished.stdout) == (0, "")
+
+
+def test_the_hook_blocks_the_call_when_neither_guard_can_run(
     tmp_path: Path,
 ):
     """
-    A plugin without the installer stands in for an install that fails, so nothing is
-    downloaded.
+    A plugin without its source stands in for an install that fails, so nothing is
+    downloaded, and leaves the coarse guard nothing to run.
     """
     finished = subprocess.run(
         [str(GuardDataset.HOOK_SCRIPT.value)],
@@ -326,7 +340,8 @@ def test_the_hook_installs_a_missing_runtime_and_blocks_when_that_fails(
     assert "could not install the runtime" in finished.stderr
 
 
-def test_the_hook_blocks_the_call_when_the_guard_fails():
+def test_the_hook_denies_a_command_naming_git_when_the_guard_fails():
     finished = run_hook("git log 'unbalanced")
 
-    assert finished.returncode == 2
+    output = json.loads(finished.stdout)[HookKey.HOOK_SPECIFIC_OUTPUT]
+    assert output[HookKey.PERMISSION_DECISION] == HookValue.DENY
