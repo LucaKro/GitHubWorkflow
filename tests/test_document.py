@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from github_workflow.command_line import FindingSubcommand, WorkflowCommand
 from github_workflow.notes.document import NotesBlock, NotesSection
+from github_workflow.policy import Attribution
 
 # %% helpers
 
@@ -64,3 +65,14 @@ def test_the_header_names_every_command_a_finding_is_proven_and_worked_on_with()
         f"`workflow {WorkflowCommand.DRAFT} --finding`",
     ]
     assert [command for command in named if command not in rendered] == []
+
+
+def test_the_header_names_the_credit_a_commit_refuses_and_the_line_it_carries():
+    """
+    A session that does not know the commit command refuses an assistant's co-author
+    trailer adds one, is refused, and tries again.
+    """
+    rendered = block().render()
+
+    assert f"`{Attribution.CO_AUTHOR_TRAILER}`" in rendered
+    assert f'"{Attribution.ACKNOWLEDGEMENT}"' in rendered
