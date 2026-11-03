@@ -5,6 +5,7 @@ policy refuses before it is attempted.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +13,7 @@ from pathlib import Path
 import pytest
 
 import github_workflow
+from basstler_domain_model.environment import GitIdentityVariable
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
 from basstler_domain_model.git.exceptions import GitCommandFailed
 from basstler_domain_model.github.repository_client import RepositoryDetails
@@ -232,6 +234,46 @@ def test_a_commit_authored_as_an_assistant_is_refused(work: WritePolicy):
 
     with pytest.raises(AssistantCreditError):
         CommitWork(work, "Add b", [write(work.checkout, "b.txt")]).run()
+
+
+def test_a_commit_committed_as_an_assistant_is_refused(
+    work: WritePolicy, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv(GitIdentityVariable.COMMITTER_EMAIL, "noreply@anthropic.com")
+    before = work.checkout.git.commit_at("HEAD")
+
+    with pytest.raises(AssistantCreditError):
+        CommitWork(work, "Add b", [write(work.checkout, "b.txt")]).run()
+
+    assert work.checkout.git.commit_at("HEAD") == before
+
+
+def test_a_person_named_like_the_assistant_may_commit(work: WritePolicy):
+    work.checkout.git.run("config", "user.name", "Claude Monet")
+    work.checkout.git.run("config", "user.email", "claude.monet@example.com")
+
+    CommitWork(work, "Add b", [write(work.checkout, "b.txt")]).run()
+
+    assert work.checkout.git.run("log", "-1", "--format=%an") == "Claude Monet"
+
+
+def test_a_commit_needs_no_access_to_github(work: WritePolicy, tmp_path: Path):
+    """
+    Committing is local: without a token, and so without GitHub's API, it still runs.
+    """
+    write(work.checkout, "b.txt")
+
+    finished = subprocess.run(
+        [sys.executable, "-m", github_workflow.__name__, WorkflowCommand.COMMIT]
+        + ["-m", "Add b", "b.txt"],
+        cwd=work.checkout.root,
+        capture_output=True,
+        text=True,
+        env={"PATH": os.environ["PATH"], "HOME": str(tmp_path / "home")},
+    )
+
+    assert finished.returncode == 0, finished.stderr
+    assert work.checkout.git.run("log", "-1", "--format=%s") == "Add b"
 
 
 def test_a_commit_on_the_default_branch_is_refused(work: WritePolicy):

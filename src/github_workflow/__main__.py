@@ -108,7 +108,14 @@ class WorkflowSession(RepositoryDetails):
         return GitHubRepository.from_environment(self.remote.repository)
 
     def default_branch(self) -> str:
-        return self.github.default_branch()
+        """
+        :return: The branch pull requests target unless told otherwise, as git reads it
+            from the owner's remote, and from GitHub's API only when git cannot tell.
+        """
+        return (
+            self.checkout.git.remote_default_branch(self.remote.name)
+            or self.github.default_branch()
+        )
 
     @property
     def policy(self) -> WritePolicy:
