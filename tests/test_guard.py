@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -23,7 +24,7 @@ from github_workflow.guard import (
     PullRequestOpening,
     ToolGuard,
 )
-from github_workflow.hooks import HookKey, HookValue
+from github_workflow.hooks import FileWritingTool, HookKey, HookValue
 
 # %% the dataset
 
@@ -67,6 +68,11 @@ class GuardDataset(PathEnumeration):
     HOOK_SCRIPT = Path(__file__).parents[1] / "hooks" / "guard.sh"
     """
     The hook the plugin runs.
+    """
+
+    HOOK_CONFIGURATION = Path(__file__).parents[1] / "hooks" / "hooks.json"
+    """
+    Which hook the plugin runs for which tool.
     """
 
     def lines(self) -> list[str]:
@@ -179,6 +185,42 @@ def test_the_github_tool_opening_a_pull_request_names_the_workflow_s_draft():
 
     assert denial is not None
     assert denial.instead == PullRequestOpening.instead
+
+
+# %% files git runs programs from
+
+
+@pytest.mark.parametrize("tool", list(FileWritingTool))
+@pytest.mark.parametrize(
+    "path", ["/checkout/.git/config", ".git/hooks/pre-push", "/checkout/.gitconfig"]
+)
+def test_writing_a_file_git_runs_programs_from_is_denied(
+    tool: FileWritingTool, path: str
+):
+    hook_input = {
+        HookKey.TOOL_NAME: tool,
+        HookKey.TOOL_INPUT: {HookKey.FILE_PATH: path},
+    }
+
+    assert ToolGuard(hook_input).denial() is not None
+
+
+@pytest.mark.parametrize("path", ["/checkout/src/module.py", "/checkout/.gitignore"])
+def test_writing_another_file_is_let_through(path: str):
+    hook_input = {
+        HookKey.TOOL_NAME: FileWritingTool.WRITE,
+        HookKey.TOOL_INPUT: {HookKey.FILE_PATH: path},
+    }
+
+    assert ToolGuard(hook_input).denial() is None
+
+
+@pytest.mark.parametrize("tool", list(FileWritingTool))
+def test_the_hook_runs_for_the_tools_writing_files(tool: FileWritingTool):
+    configuration = json.loads(GuardDataset.HOOK_CONFIGURATION.value.read_text())
+    [guard] = configuration[HookKey.HOOKS][HookValue.PRE_TOOL_USE]
+
+    assert re.fullmatch(guard[HookKey.MATCHER], tool)
 
 
 # %% the hook

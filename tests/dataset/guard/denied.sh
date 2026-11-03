@@ -55,3 +55,17 @@ echo push origin main | xargs git
 echo -D feature | xargs git branch
 $'git' push origin main
 G=git; $G push origin main
+git ls-remote --upload-pack='touch pwned' .
+git ls-remote -u program origin
+git ls-remote --receive-pack=program origin
+git fetch --upload-pack='touch pwned' .
+git fetch -u origin
+git fetch --exec=program origin
+git diff --output=file
+git log --output file
+git diff --ext-diff
+git log -p --textconv
+export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.fsmonitor GIT_CONFIG_VALUE_0=program; git status
+declare -x GIT_PAGER=program; git log
+set -a; GIT_PAGER=program; git log
+env GIT_EXTERNAL_DIFF=program git diff

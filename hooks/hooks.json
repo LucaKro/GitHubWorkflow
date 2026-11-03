@@ -12,7 +12,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|mcp__.*github.*",
+        "matcher": "Bash|Write|Edit|MultiEdit|mcp__.*github.*",
         "hooks": [
           {
             "type": "command",
