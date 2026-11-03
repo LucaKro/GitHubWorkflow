@@ -76,6 +76,20 @@ def test_a_branch_with_an_open_pull_request_is_kept():
     assert branches.ready() == []
 
 
+def test_the_base_of_an_open_pull_request_is_kept():
+    """
+    Deleting the branch of a closed, unmerged lower pull request would close the open
+    one stacked on it, for good.
+    """
+    branches = kept(
+        {"lower": "h1", "upper": "h2"},
+        pull_request(1, "lower", "h1", PullRequestState.CLOSED),
+        pull_request(2, "upper", "h2", PullRequestState.OPEN, base="lower"),
+    )
+
+    assert branches.ready() == []
+
+
 def test_a_branch_that_never_had_a_pull_request_is_kept():
     assert kept({"work": "d1"}).ready() == []
 
