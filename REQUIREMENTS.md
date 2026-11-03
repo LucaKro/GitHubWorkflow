@@ -100,8 +100,9 @@ them:
 - `cleanup` deletes the branches ready for deletion: those whose pull request is closed,
   or that were discarded, and that are still at the commit they were closed or
   discarded at. Where the session may not delete
-  branches (a cloud session), it lists them on the notes branch with a GitHub Actions
-  workflow that deletes them when the notes branch is pushed.
+  branches (a cloud session), it lists them on the notes branch, each with the commit
+  it is at, with a GitHub Actions workflow that deletes them when the notes branch is
+  pushed - each only while still at that commit - and then empties the list.
 - The tool turns on GitHub's own deletion of a merged pull request's branch on every
   repository it works on, so most branches never need listing. Only a local session can:
   a cloud session may read a repository's settings but not change them.
@@ -124,6 +125,18 @@ them:
 - Every write - a branch, a commit, a push, a pull request, a stack, the notes - goes
   through the workflow's own commands, which check the rules above before writing. A
   plugin hook denies every direct write, so the rules cannot be skipped by accident.
+- That guard catches accidents, not intent: it reads only the command lines of git, gh,
+  curl and wget, through shells and wrappers. A push run any other way - an
+  interpreter, a build tool, a script - is caught by a `pre-push` hook the session
+  start writes into the checkout, which refuses a push to anyone else's repository or
+  to the default branch. It checks only pushes from a Claude Code session (where
+  `CLAUDECODE` is set, which the guard refuses to change), so my own pushes from a
+  terminal pass unchecked. A checkout with a `pre-push` hook of its own keeps it, and
+  the session start says the workflow's is missing.
+- Not covered: a write to GitHub's API from an interpreter or a script (including the
+  domain model's clients called from a one-off snippet), and a push that skips hooks
+  (`--no-verify`) from such a program. Only a token scoped to my repositories (a
+  fine-grained token or a GitHub App) stops those, at GitHub.
 - Nothing is ever force-pushed. A change low in a stack is an ordinary push; GitHub's
   "Rebase stack" moves the pull requests above it, and I merge stacks on GitHub.
 

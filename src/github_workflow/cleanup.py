@@ -11,6 +11,7 @@ from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Self
 
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
 from basstler_domain_model.github.repository_client import GitHubRepository
@@ -31,22 +32,22 @@ from github_workflow.remotes import OwnedRemote
 from github_workflow.report_section import ReportSection
 from github_workflow.work import WorkflowStep
 
-# %% discarded branches
+# %% branches listed with their commits
 
 
 @dataclass(frozen=True)
-class DiscardedBranches:
+class BranchTips:
     """
-    The branches discarded as thrown away, as the notes branch lists them.
+    Branches, each with the commit it may be deleted at, as the notes branch lists them.
     """
 
     commits: Mapping[str, str] = field(default_factory=dict)
     """
-    Each discarded branch, and the commit it was at when discarded.
+    Each branch, and the commit it may be deleted at.
     """
 
     @classmethod
-    def from_text(cls, text: str | None) -> DiscardedBranches:
+    def from_text(cls, text: str | None) -> Self:
         """
         :param text: The list as the notes branch keeps it, ``None`` when it has none.
         :return: The branches it names.
@@ -59,6 +60,17 @@ class DiscardedBranches:
         return "".join(
             f"{branch} {commit}\n" for branch, commit in sorted(self.commits.items())
         )
+
+
+# %% discarded branches
+
+
+@dataclass(frozen=True)
+class DiscardedBranches(BranchTips):
+    """
+    The branches discarded as thrown away, each with the commit it was at when
+    discarded.
+    """
 
     def with_branch(self, branch: str, commit: str) -> DiscardedBranches:
         """
@@ -260,6 +272,11 @@ class DeletionPlaceholder(StrEnum):
     The file listing the branches to delete.
     """
 
+    SCRIPT_FILE = "__SCRIPT_FILE__"
+    """
+    The script deleting them.
+    """
+
 
 @dataclass(frozen=True)
 class BranchCleanup(WorkflowStep):
@@ -306,12 +323,17 @@ class BranchCleanup(WorkflowStep):
             WorkflowTemplate.DELETION_WORKFLOW.value.read_text()
             .replace(DeletionPlaceholder.NOTES_BRANCH, self.notes.branch.name)
             .replace(DeletionPlaceholder.LIST_FILE, str(NotesFile.READY_FOR_DELETION))
+            .replace(DeletionPlaceholder.SCRIPT_FILE, str(NotesFile.DELETION_SCRIPT))
         )
+        listed = BranchTips({branch: self.kept.tips[branch] for branch in refused})
         self.notes.fetch()
         self.notes.write(
             {
-                NotesFile.READY_FOR_DELETION.value: "\n".join(refused) + "\n",
+                NotesFile.READY_FOR_DELETION.value: listed.to_text(),
                 NotesFile.DELETION_WORKFLOW.value: workflow,
+                NotesFile.DELETION_SCRIPT.value: (
+                    WorkflowTemplate.DELETION_SCRIPT.value.read_text()
+                ),
             },
             f"List {len(refused)} branches for deletion",
         )

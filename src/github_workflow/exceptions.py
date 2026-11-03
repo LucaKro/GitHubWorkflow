@@ -91,6 +91,49 @@ class ForeignRepositoryCloneError(DataclassException, PermissionError):
         return f"Fork it to {self.owner}'s account and clone the fork."
 
 
+@dataclass
+class ForeignPushError(DataclassException, PermissionError):
+    """
+    Raised when a push from a Claude Code session goes to a repository the owner does
+    not own.
+    """
+
+    url: str
+    """
+    The URL the push goes to.
+    """
+
+    owner: str
+    """
+    The account whose repositories alone are pushed to.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.url} is no repository of {self.owner}'s, so the push is refused"
+
+    def suggest_correction(self) -> str:
+        return f"Push only to {self.owner}'s repositories, through the workflow's push."
+
+
+@dataclass
+class UnknownDefaultBranchError(DataclassException, LookupError):
+    """
+    Raised when a push from a Claude Code session goes to a remote whose default branch
+    cannot be read, so whether it changes that branch cannot be told.
+    """
+
+    remote: str
+    """
+    The remote pushed to.
+    """
+
+    def error_message(self) -> str:
+        return f"the default branch of {self.remote} cannot be read, so the push is refused"
+
+    def suggest_correction(self) -> str:
+        return "Check that the remote can be reached and that it has a default branch."
+
+
 # %% saving notes
 
 

@@ -33,3 +33,7 @@ git ls-files | xargs grep pattern
 git diff -u HEAD~1
 git log -p --no-textconv
 export PATH=/usr/bin
+echo "$CLAUDECODE"
+env | grep CLAUDECODE
+env PYTHONPATH=src python3 - < script.py
+env -u HOME python3 script.py

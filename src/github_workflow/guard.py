@@ -23,6 +23,7 @@ from pathlib import PurePath
 from typing import Any
 
 from basstler_domain_model.class_property import classproperty
+from basstler_domain_model.environment import ClaudeCodeVariable
 
 import github_workflow
 from github_workflow.command_line import (
@@ -153,6 +154,75 @@ class VariableExport(StrEnum):
     EXPORT = "export"
     DECLARE = "declare"
     TYPESET = "typeset"
+
+
+class VariableRemoval(StrEnum):
+    """
+    The shell builtins that remove a variable from the environment of every program run
+    after them.
+    """
+
+    UNSET = "unset"
+
+
+class EnvironmentOption(StrEnum):
+    """
+    The options of ``env`` that the guard reads before the command it runs.
+    """
+
+    IGNORE_ENVIRONMENT = "-i"
+    """
+    Runs the command with no variables at all.
+    """
+
+    IGNORE_ENVIRONMENT_LONG = "--ignore-environment"
+    """
+    Runs the command with no variables at all.
+    """
+
+    EMPTY_ENVIRONMENT = "-"
+    """
+    Runs the command with no variables at all, the older way.
+    """
+
+    UNSET = "-u"
+    """
+    Removes the variable it is followed by.
+    """
+
+    UNSET_LONG = "--unset"
+    """
+    Removes the variable it is followed by.
+    """
+
+    DIRECTORY = "-C"
+    """
+    Runs the command in the directory it is followed by.
+    """
+
+    DIRECTORY_LONG = "--chdir"
+    """
+    Runs the command in the directory it is followed by.
+    """
+
+    @property
+    def drops_every_variable(self) -> bool:
+        """:return: Whether the command runs with no variables at all."""
+        return self in (
+            EnvironmentOption.IGNORE_ENVIRONMENT,
+            EnvironmentOption.IGNORE_ENVIRONMENT_LONG,
+            EnvironmentOption.EMPTY_ENVIRONMENT,
+        )
+
+    @property
+    def takes_value(self) -> bool:
+        """:return: Whether the option is followed by a value of its own."""
+        return self in (
+            EnvironmentOption.UNSET,
+            EnvironmentOption.UNSET_LONG,
+            EnvironmentOption.DIRECTORY,
+            EnvironmentOption.DIRECTORY_LONG,
+        )
 
 
 class ShellKeyword(StrEnum):
@@ -1081,6 +1151,16 @@ class CommandGuard:
     they run.
     """
 
+    @classproperty
+    def marker_change(cls) -> Denial:
+        """
+        Why changing the variable marking a Claude Code session's commands is denied.
+        """
+        return Denial(
+            f"changing {ClaudeCodeVariable.COMMAND_MARKER} lets a push skip the "
+            f"checkout's push hook"
+        )
+
     def denial(self, command_line: str) -> Denial | None:
         """
         :param command_line: A Bash command line.
@@ -1107,12 +1187,25 @@ class CommandGuard:
         program, arguments = command.program, command.arguments
         if any(assignment.startswith("GIT_") for assignment in command.assignments):
             return Denial("setting git's environment can make it run a program")
+        marker = ClaudeCodeVariable.COMMAND_MARKER
+        if any(
+            assignment.partition("=")[0] == marker for assignment in command.assignments
+        ):
+            return self.marker_change
         if not program:
             return None
         if program in VariableExport._value2member_map_ and any(
             argument.startswith("GIT_") for argument in arguments
         ):
             return Denial("exporting git's environment can make it run a program")
+        changes_variables = (
+            program in VariableExport._value2member_map_
+            or program in VariableRemoval._value2member_map_
+        )
+        if changes_variables and any(
+            argument.partition("=")[0] == marker for argument in arguments
+        ):
+            return self.marker_change
         if program in Wrapper._value2member_map_:
             return self._denial_of_wrapped(Wrapper(program), arguments)
         if program in Shell._value2member_map_:
@@ -1148,6 +1241,8 @@ class CommandGuard:
         :param arguments: Its arguments, its options and the command it runs.
         :return: Why the command it runs is denied, ``None`` when it may run.
         """
+        if wrapper is Wrapper.ENV and self._drops_marker(arguments):
+            return self.marker_change
         judged = {*Program, *Shell, *Wrapper}
         for index, argument in enumerate(arguments):
             if " " in argument:
@@ -1164,6 +1259,26 @@ class CommandGuard:
             if program in judged:
                 return self.denial_of(arguments[index:])
         return None
+
+    @staticmethod
+    def _drops_marker(arguments: list[str]) -> bool:
+        """
+        :param arguments: The arguments of ``env``.
+        :return: Whether ``env`` runs its command without the variable marking a Claude
+            Code session's commands, or with it changed.
+        """
+        options = EnvironmentOption._value2member_map_
+        for index, argument in enumerate(arguments):
+            if argument in options and EnvironmentOption(argument).drops_every_variable:
+                return True
+            if ClaudeCodeVariable.COMMAND_MARKER in argument:
+                return True
+            previous = arguments[index - 1] if index else ""
+            is_value = previous in options and EnvironmentOption(previous).takes_value
+            own = argument.startswith("-") or CommandLine.assignment.fullmatch(argument)
+            if not own and not is_value:
+                return False
+        return False
 
     def _denial_of_shell(self, shell: Shell, arguments: list[str]) -> Denial | None:
         """

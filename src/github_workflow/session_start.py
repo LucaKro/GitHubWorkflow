@@ -1,11 +1,11 @@
 """
 What a session starts with, answered to the Claude Code hook.
 
-Writes the notes and this branch's progress into ``CLAUDE.local.md``, computes the
-sections that read the owner's repository on GitHub, and checks the runtime; one line
-per thing the session should know is shown to the person and given to the model. Writes
-no file to a remote; turning on the repository features the workflow relies on is the
-only change it makes on GitHub.
+Writes the notes and this branch's progress into ``CLAUDE.local.md`` and the push hook
+into the checkout, computes the sections that read the owner's repository on GitHub, and
+checks the runtime; one line per thing the session should know is shown to the person
+and given to the model. Writes no file to a remote; turning on the repository features
+the workflow relies on is the only change it makes on GitHub.
 
 Usage: ``python -m github_workflow.session_start [<hook event>]``, the event being
 ``SessionStart`` unless named.
@@ -27,6 +27,7 @@ from github_workflow.hooks import HookValue, ReportLine, SessionStartReport, Ton
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection
+from github_workflow.push_hook import PushHook
 from github_workflow.command_line import NotesSubcommand, WorkflowCommand
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.report import SectionName
@@ -56,7 +57,7 @@ class SessionStart:
         """
         Load the notes into ``CLAUDE.local.md``, compute the sections that read the
         owner's repository on GitHub, and check the runtime, all at once, since each
-        mostly waits on GitHub.
+        mostly waits on GitHub; and install the checkout's push hook.
 
         :return: One line per thing the session should know.
         """
@@ -68,6 +69,7 @@ class SessionStart:
         installed = WorkflowVariable.INSTALLED.read()
         lines = [ReportLine(installed, Tone.NEWS)] if installed else []
         lines.append(notes.result())
+        lines += PushHook(self.checkout, Path(sys.executable)).install()
         for section in computed:
             lines += section.result()
         return lines

@@ -68,7 +68,7 @@ class Requirement(StrEnum):
     What the runtime installs besides the plugin itself.
     """
 
-    DOMAIN_MODEL = "basstler-domain-model @ git+https://github.com/LucaKro/basstler_domain_model@f019ccf690026f578db579ccf24d6fea0a6f7e46"
+    DOMAIN_MODEL = "basstler-domain-model @ git+https://github.com/LucaKro/basstler_domain_model@74f32209287af46ffbb96e5c2a1bb25798801a8a"
     """
     The shared GitHub and git model, public, which no index serves, pinned to one
     commit so that only a change here changes what a runtime runs.

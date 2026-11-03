@@ -28,8 +28,8 @@ class NotesFile(PathEnumeration):
 
     READY_FOR_DELETION = Path("ready-for-deletion.md")
     """
-    The branches a cloud session could not delete, one per line, for the deletion
-    workflow.
+    The branches a cloud session could not delete, one per line with the commit each
+    may be deleted at, for the deletion workflow.
     """
 
     DISCARDED_BRANCHES = Path("discarded-branches.md")
@@ -40,6 +40,11 @@ class NotesFile(PathEnumeration):
     DELETION_WORKFLOW = Path(".github/workflows/delete-ready-branches.yml")
     """
     The Actions workflow deleting those branches whenever the notes branch is pushed.
+    """
+
+    DELETION_SCRIPT = Path(".github/scripts/delete-ready-branches.sh")
+    """
+    The script the deletion workflow runs.
     """
 
     @classmethod
@@ -85,6 +90,11 @@ class GitFile(PathEnumeration):
     The repository's own ignore list, which is never committed.
     """
 
+    PRE_PUSH_HOOK = Path("hooks/pre-push")
+    """
+    The hook git runs before every push, which may refuse it.
+    """
+
 
 # %% what the workflow pushes
 
@@ -102,6 +112,11 @@ class WorkflowTemplate(PathEnumeration):
     The Actions workflow deleting the branches listed on the notes branch.
     """
 
+    DELETION_SCRIPT = Path(__file__).parent / "templates" / "delete_ready_branches.sh"
+    """
+    The script the deletion workflow runs.
+    """
+
     LABEL_COMPLETION_WORKFLOW = (
         Path(__file__).parent / "templates" / "complete_finding_labels.yml"
     )
@@ -112,6 +127,11 @@ class WorkflowTemplate(PathEnumeration):
     PROOF_COMMENT = Path(__file__).parent / "templates" / "proof_comment.md"
     """
     The comment posting a finding's proof on its issue.
+    """
+
+    PRE_PUSH_HOOK = Path(__file__).parent / "templates" / "pre_push.sh"
+    """
+    The ``pre-push`` hook checking every push from a Claude Code session.
     """
 
 
