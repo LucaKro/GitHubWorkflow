@@ -13,6 +13,7 @@ from basstler_domain_model.github.repository_client import GitHubRepository
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.hooks import ReportLine
 from github_workflow.remotes import OwnedRemote
+from github_workflow.settings import WorkflowSettings
 
 # %% where a section looks
 
@@ -36,6 +37,11 @@ class SectionContext:
     github: GitHubRepository
     """
     The repository on GitHub.
+    """
+
+    settings: WorkflowSettings
+    """
+    Whose repositories are written to, and where the notes live.
     """
 
 

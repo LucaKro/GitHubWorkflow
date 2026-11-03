@@ -20,11 +20,17 @@ set -uo pipefail
 
 EVENT="${1:-SessionStart}"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
-SESSION="$(cat | sed -n 's/.*"session_id": *"\([^"]*\)".*/\1/p' | head -n 1)"
-REPORTED="${TMPDIR:-/tmp}/github-workflow-sessions/${SESSION:-unknown}"
+SESSION="$(python3 -I -c 'import json, sys; print(json.load(sys.stdin).get("session_id", ""))' 2>/dev/null)"
+MARKERS="${TMPDIR:-/tmp}/github-workflow-sessions"
+REPORTED="${MARKERS}/${SESSION:-unknown}"
 
 if [ "${EVENT}" != "SessionStart" ] && { [ -z "${SESSION}" ] || [ -e "${REPORTED}" ]; }; then
   exit 0
+fi
+
+# A new session forgets the sessions over for a week.
+if [ "${EVENT}" = "SessionStart" ] && [ -d "${MARKERS}" ]; then
+  find "${MARKERS}" -type f -mtime +7 -delete 2>/dev/null
 fi
 
 # Records that the session got its report.

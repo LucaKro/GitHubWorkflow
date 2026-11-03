@@ -78,7 +78,7 @@ class SectionName(StrEnum):
                         context.remote,
                         context.github,
                         NotesBranch.on(
-                            context.checkout.git, context.remote, WorkflowSettings()
+                            context.checkout.git, context.remote, context.settings
                         ),
                     )
                 )
@@ -92,9 +92,10 @@ def main() -> None:
     Compute the section the command line names, and print its lines.
     """
     checkout = ProjectCheckout.containing(Path.cwd())
-    remote = OwnedRemotes.read(checkout.git, WorkflowSettings()).chosen
+    settings = WorkflowSettings()
+    remote = OwnedRemotes.read(checkout.git, settings).chosen
     context = SectionContext(
-        checkout, remote, GitHubRepository.from_environment(remote.repository)
+        checkout, remote, GitHubRepository.from_environment(remote.repository), settings
     )
     for line in SectionName(sys.argv[1]).section(context).lines():
         print(line.json())
