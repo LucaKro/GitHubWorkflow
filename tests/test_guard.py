@@ -65,6 +65,18 @@ class GuardDataset(PathEnumeration):
     A push after a here-document has ended.
     """
 
+    NEEDS_GO_AHEAD = Path(__file__).parent / "dataset" / "guard" / "needs_go_ahead.sh"
+    """
+    One workflow command line per line, each confirmed by the person before it runs.
+    """
+
+    WITHOUT_GO_AHEAD = (
+        Path(__file__).parent / "dataset" / "guard" / "without_go_ahead.sh"
+    )
+    """
+    One workflow command line per line, each run without asking.
+    """
+
     HOOK_SCRIPT = Path(__file__).parents[1] / "hooks" / "guard.sh"
     """
     The hook the plugin runs.
@@ -185,6 +197,29 @@ def test_the_github_tool_opening_a_pull_request_names_the_workflow_s_draft():
 
     assert denial is not None
     assert denial.instead == PullRequestOpening.instead
+
+
+# %% the person's go-ahead
+
+
+@pytest.mark.parametrize("command", GuardDataset.NEEDS_GO_AHEAD.lines())
+def test_a_workflow_command_needing_the_person_s_go_ahead_is_asked_about(command: str):
+    output = ToolGuard(hook_input(command)).output()[HookKey.HOOK_SPECIFIC_OUTPUT]
+
+    assert output[HookKey.PERMISSION_DECISION] == HookValue.ASK
+
+
+@pytest.mark.parametrize("command", GuardDataset.WITHOUT_GO_AHEAD.lines())
+def test_a_workflow_command_the_agent_may_run_alone_is_not_asked_about(command: str):
+    assert ToolGuard(hook_input(command)).output() is None
+
+
+def test_a_denial_outweighs_asking():
+    command = f"{GuardDataset.NEEDS_GO_AHEAD.lines()[0]} && git push"
+
+    output = ToolGuard(hook_input(command)).output()[HookKey.HOOK_SPECIFIC_OUTPUT]
+
+    assert output[HookKey.PERMISSION_DECISION] == HookValue.DENY
 
 
 # %% files git runs programs from
