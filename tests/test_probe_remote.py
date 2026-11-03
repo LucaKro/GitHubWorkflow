@@ -80,5 +80,6 @@ def test_results_go_to_the_owned_remote_when_origin_is_foreign(
 
     results = StorageBranch(checkout.git, RemoteBranch(remote.name, ResultsBranch.NAME))
     results.fetch()
-    assert results.read(Path("check-1/report.md")) == "all well"
+    published = results.read(Path("check-1/report.md"))
+    assert published == (directory / "report.md").read_text()
     assert repositories.branches(foreign_url) == before
