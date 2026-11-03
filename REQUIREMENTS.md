@@ -103,21 +103,23 @@ them:
   branches (a cloud session), it lists them on the notes branch, each with the commit
   it is at, with a GitHub Actions workflow that deletes them when the notes branch is
   pushed - each only while still at that commit - and then empties the list.
-- The tool turns on GitHub's own deletion of a merged pull request's branch on every
-  repository it works on, so most branches never need listing. Only a local session can:
-  a cloud session may read a repository's settings but not change them.
+- GitHub's own deletion of a merged pull request's branch spares most branches the
+  listing. The tool never turns it on: where it is off, it tells me, with the link, and
+  I opt in.
 - Issues and pull requests are only ever closed, never deleted.
 
 ## Where something is turned off
 
-- Where issues are turned off, as they are on a new fork, the tool turns them on if it
-  can, and otherwise tells me exactly where to do it, with the link.
+- The tool never changes a repository's settings itself: turned on, a feature changes
+  the repository for everyone, and on a public fork issues make the findings public.
+- Where issues are turned off, as they are on a new fork, the tool tells me exactly where
+  to turn them on, with the link, and I opt in.
 - Where Actions are turned off, the tool never turns them on itself: once on, they run
   every workflow on the repository - on a fork, the upstream's scheduled, release and
   bot workflows too - under my account. It tells me they are off, with the link, and I
   decide.
-- A local session can turn issues on. A cloud session can see whether issues are on, but
-  can neither change it nor see whether Actions are on, so there the tool tells me.
+- A cloud session can see whether issues are on, but not whether Actions are on, so
+  there the tool says nothing about Actions.
 
 ## How the agent reaches git and GitHub
 

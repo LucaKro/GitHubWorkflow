@@ -1,7 +1,7 @@
 """
-The repository features the workflow relies on: GitHub deleting merged branches and
-issues, turned on where they are off, and where this session may not change settings,
-one line saying where to turn them on; and Actions, which only the person turns on.
+The repository features the workflow relies on - GitHub deleting merged branches,
+issues, and Actions - each reported where it is off, with where to turn it on. The
+workflow never turns one on: the person opts in.
 """
 
 from __future__ import annotations
@@ -20,8 +20,8 @@ from github_workflow.report_section import ReportSection
 @dataclass(frozen=True)
 class RepositorySetup(ReportSection):
     """
-    Merged-branch deletion and issues on one repository made sure of, and Actions
-    reported when they are off.
+    Merged-branch deletion, issues and Actions on one repository, each reported when it
+    is off.
     """
 
     repository: Repository
@@ -31,60 +31,54 @@ class RepositorySetup(ReportSection):
 
     settings: RepositorySettings
     """
-    Reads and changes its settings.
+    Reads its settings.
     """
 
     def lines(self) -> list[ReportLine]:
         lines = []
         if not self.settings.deletes_merged_branches():
             lines.append(
-                self._turned_on(
-                    self.settings.turn_on_merged_branch_deletion(),
+                self._left_off(
                     "GitHub's deletion of merged branches",
+                    "with it on, a merged pull request's branch needs no cleanup",
                     '"Automatically delete head branches"',
                     self.repository.settings_url,
                 )
             )
         if not self.settings.issues_enabled():
             lines.append(
-                self._turned_on(
-                    self.settings.turn_on_issues(),
+                self._left_off(
                     "issues",
+                    "findings are filed as issues",
                     '"Issues"',
                     self.repository.settings_url,
                 )
             )
         if self.settings.actions_enabled() is False:
             lines.append(
-                ReportLine(
-                    f"github-workflow: {self.repository} has GitHub Actions turned "
-                    f"off, so the workflows the notes branch carries do not run. "
-                    f"Turned on, Actions run every workflow on the repository, an "
-                    f"upstream's on a fork among them, under your account: ask the "
-                    f"person whether to turn them on at "
+                self._left_off(
+                    "GitHub Actions",
+                    "they run the workflows the notes branch carries, but once on, "
+                    "they run every workflow on the repository, an upstream's on a "
+                    "fork among them, under your account",
+                    "Actions",
                     f"{self.repository.settings_url}/actions",
-                    Tone.ACTION,
                 )
             )
         return lines
 
-    def _turned_on(
-        self, accepted: bool, feature: str, setting: str, page: str
+    def _left_off(
+        self, feature: str, purpose: str, setting: str, page: str
     ) -> ReportLine:
         """
-        :param accepted: Whether GitHub accepted turning the feature on.
         :param feature: The feature, as the line names it.
+        :param purpose: What the workflow needs it for.
         :param setting: The setting that turns it on, as GitHub's page names it.
         :param page: The page the setting is on.
-        :return: That it was turned on, or where to turn it on by hand.
+        :return: That it is off, and where the person turns it on.
         """
-        if accepted:
-            return ReportLine(
-                f"github-workflow: turned on {feature} for {self.repository}",
-                Tone.NEWS,
-            )
         return ReportLine(
-            f"github-workflow: {self.repository} has {feature} turned off, and this "
-            f"session may not change that: turn on {setting} at {page}",
+            f"github-workflow: {self.repository} has {feature} turned off; {purpose}. "
+            f"Ask the person whether to turn on {setting} at {page}",
             Tone.ACTION,
         )
