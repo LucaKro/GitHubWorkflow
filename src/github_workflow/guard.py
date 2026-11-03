@@ -682,6 +682,12 @@ class Denial:
     the job and the person running the tool has to.
     """
 
+    saw_write: bool = True
+    """
+    Whether the guard saw the call write; ``False`` when it denies the call only because
+    it cannot see what the call would run, which the person is shown.
+    """
+
     def message(self) -> str:
         """:return: What the hook tells the model: the reason, and what to run instead."""
         instead = (
@@ -1169,10 +1175,15 @@ class CommandGuard:
         line = CommandLine(command_line)
         mentions_git = re.search(r"\b(git|gh)\b", command_line)
         if line.runs_input_through_a_shell() and mentions_git:
-            return Denial("a shell reading its input could run git or gh unseen")
+            return Denial(
+                "a shell reading its input could run git or gh unseen", saw_write=False
+            )
         for words in line.simple_commands():
             if mentions_git and "$" in SimpleCommand(words).program:
-                return Denial("a program named by an expansion could be git or gh")
+                return Denial(
+                    "a program named by an expansion could be git or gh",
+                    saw_write=False,
+                )
             reason = self.denial_of(words)
             if reason is not None:
                 return reason
@@ -1255,7 +1266,10 @@ class CommandGuard:
                 return Denial("setting git's environment can make it run a program")
             program = PurePath(argument).name
             if wrapper is Wrapper.XARGS and program in Program._value2member_map_:
-                return Denial(f"xargs gives {program} arguments the guard cannot see")
+                return Denial(
+                    f"xargs gives {program} arguments the guard cannot see",
+                    saw_write=False,
+                )
             if program in judged:
                 return self.denial_of(arguments[index:])
         return None
@@ -1345,7 +1359,14 @@ class ToolGuard:
         """
         denial = self.denial()
         if denial is not None:
-            return self._decision(HookValue.DENY, denial.message())
+            decision = self._decision(HookValue.DENY, denial.message())
+            if not denial.saw_write:
+                command = self.hook_input[HookKey.TOOL_INPUT][HookKey.COMMAND]
+                decision[HookKey.SYSTEM_MESSAGE] = (
+                    f"github-workflow: denied a command it cannot see into "
+                    f"({denial.reason}): {command}"
+                )
+            return decision
         if self.hook_input.get(HookKey.TOOL_NAME) != HookValue.BASH_TOOL:
             return None
         command = self.hook_input[HookKey.TOOL_INPUT][HookKey.COMMAND]

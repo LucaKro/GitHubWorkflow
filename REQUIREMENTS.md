@@ -133,6 +133,9 @@ them:
   `CLAUDECODE` is set, which the guard refuses to change), so my own pushes from a
   terminal pass unchecked. A checkout with a `pre-push` hook of its own keeps it, and
   the session start says the workflow's is missing.
+- A command the guard denies only because it cannot see what it runs - a program named
+  by an expansion (`eval` among them), a shell reading its input, `xargs` - is shown to
+  me, so I can judge how often that happens and whether the rule is worth its cost.
 - Not covered: a write to GitHub's API from an interpreter or a script (including the
   domain model's clients called from a one-off snippet), and a push that skips hooks
   (`--no-verify`) from such a program. Only a token scoped to my repositories (a

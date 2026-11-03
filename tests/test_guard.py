@@ -41,7 +41,13 @@ class GuardDataset(PathEnumeration):
 
     DENIED = Path(__file__).parent / "dataset" / "guard" / "denied.sh"
     """
-    One command line per line, each denied.
+    One command line per line, each a write the guard sees and denies.
+    """
+
+    DENIED_UNSEEN = Path(__file__).parent / "dataset" / "guard" / "denied_unseen.sh"
+    """
+    One command line per line, each denied only because the guard cannot see what it
+    runs.
     """
 
     HERE_DOCUMENT_AS_DATA = (
@@ -256,6 +262,30 @@ def test_the_hook_runs_for_the_tools_writing_files(tool: FileWritingTool):
     [guard] = configuration[HookKey.HOOKS][HookValue.PRE_TOOL_USE]
 
     assert re.fullmatch(guard[HookKey.MATCHER], tool)
+
+
+# %% denials the person is shown
+
+
+@pytest.mark.parametrize("command", GuardDataset.DENIED_UNSEEN.lines())
+def test_a_command_denied_unseen_is_shown_to_the_person(command: str):
+    """
+    The person judges how often the guard denies what it cannot see into, and so whether
+    that rule is worth its cost.
+    """
+    output = ToolGuard(hook_input(command)).output()
+
+    assert output[HookKey.HOOK_SPECIFIC_OUTPUT][HookKey.PERMISSION_DECISION] == (
+        HookValue.DENY
+    )
+    assert command in output[HookKey.SYSTEM_MESSAGE]
+
+
+@pytest.mark.parametrize("command", GuardDataset.DENIED.lines())
+def test_a_write_the_guard_saw_is_not_shown_to_the_person(command: str):
+    output = ToolGuard(hook_input(command)).output()
+
+    assert HookKey.SYSTEM_MESSAGE not in output
 
 
 # %% the hook

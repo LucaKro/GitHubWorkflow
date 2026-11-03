@@ -25,7 +25,6 @@ echo $(git push)
 echo `git push`
 env -u HOME git push
 timeout 10 git push
-xargs git push < branches.txt
 sudo -u someone git push
 bash -c "git push"
 bash -lc "git commit -m Change"
@@ -43,7 +42,6 @@ curl -X POST https://api.github.com/repos/LucaKro/GitHubWorkflow/issues
 curl -d '{"title": "x"}' https://api.github.com/repos/LucaKro/GitHubWorkflow/issues
 curl --data-raw x https://api.github.com/repos/LucaKro/GitHubWorkflow/issues
 wget --post-data x https://api.github.com/repos/LucaKro/GitHubWorkflow/issues
-echo "git push" | bash
 cat <<< nothing && git push
 if true; then git push origin main; fi
 while true; do git push origin main; done
@@ -51,10 +49,6 @@ while true; do git push origin main; done
 ! git push origin main
 f(){ git push origin main; }; f
 function f { git push origin main; }
-echo push origin main | xargs git
-echo -D feature | xargs git branch
-$'git' push origin main
-G=git; $G push origin main
 git ls-remote --upload-pack='touch pwned' .
 git ls-remote -u program origin
 git ls-remote --receive-pack=program origin
