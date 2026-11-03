@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from basstler_domain_model.environment import GitIdentityVariable
+from basstler_domain_model.environment import ClaudeCodeVariable, GitIdentityVariable
 
 from github_workflow.settings import WorkflowSettings
 
@@ -25,6 +25,15 @@ def configured_identity(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     for variable in GitIdentityVariable:
         monkeypatch.delenv(variable, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def outside_claude_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Clears the variable marking a command Claude Code runs, so a push is a person's
+    unless the test marks it as a Claude Code session's.
+    """
+    monkeypatch.delenv(ClaudeCodeVariable.COMMAND_MARKER, raising=False)
 
 
 # %% repositories

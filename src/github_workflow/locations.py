@@ -90,6 +90,11 @@ class GitFile(PathEnumeration):
     The repository's own ignore list, which is never committed.
     """
 
+    PRE_PUSH_HOOK = Path("hooks/pre-push")
+    """
+    The hook git runs before every push, which may refuse it.
+    """
+
 
 # %% what the workflow pushes
 
@@ -122,6 +127,11 @@ class WorkflowTemplate(PathEnumeration):
     PROOF_COMMENT = Path(__file__).parent / "templates" / "proof_comment.md"
     """
     The comment posting a finding's proof on its issue.
+    """
+
+    PRE_PUSH_HOOK = Path(__file__).parent / "templates" / "pre_push.sh"
+    """
+    The ``pre-push`` hook checking every push from a Claude Code session.
     """
 
 

@@ -125,6 +125,18 @@ them:
 - Every write - a branch, a commit, a push, a pull request, a stack, the notes - goes
   through the workflow's own commands, which check the rules above before writing. A
   plugin hook denies every direct write, so the rules cannot be skipped by accident.
+- That guard catches accidents, not intent: it reads only the command lines of git, gh,
+  curl and wget, through shells and wrappers. A push run any other way - an
+  interpreter, a build tool, a script - is caught by a `pre-push` hook the session
+  start writes into the checkout, which refuses a push to anyone else's repository or
+  to the default branch. It checks only pushes from a Claude Code session (where
+  `CLAUDECODE` is set, which the guard refuses to change), so my own pushes from a
+  terminal pass unchecked. A checkout with a `pre-push` hook of its own keeps it, and
+  the session start says the workflow's is missing.
+- Not covered: a write to GitHub's API from an interpreter or a script (including the
+  domain model's clients called from a one-off snippet), and a push that skips hooks
+  (`--no-verify`) from such a program. Only a token scoped to my repositories (a
+  fine-grained token or a GitHub App) stops those, at GitHub.
 - Nothing is ever force-pushed. A change low in a stack is an ordinary push; GitHub's
   "Rebase stack" moves the pull requests above it, and I merge stacks on GitHub.
 

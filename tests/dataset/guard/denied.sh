@@ -69,3 +69,12 @@ export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.fsmonitor GIT_CONFIG_VALUE_0=pro
 declare -x GIT_PAGER=program; git log
 set -a; GIT_PAGER=program; git log
 env GIT_EXTERNAL_DIFF=program git diff
+CLAUDECODE= python3 push.py
+unset CLAUDECODE; python3 push.py
+export -n CLAUDECODE
+export CLAUDECODE=
+env -u CLAUDECODE python3 push.py
+env --unset=CLAUDECODE python3 push.py
+env -C build -u CLAUDECODE python3 push.py
+env -i python3 push.py
+env - python3 push.py
