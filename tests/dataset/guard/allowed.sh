@@ -27,3 +27,6 @@ curl -s https://api.github.com/repos/LucaKro/GitHubWorkflow
 curl -X POST https://example.com/hook
 python -m github_workflow commit -m "Add a file" a.txt
 python -m github_workflow push
+if git diff --quiet; then echo clean; fi
+{ git status; }
+git ls-files | xargs grep pattern

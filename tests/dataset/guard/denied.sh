@@ -45,3 +45,13 @@ curl --data-raw x https://api.github.com/repos/LucaKro/GitHubWorkflow/issues
 wget --post-data x https://api.github.com/repos/LucaKro/GitHubWorkflow/issues
 echo "git push" | bash
 cat <<< nothing && git push
+if true; then git push origin main; fi
+while true; do git push origin main; done
+{ git push origin main; }
+! git push origin main
+f(){ git push origin main; }; f
+function f { git push origin main; }
+echo push origin main | xargs git
+echo -D feature | xargs git branch
+$'git' push origin main
+G=git; $G push origin main
