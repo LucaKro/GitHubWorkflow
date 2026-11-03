@@ -86,13 +86,27 @@ def test_a_repository_set_up_already_is_left_alone():
     assert settings.changes == []
 
 
-def test_every_feature_that_is_off_is_turned_on():
-    settings = SettingsInMemory(deletes=False, issues=False, actions=False)
+def test_merged_branch_deletion_and_issues_that_are_off_are_turned_on():
+    settings = SettingsInMemory(deletes=False, issues=False)
 
     lines = RepositorySetup(REPOSITORY, settings).lines()
 
-    assert settings.changes == ["deletion", "issues", "actions"]
-    assert [line.tone for line in lines] == [Tone.NEWS] * 3
+    assert settings.changes == ["deletion", "issues"]
+    assert [line.tone for line in lines] == [Tone.NEWS] * 2
+
+
+def test_actions_that_are_off_are_left_for_the_person_to_turn_on():
+    """
+    Actions run every workflow on the repository, an upstream's on a fork among them,
+    under the owner's account: only the person decides that.
+    """
+    settings = SettingsInMemory(actions=False)
+
+    [line] = RepositorySetup(REPOSITORY, settings).lines()
+
+    assert settings.changes == []
+    assert line.tone is Tone.ACTION
+    assert f"{REPOSITORY.settings_url}/actions" in line.text
 
 
 def test_actions_that_cannot_be_read_are_not_touched():

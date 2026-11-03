@@ -1,7 +1,7 @@
 """
-The repository features the workflow relies on: GitHub deleting merged branches, issues,
-and Actions - turned on where they are off, and where this session may not change
-settings, one line saying where to turn them on.
+The repository features the workflow relies on: GitHub deleting merged branches and
+issues, turned on where they are off, and where this session may not change settings,
+one line saying where to turn them on; and Actions, which only the person turns on.
 """
 
 from __future__ import annotations
@@ -20,7 +20,8 @@ from github_workflow.report_section import ReportSection
 @dataclass(frozen=True)
 class RepositorySetup(ReportSection):
     """
-    Merged-branch deletion, issues and Actions on one repository, made sure of.
+    Merged-branch deletion and issues on one repository made sure of, and Actions
+    reported when they are off.
     """
 
     repository: Repository
@@ -55,11 +56,14 @@ class RepositorySetup(ReportSection):
             )
         if self.settings.actions_enabled() is False:
             lines.append(
-                self._turned_on(
-                    self.settings.turn_on_actions(),
-                    "GitHub Actions",
-                    "Actions",
+                ReportLine(
+                    f"github-workflow: {self.repository} has GitHub Actions turned "
+                    f"off, so the workflows the notes branch carries do not run. "
+                    f"Turned on, Actions run every workflow on the repository, an "
+                    f"upstream's on a fork among them, under your account: ask the "
+                    f"person whether to turn them on at "
                     f"{self.repository.settings_url}/actions",
+                    Tone.ACTION,
                 )
             )
         return lines

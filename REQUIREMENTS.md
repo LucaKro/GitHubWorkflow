@@ -109,9 +109,13 @@ them:
 
 ## Where something is turned off
 
-- Where issues or Actions are turned off, as they are on a new fork, the tool turns them
-  on if it can, and otherwise tells me exactly where to do it, with the link.
-- A local session can turn them on. A cloud session can see whether issues are on, but
+- Where issues are turned off, as they are on a new fork, the tool turns them on if it
+  can, and otherwise tells me exactly where to do it, with the link.
+- Where Actions are turned off, the tool never turns them on itself: once on, they run
+  every workflow on the repository - on a fork, the upstream's scheduled, release and
+  bot workflows too - under my account. It tells me they are off, with the link, and I
+  decide.
+- A local session can turn issues on. A cloud session can see whether issues are on, but
   can neither change it nor see whether Actions are on, so there the tool tells me.
 
 ## How the agent reaches git and GitHub
