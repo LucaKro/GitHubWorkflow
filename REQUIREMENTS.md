@@ -100,8 +100,9 @@ them:
 - `cleanup` deletes the branches ready for deletion: those whose pull request is closed,
   or that were discarded, and that are still at the commit they were closed or
   discarded at. Where the session may not delete
-  branches (a cloud session), it lists them on the notes branch with a GitHub Actions
-  workflow that deletes them when the notes branch is pushed.
+  branches (a cloud session), it lists them on the notes branch, each with the commit
+  it is at, with a GitHub Actions workflow that deletes them when the notes branch is
+  pushed - each only while still at that commit - and then empties the list.
 - The tool turns on GitHub's own deletion of a merged pull request's branch on every
   repository it works on, so most branches never need listing. Only a local session can:
   a cloud session may read a repository's settings but not change them.

@@ -7,6 +7,7 @@ refused.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ from basstler_domain_model.github.vocabulary import PullRequestState
 from github_workflow.cleanup import (
     BranchCleanup,
     BranchDiscard,
+    BranchTips,
     CleanupReminder,
     DiscardedBranches,
     KeptBranches,
@@ -213,8 +215,91 @@ def test_a_branch_the_session_may_not_delete_is_listed_for_the_workflow(
 
     notes = cleanup.notes
     notes.fetch()
-    assert notes.read(NotesFile.READY_FOR_DELETION.value) == "closed-work\n"
+    listed = BranchTips.from_text(notes.read(NotesFile.READY_FOR_DELETION.value))
+    assert listed == BranchTips({"closed-work": cleanup.kept.tips["closed-work"]})
     assert settings.notes_branch in notes.read(NotesFile.DELETION_WORKFLOW.value)
+
+
+# %% the deletion workflow
+
+
+def listed_for_the_workflow(
+    repositories: RepositoriesByOwner, url: str, settings: WorkflowSettings
+) -> BranchCleanup:
+    """
+    :param repositories: Where to clone.
+    :param url: The owner's repository, which refuses deletions from the session.
+    :param settings: The workflow's settings.
+    :return: The cleanup that listed ``closed-work`` for the deletion workflow.
+    """
+    bare = Path(url.removeprefix("file://"))
+    GitCommandRunner(bare).run("config", "receive.denyDeletes", "true")
+    cleanup, _ = cleanup_in(repositories, url, settings)
+    cleanup.run()
+    return cleanup
+
+
+def run_deletion_workflow(
+    repositories: RepositoriesByOwner, url: str, settings: WorkflowSettings
+) -> None:
+    """
+    Run the deletion workflow's script as a push of the notes branch runs it: in a
+    checkout of the notes branch, allowed to delete branches.
+
+    :param repositories: Where to clone.
+    :param url: The owner's repository.
+    :param settings: The workflow's settings.
+    """
+    bare = Path(url.removeprefix("file://"))
+    GitCommandRunner(bare).run("config", "receive.denyDeletes", "false")
+    runner = repositories.clone(url, "actions-runner").git
+    runner.run("checkout", "--quiet", settings.notes_branch)
+    subprocess.run(
+        [
+            "bash",
+            str(NotesFile.DELETION_SCRIPT.value),
+            str(NotesFile.READY_FOR_DELETION.value),
+            RepositoriesByOwner.default_branch,
+            settings.notes_branch,
+        ],
+        cwd=runner.working_directory,
+        check=True,
+    )
+
+
+def test_the_workflow_deletes_a_listed_branch_still_at_its_commit(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    listed_for_the_workflow(repositories, owned_url, settings)
+
+    run_deletion_workflow(repositories, owned_url, settings)
+
+    assert "closed-work" not in repositories.branches(owned_url)
+
+
+def test_the_workflow_empties_the_list_it_handled(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    cleanup = listed_for_the_workflow(repositories, owned_url, settings)
+
+    run_deletion_workflow(repositories, owned_url, settings)
+
+    cleanup.notes.fetch()
+    assert cleanup.notes.read(NotesFile.READY_FOR_DELETION.value) == ""
+
+
+def test_the_workflow_keeps_a_listed_branch_that_moved_since(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    listed_for_the_workflow(repositories, owned_url, settings)
+    reused = repositories.clone(owned_url, "reuser").git
+    reused.run("commit", "--quiet", "--allow-empty", "--message", "New work")
+    reused.run("push", "--quiet", "origin", "HEAD:refs/heads/closed-work")
+
+    run_deletion_workflow(repositories, owned_url, settings)
+
+    moved = f"{reused.commit_at('HEAD')}\trefs/heads/closed-work"
+    assert moved in repositories.branches(owned_url)
 
 
 # %% discarding
