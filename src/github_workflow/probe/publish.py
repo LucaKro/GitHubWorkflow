@@ -13,12 +13,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from basstler_domain_model.git.commands import (
-    GitCommandRunner,
-    RemoteBranch,
-    RemoteName,
-)
+from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
 from basstler_domain_model.git.storage_branch import StorageBranch
+
+from github_workflow.remotes import OwnedRemote, OwnedRemotes
+from github_workflow.settings import WorkflowSettings
 
 # %% where results go
 
@@ -38,12 +37,17 @@ class ResultsBranch(StrEnum):
 @dataclass(frozen=True)
 class ResultsPublication:
     """
-    One directory of results, published to the results branch of the checkout's origin.
+    One directory of results, published to the results branch of the owner's remote.
     """
 
     git: GitCommandRunner
     """
     Runs git in the checkout.
+    """
+
+    remote: OwnedRemote
+    """
+    The owner's remote the results branch is pushed to.
     """
 
     directory: Path
@@ -56,7 +60,7 @@ class ResultsPublication:
         :return: Where the results were published, in one line.
         """
         results = StorageBranch(
-            self.git, RemoteBranch(RemoteName.ORIGIN, ResultsBranch.NAME)
+            self.git, RemoteBranch(self.remote.name, ResultsBranch.NAME)
         )
         results.fetch()
         results.write(
@@ -76,8 +80,13 @@ class ResultsPublication:
 def main() -> None:
     """
     Publish the directory the command line names.
+
+    :raises NoOwnedRemoteError: If no remote is the owner's.
+    :raises AmbiguousOwnedRemoteError: If several are, and none is ``origin``.
     """
-    print(ResultsPublication(GitCommandRunner(Path.cwd()), Path(sys.argv[1])).publish())
+    git = GitCommandRunner(Path.cwd())
+    remote = OwnedRemotes.read(git, WorkflowSettings()).chosen
+    print(ResultsPublication(git, remote, Path(sys.argv[1])).publish())
 
 
 if __name__ == "__main__":
