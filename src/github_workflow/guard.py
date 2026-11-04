@@ -1113,8 +1113,9 @@ class CommandGuard:
 
     enclosing_line_names_git: bool = False
     """
-    Whether a command line the judged one runs inside - through ``eval`` or a shell's
-    ``-c`` - names git or gh, so an expansion in the judged line could be either.
+    Whether the command line the judged command belongs to, or one it runs inside -
+    through ``eval``, a shell's ``-c`` or a wrapper - names git or gh, so an expansion
+    naming a program could be either.
     """
 
     @classproperty
@@ -1227,6 +1228,15 @@ class CommandGuard:
                 argument
             ):
                 return Denial("setting git's environment can make it run a program")
+            names_program_by_expansion = (
+                "$" in argument and not CommandLine.assignment.fullmatch(argument)
+            )
+            if self.enclosing_line_names_git and names_program_by_expansion:
+                return Denial(
+                    f"a program {wrapper} runs, named by an expansion, could be git "
+                    f"or gh",
+                    saw_write=False,
+                )
             program = PurePath(argument).name
             if wrapper is Wrapper.XARGS and program in Program._value2member_map_:
                 return Denial(
