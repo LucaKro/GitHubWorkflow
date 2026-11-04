@@ -150,6 +150,16 @@ class FindingSubcommand(StrEnum):
     Reject a finding as incorrect, with a reason, on the person's word.
     """
 
+    COMMENT = "comment"
+    """
+    Comment on an open finding, on the person's go-ahead.
+    """
+
+    EDIT = "edit"
+    """
+    Rewrite an open finding's title or text, on the person's go-ahead.
+    """
+
     PROVE = "prove"
     """
     Prove an open finding with a test failing on the default branch.

@@ -33,6 +33,8 @@ from github_workflow.proofs import DefaultBranchProofRunner, FindingTest
 from github_workflow.cleanup import BranchCleanup, BranchDiscard, KeptBranches
 from github_workflow.findings import (
     FindingAcceptance,
+    FindingComment,
+    FindingEdit,
     FindingDraftOpening,
     FindingFiling,
     FindingListing,
@@ -223,6 +225,18 @@ class WorkflowSession(RepositoryDetails):
                 return FindingRejection(
                     self.github, self.github, arguments.number, arguments.reason
                 )
+            case WorkflowCommand.FINDING, FindingSubcommand.COMMENT:
+                return FindingComment(
+                    self.github,
+                    self.github,
+                    arguments.number,
+                    arguments.body_file.read_text(),
+                )
+            case WorkflowCommand.FINDING, FindingSubcommand.EDIT:
+                body = arguments.body_file.read_text() if arguments.body_file else None
+                return FindingEdit(
+                    self.github, self.github, arguments.number, arguments.title, body
+                )
             case WorkflowCommand.FINDING, FindingSubcommand.PROVE:
                 return FindingProving(
                     self.github,
@@ -367,6 +381,19 @@ class WorkflowSession(RepositoryDetails):
         )
         reject.add_argument("number", type=int)
         reject.add_argument("--reason", required=True)
+        comment = finding_actions.add_parser(
+            FindingSubcommand.COMMENT,
+            help="comment on an open finding, on the person's go-ahead",
+        )
+        comment.add_argument("number", type=int)
+        comment.add_argument("--body-file", type=Path, required=True)
+        rewrite = finding_actions.add_parser(
+            FindingSubcommand.EDIT,
+            help="rewrite an open finding's title or text, on the person's go-ahead",
+        )
+        rewrite.add_argument("number", type=int)
+        rewrite.add_argument("--title")
+        rewrite.add_argument("--body-file", type=Path)
         prove = finding_actions.add_parser(
             FindingSubcommand.PROVE,
             help="prove an open finding with a test failing on the default branch",
