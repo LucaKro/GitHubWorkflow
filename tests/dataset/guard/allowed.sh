@@ -39,3 +39,7 @@ env PYTHONPATH=src python3 - < script.py
 env -u HOME python3 script.py
 timeout 600 "$PYTHON" -m pytest -q
 env "$PYTHON" -m pytest -q
+gh api -X GET search/issues -f q='is:pr is:open author:LucaKro'
+gh api --method GET repos/LucaKro/GitHubWorkflow/pulls -f state=open
+gh api -XGET search/issues -F per_page=100 -f q=repo:LucaKro/GitHubWorkflow
+gh api --method=GET repos/LucaKro/GitHubWorkflow/issues -f labels=finding

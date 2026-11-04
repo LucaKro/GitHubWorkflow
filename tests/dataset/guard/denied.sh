@@ -72,3 +72,6 @@ env --unset=CLAUDECODE python3 push.py
 env -C build -u CLAUDECODE python3 push.py
 env -i python3 push.py
 env - python3 push.py
+gh api -X GET repos/LucaKro/GitHubWorkflow/issues --input body.json
+gh api -X POST repos/LucaKro/GitHubWorkflow/issues -f title=Finding
+gh api -fX GET repos/LucaKro/GitHubWorkflow/issues -f title=Finding

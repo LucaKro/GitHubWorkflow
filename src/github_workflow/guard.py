@@ -19,6 +19,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum
+from http import HTTPMethod
 from pathlib import PurePath
 from typing import Any
 
@@ -615,6 +616,22 @@ class SendingOptions:
                     return True
         return False
 
+    def named_method(self, arguments: Sequence[str]) -> str | None:
+        """
+        :param arguments: A call's arguments.
+        :return: The request method an option of its own names, in upper case;
+            ``None`` when none does, or only within a cluster of short options.
+        """
+        for index, argument in enumerate(arguments):
+            following = "".join(arguments[index + 1 : index + 2])
+            option, _, value = argument.partition("=")
+            if option in self.method_long:
+                return (value or following).upper()
+            short = f"-{self.method_short}"
+            if self.method_short and argument.startswith(short):
+                return (argument.removeprefix(short) or following).upper()
+        return None
+
 
 # %% what to do instead
 
@@ -885,10 +902,23 @@ class GitHubCliCheck(ProgramCheck):
             "fF", ("--field", "--raw-field", "--input"), "X", ("--method",)
         )
 
+    @classproperty
+    def api_input(cls) -> str:
+        """
+        The option sending a file as the request's body, whatever the method.
+        """
+        return "--input"
+
     def denial(self, arguments: Sequence[str]) -> Denial | None:
         words = [argument for argument in arguments if not argument.startswith("-")]
         if words[:1] == [GitHubCliSubcommand.API]:
-            if self.api_sending.present_in(arguments[1:]):
+            options = arguments[1:]
+            queries = self.api_sending.named_method(
+                options
+            ) == HTTPMethod.GET and not any(
+                argument.startswith(self.api_input) for argument in options
+            )
+            if self.api_sending.present_in(options) and not queries:
                 return Denial("gh api with a method, a field or an input writes")
             return None
         if words[:1] == [GitHubCliSubcommand.SEARCH]:
