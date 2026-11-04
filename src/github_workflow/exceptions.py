@@ -402,6 +402,73 @@ class NotAFindingError(DataclassException, LookupError):
 
 
 @dataclass
+class PersonOnlyCommandError(DataclassException, PermissionError):
+    """
+    Raised when a command only the person runs is run from a Claude Code session.
+    """
+
+    command: str
+    """
+    The command.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.command} is the person's to run, never a Claude Code session's"
+
+    def suggest_correction(self) -> str:
+        return "Give the person the command line to run themselves."
+
+
+@dataclass
+class NotOwnersForkError(DataclassException, LookupError):
+    """
+    Raised when a repository to propose from is no fork of the owner's.
+    """
+
+    repository: Repository
+    """
+    The repository named.
+    """
+
+    owner: str
+    """
+    The account whose forks are proposed from.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.repository} is no fork of {self.owner}'s"
+
+    def suggest_correction(self) -> str:
+        return f"Name a repository {self.owner} forked from another."
+
+
+@dataclass
+class PullRequestNotProposableError(DataclassException, ValueError):
+    """
+    Raised when a fork's branch has no pull request that can be opened upstream.
+    """
+
+    branch: str
+    """
+    The fork's branch.
+    """
+
+    reason: str
+    """
+    Why its pull request cannot be opened upstream.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.branch} cannot be opened upstream: {self.reason}"
+
+    def suggest_correction(self) -> str:
+        return (
+            "Open it upstream from a branch with an open pull request onto the fork's "
+            "default branch, which is not upstream yet."
+        )
+
+
+@dataclass
 class NothingToEditError(DataclassException, ValueError):
     """
     Raised when a finding is to be edited with neither a new title nor a new text.

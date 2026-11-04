@@ -1,0 +1,1 @@
+[{"number": 3, "title": "Add the thing", "body": "What it does.", "html_url": "https://github.com/LucaKro/project/pull/3", "state": "open", "merged_at": null, "draft": true, "labels": [], "base": {"ref": "main"}, "head": {"ref": "feature", "sha": "a1b2c3", "repo": {"full_name": "LucaKro/project"}, "user": {"login": "LucaKro"}}}]

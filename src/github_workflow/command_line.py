@@ -78,8 +78,14 @@ class WorkflowCommand(StrEnum):
 
     CLONE = "clone"
     """
-    Clone another of the owner's repositories, next to the checkout the command runs
-    in.
+    Clone a repository, next to the checkout the command runs in: the owner's to work
+    in, anyone else's to read.
+    """
+
+    UPSTREAM = "upstream"
+    """
+    Open a pull request of the owner's fork on the repository it was forked from; the
+    person's alone, never a session's.
     """
 
     @classmethod

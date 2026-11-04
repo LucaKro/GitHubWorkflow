@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
 
+from basstler_domain_model.environment import ClaudeCodeVariable
 from basstler_domain_model.github.repository_client import (
     GitHubRepository,
     RepositoryDetails,
@@ -55,6 +56,7 @@ from github_workflow.pull_request_overview import (
 from github_workflow.remotes import OwnedRemote, OwnedRemotes
 from github_workflow.settings import WorkflowSettings
 from github_workflow.stacks import StackPlacement
+from github_workflow.upstream import UpstreamProposal, UpstreamSuggestion
 from github_workflow.work import (
     BranchStart,
     BranchSwitch,
@@ -174,6 +176,7 @@ class WorkflowSession(RepositoryDetails):
                     arguments.title,
                     arguments.body_file.read_text(),
                     arguments.on,
+                    UpstreamSuggestion(self.github, self.remote.repository),
                 )
                 if arguments.finding is None:
                     return draft
@@ -279,6 +282,21 @@ class WorkflowSession(RepositoryDetails):
                 directory = self.directory if around is None else around.root.parent
                 return RepositoryCloning(
                     Repository.parse(arguments.repository), directory, self.settings
+                )
+            case WorkflowCommand.UPSTREAM, _:
+                fork = Repository.parse(arguments.repository)
+                github = GitHubRepository.from_environment(fork)
+                return UpstreamProposal(
+                    fork,
+                    arguments.branch,
+                    github,
+                    github,
+                    github,
+                    github,
+                    GitHubRepository.from_environment,
+                    GitHubRepository.from_environment,
+                    self.settings,
+                    ClaudeCodeVariable.COMMAND_MARKER.read() is not None,
                 )
 
     @staticmethod
@@ -432,9 +450,16 @@ class WorkflowSession(RepositoryDetails):
         describe.add_argument("number", type=int, help="the draft pull request")
         describe.add_argument("--body-file", required=True, type=Path)
         clone = commands.add_parser(
-            WorkflowCommand.CLONE, help="clone another of the owner's repositories"
+            WorkflowCommand.CLONE,
+            help="clone a repository: the owner's to work in, anyone's to read",
         )
         clone.add_argument("repository", help="the repository, as owner/name")
+        upstream = commands.add_parser(
+            WorkflowCommand.UPSTREAM,
+            help="open a fork's pull request on its upstream; the person's alone",
+        )
+        upstream.add_argument("repository", help="the owner's fork, as owner/name")
+        upstream.add_argument("branch", help="the fork's branch with the pull request")
         return parser
 
 

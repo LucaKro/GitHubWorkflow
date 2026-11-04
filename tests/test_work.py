@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
@@ -43,6 +43,7 @@ from github_workflow.work import (
     BranchSwitch,
     BranchSync,
     CommitWork,
+    DescriptionEnding,
     DescriptionRewrite,
     DraftOpening,
     PullRequestBranches,
@@ -403,6 +404,33 @@ def test_a_draft_stacked_on_a_pull_request_targets_its_branch_and_joins_its_stac
         f"open_draft feature {github.branch_of(1)}",
         "create_stack [1, 2]",
     ]
+
+
+@dataclass(frozen=True)
+class EndingNamingTheBranch(DescriptionEnding):
+    """
+    Ends a description with its branch's name.
+    """
+
+    def appended_to(self, body: str, branch: str) -> str:
+        return f"{body} | {branch}"
+
+
+def test_a_draft_onto_the_default_branch_ends_its_description(work: WritePolicy):
+    github = DraftsAndStacksInMemory({})
+    ending = EndingNamingTheBranch()
+
+    replace(draft(work, github, None), ending=ending).run()
+
+    assert github.bodies == {1: ending.appended_to("A body", "feature")}
+
+
+def test_a_stacked_draft_keeps_its_description_as_given(work: WritePolicy):
+    github = DraftsAndStacksInMemory({1: RepositoriesByOwner.default_branch})
+
+    replace(draft(work, github, 1), ending=EndingNamingTheBranch()).run()
+
+    assert github.bodies == {2: "A body"}
 
 
 def test_a_draft_for_a_branch_github_lacks_is_refused(work: WritePolicy):

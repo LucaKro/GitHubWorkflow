@@ -77,6 +77,11 @@ class GuardDataset(PathEnumeration):
     A push after a here-document has ended.
     """
 
+    PERSON_ONLY = Path(__file__).parent / "dataset" / "guard" / "person_only.sh"
+    """
+    One workflow command line per line, each only the person's to run.
+    """
+
     NEEDS_GO_AHEAD = Path(__file__).parent / "dataset" / "guard" / "needs_go_ahead.sh"
     """
     One workflow command line per line, each confirmed by the person before it runs.
@@ -212,6 +217,16 @@ def test_the_github_tool_opening_a_pull_request_names_the_workflow_s_draft():
 
 
 # %% the person's go-ahead
+
+
+@pytest.mark.parametrize("command", GuardDataset.PERSON_ONLY.lines())
+def test_a_command_only_the_person_runs_is_denied_not_asked(command: str):
+    """
+    Not even the person's go-ahead lets a session run it.
+    """
+    output = ToolGuard(hook_input(command)).output()[HookKey.HOOK_SPECIFIC_OUTPUT]
+
+    assert output[HookKey.PERMISSION_DECISION] == HookValue.DENY
 
 
 @pytest.mark.parametrize("command", GuardDataset.NEEDS_GO_AHEAD.lines())
