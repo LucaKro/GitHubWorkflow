@@ -161,6 +161,9 @@ class NotesBlock:
             f"with `{self.workflow_command} {WorkflowCommand.DRAFT} --finding`, which "
             f"needs it accepted and proven. Give the commands running a test the "
             f"project's interpreter with `--python`.",
+            f"On a fork, `{self.workflow_command} {WorkflowCommand.DRAFT}` ends the "
+            f"description with the `{WorkflowCommand.UPSTREAM}` command line opening it "
+            f"upstream; that command is the person's alone, never run it.",
             f"Mark a branch you pushed but no longer need with "
             f"`{self.workflow_command} branch discard`; the cleanup deletes it.",
             f"Never credit an assistant in a commit: no "

@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from basstler_domain_model.environment import (
+    ClaudeCodeVariable,
     GitHubActionsVariable,
     GitHubCredentialVariable,
 )
@@ -38,7 +39,7 @@ from github_workflow.__main__ import WorkflowSession
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.command_line import FindingSubcommand
 from github_workflow.environment import WorkflowVariable
-from github_workflow.exceptions import NoOwnedRemoteError
+from github_workflow.exceptions import NoOwnedRemoteError, PersonOnlyCommandError
 from github_workflow.findings import (
     FindingDraftOpening,
     FindingFiling,
@@ -56,6 +57,7 @@ from github_workflow.notes.document import NotesBlock, NotesSection
 from github_workflow.proofs import DefaultBranchProofRunner, FindingTest
 from github_workflow.command_line import NotesSubcommand, WorkflowCommand
 from github_workflow.remotes import OwnedRemotes
+from github_workflow.upstream import UpstreamSuggestion
 from github_workflow.settings import WorkflowSettings
 
 from .repositories_by_owner import RepositoriesByOwner
@@ -73,6 +75,34 @@ class SessionDataset(PathEnumeration):
     )
     """
     An installer whose install, started in the background, still runs.
+    """
+
+
+class UpstreamDataset(PathEnumeration):
+    """
+    GitHub's answers about the owner's fork and the repository it was forked from.
+    """
+
+    FORK = Path(__file__).parent / "dataset" / "upstream" / "fork.json"
+    """
+    The owner's scratch repository as a fork of an upstream's.
+    """
+
+    UPSTREAM = Path(__file__).parent / "dataset" / "upstream" / "upstream.json"
+    """
+    The repository the fork was forked from.
+    """
+
+    FORK_PULL_REQUESTS = (
+        Path(__file__).parent / "dataset" / "upstream" / "fork_pull_requests.json"
+    )
+    """
+    The fork's open pull request from the branch ``feature``.
+    """
+
+    OPENED = Path(__file__).parent / "dataset" / "upstream" / "opened.json"
+    """
+    The pull request opened upstream from it.
     """
 
 
@@ -795,3 +825,137 @@ def open_finding(api: ReplayedApi, route: RepositoryRoute) -> None:
             }
         ),
     )
+
+
+# %% opening a fork's pull request upstream
+
+
+def answer_as_a_fork(api: ReplayedApi, settings: WorkflowSettings) -> Repository:
+    """
+    Answer that the owner's scratch repository is a fork, with an open pull request
+    from ``feature``, and that its upstream has none from it yet.
+
+    :param api: The replayed GitHub.
+    :param settings: The workflow's settings.
+    :return: The upstream.
+    """
+    fork = RepositoryRoute(
+        Repository(settings.owner, RepositoriesByOwner.repository_name)
+    )
+    upstream_data = json.loads(UpstreamDataset.UPSTREAM.value.read_text())
+    upstream = Repository.parse(upstream_data[RestJSONKey.FULL_NAME])
+    route = RepositoryRoute(upstream)
+    api.answers[("GET", f"/{fork.root}")] = RecordedAnswer.from_file(
+        HTTPStatus.OK, UpstreamDataset.FORK.value
+    )
+    api.answers[
+        ("GET", f"/{fork.pull_requests_for_head(settings.owner, 'feature')}")
+    ] = RecordedAnswer.from_file(
+        HTTPStatus.OK, UpstreamDataset.FORK_PULL_REQUESTS.value
+    )
+    api.answers[
+        ("GET", f"/{route.pull_requests_for_head(settings.owner, 'feature')}")
+    ] = RecordedAnswer(HTTPStatus.OK, "[]")
+    api.answers[("GET", f"/{route.root}")] = RecordedAnswer.from_file(
+        HTTPStatus.OK, UpstreamDataset.UPSTREAM.value
+    )
+    api.answers[("POST", f"/{route.pull_requests}")] = RecordedAnswer.from_file(
+        HTTPStatus.CREATED, UpstreamDataset.OPENED.value
+    )
+    api.answers[("POST", f"/{fork.issue_comments(3)}")] = RecordedAnswer(
+        HTTPStatus.CREATED, json.dumps({RestJSONKey.HTML_URL: "https://github.com/c"})
+    )
+    return upstream
+
+
+def test_the_person_opens_the_fork_s_pull_request_upstream(
+    github: ReplayedApi,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+):
+    upstream = answer_as_a_fork(github, settings)
+    fork = Repository(settings.owner, RepositoriesByOwner.repository_name)
+
+    run(
+        github_workflow.__name__,
+        repositories.clone(owned_url, "anywhere"),
+        WorkflowCommand.UPSTREAM,
+        fork.full_name,
+        "feature",
+    )
+
+    assert non_reads(github) == [
+        ("POST", f"/{RepositoryRoute(upstream).pull_requests}"),
+        ("POST", f"/{RepositoryRoute(fork).issue_comments(3)}"),
+    ]
+
+
+def test_a_session_opening_a_pull_request_upstream_is_refused(
+    github: ReplayedApi,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    answer_as_a_fork(github, settings)
+    monkeypatch.setenv(ClaudeCodeVariable.COMMAND_MARKER, "1")
+    fork = Repository(settings.owner, RepositoriesByOwner.repository_name)
+
+    finished = run(
+        github_workflow.__name__,
+        repositories.clone(owned_url, "anywhere"),
+        WorkflowCommand.UPSTREAM,
+        fork.full_name,
+        "feature",
+    )
+
+    assert finished.returncode != 0
+    assert non_reads(github) == []
+
+
+def test_a_refusal_is_reported_as_its_reason_without_a_traceback(
+    github: ReplayedApi,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv(ClaudeCodeVariable.COMMAND_MARKER, "1")
+    fork = Repository(settings.owner, RepositoriesByOwner.repository_name)
+
+    finished = run(
+        github_workflow.__name__,
+        repositories.clone(owned_url, "anywhere"),
+        WorkflowCommand.UPSTREAM,
+        fork.full_name,
+        "feature",
+    )
+
+    refusal = PersonOnlyCommandError(WorkflowCommand.UPSTREAM)
+    assert (finished.returncode, finished.stderr) == (
+        1,
+        f"github-workflow: {refusal}\n",
+    )
+
+
+def test_a_draft_on_a_fork_ends_with_the_command_for_the_person(
+    github: ReplayedApi,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+):
+    answer_as_a_fork(github, settings)
+    checkout = repositories.clone(owned_url, "session")
+    checkout.git.run("switch", "--quiet", "--create", "feature")
+    (checkout.root / "body.md").write_text("What it does.\n")
+
+    step = step_for(
+        checkout,
+        WorkflowCommand.DRAFT,
+        "--title=Add the thing",
+        f"--body-file={checkout.root / 'body.md'}",
+    )
+
+    fork = Repository(settings.owner, RepositoriesByOwner.repository_name)
+    assert step.ending == UpstreamSuggestion(owner_s_github(settings), fork)

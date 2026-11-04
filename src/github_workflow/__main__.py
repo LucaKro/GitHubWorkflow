@@ -8,10 +8,14 @@ Usage: ``python -m github_workflow <command> ...``; ``--help`` lists the command
 from __future__ import annotations
 
 import argparse
+import sys
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
+from types import TracebackType
 
+from basstler_domain_model.environment import ClaudeCodeVariable
+from basstler_domain_model.exceptions import DataclassException
 from basstler_domain_model.github.repository_client import (
     GitHubRepository,
     RepositoryDetails,
@@ -55,6 +59,7 @@ from github_workflow.pull_request_overview import (
 from github_workflow.remotes import OwnedRemote, OwnedRemotes
 from github_workflow.settings import WorkflowSettings
 from github_workflow.stacks import StackPlacement
+from github_workflow.upstream import UpstreamProposal, UpstreamSuggestion
 from github_workflow.work import (
     BranchStart,
     BranchSwitch,
@@ -174,6 +179,7 @@ class WorkflowSession(RepositoryDetails):
                     arguments.title,
                     arguments.body_file.read_text(),
                     arguments.on,
+                    UpstreamSuggestion(self.github, self.remote.repository),
                 )
                 if arguments.finding is None:
                     return draft
@@ -280,6 +286,40 @@ class WorkflowSession(RepositoryDetails):
                 return RepositoryCloning(
                     Repository.parse(arguments.repository), directory, self.settings
                 )
+            case WorkflowCommand.UPSTREAM, _:
+                fork = Repository.parse(arguments.repository)
+                github = GitHubRepository.from_environment(fork)
+                return UpstreamProposal(
+                    fork,
+                    arguments.branch,
+                    github,
+                    github,
+                    github,
+                    github,
+                    GitHubRepository.from_environment,
+                    GitHubRepository.from_environment,
+                    self.settings,
+                    ClaudeCodeVariable.COMMAND_MARKER.read() is not None,
+                )
+
+    @staticmethod
+    def report(
+        kind: type[BaseException],
+        raised: BaseException,
+        traceback: TracebackType | None,
+    ) -> None:
+        """
+        Print a refusal of the workflow's as its reason and what to do instead, and any
+        other error as Python would.
+
+        :param kind: The error's type.
+        :param raised: The error.
+        :param traceback: Where it was raised.
+        """
+        if not isinstance(raised, DataclassException):
+            sys.__excepthook__(kind, raised, traceback)
+            return
+        print(f"github-workflow: {raised}", file=sys.stderr)
 
     @staticmethod
     def parser() -> argparse.ArgumentParser:
@@ -432,9 +472,16 @@ class WorkflowSession(RepositoryDetails):
         describe.add_argument("number", type=int, help="the draft pull request")
         describe.add_argument("--body-file", required=True, type=Path)
         clone = commands.add_parser(
-            WorkflowCommand.CLONE, help="clone another of the owner's repositories"
+            WorkflowCommand.CLONE,
+            help="clone a repository: the owner's to work in, anyone's to read",
         )
         clone.add_argument("repository", help="the repository, as owner/name")
+        upstream = commands.add_parser(
+            WorkflowCommand.UPSTREAM,
+            help="open a fork's pull request on its upstream; the person's alone",
+        )
+        upstream.add_argument("repository", help="the owner's fork, as owner/name")
+        upstream.add_argument("branch", help="the fork's branch with the pull request")
         return parser
 
 
@@ -443,8 +490,9 @@ class WorkflowSession(RepositoryDetails):
 
 def main() -> None:
     """
-    Run the command the command line names, and print what it did.
+    Run the command the command line names, and print what it did, or why it refused.
     """
+    sys.excepthook = WorkflowSession.report
     arguments = WorkflowSession.parser().parse_args()
     session = WorkflowSession(Path.cwd(), WorkflowSettings())
     print(f"github-workflow: {session.step(arguments).run()}")

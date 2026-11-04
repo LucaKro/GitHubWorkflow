@@ -37,6 +37,7 @@ from github_workflow.command_line import (
     WorkflowCommand,
 )
 from github_workflow.hooks import FileWritingTool, HookKey, HookValue
+from github_workflow.install import Launcher
 
 # %% the session
 
@@ -898,18 +899,25 @@ class GoAheadCommand(StrEnum):
         :return: The command needing the go-ahead that it runs, ``None`` when it runs
             none.
         """
-        arguments = command.arguments
-        if not command.program.startswith("python") or "-m" not in arguments[:-1]:
-            return None
-        module = arguments.index("-m") + 1
-        if arguments[module] != github_workflow.__name__:
-            return None
-        words = [word for word in arguments[module + 1 :] if not word.startswith("-")]
-        for member in cls:
-            leading = member.split()
-            if words[: len(leading)] == leading:
-                return member
-        return None
+        return next((member for member in cls if command.runs_workflow(member)), None)
+
+
+class PersonOnlyCommand(StrEnum):
+    """
+    The workflow commands only the person runs, never a Claude Code session, even with
+    the person's go-ahead, by their leading words.
+    """
+
+    UPSTREAM = WorkflowCommand.UPSTREAM.value
+
+    @classmethod
+    def run_by(cls, command: SimpleCommand) -> PersonOnlyCommand | None:
+        """
+        :param command: One simple command.
+        :return: The command only the person runs that it runs, ``None`` when it runs
+            none.
+        """
+        return next((member for member in cls if command.runs_workflow(member)), None)
 
 
 # %% judging one program
@@ -1119,6 +1127,25 @@ class SimpleCommand:
         """
         return list(self.words[self.program_start + 1 :])
 
+    def runs_workflow(self, leading: str) -> bool:
+        """
+        :param leading: A workflow command's leading words, such as ``finding accept``.
+        :return: Whether this runs ``python -m github_workflow``, or the launcher, with
+            them.
+        """
+        arguments = self.arguments
+        if self.program == Launcher.COMMAND:
+            given = arguments
+        elif self.program.startswith("python") and "-m" in arguments[:-1]:
+            module = arguments.index("-m") + 1
+            if arguments[module] != github_workflow.__name__:
+                return False
+            given = arguments[module + 1 :]
+        else:
+            return False
+        words = [word for word in given if not word.startswith("-")]
+        return words[: len(leading.split())] == leading.split()
+
 
 @dataclass(frozen=True)
 class CommandLine:
@@ -1248,6 +1275,13 @@ class CommandGuard:
             )
         judge = replace(self, enclosing_line_names_git=mentions_git)
         for words in line.simple_commands():
+            person_only = PersonOnlyCommand.run_by(SimpleCommand(words))
+            if person_only is not None:
+                return Denial(
+                    f"only the person runs `{person_only}`, never a Claude Code "
+                    f"session: put its command line in the pull request's description "
+                    f"for them to copy"
+                )
             if mentions_git and "$" in SimpleCommand(words).program:
                 return Denial(
                     "a program named by an expansion could be git or gh",

@@ -14,7 +14,8 @@ contradicts one of these changes this file first.
 - Only on repositories owned by LucaKro. Every write - a push, a branch, an issue, a
   label, a pull request, a comment - is refused before it is attempted when the
   repository it targets, or the URL of the remote a push goes to, belongs to anyone
-  else. Reading other repositories is allowed.
+  else. Reading other repositories is allowed. The one write to somebody else's
+  repository is `upstream`, which only I run (see below).
 - Reading includes cloning: `clone` clones anyone's repository, so a session can read an
   upstream's pull request. Every clone it makes carries the workflow's `pre-push` hook,
   so nothing is pushed from a clone of somebody else's repository, however the push is
@@ -169,6 +170,21 @@ them:
 - open draft pull requests
 
 Everything else written to GitHub needs my go-ahead.
+
+## What only I do
+
+- Opening a fork's pull request on its upstream: `github-workflow upstream <fork>
+  <branch>` opens it,
+  ready for review, with the same title and a description linking back to the fork's
+  pull request, which then links to it. It refuses a pull request that is not open, is
+  stacked, or is open upstream already.
+- No session runs it, not even with my go-ahead: the guard denies it, and the command
+  refuses to run where Claude Code's command marker is set. `draft` on a fork ends the
+  description with the command line, for me to copy.
+- A refusal tells me why, as its reason and what to do instead, without a traceback.
+- `github-workflow` runs the workflow on any machine with the plugin: the runtime install
+  writes it to `~/.local/bin`, says so when that is not on my `PATH`, and never replaces
+  a file of that name that is not the workflow's.
 
 ## How work is done
 

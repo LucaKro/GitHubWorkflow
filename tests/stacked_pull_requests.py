@@ -113,10 +113,16 @@ class DraftsAndStacksInMemory(StackedPullRequestsInMemory, PullRequestOpener):
     The stand-in, also opening draft pull requests, each numbered after the highest.
     """
 
+    bodies: dict[int, str] = field(default_factory=dict)
+    """
+    The description each draft was opened with, by its number.
+    """
+
     def open_draft(self, head: str, base: str, title: str, body: str) -> int:
         number = max(self.bases, default=0) + 1
         self.writes.append(f"open_draft {head} {base}")
         self.bases[number] = base
+        self.bodies[number] = body
         return number
 
 

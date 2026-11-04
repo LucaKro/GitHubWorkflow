@@ -18,6 +18,8 @@ import github_workflow.install
 from github_workflow.install import (
     DirectoryLock,
     DomainModelSource,
+    Launcher,
+    LauncherInstallation,
     RuntimeFile,
     RuntimeInstallation,
     RuntimeSwitch,
@@ -169,10 +171,69 @@ def test_a_runtime_is_built_without_pip(
     monkeypatch.setattr(github_workflow.install.subprocess, "run", run)
 
     RuntimeInstallation(
-        Path(github_workflow.install.__file__).parents[2], tmp_path / "runtime"
+        Path(github_workflow.install.__file__).parents[2],
+        tmp_path / "runtime",
+        tmp_path / "bin",
     ).install()
 
     assert [command for command in started if "pip" in command] == []
+
+
+# %% the launcher
+
+
+def test_the_launcher_runs_the_workflow_from_the_runtime(tmp_path: Path):
+    """
+    A runtime whose interpreter hands over to this one, which has the workflow
+    installed.
+    """
+    runtime = tmp_path / "runtime"
+    (runtime / "bin").mkdir(parents=True)
+    interpreter = runtime / "bin" / "python"
+    interpreter.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    interpreter.chmod(0o755)
+    LauncherInstallation(tmp_path / "bin", runtime).install()
+
+    ran = subprocess.run(
+        [str(tmp_path / "bin" / Launcher.COMMAND), "--help"],
+        capture_output=True,
+        text=True,
+    )
+
+    assert ran.returncode == 0
+
+
+def test_a_file_of_the_launcher_s_name_that_is_not_the_workflow_s_is_left_alone(
+    tmp_path: Path,
+):
+    (tmp_path / "bin").mkdir()
+    own = tmp_path / "bin" / Launcher.COMMAND
+    own.write_text("#!/bin/sh\necho mine\n")
+
+    LauncherInstallation(tmp_path / "bin", tmp_path / "runtime").install()
+
+    assert own.read_text() == "#!/bin/sh\necho mine\n"
+
+
+def test_an_earlier_launcher_of_the_workflow_s_is_replaced(tmp_path: Path):
+    LauncherInstallation(tmp_path / "bin", tmp_path / "old").install()
+    newer = LauncherInstallation(tmp_path / "bin", tmp_path / "new")
+
+    newer.install()
+
+    assert (tmp_path / "bin" / Launcher.COMMAND).read_text() == newer.script
+
+
+@pytest.mark.parametrize("on_path", [True, False])
+def test_a_launcher_outside_the_path_says_so(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, on_path: bool
+):
+    directory = tmp_path / "bin"
+    monkeypatch.setenv("PATH", str(directory) if on_path else "/usr/bin")
+
+    said = LauncherInstallation(directory, tmp_path / "runtime").install()
+
+    assert (said is None) == on_path
 
 
 # %% one install at a time

@@ -206,6 +206,20 @@ class PushWork(WorkflowStep):
 # %% pull requests
 
 
+class DescriptionEnding(ABC):
+    """
+    What a draft's description ends with, given its branch.
+    """
+
+    @abstractmethod
+    def appended_to(self, body: str, branch: str) -> str:
+        """
+        :param body: A draft's description.
+        :param branch: The draft's branch.
+        :return: The description with its ending.
+        """
+
+
 @dataclass(frozen=True)
 class DraftOpening(WorkflowStep):
     """
@@ -243,6 +257,12 @@ class DraftOpening(WorkflowStep):
     The pull request to stack it on, ``None`` to target the default branch.
     """
 
+    ending: DescriptionEnding | None = None
+    """
+    What the description of a draft onto the default branch ends with, ``None`` for
+    nothing.
+    """
+
     def run(self) -> str:
         branch = RemoteBranch(self.policy.remote.name, self.policy.work_branch())
         if not self.policy.checkout.git.has_remote_branch(branch):
@@ -252,7 +272,12 @@ class DraftOpening(WorkflowStep):
             if self.below is None
             else self.placement.pull_requests.pull_request(self.below).head.branch
         )
-        number = self.opener.open_draft(branch.name, base, self.title, self.body)
+        body = (
+            self.ending.appended_to(self.body, branch.name)
+            if self.ending is not None and self.below is None
+            else self.body
+        )
+        number = self.opener.open_draft(branch.name, base, self.title, body)
         opened = f"opened draft #{number}: {branch.name} onto {base}"
         if self.below is None:
             return opened

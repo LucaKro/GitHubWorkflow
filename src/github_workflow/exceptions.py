@@ -402,6 +402,88 @@ class NotAFindingError(DataclassException, LookupError):
 
 
 @dataclass
+class PersonOnlyCommandError(DataclassException, PermissionError):
+    """
+    Raised when a command only the person runs is run from a Claude Code session.
+    """
+
+    command: str
+    """
+    The command.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.command} is the person's to run, never a Claude Code session's"
+
+    def suggest_correction(self) -> str:
+        return "Give the person the command line to run themselves."
+
+
+@dataclass
+class ForeignRepositoryError(DataclassException, PermissionError):
+    """
+    Raised when a repository to propose from belongs to somebody else.
+    """
+
+    repository: Repository
+    """
+    The repository named.
+    """
+
+    owner: str
+    """
+    The account whose forks are proposed from.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.repository} belongs to {self.repository.owner}, not {self.owner}"
+
+    def suggest_correction(self) -> str:
+        return f"Name {self.owner}'s fork, as {self.owner}/{self.repository.name}."
+
+
+@dataclass
+class NotAForkError(DataclassException, LookupError):
+    """
+    Raised when a repository to propose from was forked from none.
+    """
+
+    repository: Repository
+    """
+    The repository named.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.repository} is not a fork, so it has no upstream to propose to"
+
+    def suggest_correction(self) -> str:
+        return "Open the pull request on it directly; it is the upstream itself."
+
+
+@dataclass
+class PullRequestNotProposableError(DataclassException, ValueError):
+    """
+    Raised when a fork's branch has no pull request that can be opened upstream.
+    """
+
+    branch: str
+    """
+    The fork's branch.
+    """
+
+    reason: str
+    """
+    Why its pull request cannot be opened upstream.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.branch} cannot be opened upstream: {self.reason}"
+
+    def suggest_correction(self) -> str:
+        return "Fix what the reason names, then run the command again."
+
+
+@dataclass
 class NothingToEditError(DataclassException, ValueError):
     """
     Raised when a finding is to be edited with neither a new title nor a new text.
