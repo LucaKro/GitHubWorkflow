@@ -74,7 +74,8 @@ class WorkflowCommand(StrEnum):
 
     DESCRIBE = "describe"
     """
-    Rewrite the description of an open draft pull request.
+    Rewrite the description, the title or both of an open pull request, a draft or
+    ready for review.
     """
 
     CLONE = "clone"

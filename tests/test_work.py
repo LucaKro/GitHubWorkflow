@@ -35,7 +35,8 @@ from github_workflow.exceptions import (
     DefaultBranchWriteError,
     DetachedHeadError,
     MergeConflictError,
-    NotADraftError,
+    NothingToDescribeError,
+    PullRequestNotOpenError,
     PushRefusedError,
     StackedBranchMergeError,
     UnpushedCommitsError,
@@ -62,6 +63,7 @@ from github_workflow.work import (
 
 from .repositories_by_owner import RepositoriesByOwner
 from .test_push_hook import in_claude_code  # noqa: F401  (a fixture)
+from .issues_in_memory import IssuesInMemory
 from .pull_requests import pull_request
 from .stacked_pull_requests import (
     DraftsAndStacksInMemory,
@@ -737,38 +739,66 @@ def test_a_branch_that_has_the_default_branch_s_commits_is_left_alone(
     assert git.commit_at("HEAD") == before
 
 
-# %% rewriting a draft's description
+# %% rewriting a pull request's description and title
 
 
-def test_a_draft_s_description_is_rewritten():
-    github = DraftsInMemory(
-        {1: RepositoriesByOwner.default_branch}, drafts=frozenset({1})
-    )
-
-    DescriptionRewrite(github, github, 1, "A new body").run()
-
-    assert github.writes == ["set_description 1 A new body"]
+def rewrite(
+    github: DraftsInMemory, body: str | None, title: str | None = None
+) -> tuple[DescriptionRewrite, IssuesInMemory]:
+    """
+    :param github: The pull requests.
+    :param body: The new description, ``None`` to keep it.
+    :param title: The new title, ``None`` to keep it.
+    :return: The rewrite of pull request 1, and the board its title is written on.
+    """
+    board = IssuesInMemory({})
+    return DescriptionRewrite(github, github, board, 1, body, title), board
 
 
 @pytest.mark.parametrize(
-    "github",
-    [
-        DraftsInMemory({1: RepositoriesByOwner.default_branch}),
-        DraftsInMemory(
-            {1: RepositoriesByOwner.default_branch},
-            drafts=frozenset({1}),
-            closed=frozenset({1}),
-        ),
-    ],
-    ids=["ready for review", "closed"],
+    "drafts", [frozenset({1}), frozenset()], ids=["draft", "ready for review"]
 )
-def test_a_pull_request_that_is_no_open_draft_keeps_its_description(
-    github: DraftsInMemory,
-):
-    with pytest.raises(NotADraftError):
-        DescriptionRewrite(github, github, 1, "A new body").run()
+def test_an_open_pull_request_s_description_is_rewritten(drafts: frozenset[int]):
+    """
+    Its description follows the pushed commits, ready for review or not.
+    """
+    github = DraftsInMemory({1: RepositoriesByOwner.default_branch}, drafts=drafts)
+    step, board = rewrite(github, "A new body")
 
-    assert github.writes == []
+    step.run()
+
+    assert (github.writes, board.writes) == (["set_description 1 A new body"], [])
+
+
+def test_an_open_pull_request_s_title_is_rewritten():
+    github = DraftsInMemory({1: RepositoriesByOwner.default_branch})
+    step, board = rewrite(github, None, "A sharper title")
+
+    step.run()
+
+    assert (github.writes, board.writes) == ([], ["set_issue_title 1 A sharper title"])
+
+
+def test_a_closed_pull_request_keeps_its_description_and_title():
+    github = DraftsInMemory(
+        {1: RepositoriesByOwner.default_branch}, closed=frozenset({1})
+    )
+    step, board = rewrite(github, "A new body", "A sharper title")
+
+    with pytest.raises(PullRequestNotOpenError):
+        step.run()
+
+    assert (github.writes, board.writes) == ([], [])
+
+
+def test_a_rewrite_changing_nothing_is_refused():
+    github = DraftsInMemory({1: RepositoriesByOwner.default_branch})
+    step, board = rewrite(github, None)
+
+    with pytest.raises(NothingToDescribeError):
+        step.run()
+
+    assert (github.writes, board.writes) == ([], [])
 
 
 # %% cloning
