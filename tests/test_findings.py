@@ -218,6 +218,62 @@ def test_prioritizing_creates_the_labels_the_repository_lacks():
 # %% listing
 
 
+def accepted_on_github(issue: Issue) -> Issue:
+    """:param issue: An unreviewed finding.
+    :return: It, as the person leaves it by picking the accepted label on GitHub, the
+        unreviewed label still on it."""
+    return Issue(
+        issue.number,
+        issue.title,
+        (*issue.labels, FindingStage.ACCEPTED),
+        issue.state,
+    )
+
+
+def test_a_stage_the_person_picked_outranks_unreviewed():
+    issue = accepted_on_github(finding(1, FindingStage.UNREVIEWED, Priority.HIGH))
+
+    assert FindingStage.of(issue) is FindingStage.ACCEPTED
+
+
+@pytest.mark.parametrize(
+    "picked, counted",
+    [
+        ((FindingStage.ACCEPTED, FindingStage.SHELVED), FindingStage.SHELVED),
+        ((FindingStage.ACCEPTED, FindingStage.INCORRECT), FindingStage.INCORRECT),
+        ((FindingStage.SHELVED, FindingStage.INCORRECT), FindingStage.INCORRECT),
+    ],
+    ids=["shelved over accepted", "incorrect over accepted", "incorrect over shelved"],
+)
+def test_of_two_stages_the_person_picked_the_more_cautious_counts(
+    picked: tuple[FindingStage, FindingStage], counted: FindingStage
+):
+    issue = Issue(1, "Finding 1", (*picked, Priority.HIGH), IssueState.OPEN)
+
+    assert FindingStage.of(issue) is counted
+
+
+def test_a_finding_accepted_on_github_is_listed_once_as_accepted():
+    unreviewed = finding(1, FindingStage.UNREVIEWED, Priority.HIGH)
+    board = IssuesInMemory({1: accepted_on_github(unreviewed)})
+
+    listed = FindingListing(board).run().splitlines()
+
+    assert listed == [
+        f"#1 [{Priority.HIGH.level}] {unreviewed.title} ({FindingStage.ACCEPTED})"
+    ]
+
+
+def test_a_finding_accepted_on_github_is_summed_up_once_as_accepted():
+    board = IssuesInMemory(
+        {1: accepted_on_github(finding(1, FindingStage.UNREVIEWED, Priority.HIGH))}
+    )
+
+    [line] = FindingsSummary(board).lines()
+
+    assert line.tone is Tone.NEWS
+
+
 def test_findings_are_listed_unreviewed_first_and_most_urgent_first():
     board = IssuesInMemory(
         {
@@ -563,6 +619,24 @@ def test_a_draft_for_an_accepted_proven_finding_closes_it_when_merged(
     work: WritePolicy, settings: WorkflowSettings
 ):
     board = labelled_board(proven(finding(7, FindingStage.ACCEPTED, Priority.HIGH)))
+    with_proof_posted(board, 7, settings.owner)
+    github = DescribedDraftsInMemory({})
+
+    draft_for_finding(work, github, board, ProofOutcome.FAILS, settings).run()
+
+    assert github.descriptions == {1: f"A body\n\n{ClosingKeyword.FIXES.reference(7)}"}
+
+
+def test_a_draft_for_a_finding_accepted_on_github_is_opened(
+    work: WritePolicy, settings: WorkflowSettings
+):
+    """
+    Picking the accepted label on GitHub leaves the unreviewed one on, without the label
+    workflow to remove it.
+    """
+    board = labelled_board(
+        proven(accepted_on_github(finding(7, FindingStage.UNREVIEWED, Priority.HIGH)))
+    )
     with_proof_posted(board, 7, settings.owner)
     github = DescribedDraftsInMemory({})
 

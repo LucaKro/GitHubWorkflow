@@ -124,6 +124,23 @@ class FindingStage(FindingLabel):
         """
         return [cls.UNREVIEWED, cls.ACCEPTED, cls.SHELVED]
 
+    @classproperty
+    def by_caution(cls) -> list[FindingStage]:
+        """
+        The stages, the most cautious first: a stage the person picked before the one a
+        session files with, and of the person's, the one doing least.
+        """
+        return [cls.INCORRECT, cls.SHELVED, cls.ACCEPTED, cls.UNREVIEWED]
+
+    @classmethod
+    def of(cls, issue: Issue) -> FindingStage | None:
+        """
+        Unlike :meth:`FindingLabel.of`, of several stage labels the first in
+        :attr:`by_caution` counts, so a stage picked on GitHub counts even while the
+        label it replaces is still on.
+        """
+        return next((stage for stage in cls.by_caution if stage in issue.labels), None)
+
 
 class Priority(FindingLabel):
     """
@@ -311,6 +328,37 @@ class ProvenFindingFiling(FindingFiling):
 
 
 @dataclass(frozen=True)
+class OpenFindings:
+    """
+    The open findings on a board, each once, under the stage it counts as.
+    """
+
+    board: IssueBoard
+    """
+    Lists the issues.
+    """
+
+    def by_stage(self) -> dict[FindingStage, list[Issue]]:
+        """
+        :return: The open findings of each open stage, in the order of
+            :attr:`FindingStage.open_stages`.
+        """
+        found = {
+            issue.number: issue
+            for stage in FindingStage.open_stages
+            for issue in self.board.issues([stage], IssueState.OPEN)
+        }
+        grouped: dict[FindingStage, list[Issue]] = {
+            stage: [] for stage in FindingStage.open_stages
+        }
+        for issue in found.values():
+            stage = FindingStage.of(issue)
+            if stage in grouped:
+                grouped[stage].append(issue)
+        return grouped
+
+
+@dataclass(frozen=True)
 class FindingListing(WorkflowStep):
     """
     The open findings, unreviewed first and shelved last, most urgent first.
@@ -327,9 +375,9 @@ class FindingListing(WorkflowStep):
             reports in one line.
         """
         lines = []
-        for stage in FindingStage:
+        for stage, issues in OpenFindings(self.board).by_stage().items():
             for issue in sorted(
-                self.board.issues([stage], IssueState.OPEN),
+                issues,
                 key=lambda issue: list(Priority).index(
                     Priority.of(issue) or Priority.LOW
                 ),
@@ -647,9 +695,10 @@ class FindingsSummary(ReportSection):
     """
 
     def lines(self) -> list[ReportLine]:
-        unreviewed = self.board.issues([FindingStage.UNREVIEWED], IssueState.OPEN)
-        accepted = self.board.issues([FindingStage.ACCEPTED], IssueState.OPEN)
-        shelved = self.board.issues([FindingStage.SHELVED], IssueState.OPEN)
+        by_stage = OpenFindings(self.board).by_stage()
+        unreviewed = by_stage[FindingStage.UNREVIEWED]
+        accepted = by_stage[FindingStage.ACCEPTED]
+        shelved = by_stage[FindingStage.SHELVED]
         if not unreviewed and not accepted and not shelved:
             return []
         counted = Counter(Priority.of(issue) for issue in unreviewed)
