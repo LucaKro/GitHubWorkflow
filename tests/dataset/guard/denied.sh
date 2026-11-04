@@ -38,6 +38,9 @@ gh repo edit --delete-branch-on-merge
 gh api -X DELETE repos/LucaKro/GitHubWorkflow/git/refs/heads/feature
 gh api repos/LucaKro/GitHubWorkflow/issues -f title=Finding
 gh api --method PATCH repos/LucaKro/GitHubWorkflow
+gh api -X GET repos/LucaKro/GitHubWorkflow/issues --input body.json
+gh api -X POST repos/LucaKro/GitHubWorkflow/issues -f title=Finding
+gh api -fX GET repos/LucaKro/GitHubWorkflow/issues -f title=Finding
 curl -X POST https://api.github.com/repos/LucaKro/GitHubWorkflow/issues
 curl -d '{"title": "x"}' https://api.github.com/repos/LucaKro/GitHubWorkflow/issues
 curl --data-raw x https://api.github.com/repos/LucaKro/GitHubWorkflow/issues
@@ -72,6 +75,3 @@ env --unset=CLAUDECODE python3 push.py
 env -C build -u CLAUDECODE python3 push.py
 env -i python3 push.py
 env - python3 push.py
-gh api -X GET repos/LucaKro/GitHubWorkflow/issues --input body.json
-gh api -X POST repos/LucaKro/GitHubWorkflow/issues -f title=Finding
-gh api -fX GET repos/LucaKro/GitHubWorkflow/issues -f title=Finding
