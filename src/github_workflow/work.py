@@ -21,13 +21,18 @@ from basstler_domain_model.git.commands import (
 from basstler_domain_model.github.repository_client import (
     PullRequestOpener,
     PullRequestReader,
+    PullRequestsFromForks,
     PullRequestWriter,
+    StackReader,
 )
 from basstler_domain_model.github.vocabulary import PullRequestState
 from basstler_domain_model.repository import GitHubAddress, Repository
 
 from github_workflow.checkout import ProjectCheckout
+from github_workflow.command_line import WorkflowCommand
 from github_workflow.exceptions import (
+    MergeConflictError,
+    StackedBranchMergeError,
     BranchDeletedFromGitHubError,
     BranchNotPushedError,
     DetachedHeadError,
@@ -462,6 +467,61 @@ class BranchSync(WorkflowStep):
         if any(entry.startswith(writes) for entry in entries):
             return True
         return self.pull_request_branches.opened_from(branch.name)
+
+
+# %% taking in the default branch
+
+
+@dataclass(frozen=True)
+class BaseMerge(WorkflowStep):
+    """
+    GitHub's default branch merged into the checked-out work branch, committed as the
+    person, never forced; a conflicting merge is undone and its files named.
+
+    :raises DefaultBranchWriteError: If the default branch is checked out.
+    :raises StackedBranchMergeError: If the branch's pull request is in a stack.
+    :raises MergeConflictError: If the merge conflicts.
+    """
+
+    policy: WritePolicy
+    """
+    The checkout, its work branch and the default branch.
+    """
+
+    pull_requests: PullRequestsFromForks
+    """
+    Finds the pull requests opened from the work branch.
+    """
+
+    stacks: StackReader
+    """
+    Reads whether one is in a stack.
+    """
+
+    def run(self) -> str:
+        branch = self.policy.work_branch()
+        owner = self.policy.remote.repository.owner
+        for pull_request in self.pull_requests.pull_requests_from(owner, branch):
+            stacked = self.stacks.stack_of(pull_request.number) is not None
+            if pull_request.state is PullRequestState.OPEN and stacked:
+                raise StackedBranchMergeError(branch, pull_request.number)
+        default = RemoteBranch(self.policy.remote.name, self.policy.default_branch)
+        git = self.policy.checkout.git
+        git.fetch_branch(default).raise_if_failed()
+        if git.contains(default.tracking_reference, "HEAD"):
+            return f"{branch} has {default.name}'s commits already"
+        merged = git.merge(
+            default.tracking_reference,
+            self.policy.commit_message(f"Merge {default.name} into {branch}"),
+        )
+        if not merged.succeeded:
+            conflicted = git.conflicted_files()
+            if not conflicted:
+                merged.raise_if_failed()
+            git.abort_merge()
+            raise MergeConflictError(branch, default.name, tuple(conflicted))
+        push = WorkflowCommand.command_line(WorkflowCommand.PUSH)
+        return f"merged {default.name} into {branch}; push it with `{push}`"
 
 
 # %% stacks and notes

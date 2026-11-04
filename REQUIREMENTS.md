@@ -214,6 +214,10 @@ Everything else written to GitHub needs my go-ahead.
   branch to GitHub's, unless it has commits of its own.
 - Dependent pull requests are rare, and use GitHub's native stacks when they happen,
   restacked and merged by GitHub.
+- A work branch takes in the default branch's new commits with `sync --base`: a merge,
+  committed as me, never a rebase or a force; a merge that conflicts is undone and its
+  files named, for me to decide. A branch whose pull request is in a stack is left to
+  GitHub's *Rebase stack*.
 
 ## Open questions
 

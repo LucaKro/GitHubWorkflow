@@ -1069,3 +1069,32 @@ def test_a_fork_s_main_behind_its_upstream_is_synced_through_the_command_line(
     )
 
     assert non_reads(github) == [("POST", f"/{fork.merge_upstream}")]
+
+
+# %% taking in the default branch
+
+
+def test_the_default_branch_s_new_commits_are_merged_through_the_command_line(
+    github: ReplayedApi,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+):
+    checkout = repositories.clone(owned_url, "session")
+    git = checkout.git
+    git.run("switch", "--quiet", "--create", "feature")
+    git.run("commit", "--quiet", "--allow-empty", "--message", "Add a")
+    git.run("push", "--quiet", "--set-upstream", "origin", "feature")
+    other = repositories.clone(owned_url, "other").git
+    other.run("commit", "--quiet", "--allow-empty", "--message", "Main moved on")
+    other.run("push", "--quiet", "origin", f"HEAD:{RepositoriesByOwner.default_branch}")
+    route = RepositoryRoute(
+        Repository(settings.owner, RepositoriesByOwner.repository_name)
+    )
+    github.answers[
+        ("GET", f"/{route.pull_requests_for_head(settings.owner, 'feature')}")
+    ] = RecordedAnswer(HTTPStatus.OK, "[]")
+
+    run(github_workflow.__name__, checkout, WorkflowCommand.SYNC, "--base")
+
+    assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))

@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
@@ -17,7 +17,12 @@ import github_workflow
 from basstler_domain_model.environment import GitIdentityVariable
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
 from basstler_domain_model.git.exceptions import GitCommandFailed
-from basstler_domain_model.github.repository_client import RepositoryDetails
+from basstler_domain_model.github.repository_client import (
+    PullRequestsFromForks,
+    RepositoryDetails,
+)
+from basstler_domain_model.github.rest_models import RestPullRequest
+from basstler_domain_model.github.stack_models import Stack
 from basstler_domain_model.repository import Repository
 
 from github_workflow.__main__ import WorkflowSession
@@ -29,8 +34,10 @@ from github_workflow.exceptions import (
     BranchNotPushedError,
     DefaultBranchWriteError,
     DetachedHeadError,
+    MergeConflictError,
     NotADraftError,
     PushRefusedError,
+    StackedBranchMergeError,
     UnpushedCommitsError,
 )
 from github_workflow.policy import Attribution, WritePolicy
@@ -39,6 +46,7 @@ from github_workflow.remotes import OwnedRemotes
 from github_workflow.settings import WorkflowSettings
 from github_workflow.stacks import StackPlacement
 from github_workflow.work import (
+    BaseMerge,
     BranchStart,
     BranchSwitch,
     BranchSync,
@@ -54,7 +62,12 @@ from github_workflow.work import (
 
 from .repositories_by_owner import RepositoriesByOwner
 from .test_push_hook import in_claude_code  # noqa: F401  (a fixture)
-from .stacked_pull_requests import DraftsAndStacksInMemory, DraftsInMemory
+from .pull_requests import pull_request
+from .stacked_pull_requests import (
+    DraftsAndStacksInMemory,
+    DraftsInMemory,
+    StackedPullRequestsInMemory,
+)
 
 # %% helpers
 
@@ -604,6 +617,124 @@ def test_a_branch_is_not_reported_unpushed_when_github_cannot_be_reached(
 
     with pytest.raises(GitCommandFailed):
         BranchSync(work, PullRequestBranchesInMemory()).run()
+
+
+# %% taking in the default branch
+
+
+@dataclass(frozen=True)
+class PullRequestsFromBranchesInMemory(PullRequestsFromForks):
+    """
+    The pull requests opened from each branch, as given.
+    """
+
+    opened: list[RestPullRequest] = field(default_factory=list)
+    """
+    Every pull request.
+    """
+
+    def pull_requests_from(self, owner: str, branch: str) -> list[RestPullRequest]:
+        return [
+            pull_request
+            for pull_request in self.opened
+            if pull_request.head.branch == branch
+        ]
+
+    def open_pull_request_from(
+        self, owner: str, branch: str, base: str, title: str, body: str
+    ) -> RestPullRequest:
+        raise NotImplementedError
+
+
+def default_branch_moved_on(
+    repositories: RepositoriesByOwner, owned_url: str, name: str = "moved.txt"
+) -> GitCommandRunner:
+    """
+    :param repositories: The scratch repositories.
+    :param owned_url: The owner's repository.
+    :param name: The file the new commit on the default branch writes.
+    :return: The clone that pushed it.
+    """
+    other = repositories.clone(owned_url, "other").git
+    (other.working_directory / name).write_text("moved on\n")
+    other.run("add", name)
+    other.run("commit", "--quiet", "--message", "Move on")
+    other.run("push", "--quiet", "origin", f"HEAD:{RepositoriesByOwner.default_branch}")
+    return other
+
+
+def base_merge(
+    work: WritePolicy, opened: list[RestPullRequest] | None = None
+) -> BaseMerge:
+    """
+    :param work: The rules of a clone on a pushed work branch.
+    :param opened: The pull requests opened from its branches.
+    :return: The merge of the default branch into the work branch.
+    """
+    stacks = StackedPullRequestsInMemory({})
+    return BaseMerge(work, PullRequestsFromBranchesInMemory(opened or []), stacks)
+
+
+def test_the_default_branch_s_new_commits_are_merged_into_the_work_branch(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+):
+    other = default_branch_moved_on(repositories, owned_url)
+
+    base_merge(work).run()
+
+    git = work.checkout.git
+    assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
+    assert Attribution.ACKNOWLEDGEMENT in last_message(git)
+
+
+def test_a_conflicting_merge_is_refused_and_leaves_the_branch_as_it_was(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+):
+    default_branch_moved_on(repositories, owned_url, "a.txt")
+    git = work.checkout.git
+    before = git.commit_at("HEAD")
+
+    with pytest.raises(MergeConflictError):
+        base_merge(work).run()
+
+    assert (git.commit_at("HEAD"), git.run("status", "--porcelain")) == (before, "")
+
+
+def test_a_branch_in_a_stack_is_left_to_github_s_rebase_stack(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+):
+    default_branch_moved_on(repositories, owned_url)
+    stacks = StackedPullRequestsInMemory({})
+    stacks.existing_stacks.append(Stack(1, "main", True, stacks.stacked([3, 4])))
+    git = work.checkout.git
+    before = git.commit_at("HEAD")
+
+    with pytest.raises(StackedBranchMergeError):
+        BaseMerge(
+            work, PullRequestsFromBranchesInMemory([pull_request(3, "feature")]), stacks
+        ).run()
+
+    assert git.commit_at("HEAD") == before
+
+
+def test_the_default_branch_takes_in_nothing(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    policy = policy_in(repositories.clone(owned_url, "on-default"), settings)
+
+    with pytest.raises(DefaultBranchWriteError):
+        base_merge(policy).run()
+
+
+def test_a_branch_that_has_the_default_branch_s_commits_is_left_alone(
+    work: WritePolicy,
+):
+    git = work.checkout.git
+    before = git.commit_at("HEAD")
+
+    base_merge(work).run()
+
+    assert git.commit_at("HEAD") == before
 
 
 # %% rewriting a draft's description

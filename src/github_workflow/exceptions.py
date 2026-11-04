@@ -276,6 +276,62 @@ class UnpushedCommitsError(DataclassException, RuntimeError):
 
 
 @dataclass
+class MergeConflictError(DataclassException, ValueError):
+    """
+    Raised when merging the default branch into a work branch conflicts; the merge is
+    undone.
+    """
+
+    branch: str
+    """
+    The work branch.
+    """
+
+    default_branch: str
+    """
+    The branch merged into it.
+    """
+
+    files: tuple[str, ...]
+    """
+    The files the merge left conflicting.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"merging {self.default_branch} into {self.branch} conflicts in "
+            f"{', '.join(self.files)}; the merge was undone, nothing changed"
+        )
+
+    def suggest_correction(self) -> str:
+        return "Ask the person how to bring the two together."
+
+
+@dataclass
+class StackedBranchMergeError(DataclassException, ValueError):
+    """
+    Raised when the default branch is to be merged into a branch whose pull request is
+    in a stack.
+    """
+
+    branch: str
+    """
+    The work branch.
+    """
+
+    pull_request: int
+    """
+    Its pull request, in a stack.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.branch}'s pull request #{self.pull_request} is in a stack"
+
+    def suggest_correction(self) -> str:
+        return "Use GitHub's Rebase stack, which brings every pull request in it along."
+
+
+@dataclass
 class BranchDeletedFromGitHubError(DataclassException, LookupError):
     """
     Raised when a branch that was on GitHub is no longer there, as after its pull
