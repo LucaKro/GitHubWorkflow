@@ -23,8 +23,6 @@ from http import HTTPMethod
 from pathlib import PurePath
 from typing import Any
 
-from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.environment import ClaudeCodeVariable
 
 import github_workflow
 from github_workflow.coarse_guard import (
@@ -39,6 +37,22 @@ from github_workflow.command_line import (
     WorkflowCommand,
 )
 from github_workflow.hooks import FileWritingTool, HookKey, HookValue
+
+# %% the session
+
+
+class SessionVariable(StrEnum):
+    """
+    The variable Claude Code sets for every command it runs, named here rather than
+    taken from :mod:`basstler_domain_model.environment`, so the guard runs on the
+    standard library alone.
+    """
+
+    COMMAND_MARKER = "CLAUDECODE"
+    """
+    Marks a command as run from a Claude Code session; the push hook checks only those.
+    """
+
 
 # %% programs
 
@@ -314,7 +328,7 @@ class GitProgramOption(StrEnum):
     Runs the configured program converting files to text.
     """
 
-    @classproperty
+    @classmethod
     def short_letter(cls) -> str:
         """
         The single letter with which ``ls-remote`` runs the program given and ``fetch``
@@ -334,7 +348,7 @@ class GitProgramOption(StrEnum):
             if argument.partition("=")[0] in cls._value2member_map_:
                 return True
             short = argument.startswith("-") and not argument.startswith("--")
-            if short and subcommand in remote and cls.short_letter in argument:
+            if short and subcommand in remote and cls.short_letter() in argument:
                 return True
         return False
 
@@ -826,7 +840,7 @@ class PullRequestOpening(StrEnum):
     The GitHub MCP tool.
     """
 
-    @classproperty
+    @classmethod
     def instead(cls) -> str:
         """
         The workflow command line opening a draft pull request.
@@ -852,7 +866,7 @@ class DescriptionRewriting(StrEnum):
     The GitHub MCP tool.
     """
 
-    @classproperty
+    @classmethod
     def instead(cls) -> str:
         """
         The workflow command line rewriting a draft's description.
@@ -951,7 +965,7 @@ class GitHubCliCheck(ProgramCheck):
     Lets ``gh`` read, and denies every write.
     """
 
-    @classproperty
+    @classmethod
     def api_sending(cls) -> SendingOptions:
         """
         The options with which ``gh api`` sends something; a field alone makes it a
@@ -961,7 +975,7 @@ class GitHubCliCheck(ProgramCheck):
             "fF", ("--field", "--raw-field", "--input"), "X", ("--method",)
         )
 
-    @classproperty
+    @classmethod
     def api_input(cls) -> str:
         """
         The option sending a file as the request's body, whatever the method.
@@ -972,12 +986,12 @@ class GitHubCliCheck(ProgramCheck):
         words = [argument for argument in arguments if not argument.startswith("-")]
         if words[:1] == [GitHubCliSubcommand.API]:
             options = arguments[1:]
-            queries = self.api_sending.named_method(
+            queries = self.api_sending().named_method(
                 options
             ) == HTTPMethod.GET and not any(
-                argument.startswith(self.api_input) for argument in options
+                argument.startswith(self.api_input()) for argument in options
             )
-            if self.api_sending.present_in(options) and not queries:
+            if self.api_sending().present_in(options) and not queries:
                 return Denial("gh api with a method, a field or an input writes")
             return None
         if words[:1] == [GitHubCliSubcommand.SEARCH]:
@@ -987,9 +1001,9 @@ class GitHubCliCheck(ProgramCheck):
         command = " ".join(words[:2])
         reason = f"gh {command} writes, or is not a command the guard knows reads"
         if command == PullRequestOpening.CLI:
-            return Denial(reason, PullRequestOpening.instead)
+            return Denial(reason, PullRequestOpening.instead())
         if command == DescriptionRewriting.CLI:
-            return Denial(reason, DescriptionRewriting.instead)
+            return Denial(reason, DescriptionRewriting.instead())
         return Denial(reason)
 
 
@@ -1004,7 +1018,7 @@ class HttpClientCheck(ProgramCheck):
     The client's options that send something.
     """
 
-    @classproperty
+    @classmethod
     def curl(cls) -> HttpClientCheck:
         """
         The check of ``curl``.
@@ -1018,7 +1032,7 @@ class HttpClientCheck(ProgramCheck):
             )
         )
 
-    @classproperty
+    @classmethod
     def wget(cls) -> HttpClientCheck:
         """
         The check of ``wget``.
@@ -1071,7 +1085,7 @@ class SimpleCommand:
                 index += 2
                 continue
             syntax = word in ShellKeyword._value2member_map_
-            if not syntax and not CommandLine.assignment.fullmatch(word):
+            if not syntax and not CommandLine.assignment().fullmatch(word):
                 return index
             index += 1
         return index
@@ -1084,7 +1098,7 @@ class SimpleCommand:
         return [
             word
             for word in self.words[: self.program_start]
-            if CommandLine.assignment.fullmatch(word)
+            if CommandLine.assignment().fullmatch(word)
         ]
 
     @property
@@ -1115,14 +1129,14 @@ class CommandLine:
     The command line.
     """
 
-    @classproperty
+    @classmethod
     def assignment(cls) -> re.Pattern[str]:
         """
         A word assigning an environment variable, as ``NAME=value``.
         """
         return re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*", re.DOTALL)
 
-    @classproperty
+    @classmethod
     def here_document(cls) -> re.Pattern[str]:
         """
         The start of a here-document, capturing the word that ends it; a here-string
@@ -1130,7 +1144,7 @@ class CommandLine:
         """
         return re.compile(r"(?<!<)<<(?!<)-?\s*\\?['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?")
 
-    @classproperty
+    @classmethod
     def shell_reading_input(cls) -> re.Pattern[str]:
         """
         A shell started without a command line, which runs what its input holds.
@@ -1173,7 +1187,7 @@ class CommandLine:
         :return: Whether a shell runs whatever reaches its input, which the guard
             cannot see.
         """
-        return bool(self.shell_reading_input.search(self.text))
+        return bool(self.shell_reading_input().search(self.text))
 
     def _without_here_documents(self) -> str:
         """
@@ -1187,8 +1201,8 @@ class CommandLine:
                     ending = None
                 continue
             kept.append(line)
-            opened = self.here_document.search(line)
-            if opened and not self.shell_reading_input.search(line):
+            opened = self.here_document().search(line)
+            if opened and not self.shell_reading_input().search(line):
                 ending = opened.group(1)
         return "\n".join(kept)
 
@@ -1207,13 +1221,13 @@ class CommandGuard:
     naming a program could be either.
     """
 
-    @classproperty
+    @classmethod
     def marker_change(cls) -> Denial:
         """
         Why changing the variable marking a Claude Code session's commands is denied.
         """
         return Denial(
-            f"changing {ClaudeCodeVariable.COMMAND_MARKER} lets a push skip the "
+            f"changing {SessionVariable.COMMAND_MARKER} lets a push skip the "
             f"checkout's push hook"
         )
 
@@ -1251,11 +1265,11 @@ class CommandGuard:
         program, arguments = command.program, command.arguments
         if any(assignment.startswith("GIT_") for assignment in command.assignments):
             return Denial("setting git's environment can make it run a program")
-        marker = ClaudeCodeVariable.COMMAND_MARKER
+        marker = SessionVariable.COMMAND_MARKER
         if any(
             assignment.partition("=")[0] == marker for assignment in command.assignments
         ):
-            return self.marker_change
+            return self.marker_change()
         if not program:
             return None
         if program in VariableExport._value2member_map_ and any(
@@ -1269,7 +1283,7 @@ class CommandGuard:
         if changes_variables and any(
             argument.partition("=")[0] == marker for argument in arguments
         ):
-            return self.marker_change
+            return self.marker_change()
         if program in Wrapper._value2member_map_:
             return self._denial_of_wrapped(Wrapper(program), arguments)
         if program in Shell._value2member_map_:
@@ -1280,9 +1294,9 @@ class CommandGuard:
             case Program.GITHUB_CLI:
                 return GitHubCliCheck().denial(arguments)
             case Program.CURL:
-                return HttpClientCheck.curl.denial(arguments)
+                return HttpClientCheck.curl().denial(arguments)
             case Program.WGET:
-                return HttpClientCheck.wget.denial(arguments)
+                return HttpClientCheck.wget().denial(arguments)
         return None
 
     def go_ahead_needed(self, command_line: str) -> GoAheadCommand | None:
@@ -1306,19 +1320,19 @@ class CommandGuard:
         :return: Why the command it runs is denied, ``None`` when it may run.
         """
         if wrapper is Wrapper.ENV and self._drops_marker(arguments):
-            return self.marker_change
+            return self.marker_change()
         judged = {*Program, *Shell, *Wrapper}
         for index, argument in enumerate(arguments):
             if " " in argument:
                 reason = self.denial(argument)
                 if reason is not None:
                     return reason
-            if argument.startswith("GIT_") and CommandLine.assignment.fullmatch(
+            if argument.startswith("GIT_") and CommandLine.assignment().fullmatch(
                 argument
             ):
                 return Denial("setting git's environment can make it run a program")
             names_program_by_expansion = (
-                "$" in argument and not CommandLine.assignment.fullmatch(argument)
+                "$" in argument and not CommandLine.assignment().fullmatch(argument)
             )
             if self.enclosing_line_names_git and names_program_by_expansion:
                 return Denial(
@@ -1347,11 +1361,13 @@ class CommandGuard:
         for index, argument in enumerate(arguments):
             if argument in options and EnvironmentOption(argument).drops_every_variable:
                 return True
-            if ClaudeCodeVariable.COMMAND_MARKER in argument:
+            if SessionVariable.COMMAND_MARKER in argument:
                 return True
             previous = arguments[index - 1] if index else ""
             is_value = previous in options and EnvironmentOption(previous).takes_value
-            own = argument.startswith("-") or CommandLine.assignment.fullmatch(argument)
+            own = argument.startswith("-") or CommandLine.assignment().fullmatch(
+                argument
+            )
             if not own and not is_value:
                 return False
         return False
@@ -1408,9 +1424,9 @@ class ToolGuard:
                 return None
             reason = f"the GitHub tool {name} writes"
             if name == PullRequestOpening.TOOL:
-                return Denial(reason, PullRequestOpening.instead)
+                return Denial(reason, PullRequestOpening.instead())
             if name == DescriptionRewriting.TOOL:
-                return Denial(reason, DescriptionRewriting.instead)
+                return Denial(reason, DescriptionRewriting.instead())
             return Denial(reason)
         return None
 

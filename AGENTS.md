@@ -148,5 +148,8 @@
 - GitHub's and git's data, and the clients that read and write them, come from `basstler_domain_model`; this package holds only the workflow built on them. Something that models GitHub or git rather than this workflow belongs in `basstler_domain_model`
 - The package depends only on the libraries `pyproject.toml` lists
 
+## The Guard
+- `github_workflow.guard`, and every module it imports, runs on the standard library alone, so the hook can run it from the plugin's source when the runtime cannot run. It imports nothing from `basstler_domain_model`: an exception to using its `classproperty` (the guard uses `classmethod`) and to naming Claude Code's variables only there (the guard names the one it reads, and a test checks the two agree)
+
 ## Releases
 - No file carries the version: `hatch-vcs` reads it from the latest git tag
