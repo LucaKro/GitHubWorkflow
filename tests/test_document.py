@@ -4,7 +4,11 @@ Tests for :mod:`github_workflow.notes.document`: the notes block in ``CLAUDE.loc
 
 from __future__ import annotations
 
-from github_workflow.command_line import FindingSubcommand, WorkflowCommand
+from github_workflow.command_line import (
+    FindingSubcommand,
+    ToolRepository,
+    WorkflowCommand,
+)
 from github_workflow.notes.document import NotesBlock, NotesSection
 from github_workflow.policy import Attribution
 
@@ -76,3 +80,7 @@ def test_the_header_names_the_credit_a_commit_refuses_and_the_line_it_carries():
 
     assert f"`{Attribution.CO_AUTHOR_TRAILER}`" in rendered
     assert f'"{Attribution.ACKNOWLEDGEMENT}"' in rendered
+
+
+def test_the_header_says_how_to_report_an_unnecessary_refusal():
+    assert ToolRepository.refusal_hint() in block().render()

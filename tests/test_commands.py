@@ -37,12 +37,17 @@ import github_workflow
 import github_workflow.session_start
 from github_workflow.__main__ import WorkflowSession
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.command_line import FindingSubcommand
+from github_workflow.command_line import FindingSubcommand, ToolRepository
 from github_workflow.environment import WorkflowVariable
-from github_workflow.exceptions import NoOwnedRemoteError, PersonOnlyCommandError
+from github_workflow.exceptions import (
+    ForeignRepositoryError,
+    NoOwnedRemoteError,
+    PersonOnlyCommandError,
+)
 from github_workflow.findings import (
     FindingDraftOpening,
     FindingFiling,
+    FindingListing,
     FindingProving,
     FindingRecheck,
     FindingStage,
@@ -935,7 +940,7 @@ def test_a_refusal_is_reported_as_its_reason_without_a_traceback(
     refusal = PersonOnlyCommandError(WorkflowCommand.UPSTREAM)
     assert (finished.returncode, finished.stderr) == (
         1,
-        f"github-workflow: {refusal}\n",
+        f"github-workflow: {refusal}\n{ToolRepository.refusal_hint()}\n",
     )
 
 
@@ -959,3 +964,72 @@ def test_a_draft_on_a_fork_ends_with_the_command_for_the_person(
 
     fork = Repository(settings.owner, RepositoriesByOwner.repository_name)
     assert step.ending == UpstreamSuggestion(owner_s_github(settings), fork)
+
+
+# %% findings on another of the owner's repositories
+
+
+def filing_elsewhere(directory: Path, repository: str, *more: str) -> object:
+    """
+    :param directory: Where the command runs, no checkout needed.
+    :param repository: The repository named.
+    :param more: Further arguments.
+    :return: The step filing a finding there.
+    """
+    body = directory / "finding.md"
+    body.write_text("What was refused, and why it should not have been.\n")
+    arguments = WorkflowSession.parser().parse_args(
+        [
+            WorkflowCommand.FINDING,
+            FindingSubcommand.FILE,
+            f"--repository={repository}",
+            "--priority=medium",
+            "--title=A read was refused",
+            f"--body-file={body}",
+            *more,
+        ]
+    )
+    return WorkflowSession(directory, WorkflowSettings()).step(arguments)
+
+
+def test_a_finding_is_filed_on_the_workflow_from_outside_any_checkout(tmp_path: Path):
+    step = filing_elsewhere(tmp_path, ToolRepository.WORKFLOW)
+
+    board = GitHubRepository.from_environment(Repository.parse(ToolRepository.WORKFLOW))
+    assert step == FindingFiling(
+        board,
+        board,
+        "A read was refused",
+        (tmp_path / "finding.md").read_text(),
+        Priority.MEDIUM,
+    )
+
+
+def test_findings_are_listed_on_the_domain_model_from_outside_any_checkout(
+    tmp_path: Path,
+):
+    arguments = WorkflowSession.parser().parse_args(
+        [
+            WorkflowCommand.FINDING,
+            FindingSubcommand.LIST,
+            f"--repository={ToolRepository.DOMAIN_MODEL}",
+        ]
+    )
+
+    step = WorkflowSession(tmp_path, WorkflowSettings()).step(arguments)
+
+    repository = Repository.parse(ToolRepository.DOMAIN_MODEL)
+    assert step == FindingListing(GitHubRepository.from_environment(repository))
+
+
+def test_a_finding_on_somebody_else_s_repository_is_refused(tmp_path: Path):
+    with pytest.raises(ForeignRepositoryError):
+        filing_elsewhere(tmp_path, f"{RepositoriesByOwner.foreign_owner}/project")
+
+
+def test_a_finding_filed_elsewhere_carries_no_test(tmp_path: Path):
+    """
+    The test proving a finding runs on a checkout of the repository it is filed on.
+    """
+    with pytest.raises(SystemExit):
+        filing_elsewhere(tmp_path, ToolRepository.WORKFLOW, "--test=test_it.py")

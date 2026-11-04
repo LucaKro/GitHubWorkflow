@@ -71,6 +71,11 @@ them:
 - Each finding carries a priority the filing session judges: *critical* (breaks the
   default branch, security, or data), *high* (wrong behaviour in normal use), *medium*
   (wrong in edge cases, or a maintainability risk), *low* (cosmetic, or cleanup).
+- What the workflow itself refused unnecessarily, or lacks, is a finding on GitHubWorkflow
+  (or on the domain model, for git and GitHub themselves), filed from any session with
+  `--repository`, no checkout needed: unproven, with what was run, what happened and
+  what should have. Every refusal, the guard's and the commands', and the notes header
+  end with how; `finding list --repository` shows first whether it is filed already.
 - Only I move a finding out of *unreviewed*; a session accepts, shelves or rejects one
   only when I say so.
 - A stage I pick on GitHub counts at once, even while the label it replaces is still on
