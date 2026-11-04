@@ -37,3 +37,5 @@ echo "$CLAUDECODE"
 env | grep CLAUDECODE
 env PYTHONPATH=src python3 - < script.py
 env -u HOME python3 script.py
+timeout 600 "$PYTHON" -m pytest -q
+env "$PYTHON" -m pytest -q

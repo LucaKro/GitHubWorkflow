@@ -9,3 +9,7 @@ G=git; $G push origin main
 eval "git fetch; $X push origin main"
 X=git; eval "$X push origin main"
 X=git; bash -c "$X push origin main"
+X=git; env "$X" push origin main
+X=git; sudo "$X" push origin main
+X=git; timeout 5 "$X" push origin main
+X=git; echo main | xargs "$X" push origin
