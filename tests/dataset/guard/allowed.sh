@@ -39,3 +39,6 @@ env PYTHONPATH=src python3 - < script.py
 env -u HOME python3 script.py
 timeout 600 "$PYTHON" -m pytest -q
 env "$PYTHON" -m pytest -q
+git archive HEAD -o /tmp/snapshot.tar
+git archive --format=zip HEAD > snapshot.zip
+git archive HEAD src | tar -x -C /tmp/out
