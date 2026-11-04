@@ -367,6 +367,34 @@ class GitReading(StrEnum):
     HELP = "help"
 
 
+class ReadingFetch(StrEnum):
+    """
+    The starts of the ``fetch`` arguments holding a colon that only read.
+    """
+
+    HTTPS = "https://"
+    """
+    A repository's URL over HTTPS, a transport that runs no program.
+    """
+
+    REMOTE_TRACKING = "refs/remotes/"
+    """
+    Where a refspec stores what it fetches when it moves only a remote-tracking
+    reference, never a local branch.
+    """
+
+    @classmethod
+    def reads(cls, argument: str) -> bool:
+        """
+        :param argument: A ``fetch`` argument holding a colon: a URL or a refspec.
+        :return: Whether it only reads.
+        """
+        if argument.startswith(cls.HTTPS):
+            return True
+        _, _, destination = argument.removeprefix("+").partition(":")
+        return destination.startswith(cls.REMOTE_TRACKING)
+
+
 class GitListing(StrEnum):
     """
     The git subcommands that read only in some of their forms.
@@ -414,8 +442,8 @@ class GitListing(StrEnum):
 
     FETCH = "fetch"
     """
-    Reads from a remote, moving only remote-tracking references, unless a refspec
-    names a local branch.
+    Reads from a remote or an HTTPS URL, moving only remote-tracking references,
+    unless a refspec names a local branch or the URL another transport.
     """
 
     ARCHIVE = "archive"
@@ -457,7 +485,11 @@ class GitListing(StrEnum):
             case GitListing.SUBMODULE:
                 return positional[:1] == ["status"]
             case GitListing.FETCH:
-                return not any(":" in argument for argument in positional)
+                return all(
+                    ReadingFetch.reads(argument)
+                    for argument in positional
+                    if ":" in argument
+                )
             case GitListing.ARCHIVE:
                 return not any(
                     argument.startswith("--remote") for argument in options

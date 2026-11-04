@@ -42,3 +42,7 @@ env "$PYTHON" -m pytest -q
 git archive HEAD -o /tmp/snapshot.tar
 git archive --format=zip HEAD > snapshot.zip
 git archive HEAD src | tar -x -C /tmp/out
+git fetch https://github.com/cram2/cognitive_robot_abstract_machine main
+git fetch https://github.com/cram2/cognitive_robot_abstract_machine main:refs/remotes/upstream-readonly/main
+git fetch --depth=50 https://github.com/cram2/cognitive_robot_abstract_machine +main:refs/remotes/upstream/main
+git fetch --quiet origin +main:refs/remotes/origin/main
