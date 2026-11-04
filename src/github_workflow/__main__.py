@@ -28,8 +28,10 @@ from github_workflow.command_line import (
     FindingSubcommand,
     NotesSubcommand,
     StackSubcommand,
+    ToolRepository,
     WorkflowCommand,
 )
+from github_workflow.exceptions import ForeignRepositoryError
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
@@ -202,9 +204,8 @@ class WorkflowSession(RepositoryDetails):
                 body = arguments.body_file.read_text()
                 priority = Priority[arguments.priority.upper()]
                 if arguments.test is None:
-                    return FindingFiling(
-                        self.github, self.github, arguments.title, body, priority
-                    )
+                    board = self.findings_board(arguments.repository)
+                    return FindingFiling(board, board, arguments.title, body, priority)
                 return ProvenFindingFiling(
                     self.github,
                     self.github,
@@ -222,7 +223,7 @@ class WorkflowSession(RepositoryDetails):
                     Priority[arguments.priority.upper()],
                 )
             case WorkflowCommand.FINDING, FindingSubcommand.LIST:
-                return FindingListing(self.github)
+                return FindingListing(self.findings_board(arguments.repository))
             case WorkflowCommand.FINDING, FindingSubcommand.ACCEPT:
                 return FindingAcceptance(self.github, self.github, arguments.number)
             case WorkflowCommand.FINDING, FindingSubcommand.SHELVE:
@@ -319,7 +320,24 @@ class WorkflowSession(RepositoryDetails):
         if not isinstance(raised, DataclassException):
             sys.__excepthook__(kind, raised, traceback)
             return
-        print(f"github-workflow: {raised}", file=sys.stderr)
+        print(
+            f"github-workflow: {raised}\n{ToolRepository.refusal_hint()}",
+            file=sys.stderr,
+        )
+
+    def findings_board(self, repository: str | None) -> GitHubRepository:
+        """
+        :param repository: Another of the owner's repositories, as ``owner/name``;
+            ``None`` for the checkout's.
+        :return: The repository whose findings a command files or lists.
+        :raises ForeignRepositoryError: If it belongs to somebody else.
+        """
+        if repository is None:
+            return self.github
+        named = Repository.parse(repository)
+        if not self.settings.owns(named):
+            raise ForeignRepositoryError(named, self.settings.owner)
+        return GitHubRepository.from_environment(named)
 
     @staticmethod
     def parser() -> argparse.ArgumentParser:
@@ -386,6 +404,10 @@ class WorkflowSession(RepositoryDetails):
             required=True,
             choices=[priority.level for priority in Priority],
         )
+        repository_help = (
+            "another of the owner's repositories, as owner/name, no checkout needed; "
+            "the checkout's when left out"
+        )
         filing = finding_actions.add_parser(
             FindingSubcommand.FILE,
             help="file something noticed outside the current work",
@@ -394,11 +416,13 @@ class WorkflowSession(RepositoryDetails):
         )
         filing.add_argument("--title", required=True)
         filing.add_argument("--body-file", required=True, type=Path)
-        filing.add_argument(
+        filed_where = filing.add_mutually_exclusive_group()
+        filed_where.add_argument(
             "--test",
             type=Path,
             help="an uncommitted test file failing on the default branch, proving it",
         )
+        filed_where.add_argument("--repository", help=repository_help)
         prioritizing = finding_actions.add_parser(
             FindingSubcommand.PRIORITIZE,
             help="give an existing issue a priority, as a finding",
@@ -406,7 +430,10 @@ class WorkflowSession(RepositoryDetails):
             parents=[priority_argument],
         )
         prioritizing.add_argument("number", type=int, help="the issue")
-        finding_actions.add_parser(FindingSubcommand.LIST, help="list open findings")
+        listing = finding_actions.add_parser(
+            FindingSubcommand.LIST, help="list open findings"
+        )
+        listing.add_argument("--repository", help=repository_help)
         accept = finding_actions.add_parser(
             FindingSubcommand.ACCEPT, help="accept a finding, on the person's word"
         )

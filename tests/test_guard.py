@@ -28,6 +28,7 @@ from github_workflow.guard import (
     PullRequestOpening,
     ToolGuard,
 )
+from github_workflow.command_line import ToolRepository
 from github_workflow.hooks import FileWritingTool, HookKey, HookValue
 
 from .test_coarse_guard import CoarseGuardDataset
@@ -214,6 +215,15 @@ def test_the_github_tool_opening_a_pull_request_names_the_workflow_s_draft():
 
     assert denial is not None
     assert denial.instead == PullRequestOpening.instead()
+
+
+def test_every_denial_says_how_to_report_an_unnecessary_one():
+    """
+    A session blocked by mistake learns where to say so, right where it is blocked.
+    """
+    command = GuardDataset.DENIED.lines()[0]
+
+    assert ToolRepository.refusal_hint() in CommandGuard().denial(command).message()
 
 
 # %% the person's go-ahead

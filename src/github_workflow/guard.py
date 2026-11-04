@@ -34,6 +34,7 @@ from github_workflow.command_line import (
     BranchSubcommand,
     FindingSubcommand,
     StackSubcommand,
+    ToolRepository,
     WorkflowCommand,
 )
 from github_workflow.hooks import FileWritingTool, HookKey, HookValue
@@ -743,7 +744,8 @@ class Denial:
         return (
             f"github-workflow: {self.reason}. {instead} Read git directly, but write to "
             f"git and GitHub only through `{WorkflowCommand.command_line()}` "
-            f"({', '.join(WorkflowCommand)}; --help for each)."
+            f"({', '.join(WorkflowCommand)}; --help for each). "
+            f"{ToolRepository.refusal_hint()}"
         )
 
 

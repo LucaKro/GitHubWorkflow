@@ -9,6 +9,7 @@ import sys
 from enum import StrEnum
 
 import github_workflow
+from github_workflow.install import DomainModelSource
 
 # %% the commands
 
@@ -208,3 +209,51 @@ class NotesSubcommand(StrEnum):
     """
     Push the edited notes block to the notes branch.
     """
+
+
+# %% where to report the workflow itself
+
+
+class ToolRepository(StrEnum):
+    """
+    The repositories the workflow is built from, where a session files what the
+    workflow refused unnecessarily or lacks.
+    """
+
+    WORKFLOW = "LucaKro/GitHubWorkflow"
+    """
+    The workflow itself: the guard, the hooks and the commands.
+    """
+
+    DOMAIN_MODEL = DomainModelSource.REPOSITORY.value.removeprefix(
+        "https://github.com/"
+    )
+    """
+    The model of git and GitHub the workflow is built on.
+    """
+
+    @classmethod
+    def refusal_hint(cls) -> str:
+        """
+        :return: What a session does about a refusal it thinks unnecessary, ending every
+            refusal and the notes header.
+        """
+        listing = WorkflowCommand.command_line(
+            WorkflowCommand.FINDING,
+            FindingSubcommand.LIST,
+            "--repository",
+            cls.WORKFLOW,
+        )
+        filing = WorkflowCommand.command_line(
+            WorkflowCommand.FINDING,
+            FindingSubcommand.FILE,
+            "--repository",
+            cls.WORKFLOW,
+        )
+        return (
+            f"When the workflow refuses something unnecessarily or lacks it, check "
+            f"`{listing}` and file it there: `{filing} --priority <level> --title "
+            f"<title> --body-file <file>`, with what you ran, what happened and what "
+            f"should have; for git and GitHub themselves, --repository "
+            f"{cls.DOMAIN_MODEL}."
+        )

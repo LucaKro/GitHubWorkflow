@@ -11,7 +11,11 @@ import re
 from dataclasses import dataclass
 from enum import StrEnum
 
-from github_workflow.command_line import FindingSubcommand, WorkflowCommand
+from github_workflow.command_line import (
+    FindingSubcommand,
+    ToolRepository,
+    WorkflowCommand,
+)
 from github_workflow.policy import Attribution
 
 # %% markers
@@ -164,6 +168,7 @@ class NotesBlock:
             f"On a fork, `{self.workflow_command} {WorkflowCommand.DRAFT}` ends the "
             f"description with the `{WorkflowCommand.UPSTREAM}` command line opening it "
             f"upstream; that command is the person's alone, never run it.",
+            ToolRepository.refusal_hint(),
             f"Mark a branch you pushed but no longer need with "
             f"`{self.workflow_command} branch discard`; the cleanup deletes it.",
             f"Never credit an assistant in a commit: no "
