@@ -250,10 +250,13 @@ class ToolRepository(StrEnum):
             "--repository",
             cls.WORKFLOW,
         )
+        attachable = " and ".join(cls)
         return (
             f"When the workflow refuses something unnecessarily or lacks it, check "
             f"`{listing}` and file it there: `{filing} --priority <level> --title "
             f"<title> --body-file <file>`, with what you ran, what happened and what "
             f"should have; for git and GitHub themselves, --repository "
-            f"{cls.DOMAIN_MODEL}."
+            f"{cls.DOMAIN_MODEL}. A cloud session reaches only the repositories "
+            f"attached to it: attach {attachable} with push access without asking, "
+            f"never another account's copy of either."
         )
