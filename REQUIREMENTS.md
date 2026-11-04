@@ -89,6 +89,9 @@ them:
 
 - On a notes branch on each repository - the fork, or the repository itself - readable
   from any session on that project.
+- Saved without being asked whenever they were edited: at the end of every turn and of
+  the session, since a cloud session's container can be reclaimed without the session
+  ending. A save that fails is shown to me and the edits wait in `CLAUDE.local.md`.
 
 ## Cleaning up
 
