@@ -12,7 +12,9 @@ contradicts one of these changes this file first.
 - In both, work reaches the default branch only through branches and pull requests:
   nothing is ever pushed to the default branch directly. The one exception is a fork's
   default branch following its upstream's: `sync --upstream` fast-forwards it to the
-  upstream's branch of the same name, as GitHub's *Sync fork* does, then the local copy;
+  upstream's branch of the same name, as GitHub's *Sync fork* does, then the local copy,
+  comparing the two with git (a cloud session's proxy refuses GitHub's cross-fork
+  compares);
   it refuses when the fork's branch has commits of its own, and never merges or forces.
 - Only on repositories owned by LucaKro. Every write - a push, a branch, an issue, a
   label, a pull request, a comment - is refused before it is attempted when the

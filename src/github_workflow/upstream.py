@@ -196,7 +196,9 @@ class ForkMainSync(WorkflowStep):
     """
     The fork's default branch fast-forwarded to the same branch of the repository it was
     forked from, as GitHub's *Sync fork* does, and the local copy after it; only ever
-    fast-forwarded, never merged or forced.
+    fast-forwarded, never merged or forced. The two branches are compared with git, the
+    upstream's fetched over HTTPS, since a cloud session's proxy refuses GitHub's cross-
+    fork compares.
 
     :raises NotAForkError: If the repository was forked from none.
     :raises ForkBranchDivergedError: If the fork's branch has commits of its own.
@@ -214,7 +216,12 @@ class ForkMainSync(WorkflowStep):
 
     sync: ForkSync
     """
-    Compares the fork's branch with the upstream's, and brings it up to theirs.
+    Brings the fork's branch up to the upstream's.
+    """
+
+    upstream_name: str = "upstream"
+    """
+    The remote name the upstream's branch is fetched under, as ``refs/remotes/<name>``.
     """
 
     def run(self) -> str:
@@ -223,22 +230,29 @@ class ForkMainSync(WorkflowStep):
         if upstream is None:
             raise NotAForkError(repository)
         branch = self.policy.default_branch
-        comparison = self.sync.compare(
-            branch, f"{upstream.owner}:{upstream.name}:{branch}"
-        )
-        if comparison.behind_by:
-            raise ForkBranchDivergedError(branch, upstream, comparison.behind_by)
-        if not comparison.ahead_by:
-            return f"{branch} is up to date with {upstream}'s"
-        self.sync.sync_with_upstream(branch)
-        followed = RemoteBranch(self.policy.remote.name, branch)
         git = self.policy.checkout.git
-        git.fetch_branch(followed).raise_if_failed()
-        local = LocalBranchFollowing(git).follow(followed)
-        return (
-            f"{branch} fast-forwarded by {comparison.ahead_by} commit(s) to "
-            f"{upstream}'s{local}"
+        fork = RemoteBranch(self.policy.remote.name, branch)
+        theirs = RemoteBranch(self.upstream_name, branch)
+        git.fetch_branch(fork).raise_if_failed()
+        git.run(
+            "fetch",
+            "--quiet",
+            "--no-write-fetch-head",
+            upstream.clone_url_under(),
+            f"+{theirs.reference}:{theirs.tracking_reference}",
         )
+        fork_tip = git.commit_at(fork.tracking_reference)
+        upstream_tip = git.commit_at(theirs.tracking_reference)
+        if fork_tip == upstream_tip:
+            return f"{branch} is up to date with {upstream}'s"
+        if not git.contains(fork_tip, upstream_tip):
+            own = git.run("rev-list", "--count", f"{upstream_tip}..{fork_tip}")
+            raise ForkBranchDivergedError(branch, upstream, int(own))
+        behind = git.run("rev-list", "--count", f"{fork_tip}..{upstream_tip}")
+        self.sync.sync_with_upstream(branch)
+        git.fetch_branch(fork).raise_if_failed()
+        local = LocalBranchFollowing(git).follow(fork)
+        return f"{branch} fast-forwarded by {behind} commit(s) to {upstream}'s{local}"
 
 
 # %% the suggestion
