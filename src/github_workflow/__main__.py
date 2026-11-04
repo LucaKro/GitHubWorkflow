@@ -67,6 +67,7 @@ from github_workflow.upstream import (
     UpstreamSuggestion,
 )
 from github_workflow.work import (
+    BaseMerge,
     BranchStart,
     BranchSwitch,
     BranchSync,
@@ -194,6 +195,8 @@ class WorkflowSession(RepositoryDetails):
                 )
             case WorkflowCommand.SYNC, _ if arguments.upstream:
                 return ForkMainSync(self.policy, self.github, self.github)
+            case WorkflowCommand.SYNC, _ if arguments.base:
+                return BaseMerge(self.policy, self.github, self.github)
             case WorkflowCommand.SYNC, _:
                 return BranchSync(
                     self.policy,
@@ -392,10 +395,16 @@ class WorkflowSession(RepositoryDetails):
         sync = commands.add_parser(
             WorkflowCommand.SYNC, help="bring the branch up to date"
         )
-        sync.add_argument(
+        instead = sync.add_mutually_exclusive_group()
+        instead.add_argument(
             "--upstream",
             action="store_true",
             help="instead, fast-forward a fork's default branch to its upstream's",
+        )
+        instead.add_argument(
+            "--base",
+            action="store_true",
+            help="instead, merge GitHub's default branch into the work branch",
         )
         stack = commands.add_parser(WorkflowCommand.STACK, help="stack pull requests")
         stack_actions = stack.add_subparsers(dest="action", required=True)
