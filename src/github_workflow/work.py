@@ -5,6 +5,7 @@ The writes a session makes to git and GitHub, each one step that checks the
 
 from __future__ import annotations
 
+import sys
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -25,17 +26,18 @@ from basstler_domain_model.github.repository_client import (
 from basstler_domain_model.github.vocabulary import PullRequestState
 from basstler_domain_model.repository import GitHubAddress, Repository
 
+from github_workflow.checkout import ProjectCheckout
 from github_workflow.exceptions import (
     BranchDeletedFromGitHubError,
     BranchNotPushedError,
     DetachedHeadError,
-    ForeignRepositoryCloneError,
     NotADraftError,
     PushRefusedError,
     UnpushedCommitsError,
 )
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
+from github_workflow.push_hook import PushHook
 from github_workflow.settings import WorkflowSettings
 from github_workflow.stacks import StackPlacement
 
@@ -492,7 +494,9 @@ class NotesSaving(WorkflowStep):
 @dataclass(frozen=True)
 class RepositoryCloning(WorkflowStep):
     """
-    A clone of another of the owner's repositories, refused for anyone else's.
+    A clone of a repository, the owner's or anyone else's, carrying the workflow's push
+    hook, so a session's push from it meets the same rules as from its own checkout:
+    nothing is pushed to somebody else's repository, which is cloned only to be read.
     """
 
     repository: Repository
@@ -507,7 +511,7 @@ class RepositoryCloning(WorkflowStep):
 
     settings: WorkflowSettings
     """
-    Whose repositories may be cloned.
+    Whose repositories a clone may push to.
     """
 
     hosting_root: str = GitHubAddress.WEB
@@ -516,10 +520,16 @@ class RepositoryCloning(WorkflowStep):
     """
 
     def run(self) -> str:
-        if not self.settings.owns(self.repository):
-            raise ForeignRepositoryCloneError(self.repository, self.settings.owner)
-        checkout = self.directory / self.repository.name
+        destination = self.directory / self.repository.name
         GitCommandRunner.clone(
-            self.repository.clone_url_under(self.hosting_root), checkout
+            self.repository.clone_url_under(self.hosting_root), destination
         )
-        return f"cloned {self.repository} into {checkout}"
+        checkout = ProjectCheckout(GitCommandRunner(destination))
+        refused = PushHook(checkout, Path(sys.executable)).install()
+        cloned = [f"cloned {self.repository} into {destination}"]
+        if not self.settings.owns(self.repository):
+            cloned.append(
+                f"it is {self.repository.owner}'s, so it is only read: nothing is "
+                f"pushed from it"
+            )
+        return "; ".join([*cloned, *(line.text for line in refused)])

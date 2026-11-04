@@ -69,29 +69,6 @@ class AmbiguousOwnedRemoteError(DataclassException, LookupError):
 
 
 @dataclass
-class ForeignRepositoryCloneError(DataclassException, PermissionError):
-    """
-    Raised when a clone is asked for of a repository the owner does not own.
-    """
-
-    repository: Repository
-    """
-    The repository asked for.
-    """
-
-    owner: str
-    """
-    The account whose repositories alone are cloned.
-    """
-
-    def error_message(self) -> str:
-        return f"{self.repository} belongs to {self.repository.owner}, not {self.owner}"
-
-    def suggest_correction(self) -> str:
-        return f"Fork it to {self.owner}'s account and clone the fork."
-
-
-@dataclass
 class ForeignPushError(DataclassException, PermissionError):
     """
     Raised when a push from a Claude Code session goes to a repository the owner does
