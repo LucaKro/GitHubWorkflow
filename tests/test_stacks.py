@@ -9,11 +9,13 @@ import subprocess
 import sys
 
 import pytest
+from basstler_domain_model.git.commands import RemoteName
 from basstler_domain_model.github.stack_models import Stack
 
 import github_workflow
 from github_workflow.exceptions import NoOwnedRemoteError, StackContinuesAboveError
 from github_workflow.command_line import StackSubcommand, WorkflowCommand
+from github_workflow.settings import WorkflowSettings
 from github_workflow.stacks import StackPlacement
 
 from .repositories_by_owner import RepositoriesByOwner
@@ -121,5 +123,8 @@ def test_stacking_in_somebody_else_s_repository_is_refused_before_any_call(
         text=True,
     )
 
-    assert finished.returncode != 0
-    assert NoOwnedRemoteError.__name__ in finished.stderr
+    refusal = NoOwnedRemoteError(WorkflowSettings().owner, (RemoteName.ORIGIN,))
+    assert (finished.returncode, finished.stderr) == (
+        1,
+        f"github-workflow: {refusal}\n",
+    )

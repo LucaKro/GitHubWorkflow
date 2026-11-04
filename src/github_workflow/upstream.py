@@ -18,14 +18,14 @@ from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import PullRequestState
 from basstler_domain_model.repository import Repository
 
-import github_workflow
 from github_workflow.command_line import WorkflowCommand
 from github_workflow.exceptions import (
-    NotOwnersForkError,
+    ForeignRepositoryError,
+    NotAForkError,
     PersonOnlyCommandError,
     PullRequestNotProposableError,
 )
-from github_workflow.locations import PersonRuntime
+from github_workflow.install import Launcher
 from github_workflow.settings import WorkflowSettings
 from github_workflow.work import DescriptionEnding, WorkflowStep
 
@@ -40,7 +40,8 @@ class UpstreamProposal(WorkflowStep):
     linking back to it; the fork's pull request then links to the new one.
 
     :raises PersonOnlyCommandError: If a Claude Code session runs it.
-    :raises NotOwnersForkError: If the repository is no fork of the owner's.
+    :raises ForeignRepositoryError: If the repository is somebody else's.
+    :raises NotAForkError: If the repository was forked from none.
     :raises PullRequestNotProposableError: If the branch has no open pull request onto
         the fork's default branch, or one is open upstream already.
     """
@@ -98,13 +99,11 @@ class UpstreamProposal(WorkflowStep):
     def run(self) -> str:
         if self.run_by_a_session:
             raise PersonOnlyCommandError(WorkflowCommand.UPSTREAM)
-        upstream = (
-            self.fork_details.upstream()
-            if self.settings.owns(self.repository)
-            else None
-        )
+        if not self.settings.owns(self.repository):
+            raise ForeignRepositoryError(self.repository, self.settings.owner)
+        upstream = self.fork_details.upstream()
         if upstream is None:
-            raise NotOwnersForkError(self.repository, self.settings.owner)
+            raise NotAForkError(self.repository)
         local = self.local_pull_request()
         proposals = self.upstream_pull_requests(upstream)
         already = [
@@ -116,7 +115,9 @@ class UpstreamProposal(WorkflowStep):
         ]
         if already:
             raise PullRequestNotProposableError(
-                self.branch, f"it is open upstream already, at {already[0].url}"
+                self.branch,
+                f"its pull request is open on {upstream} already, as "
+                f"#{already[0].number}: {already[0].url}",
             )
         opened = proposals.open_pull_request_from(
             self.repository.owner,
@@ -133,26 +134,38 @@ class UpstreamProposal(WorkflowStep):
         :return: The fork's open pull request from the branch, onto its default branch.
         :raises PullRequestNotProposableError: If there is none.
         """
+        every = self.fork_pull_requests.pull_requests_from(
+            self.repository.owner, self.branch
+        )
+        if not every:
+            raise PullRequestNotProposableError(
+                self.branch, f"{self.repository} has no pull request from it"
+            )
         open_ones = [
             pull_request
-            for pull_request in self.fork_pull_requests.pull_requests_from(
-                self.repository.owner, self.branch
-            )
+            for pull_request in every
             if pull_request.state is PullRequestState.OPEN
         ]
         if not open_ones:
-            raise PullRequestNotProposableError(
-                self.branch, f"{self.repository} has no open pull request from it"
-            )
-        [local] = open_ones
-        default_branch = self.fork_repository_details.default_branch()
-        if local.base != default_branch:
+            latest = max(every, key=lambda pull_request: pull_request.number)
             raise PullRequestNotProposableError(
                 self.branch,
-                f"its pull request is stacked on {local.base}, not onto "
-                f"{default_branch}; open the one below upstream first",
+                f"its pull request #{latest.number} is {latest.state}, not open",
             )
-        return local
+        default_branch = self.fork_repository_details.default_branch()
+        onto_default = [
+            pull_request
+            for pull_request in open_ones
+            if pull_request.base == default_branch
+        ]
+        if not onto_default:
+            stacked = open_ones[0]
+            raise PullRequestNotProposableError(
+                self.branch,
+                f"its pull request #{stacked.number} is stacked on {stacked.base}, not "
+                f"onto {default_branch}: open the one below upstream first",
+            )
+        return onto_default[0]
 
     @staticmethod
     def body_linking(url: str) -> str:
@@ -211,12 +224,5 @@ class UpstreamSuggestion(DescriptionEnding):
             person runs it on their own machine.
         """
         return " ".join(
-            [
-                PersonRuntime.INTERPRETER,
-                "-m",
-                github_workflow.__name__,
-                WorkflowCommand.UPSTREAM,
-                repository.full_name,
-                branch,
-            ]
+            [Launcher.COMMAND, WorkflowCommand.UPSTREAM, repository.full_name, branch]
         )

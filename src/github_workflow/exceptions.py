@@ -420,9 +420,9 @@ class PersonOnlyCommandError(DataclassException, PermissionError):
 
 
 @dataclass
-class NotOwnersForkError(DataclassException, LookupError):
+class ForeignRepositoryError(DataclassException, PermissionError):
     """
-    Raised when a repository to propose from is no fork of the owner's.
+    Raised when a repository to propose from belongs to somebody else.
     """
 
     repository: Repository
@@ -436,10 +436,28 @@ class NotOwnersForkError(DataclassException, LookupError):
     """
 
     def error_message(self) -> str:
-        return f"{self.repository} is no fork of {self.owner}'s"
+        return f"{self.repository} belongs to {self.repository.owner}, not {self.owner}"
 
     def suggest_correction(self) -> str:
-        return f"Name a repository {self.owner} forked from another."
+        return f"Name {self.owner}'s fork, as {self.owner}/{self.repository.name}."
+
+
+@dataclass
+class NotAForkError(DataclassException, LookupError):
+    """
+    Raised when a repository to propose from was forked from none.
+    """
+
+    repository: Repository
+    """
+    The repository named.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.repository} is not a fork, so it has no upstream to propose to"
+
+    def suggest_correction(self) -> str:
+        return "Open the pull request on it directly; it is the upstream itself."
 
 
 @dataclass
@@ -462,10 +480,7 @@ class PullRequestNotProposableError(DataclassException, ValueError):
         return f"{self.branch} cannot be opened upstream: {self.reason}"
 
     def suggest_correction(self) -> str:
-        return (
-            "Open it upstream from a branch with an open pull request onto the fork's "
-            "default branch, which is not upstream yet."
-        )
+        return "Fix what the reason names, then run the command again."
 
 
 @dataclass

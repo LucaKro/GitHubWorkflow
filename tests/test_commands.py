@@ -39,7 +39,7 @@ from github_workflow.__main__ import WorkflowSession
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.command_line import FindingSubcommand
 from github_workflow.environment import WorkflowVariable
-from github_workflow.exceptions import NoOwnedRemoteError
+from github_workflow.exceptions import NoOwnedRemoteError, PersonOnlyCommandError
 from github_workflow.findings import (
     FindingDraftOpening,
     FindingFiling,
@@ -912,6 +912,31 @@ def test_a_session_opening_a_pull_request_upstream_is_refused(
 
     assert finished.returncode != 0
     assert non_reads(github) == []
+
+
+def test_a_refusal_is_reported_as_its_reason_without_a_traceback(
+    github: ReplayedApi,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv(ClaudeCodeVariable.COMMAND_MARKER, "1")
+    fork = Repository(settings.owner, RepositoriesByOwner.repository_name)
+
+    finished = run(
+        github_workflow.__name__,
+        repositories.clone(owned_url, "anywhere"),
+        WorkflowCommand.UPSTREAM,
+        fork.full_name,
+        "feature",
+    )
+
+    refusal = PersonOnlyCommandError(WorkflowCommand.UPSTREAM)
+    assert (finished.returncode, finished.stderr) == (
+        1,
+        f"github-workflow: {refusal}\n",
+    )
 
 
 def test_a_draft_on_a_fork_ends_with_the_command_for_the_person(

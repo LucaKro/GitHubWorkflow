@@ -37,6 +37,7 @@ from github_workflow.command_line import (
     WorkflowCommand,
 )
 from github_workflow.hooks import FileWritingTool, HookKey, HookValue
+from github_workflow.install import Launcher
 
 # %% the session
 
@@ -1129,15 +1130,20 @@ class SimpleCommand:
     def runs_workflow(self, leading: str) -> bool:
         """
         :param leading: A workflow command's leading words, such as ``finding accept``.
-        :return: Whether this runs ``python -m github_workflow`` with them.
+        :return: Whether this runs ``python -m github_workflow``, or the launcher, with
+            them.
         """
         arguments = self.arguments
-        if not self.program.startswith("python") or "-m" not in arguments[:-1]:
+        if self.program == Launcher.COMMAND:
+            given = arguments
+        elif self.program.startswith("python") and "-m" in arguments[:-1]:
+            module = arguments.index("-m") + 1
+            if arguments[module] != github_workflow.__name__:
+                return False
+            given = arguments[module + 1 :]
+        else:
             return False
-        module = arguments.index("-m") + 1
-        if arguments[module] != github_workflow.__name__:
-            return False
-        words = [word for word in arguments[module + 1 :] if not word.startswith("-")]
+        words = [word for word in given if not word.startswith("-")]
         return words[: len(leading.split())] == leading.split()
 
 

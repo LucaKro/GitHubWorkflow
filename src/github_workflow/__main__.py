@@ -8,11 +8,14 @@ Usage: ``python -m github_workflow <command> ...``; ``--help`` lists the command
 from __future__ import annotations
 
 import argparse
+import sys
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
+from types import TracebackType
 
 from basstler_domain_model.environment import ClaudeCodeVariable
+from basstler_domain_model.exceptions import DataclassException
 from basstler_domain_model.github.repository_client import (
     GitHubRepository,
     RepositoryDetails,
@@ -300,6 +303,25 @@ class WorkflowSession(RepositoryDetails):
                 )
 
     @staticmethod
+    def report(
+        kind: type[BaseException],
+        raised: BaseException,
+        traceback: TracebackType | None,
+    ) -> None:
+        """
+        Print a refusal of the workflow's as its reason and what to do instead, and any
+        other error as Python would.
+
+        :param kind: The error's type.
+        :param raised: The error.
+        :param traceback: Where it was raised.
+        """
+        if not isinstance(raised, DataclassException):
+            sys.__excepthook__(kind, raised, traceback)
+            return
+        print(f"github-workflow: {raised}", file=sys.stderr)
+
+    @staticmethod
     def parser() -> argparse.ArgumentParser:
         """:return: The parser of every command's line."""
         parser = argparse.ArgumentParser(
@@ -468,8 +490,9 @@ class WorkflowSession(RepositoryDetails):
 
 def main() -> None:
     """
-    Run the command the command line names, and print what it did.
+    Run the command the command line names, and print what it did, or why it refused.
     """
+    sys.excepthook = WorkflowSession.report
     arguments = WorkflowSession.parser().parse_args()
     session = WorkflowSession(Path.cwd(), WorkflowSettings())
     print(f"github-workflow: {session.step(arguments).run()}")

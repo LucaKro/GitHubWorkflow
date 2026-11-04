@@ -4,24 +4,9 @@ Every file and directory this package names, each written once.
 
 from __future__ import annotations
 
-from enum import StrEnum
 from pathlib import Path
 
 from basstler_domain_model.locations import PathEnumeration
-
-# %% the runtime
-
-
-class PersonRuntime(StrEnum):
-    """
-    Where the person's own machine has the runtime, as a command line for them names it.
-    """
-
-    INTERPRETER = "~/.virtualenvs/githubworkflow-runtime/bin/python"
-    """
-    The runtime's interpreter, under the person's home directory.
-    """
-
 
 # %% the notes branch
 

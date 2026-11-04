@@ -8,3 +8,4 @@ python -m github_workflow describe 4 --body-file description.md
 cd /checkout && python -I -m github_workflow cleanup
 python -m github_workflow finding comment 3 --body-file comment.md
 python -m github_workflow finding edit 3 --title "A sharper title"
+github-workflow cleanup

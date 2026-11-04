@@ -20,7 +20,8 @@ from basstler_domain_model.github.vocabulary import PullRequestState
 from basstler_domain_model.repository import Repository
 
 from github_workflow.exceptions import (
-    NotOwnersForkError,
+    ForeignRepositoryError,
+    NotAForkError,
     PersonOnlyCommandError,
     PullRequestNotProposableError,
 )
@@ -162,19 +163,22 @@ def test_a_claude_code_session_may_not_propose():
     assert (fork.written, upstream.written) == ([], [])
 
 
-@pytest.mark.parametrize(
-    "repository, forked_from",
-    [(UPSTREAM, UPSTREAM), (FORK, None)],
-    ids=["somebody else's", "no fork"],
-)
-def test_only_a_fork_of_the_owner_s_is_proposed_from(
-    repository: Repository, forked_from: Repository | None
-):
-    fork = ForkInMemory([pull_request(3, "feature")], forked_from=forked_from)
+def test_somebody_else_s_repository_is_not_proposed_from():
+    fork = ForkInMemory([pull_request(3, "feature")])
     upstream = ForkInMemory(forked_from=None)
 
-    with pytest.raises(NotOwnersForkError):
-        proposal(fork, upstream, repository=repository).run()
+    with pytest.raises(ForeignRepositoryError):
+        proposal(fork, upstream, repository=UPSTREAM).run()
+
+    assert upstream.written == []
+
+
+def test_a_repository_that_is_no_fork_is_not_proposed_from():
+    fork = ForkInMemory([pull_request(3, "feature")], forked_from=None)
+    upstream = ForkInMemory(forked_from=None)
+
+    with pytest.raises(NotAForkError):
+        proposal(fork, upstream).run()
 
     assert upstream.written == []
 
@@ -184,10 +188,11 @@ def test_only_a_fork_of_the_owner_s_is_proposed_from(
     [
         ([], []),
         ([pull_request(3, "feature", state=PullRequestState.CLOSED)], []),
+        ([pull_request(3, "feature", state=PullRequestState.MERGED)], []),
         ([pull_request(3, "feature", base="lower")], []),
         ([pull_request(3, "feature")], [pull_request(9, "feature")]),
     ],
-    ids=["no pull request", "closed", "stacked", "already upstream"],
+    ids=["no pull request", "closed", "merged", "stacked", "already upstream"],
 )
 def test_a_pull_request_that_cannot_go_upstream_is_refused(
     fork_pull_requests: list[RestPullRequest],

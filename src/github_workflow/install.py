@@ -30,7 +30,7 @@ import subprocess
 import sys
 import sysconfig
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
@@ -128,6 +128,77 @@ class InstallOption(StrEnum):
     """
 
 
+# %% the launcher
+
+
+class Launcher(StrEnum):
+    """
+    The command running the workflow from its runtime, on the person's path.
+    """
+
+    COMMAND = "github-workflow"
+    """
+    The command's name, as the person types it.
+    """
+
+    DIRECTORY = ".local/bin"
+    """
+    Where it is written, under the home directory: the usual place for one's own
+    commands.
+    """
+
+    MARKER = "# Written by github-workflow's runtime install."
+    """
+    The line marking a launcher as the workflow's own.
+    """
+
+
+@dataclass(frozen=True)
+class LauncherInstallation:
+    """
+    The launcher, running the workflow with one runtime's interpreter.
+    """
+
+    directory: Path
+    """
+    Where the launcher is written.
+    """
+
+    runtime: Path
+    """
+    The runtime it runs the workflow with.
+    """
+
+    @property
+    def script(self) -> str:
+        """
+        The launcher, as written.
+        """
+        interpreter = self.runtime / "bin" / "python"
+        return (
+            f"#!/bin/sh\n{Launcher.MARKER}\n"
+            f'exec "{interpreter}" -I -m github_workflow "$@"\n'
+        )
+
+    def install(self) -> str | None:
+        """
+        Write the launcher, replacing an earlier one of the workflow's, but never a file
+        of the same name that is not.
+
+        :return: Why the person cannot run it yet, ``None`` when they can.
+        """
+        path = self.directory / Launcher.COMMAND
+        if path.exists() and Launcher.MARKER not in path.read_text():
+            return f"left {path} alone, which is not the workflow's"
+        self.directory.mkdir(parents=True, exist_ok=True)
+        path.write_text(self.script)
+        path.chmod(0o755)
+        searched = os.environ.get("PATH", "").split(os.pathsep)
+        if str(self.directory) not in searched:
+            return f"add {self.directory} to PATH to run {Launcher.COMMAND}"
+        return None
+
+
 # %% switching over
 
 
@@ -210,6 +281,13 @@ class RuntimeInstallation:
     location: Path
     """
     The runtime's path.
+    """
+
+    launcher_directory: Path = field(
+        default_factory=lambda: Path.home() / Launcher.DIRECTORY
+    )
+    """
+    Where the launcher running the workflow from the runtime is written.
     """
 
     @property
@@ -336,7 +414,13 @@ class RuntimeInstallation:
             self._fail("checking the new runtime's guard", checked, build)
         (build / RuntimeFile.PLUGIN).write_text(stamp)
         RuntimeSwitch(self.location).to(build)
-        return f"github-workflow: runtime installed from the plugin at {self.plugin}"
+        installed = (
+            f"github-workflow: runtime installed from the plugin at {self.plugin}"
+        )
+        launcher = LauncherInstallation(
+            self.launcher_directory, self.location
+        ).install()
+        return installed if launcher is None else f"{installed}; {launcher}"
 
     def _run(self, command: list[str], build: Path) -> None:
         """
