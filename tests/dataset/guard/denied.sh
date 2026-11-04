@@ -72,3 +72,7 @@ env --unset=CLAUDECODE python3 push.py
 env -C build -u CLAUDECODE python3 push.py
 env -i python3 push.py
 env - python3 push.py
+git archive --remote=https://github.com/LucaKro/GitHubWorkflow main
+git archive --remote origin main
+git archive HEAD -o .git/hooks/pre-commit
+git archive -o.git/hooks/pre-commit HEAD

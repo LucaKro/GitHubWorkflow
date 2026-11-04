@@ -418,6 +418,12 @@ class GitListing(StrEnum):
     names a local branch.
     """
 
+    ARCHIVE = "archive"
+    """
+    Reads a commit's files into an archive, unless it asks another repository for them
+    or writes the archive where git reads its configuration or hooks.
+    """
+
     def reads(self, arguments: Sequence[str]) -> bool:
         """
         :param arguments: What follows the subcommand.
@@ -452,6 +458,27 @@ class GitListing(StrEnum):
                 return positional[:1] == ["status"]
             case GitListing.FETCH:
                 return not any(":" in argument for argument in positional)
+            case GitListing.ARCHIVE:
+                return not any(
+                    argument.startswith("--remote") for argument in options
+                ) and not any(
+                    GitConfigurationLocation.holds(PurePath(path))
+                    for path in self._archive_files(arguments)
+                )
+
+    @staticmethod
+    def _archive_files(arguments: Sequence[str]) -> list[str]:
+        """
+        :param arguments: What follows ``archive``.
+        :return: The files ``-o`` writes the archive to.
+        """
+        files = []
+        for index, argument in enumerate(arguments):
+            if argument == "-o" and index + 1 < len(arguments):
+                files.append(arguments[index + 1])
+            elif argument.startswith("-o") and argument != "-o":
+                files.append(argument.removeprefix("-o"))
+        return files
 
     @staticmethod
     def _lists(options: set[str], positional: list[str]) -> bool:
