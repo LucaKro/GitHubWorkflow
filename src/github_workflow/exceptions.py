@@ -425,6 +425,24 @@ class NotAFindingError(DataclassException, LookupError):
 
 
 @dataclass
+class NothingToEditError(DataclassException, ValueError):
+    """
+    Raised when a finding is to be edited with neither a new title nor a new text.
+    """
+
+    number: int
+    """
+    The finding.
+    """
+
+    def error_message(self) -> str:
+        return f"editing finding #{self.number} was given nothing to change"
+
+    def suggest_correction(self) -> str:
+        return "Give a new title, a new text, or both."
+
+
+@dataclass
 class FindingNotAcceptedError(DataclassException, PermissionError):
     """
     Raised when work on a finding is asked for before the person accepted it.

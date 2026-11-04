@@ -708,3 +708,90 @@ def test_a_draft_naming_a_finding_rechecks_it_first(
         {settings.owner, signed_in},
         3,
     )
+
+
+# %% commenting on and editing a finding
+
+
+def non_reads(api: ReplayedApi) -> list[tuple[str, str]]:
+    """:param api: The replayed GitHub.
+    :return: Every request that was no read, as method and path."""
+    return [(sent.method, sent.path) for sent in api.sent if sent.method != "GET"]
+
+
+def test_a_finding_is_commented_on_through_the_command_line(
+    github: ReplayedApi,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+):
+    checkout = repositories.clone(owned_url, "session")
+    (checkout.root / "comment.md").write_text("Found more.\n")
+    route = RepositoryRoute(
+        Repository(settings.owner, RepositoriesByOwner.repository_name)
+    )
+    open_finding(github, route)
+    path = f"/{route.issue_comments(1)}"
+    github.answers[("POST", path)] = RecordedAnswer(
+        HTTPStatus.CREATED, json.dumps({RestJSONKey.HTML_URL: "https://github.com/c"})
+    )
+
+    run(
+        github_workflow.__name__,
+        checkout,
+        WorkflowCommand.FINDING,
+        FindingSubcommand.COMMENT,
+        "1",
+        "--body-file",
+        "comment.md",
+    )
+
+    assert non_reads(github) == [("POST", path)]
+
+
+def test_a_finding_s_text_is_edited_through_the_command_line(
+    github: ReplayedApi,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+):
+    checkout = repositories.clone(owned_url, "session")
+    (checkout.root / "finding.md").write_text("What was found, corrected.\n")
+    route = RepositoryRoute(
+        Repository(settings.owner, RepositoriesByOwner.repository_name)
+    )
+    open_finding(github, route)
+    path = f"/{route.issue(1)}"
+    github.answers[("PATCH", path)] = RecordedAnswer(HTTPStatus.OK, json.dumps({}))
+
+    run(
+        github_workflow.__name__,
+        checkout,
+        WorkflowCommand.FINDING,
+        FindingSubcommand.EDIT,
+        "1",
+        "--body-file",
+        "finding.md",
+    )
+
+    assert non_reads(github) == [("PATCH", path)]
+
+
+def open_finding(api: ReplayedApi, route: RepositoryRoute) -> None:
+    """
+    Answer that issue 1 is an open, accepted finding.
+
+    :param api: The replayed GitHub.
+    :param route: The owner's repository's routes.
+    """
+    api.answers[("GET", f"/{route.issue(1)}")] = RecordedAnswer(
+        HTTPStatus.OK,
+        json.dumps(
+            {
+                RestJSONKey.NUMBER: 1,
+                RestJSONKey.TITLE: "A finding",
+                RestJSONKey.STATE: IssueState.OPEN,
+                RestJSONKey.LABELS: [{RestJSONKey.NAME: FindingStage.ACCEPTED}],
+            }
+        ),
+    )

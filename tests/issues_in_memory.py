@@ -97,6 +97,12 @@ class IssuesInMemory(IssueBoard, RepositoryLabels):
     def close_issue(self, number: int, reason: IssueStateReason) -> None:
         self.writes.append(f"close_issue {number} {reason}")
 
+    def set_issue_title(self, number: int, title: str) -> None:
+        self.writes.append(f"set_issue_title {number} {title}")
+
+    def set_issue_description(self, number: int, body: str) -> None:
+        self.writes.append(f"set_issue_description {number} {body}")
+
 
 def finding(number: int, stage: FindingStage, priority: Priority) -> Issue:
     """:param number: The issue's number.

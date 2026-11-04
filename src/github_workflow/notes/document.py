@@ -151,7 +151,8 @@ class NotesBlock:
             f"{FindingSubcommand.FILE}` instead of acting on it ({self.finding_guide}); "
             f"when a test failing on the default branch is easy to write, pass it, "
             f"uncommitted, with `--test`. Accept, shelve or reject a finding only when "
-            f"the person says so.",
+            f"the person says so; add to one with `{finding} {FindingSubcommand.COMMENT}` "
+            f"or correct it with `{finding} {FindingSubcommand.EDIT}`.",
             f"Work on a finding only when the person asks you to. Prove it first with "
             f"`{finding} {FindingSubcommand.PROVE}`, or, when no failing test can be "
             f"written, `{finding} {FindingSubcommand.MARK_UNPROVEN}` with the reason; "

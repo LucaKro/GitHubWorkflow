@@ -25,13 +25,16 @@ from github_workflow.exceptions import (
     FindingNotAcceptedError,
     MissingProofError,
     NotAFindingError,
+    NothingToEditError,
     PassingTestError,
     ProofNoLongerHoldsError,
 )
 from github_workflow.findings import (
     Evidence,
     FindingAcceptance,
+    FindingComment,
     FindingDraftOpening,
+    FindingEdit,
     FindingFiling,
     FindingLabel,
     FindingListing,
@@ -336,6 +339,58 @@ def test_rejecting_a_closed_finding_is_refused():
 
     with pytest.raises(NotAFindingError):
         FindingRejection(board, board, 1, "Done already").run()
+
+    assert board.writes == []
+
+
+# %% commenting and editing
+
+
+def test_a_finding_is_commented_on():
+    board = IssuesInMemory({1: finding(1, FindingStage.ACCEPTED, Priority.HIGH)})
+
+    FindingComment(board, board, 1, "Found a second instance.").run()
+
+    assert board.writes == ["add_comment 1 Found a second instance."]
+
+
+def test_a_finding_s_title_and_text_are_rewritten():
+    board = IssuesInMemory({1: finding(1, FindingStage.UNREVIEWED, Priority.LOW)})
+
+    FindingEdit(board, board, 1, "A sharper title", "What was found, corrected.").run()
+
+    assert board.writes == [
+        "set_issue_title 1 A sharper title",
+        "set_issue_description 1 What was found, corrected.",
+    ]
+
+
+def test_only_what_is_given_is_rewritten():
+    board = IssuesInMemory({1: finding(1, FindingStage.UNREVIEWED, Priority.LOW)})
+
+    FindingEdit(board, board, 1, None, "What was found, corrected.").run()
+
+    assert board.writes == ["set_issue_description 1 What was found, corrected."]
+
+
+def test_an_edit_changing_nothing_is_refused():
+    board = IssuesInMemory({1: finding(1, FindingStage.UNREVIEWED, Priority.LOW)})
+
+    with pytest.raises(NothingToEditError):
+        FindingEdit(board, board, 1, None, None).run()
+
+    assert board.writes == []
+
+
+def test_a_closed_finding_is_neither_commented_on_nor_edited():
+    board = IssuesInMemory(
+        {1: Issue(1, "Finding 1", (FindingStage.INCORRECT,), IssueState.CLOSED)}
+    )
+
+    with pytest.raises(NotAFindingError):
+        FindingComment(board, board, 1, "More").run()
+    with pytest.raises(NotAFindingError):
+        FindingEdit(board, board, 1, "A title", None).run()
 
     assert board.writes == []
 

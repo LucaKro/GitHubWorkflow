@@ -34,6 +34,7 @@ from github_workflow.exceptions import (
     FindingNotAcceptedError,
     MissingProofError,
     NotAFindingError,
+    NothingToEditError,
     ProofNoLongerHoldsError,
 )
 from github_workflow.hooks import ReportLine, Tone
@@ -439,6 +440,55 @@ class FindingRejection(FindingChange):
         self.board.add_comment(self.number, f"Rejected: {self.reason}")
         self.board.close_issue(self.number, IssueStateReason.NOT_PLANNED)
         return f"rejected finding #{self.number}"
+
+
+# %% commenting and editing
+
+
+@dataclass(frozen=True)
+class FindingComment(FindingChange):
+    """
+    A comment on an open finding.
+    """
+
+    body: str
+    """
+    The comment.
+    """
+
+    def run(self) -> str:
+        self.open_finding(FindingStage.open_stages)
+        url = self.board.add_comment(self.number, self.body)
+        return f"commented on finding #{self.number}: {url}"
+
+
+@dataclass(frozen=True)
+class FindingEdit(FindingChange):
+    """
+    An open finding's title, text or both rewritten, the rest left as it is.
+
+    :raises NothingToEditError: If neither is given.
+    """
+
+    title: str | None
+    """
+    The new title, ``None`` to keep the old one.
+    """
+
+    body: str | None
+    """
+    The new text, ``None`` to keep the old one.
+    """
+
+    def run(self) -> str:
+        if self.title is None and self.body is None:
+            raise NothingToEditError(self.number)
+        self.open_finding(FindingStage.open_stages)
+        if self.title is not None:
+            self.board.set_issue_title(self.number, self.title)
+        if self.body is not None:
+            self.board.set_issue_description(self.number, self.body)
+        return f"edited finding #{self.number}"
 
 
 # %% proving

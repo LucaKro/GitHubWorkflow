@@ -871,6 +871,8 @@ class GoAheadCommand(StrEnum):
     FINDING_ACCEPT = f"{WorkflowCommand.FINDING} {FindingSubcommand.ACCEPT}"
     FINDING_SHELVE = f"{WorkflowCommand.FINDING} {FindingSubcommand.SHELVE}"
     FINDING_REJECT = f"{WorkflowCommand.FINDING} {FindingSubcommand.REJECT}"
+    FINDING_COMMENT = f"{WorkflowCommand.FINDING} {FindingSubcommand.COMMENT}"
+    FINDING_EDIT = f"{WorkflowCommand.FINDING} {FindingSubcommand.EDIT}"
     CLEANUP = WorkflowCommand.CLEANUP.value
     STACK = f"{WorkflowCommand.STACK} {StackSubcommand.ON}"
     DESCRIBE = WorkflowCommand.DESCRIBE.value
