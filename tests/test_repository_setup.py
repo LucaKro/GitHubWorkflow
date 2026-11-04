@@ -1,6 +1,7 @@
 """
 Tests for :mod:`github_workflow.repository_setup`: the features the workflow relies on
-are turned on where they are off, and where that is refused the line says where to.
+are never turned on by the workflow; where one is off, a line says where the person
+turns it on.
 """
 
 from __future__ import annotations
@@ -44,11 +45,6 @@ class SettingsInMemory(RepositorySettings):
     Whether Actions may run, ``None`` when that cannot be read.
     """
 
-    accepts: bool = True
-    """
-    Whether changes are accepted.
-    """
-
     changes: list[str] = field(default_factory=list)
     """
     Every change asked for.
@@ -59,21 +55,21 @@ class SettingsInMemory(RepositorySettings):
 
     def turn_on_merged_branch_deletion(self) -> bool:
         self.changes.append("deletion")
-        return self.accepts
+        return True
 
     def issues_enabled(self) -> bool:
         return self.issues
 
     def turn_on_issues(self) -> bool:
         self.changes.append("issues")
-        return self.accepts
+        return True
 
     def actions_enabled(self) -> bool | None:
         return self.actions
 
     def turn_on_actions(self) -> bool:
         self.changes.append("actions")
-        return self.accepts
+        return True
 
 
 # %% turning features on
@@ -86,13 +82,17 @@ def test_a_repository_set_up_already_is_left_alone():
     assert settings.changes == []
 
 
-def test_merged_branch_deletion_and_issues_that_are_off_are_turned_on():
+def test_merged_branch_deletion_and_issues_that_are_off_are_left_for_the_person():
+    """
+    Turning a feature on changes the repository for everyone who uses it, a fork's
+    public issues among it: only the person opts in.
+    """
     settings = SettingsInMemory(deletes=False, issues=False)
 
     lines = RepositorySetup(REPOSITORY, settings).lines()
 
-    assert settings.changes == ["deletion", "issues"]
-    assert [line.tone for line in lines] == [Tone.NEWS] * 2
+    assert settings.changes == []
+    assert [line.tone for line in lines] == [Tone.ACTION] * 2
 
 
 def test_actions_that_are_off_are_left_for_the_person_to_turn_on():
@@ -119,17 +119,17 @@ def test_actions_that_cannot_be_read_are_not_touched():
 @pytest.mark.parametrize(
     "settings, page",
     [
-        (SettingsInMemory(deletes=False, accepts=False), REPOSITORY.settings_url),
-        (SettingsInMemory(issues=False, accepts=False), REPOSITORY.settings_url),
-        (
-            SettingsInMemory(actions=False, accepts=False),
-            f"{REPOSITORY.settings_url}/actions",
-        ),
+        (SettingsInMemory(deletes=False), REPOSITORY.settings_url),
+        (SettingsInMemory(issues=False), REPOSITORY.settings_url),
+        (SettingsInMemory(actions=False), f"{REPOSITORY.settings_url}/actions"),
     ],
     ids=["deletion", "issues", "actions"],
 )
-def test_a_refused_change_says_where_to_make_it(settings: SettingsInMemory, page: str):
+def test_a_feature_that_is_off_says_where_to_turn_it_on(
+    settings: SettingsInMemory, page: str
+):
     [line] = RepositorySetup(REPOSITORY, settings).lines()
 
+    assert settings.changes == []
     assert line.tone is Tone.ACTION
     assert page in line.text

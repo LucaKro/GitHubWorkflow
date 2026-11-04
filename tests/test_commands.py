@@ -428,31 +428,26 @@ def test_a_session_reported_at_its_start_is_not_reported_again(
 # %% merged branches
 
 
-def test_a_session_turns_on_github_s_deletion_of_merged_branches(
+def test_a_session_leaves_merged_branch_deletion_that_is_off_to_the_person(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
     github: ReplayedApi,
 ):
     github.answers[("GET", root_path(settings))] = setting(HTTPStatus.OK, False)
-    github.answers[("PATCH", root_path(settings))] = setting(HTTPStatus.OK, True)
 
     start_session(repositories.clone(owned_url, "session"))
 
-    [change] = [sent for sent in github.sent if sent.method == "PATCH"]
-    assert change.payload == {RestJSONKey.DELETE_BRANCH_ON_MERGE: True}
+    assert {sent.method for sent in github.sent} == {"GET"}
 
 
-def test_a_session_that_may_not_change_settings_links_to_them(
+def test_a_session_links_to_the_settings_of_a_feature_that_is_off(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
     github: ReplayedApi,
 ):
     github.answers[("GET", root_path(settings))] = setting(HTTPStatus.OK, False)
-    github.answers[("PATCH", root_path(settings))] = setting(
-        HTTPStatus.FORBIDDEN, False
-    )
     repository = Repository(settings.owner, RepositoriesByOwner.repository_name)
 
     finished = start_session(repositories.clone(owned_url, "session"))
