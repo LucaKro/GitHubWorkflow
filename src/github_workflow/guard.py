@@ -26,6 +26,11 @@ from basstler_domain_model.class_property import classproperty
 from basstler_domain_model.environment import ClaudeCodeVariable
 
 import github_workflow
+from github_workflow.coarse_guard import (
+    GitConfigurationLocation,
+    GitHubTool,
+    Program,
+)
 from github_workflow.command_line import (
     BranchSubcommand,
     FindingSubcommand,
@@ -35,32 +40,6 @@ from github_workflow.command_line import (
 from github_workflow.hooks import FileWritingTool, HookKey, HookValue
 
 # %% programs
-
-
-class Program(StrEnum):
-    """
-    The programs the guard judges, by their executable's name.
-    """
-
-    GIT = "git"
-    """
-    Git itself.
-    """
-
-    GITHUB_CLI = "gh"
-    """
-    GitHub's command-line client.
-    """
-
-    CURL = "curl"
-    """
-    An HTTP client that could call GitHub's API.
-    """
-
-    WGET = "wget"
-    """
-    Another HTTP client that could call GitHub's API.
-    """
 
 
 class Shell(StrEnum):
@@ -577,31 +556,6 @@ class GitHubToolReading(StrEnum):
     """
     Reads, in the newer tool names.
     """
-
-
-class GitConfigurationLocation(StrEnum):
-    """
-    The names marking a file git reads its configuration or hooks from, and so runs
-    the programs it names.
-    """
-
-    REPOSITORY = ".git"
-    """
-    A repository's own directory, its configuration and hooks among it.
-    """
-
-    USER = ".gitconfig"
-    """
-    The user's configuration file.
-    """
-
-    @classmethod
-    def holds(cls, path: PurePath) -> bool:
-        """
-        :param path: A file's path.
-        :return: Whether git reads its configuration or hooks from the file.
-        """
-        return cls.REPOSITORY in path.parts or path.name == cls.USER
 
 
 # %% sending options
@@ -1335,7 +1289,7 @@ class ToolGuard:
         if tool == HookValue.BASH_TOOL:
             command = self.hook_input[HookKey.TOOL_INPUT][HookKey.COMMAND]
             return CommandGuard().denial(command)
-        if tool.startswith(HookValue.MCP_TOOL_PREFIX) and "github" in tool.casefold():
+        if GitHubTool.names(tool):
             name = tool.rsplit("__", 1)[-1]
             reading = (
                 GitHubToolReading.GET,
