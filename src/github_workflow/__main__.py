@@ -287,8 +287,10 @@ class WorkflowSession(RepositoryDetails):
                 return DescriptionRewrite(
                     self.github,
                     self.github,
+                    self.github,
                     arguments.number,
-                    arguments.body_file.read_text(),
+                    arguments.body_file.read_text() if arguments.body_file else None,
+                    arguments.title,
                 )
             case WorkflowCommand.CLONE, _:
                 around = ProjectCheckout.around(self.directory)
@@ -516,10 +518,12 @@ class WorkflowSession(RepositoryDetails):
         )
         details.add_argument("number", type=int, help="the pull request")
         describe = commands.add_parser(
-            WorkflowCommand.DESCRIBE, help="rewrite a draft's description"
+            WorkflowCommand.DESCRIBE,
+            help="rewrite an open pull request's description or title",
         )
-        describe.add_argument("number", type=int, help="the draft pull request")
-        describe.add_argument("--body-file", required=True, type=Path)
+        describe.add_argument("number", type=int, help="the open pull request")
+        describe.add_argument("--body-file", type=Path, help="the new description")
+        describe.add_argument("--title", help="the new title")
         clone = commands.add_parser(
             WorkflowCommand.CLONE,
             help="clone a repository: the owner's to work in, anyone's to read",

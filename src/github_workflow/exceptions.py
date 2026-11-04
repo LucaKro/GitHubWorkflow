@@ -378,9 +378,9 @@ class NotACheckoutError(DataclassException, RuntimeError):
 
 
 @dataclass
-class NotADraftError(DataclassException, RuntimeError):
+class PullRequestNotOpenError(DataclassException, RuntimeError):
     """
-    Raised when a pull request to be rewritten is ready for review or closed.
+    Raised when a pull request to be rewritten is closed or merged.
     """
 
     number: int
@@ -389,10 +389,29 @@ class NotADraftError(DataclassException, RuntimeError):
     """
 
     def error_message(self) -> str:
-        return f"#{self.number} is not an open draft"
+        return f"#{self.number} is not an open pull request"
 
     def suggest_correction(self) -> str:
-        return "Changing it needs the go-ahead of the person running the tool."
+        return "Rewrite an open pull request; a closed or merged one keeps its own."
+
+
+@dataclass
+class NothingToDescribeError(DataclassException, ValueError):
+    """
+    Raised when a pull request is to be rewritten with neither a new description nor a
+    new title.
+    """
+
+    number: int
+    """
+    The pull request.
+    """
+
+    def error_message(self) -> str:
+        return f"rewriting #{self.number} was given nothing to change"
+
+    def suggest_correction(self) -> str:
+        return "Give a new description, a new title, or both."
 
 
 # %% discarding branches

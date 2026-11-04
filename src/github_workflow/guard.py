@@ -855,8 +855,8 @@ class PullRequestOpening(StrEnum):
 
 class DescriptionRewriting(StrEnum):
     """
-    The ways of rewriting a pull request directly, whose description the workflow's
-    ``describe`` rewrites on a draft.
+    The ways of rewriting a pull request directly, whose description and title the
+    workflow's ``describe`` rewrites on an open pull request.
     """
 
     CLI = "pr edit"
@@ -872,10 +872,14 @@ class DescriptionRewriting(StrEnum):
     @classmethod
     def instead(cls) -> str:
         """
-        The workflow command line rewriting a draft's description.
+        The workflow command line rewriting an open pull request's description or
+        title.
         """
         return WorkflowCommand.command_line(
-            WorkflowCommand.DESCRIBE, "<number>", "--body-file", "<file>"
+            WorkflowCommand.DESCRIBE,
+            "<number>",
+            "[--body-file <file>]",
+            "[--title <title>]",
         )
 
 

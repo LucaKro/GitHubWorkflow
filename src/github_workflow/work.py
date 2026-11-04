@@ -19,6 +19,7 @@ from basstler_domain_model.git.commands import (
     RemoteBranch,
 )
 from basstler_domain_model.github.repository_client import (
+    IssueBoard,
     PullRequestOpener,
     PullRequestReader,
     PullRequestsFromForks,
@@ -36,7 +37,8 @@ from github_workflow.exceptions import (
     BranchDeletedFromGitHubError,
     BranchNotPushedError,
     DetachedHeadError,
-    NotADraftError,
+    NothingToDescribeError,
+    PullRequestNotOpenError,
     PushRefusedError,
     UnpushedCommitsError,
 )
@@ -304,8 +306,12 @@ class DraftOpening(WorkflowStep):
 @dataclass(frozen=True)
 class DescriptionRewrite(WorkflowStep):
     """
-    A new description for an open draft pull request on the owner's repository; a pull
-    request that is ready for review or closed is the person's to change.
+    A new description, title or both for an open pull request on the owner's
+    repository, a draft or ready for review, so it follows the pushed commits; a closed
+    or merged one keeps its own.
+
+    :raises NothingToDescribeError: If neither is given.
+    :raises PullRequestNotOpenError: If the pull request is not open.
     """
 
     pull_requests: PullRequestReader
@@ -318,22 +324,40 @@ class DescriptionRewrite(WorkflowStep):
     Writes its description.
     """
 
+    titles: IssueBoard
+    """
+    Writes its title, a pull request being an issue to GitHub too.
+    """
+
     number: int
     """
     The pull request.
     """
 
-    body: str
+    body: str | None
     """
-    The new description.
+    The new description, ``None`` to keep the old one.
+    """
+
+    title: str | None = None
+    """
+    The new title, ``None`` to keep the old one.
     """
 
     def run(self) -> str:
+        if self.body is None and self.title is None:
+            raise NothingToDescribeError(self.number)
         pull_request = self.pull_requests.pull_request(self.number)
-        if pull_request.state is not PullRequestState.OPEN or not pull_request.draft:
-            raise NotADraftError(self.number)
-        self.writer.set_description(self.number, self.body)
-        return f"rewrote the description of draft #{self.number}"
+        if pull_request.state is not PullRequestState.OPEN:
+            raise PullRequestNotOpenError(self.number)
+        rewritten = []
+        if self.body is not None:
+            self.writer.set_description(self.number, self.body)
+            rewritten.append("description")
+        if self.title is not None:
+            self.titles.set_issue_title(self.number, self.title)
+            rewritten.append("title")
+        return f"rewrote the {' and '.join(rewritten)} of #{self.number}"
 
 
 # %% bringing a branch up to date
