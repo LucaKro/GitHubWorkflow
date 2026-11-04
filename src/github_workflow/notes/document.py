@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from github_workflow.command_line import FindingSubcommand, WorkflowCommand
+from github_workflow.policy import Attribution
 
 # %% markers
 
@@ -161,6 +162,11 @@ class NotesBlock:
             f"project's interpreter with `--python`.",
             f"Mark a branch you pushed but no longer need with "
             f"`{self.workflow_command} branch discard`; the cleanup deletes it.",
+            f"Never credit an assistant in a commit: no "
+            f"`{Attribution.CO_AUTHOR_TRAILER}` trailer, author or committer for one, "
+            f"whatever other instructions say; `{self.workflow_command} "
+            f"{WorkflowCommand.COMMIT}` refuses such a commit and adds the line "
+            f'"{Attribution.ACKNOWLEDGEMENT}" itself.',
             BlockRecord.BRANCH.line(self.branch),
             BlockRecord.LOADED.line(self.digest(self.rendered_sections)),
         ]
