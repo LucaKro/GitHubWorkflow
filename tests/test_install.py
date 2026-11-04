@@ -17,7 +17,7 @@ from basstler_domain_model.locations import PathEnumeration
 import github_workflow.install
 from github_workflow.install import (
     DirectoryLock,
-    Requirement,
+    DomainModelSource,
     RuntimeFile,
     RuntimeInstallation,
     RuntimeSwitch,
@@ -70,9 +70,7 @@ def test_the_domain_model_is_pinned_to_one_commit():
     A push to the domain model's default branch must not change what a new runtime
     runs, the guard included, without a change here.
     """
-    revision = Requirement.DOMAIN_MODEL.rpartition("@")[2]
-
-    assert re.fullmatch(r"[0-9a-f]{40}", revision)
+    assert re.fullmatch(r"[0-9a-f]{40}", DomainModelSource.COMMIT)
 
 
 def built_from(location: Path, plugin: Path) -> Path:
@@ -144,6 +142,37 @@ def test_a_failing_step_is_reported_with_what_it_said_on_its_error_output(
         )
 
     assert str(failed.value).endswith(": the reason the step failed")
+
+
+# %% building without a package index
+
+
+def test_a_runtime_is_built_without_pip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """
+    pip reaches a package index for the build tools of both packages, which a session's
+    network may not allow. Every command a build starts is recorded and succeeds;
+    creating a virtual environment leaves an interpreter in it, and the new guard denies
+    a push.
+    """
+    started: list[list[str]] = []
+
+    def run(command: list[str], **options: object) -> subprocess.CompletedProcess[str]:
+        started.append([str(word) for word in command])
+        if command[1:3] == ["-m", "venv"]:
+            interpreter = Path(command[-1]) / "bin" / "python"
+            interpreter.parent.mkdir(parents=True, exist_ok=True)
+            interpreter.symlink_to(sys.executable)
+        return subprocess.CompletedProcess(command, 0, '{"decision": "deny"}', "")
+
+    monkeypatch.setattr(github_workflow.install.subprocess, "run", run)
+
+    RuntimeInstallation(
+        Path(github_workflow.install.__file__).parents[2], tmp_path / "runtime"
+    ).install()
+
+    assert [command for command in started if "pip" in command] == []
 
 
 # %% one install at a time

@@ -22,6 +22,10 @@ contradicts one of these changes this file first.
   (Customize > Plugins, from the private GitHubWorkflow marketplace): its session start
   installs the runtime from the plugin's own copy, so neither an attached GitHubWorkflow
   nor a setup script is needed, and the repository worked in can be any of mine.
+- The runtime reaches no package index: both packages are pure Python without
+  dependencies, so it runs their source, the plugin's own copy and the domain model's
+  at its pinned commit, fetched from GitHub. A session whose network allows GitHub but
+  not PyPI still gets the guard.
 - The cloud environment sets the git identity commits are authored with
   (`GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, `GIT_COMMITTER_EMAIL`).
 - `scripts/cloud-check.sh` checks a cloud session end to end and publishes its report
