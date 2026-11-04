@@ -4,10 +4,11 @@
 # that the person confirm a workflow command needing their go-ahead, or nothing to leave
 # the call to the usual permissions.
 #
-# When the guard cannot run - its runtime missing, or the guard failing - the coarse
-# guard stands in from the plugin's source: it denies every call that could reach git or
-# GitHub and lets every other call run. Only when that cannot run either is the call
-# blocked (exit 2) with the reason.
+# When the guard cannot run from its runtime - the runtime missing, or the guard
+# failing - the guard runs again from the plugin's source on the standard library alone,
+# judging the call as usual. When that fails too, the coarse guard stands in: it denies
+# every call that could reach git or GitHub and lets every other call run. Only when that
+# cannot run either is the call blocked (exit 2) with the reason.
 #
 # Runs the package from the interpreter GITHUB_WORKFLOW_PYTHON names, by default the
 # githubworkflow-runtime virtual environment, which the session start installs from this
@@ -16,6 +17,18 @@ set -uo pipefail
 
 INPUT="$(cat)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+# Decides the call with the guard run from the plugin's source by the system's Python on
+# the standard library alone, the runtime having failed for the reason given; with the
+# coarse guard when that fails too.
+from_source() {
+  local decided
+  if decided="$(printf '%s' "${INPUT}" | python3 -I -S -c 'import sys; sys.path.insert(0, sys.argv[1]); from github_workflow.guard import main; main()' "${PLUGIN_ROOT}/src" 2>/dev/null)"; then
+    printf '%s' "${decided}"
+    exit 0
+  fi
+  coarse "$1"
+}
 
 # Decides the call with the coarse guard, the guard having failed for the reason given.
 coarse() {
@@ -40,14 +53,14 @@ else
   PYTHON="${RUNTIME}/bin/python"
   if [ ! -x "${PYTHON}" ] &&
     ! INSTALLED="$(python3 -I "${PLUGIN_ROOT}/src/github_workflow/install.py" "${PLUGIN_ROOT}" "${RUNTIME}" 2>&1)"; then
-    coarse "could not install the runtime: $(printf '%s\n' "${INSTALLED}" | tail -n 1)"
+    from_source "could not install the runtime: $(printf '%s\n' "${INSTALLED}" | tail -n 1)"
   fi
 fi
 if [ ! -x "${PYTHON}" ]; then
-  coarse "no interpreter at ${PYTHON}; set GITHUB_WORKFLOW_PYTHON to one with the package installed"
+  from_source "no interpreter at ${PYTHON}; set GITHUB_WORKFLOW_PYTHON to one with the package installed"
 fi
 
 if ! OUTPUT="$(printf '%s' "${INPUT}" | "${PYTHON}" -m github_workflow.guard 2>&1)"; then
-  coarse "the guard failed: $(printf '%s\n' "${OUTPUT}" | tail -n 1)"
+  from_source "the guard failed: $(printf '%s\n' "${OUTPUT}" | tail -n 1)"
 fi
 printf '%s' "${OUTPUT}"

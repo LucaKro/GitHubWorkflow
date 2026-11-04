@@ -134,11 +134,11 @@ them:
 - Every write - a branch, a commit, a push, a pull request, a stack, the notes - goes
   through the workflow's own commands, which check the rules above before writing. A
   plugin hook denies every direct write, so the rules cannot be skipped by accident.
-- When that hook cannot run - its runtime missing or broken - a coarse stand-in denies
-  every call naming git, gh, curl or wget, every GitHub tool and every write to git's
-  configuration, and lets everything else run, so a broken runtime stops only what
-  could reach git or GitHub. Only when the stand-in cannot run either is every call
-  blocked.
+- When that hook's runtime cannot run - missing or broken - the guard runs from the
+  plugin's source on the standard library alone and judges every call as usual, reads
+  included. When that fails too, a coarse stand-in denies every call naming git, gh,
+  curl or wget, every GitHub tool and every write to git's configuration, and lets
+  everything else run. Only when the stand-in cannot run either is every call blocked.
 - That guard catches accidents, not intent: it reads only the command lines of git, gh,
   curl and wget, through shells and wrappers. A push run any other way - an
   interpreter, a build tool, a script - is caught by a `pre-push` hook the session

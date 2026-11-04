@@ -14,10 +14,14 @@ from pathlib import Path
 
 import pytest
 
+from basstler_domain_model.environment import ClaudeCodeVariable
 from basstler_domain_model.locations import PathEnumeration
 
 from github_workflow.environment import WorkflowVariable
+import github_workflow
+import github_workflow.guard as guard
 from github_workflow.guard import (
+    SessionVariable,
     CommandGuard,
     DescriptionRewriting,
     GitWrite,
@@ -162,14 +166,14 @@ def test_opening_a_pull_request_names_the_workflow_s_draft():
     denial = CommandGuard().denial("gh pr create --title Change")
 
     assert denial is not None
-    assert denial.instead == PullRequestOpening.instead
+    assert denial.instead == PullRequestOpening.instead()
 
 
 def test_editing_a_pull_request_names_the_workflow_s_describe():
     denial = CommandGuard().denial("gh pr edit 9 --body-file description.md")
 
     assert denial is not None
-    assert denial.instead == DescriptionRewriting.instead
+    assert denial.instead == DescriptionRewriting.instead()
 
 
 def test_a_write_no_workflow_command_does_names_none():
@@ -204,7 +208,7 @@ def test_the_github_tool_opening_a_pull_request_names_the_workflow_s_draft():
     denial = ToolGuard({HookKey.TOOL_NAME: tool}).denial()
 
     assert denial is not None
-    assert denial.instead == PullRequestOpening.instead
+    assert denial.instead == PullRequestOpening.instead()
 
 
 # %% the person's go-ahead
@@ -329,11 +333,45 @@ def test_the_hook_says_nothing_about_a_read():
     assert (finished.returncode, finished.stdout) == (0, "")
 
 
-def test_the_hook_denies_a_command_naming_git_when_the_guard_cannot_run():
+def test_the_hook_lets_a_read_through_when_the_runtime_cannot_run():
+    """
+    The guard runs from the plugin's source instead, judging the call as usual.
+    """
     finished = run_hook(GuardDataset.ALLOWED.lines()[0], interpreter="/nonexistent")
+
+    assert (finished.returncode, finished.stdout) == (0, "")
+
+
+def test_the_hook_denies_a_write_when_the_runtime_cannot_run():
+    finished = run_hook(GuardDataset.DENIED.lines()[0], interpreter="/nonexistent")
 
     output = json.loads(finished.stdout)[HookKey.HOOK_SPECIFIC_OUTPUT]
     assert output[HookKey.PERMISSION_DECISION] == HookValue.DENY
+
+
+def test_the_guard_runs_on_the_standard_library_alone():
+    """
+    Without site-packages, only the standard library and the plugin's source can be
+    imported.
+    """
+    source = Path(github_workflow.__file__).parents[1]
+    imported = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-c",
+            f"import sys; sys.path.insert(0, {str(source)!r}); import {guard.__name__}",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert (imported.returncode, imported.stderr) == (0, "")
+
+
+def test_the_guard_names_the_session_variable_as_the_domain_model_does():
+    assert SessionVariable.COMMAND_MARKER == ClaudeCodeVariable.COMMAND_MARKER
 
 
 def test_the_hook_lets_other_work_run_when_the_guard_cannot_run():
