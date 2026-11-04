@@ -15,6 +15,10 @@ contradicts one of these changes this file first.
   label, a pull request, a comment - is refused before it is attempted when the
   repository it targets, or the URL of the remote a push goes to, belongs to anyone
   else. Reading other repositories is allowed.
+- Reading includes cloning: `clone` clones anyone's repository, so a session can read an
+  upstream's pull request. Every clone it makes carries the workflow's `pre-push` hook,
+  so nothing is pushed from a clone of somebody else's repository, however the push is
+  started.
 
 ## Cloud sessions
 

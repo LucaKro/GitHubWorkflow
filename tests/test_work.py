@@ -29,12 +29,12 @@ from github_workflow.exceptions import (
     BranchNotPushedError,
     DefaultBranchWriteError,
     DetachedHeadError,
-    ForeignRepositoryCloneError,
     NotADraftError,
     PushRefusedError,
     UnpushedCommitsError,
 )
 from github_workflow.policy import Attribution, WritePolicy
+from github_workflow.push_hook import PushHook
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.settings import WorkflowSettings
 from github_workflow.stacks import StackPlacement
@@ -51,6 +51,7 @@ from github_workflow.work import (
 )
 
 from .repositories_by_owner import RepositoriesByOwner
+from .test_push_hook import in_claude_code  # noqa: F401  (a fixture)
 from .stacked_pull_requests import DraftsAndStacksInMemory, DraftsInMemory
 
 # %% helpers
@@ -609,7 +610,7 @@ def test_a_repository_of_the_owner_s_is_cloned_into_the_directory(
     assert clone.commit_at("HEAD") == published.split()[0]
 
 
-def test_cloning_somebody_else_s_repository_is_refused_before_it_is_tried(
+def test_somebody_else_s_repository_is_cloned_to_be_read(
     repositories: RepositoriesByOwner, foreign_url: str, settings: WorkflowSettings
 ):
     repository = Repository(
@@ -617,12 +618,55 @@ def test_cloning_somebody_else_s_repository_is_refused_before_it_is_tried(
     )
     directory = repositories.root / "session"
 
-    with pytest.raises(ForeignRepositoryCloneError):
-        RepositoryCloning(
-            repository, directory, settings, f"file://{repositories.root}"
-        ).run()
+    RepositoryCloning(
+        repository, directory, settings, f"file://{repositories.root}"
+    ).run()
 
-    assert not directory.exists()
+    [published] = repositories.branches(foreign_url).splitlines()
+    clone = GitCommandRunner(directory / repository.name)
+    assert clone.commit_at("HEAD") == published.split()[0]
+
+
+def test_a_clone_carries_the_workflow_s_push_hook(
+    repositories: RepositoriesByOwner, foreign_url: str, settings: WorkflowSettings
+):
+    repository = Repository(
+        RepositoriesByOwner.foreign_owner, RepositoriesByOwner.repository_name
+    )
+    directory = repositories.root / "session"
+
+    RepositoryCloning(
+        repository, directory, settings, f"file://{repositories.root}"
+    ).run()
+
+    clone = ProjectCheckout(GitCommandRunner(directory / repository.name))
+    hook = PushHook(clone, Path(sys.executable))
+    assert hook.path.read_text() == hook.script
+
+
+def test_a_session_s_push_from_a_clone_of_somebody_else_s_repository_is_refused(
+    repositories: RepositoriesByOwner,
+    foreign_url: str,
+    settings: WorkflowSettings,
+    in_claude_code: None,
+):
+    """
+    A push run outside the workflow's commands, by a script, still meets the hook.
+    """
+    repository = Repository(
+        RepositoriesByOwner.foreign_owner, RepositoriesByOwner.repository_name
+    )
+    directory = repositories.root / "session"
+    RepositoryCloning(
+        repository, directory, settings, f"file://{repositories.root}"
+    ).run()
+    clone = GitCommandRunner(directory / repository.name)
+    before = repositories.branches(foreign_url)
+
+    pushed = clone.attempt("push", "origin", "HEAD:refs/heads/work")
+
+    assert not pushed.succeeded
+    assert repositories.branches(foreign_url) == before
 
 
 def test_a_clone_from_inside_a_checkout_goes_next_to_it(
