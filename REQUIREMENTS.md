@@ -10,7 +10,10 @@ contradicts one of these changes this file first.
 - On forks of upstream projects, where pull requests go to an upstream that reviews them,
   and on repositories of my own that have no upstream.
 - In both, work reaches the default branch only through branches and pull requests:
-  nothing is ever pushed to the default branch directly.
+  nothing is ever pushed to the default branch directly. The one exception is a fork's
+  default branch following its upstream's: `sync --upstream` fast-forwards it to the
+  upstream's branch of the same name, as GitHub's *Sync fork* does, then the local copy;
+  it refuses when the fork's branch has commits of its own, and never merges or forces.
 - Only on repositories owned by LucaKro. Every write - a push, a branch, an issue, a
   label, a pull request, a comment - is refused before it is attempted when the
   repository it targets, or the URL of the remote a push goes to, belongs to anyone
@@ -176,6 +179,7 @@ them:
 ## What the agent may do without asking
 
 - push its own work branch
+- fast-forward a fork's default branch to its upstream's, with `sync --upstream`
 - save notes and progress
 - mark its own throwaway branches as discarded
 - open draft pull requests

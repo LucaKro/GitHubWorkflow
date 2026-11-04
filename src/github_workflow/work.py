@@ -65,6 +65,37 @@ class WorkflowStep(ABC):
 
 
 @dataclass(frozen=True)
+class LocalBranchFollowing:
+    """
+    A local branch fast-forwarded to GitHub's copy, unless it has commits of its own.
+    """
+
+    git: GitCommandRunner
+    """
+    Runs git in the checkout.
+    """
+
+    def follow(self, branch: RemoteBranch) -> str:
+        """
+        :param branch: The branch, as just fetched.
+        :return: What happened to the local copy, as an addition to a report; empty
+            when there is none or it is up to date.
+        """
+        local = self.git.commit_or_none(branch.reference)
+        if local is None or local == self.git.commit_at(branch.tracking_reference):
+            return ""
+        if not self.git.contains(local, branch.tracking_reference):
+            return f"; local {branch.name} kept: it has commits GitHub's lacks"
+        if self.git.checked_out_branch() == branch.name:
+            self.git.fast_forward(branch.tracking_reference).raise_if_failed()
+            return f"; local {branch.name} fast-forwarded to it"
+        moved = self.git.fast_forward_branch(branch.name, branch.tracking_reference)
+        if not moved.succeeded:
+            return f"; local {branch.name} kept: it is checked out in another worktree"
+        return f"; local {branch.name} fast-forwarded to it"
+
+
+@dataclass(frozen=True)
 class BranchStart(WorkflowStep):
     """
     A new work branch, started from GitHub's copy of the default branch or of another
@@ -99,31 +130,11 @@ class BranchStart(WorkflowStep):
             started = f"on {self.name}, started from {base.remote}/{base.name}"
             if base.name != self.policy.default_branch:
                 return started
-            return f"{started}{self._fast_forward_local(base)}"
+            return f"{started}{LocalBranchFollowing(git).follow(base)}"
         if git.commit_or_none(base.reference) is None:
             fetched.raise_if_failed()
         git.create_branch(self.name, base.name)
         return f"on {self.name}, started from the local {base.name}"
-
-    def _fast_forward_local(self, base: RemoteBranch) -> str:
-        """
-        Fast-forward the local copy of *base* to GitHub's, unless it has commits of its
-        own.
-
-        :param base: The default branch, as just fetched.
-        :return: What happened to the local copy, as an addition to the report; empty
-            when there is none or it is up to date.
-        """
-        git = self.policy.checkout.git
-        local = git.commit_or_none(base.reference)
-        if local is None or local == git.commit_at(base.tracking_reference):
-            return ""
-        if not git.contains(local, base.tracking_reference):
-            return f"; local {base.name} kept: it has commits GitHub's lacks"
-        moved = git.fast_forward_branch(base.name, base.tracking_reference)
-        if not moved.succeeded:
-            return f"; local {base.name} kept: it is checked out in another worktree"
-        return f"; local {base.name} fast-forwarded to it"
 
 
 @dataclass(frozen=True)

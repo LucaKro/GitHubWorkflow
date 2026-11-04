@@ -443,6 +443,37 @@ class ForeignRepositoryError(DataclassException, PermissionError):
 
 
 @dataclass
+class ForkBranchDivergedError(DataclassException, ValueError):
+    """
+    Raised when a fork's branch to bring up to its upstream's has commits of its own.
+    """
+
+    branch: str
+    """
+    The fork's branch.
+    """
+
+    upstream: Repository
+    """
+    The repository the fork was forked from.
+    """
+
+    own_commits: int
+    """
+    How many commits the fork's branch has that the upstream's lacks.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"{self.branch} has {self.own_commits} commit(s) {self.upstream}'s lacks, "
+            f"so it cannot be fast-forwarded, and it is never merged or forced"
+        )
+
+    def suggest_correction(self) -> str:
+        return "Ask the person what to do with those commits."
+
+
+@dataclass
 class NotAForkError(DataclassException, LookupError):
     """
     Raised when a repository to propose from was forked from none.

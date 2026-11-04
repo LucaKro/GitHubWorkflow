@@ -61,7 +61,11 @@ from github_workflow.pull_request_overview import (
 from github_workflow.remotes import OwnedRemote, OwnedRemotes
 from github_workflow.settings import WorkflowSettings
 from github_workflow.stacks import StackPlacement
-from github_workflow.upstream import UpstreamProposal, UpstreamSuggestion
+from github_workflow.upstream import (
+    ForkMainSync,
+    UpstreamProposal,
+    UpstreamSuggestion,
+)
 from github_workflow.work import (
     BranchStart,
     BranchSwitch,
@@ -188,6 +192,8 @@ class WorkflowSession(RepositoryDetails):
                 return FindingDraftOpening(
                     self.recheck(arguments.finding, arguments.python), draft
                 )
+            case WorkflowCommand.SYNC, _ if arguments.upstream:
+                return ForkMainSync(self.policy, self.github, self.github)
             case WorkflowCommand.SYNC, _:
                 return BranchSync(
                     self.policy,
@@ -383,7 +389,14 @@ class WorkflowSession(RepositoryDetails):
             type=int,
             help="the accepted, proven finding it works on, rechecked first",
         )
-        commands.add_parser(WorkflowCommand.SYNC, help="bring the branch up to date")
+        sync = commands.add_parser(
+            WorkflowCommand.SYNC, help="bring the branch up to date"
+        )
+        sync.add_argument(
+            "--upstream",
+            action="store_true",
+            help="instead, fast-forward a fork's default branch to its upstream's",
+        )
         stack = commands.add_parser(WorkflowCommand.STACK, help="stack pull requests")
         stack_actions = stack.add_subparsers(dest="action", required=True)
         on = stack_actions.add_parser(StackSubcommand.ON, help="put above on below")

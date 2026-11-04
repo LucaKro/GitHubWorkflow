@@ -8,9 +8,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from basstler_domain_model.git.commands import RemoteBranch
 from basstler_domain_model.github.repository_client import (
     Commenter,
     ForkDetails,
+    ForkSync,
     PullRequestsFromForks,
     RepositoryDetails,
 )
@@ -21,13 +23,15 @@ from basstler_domain_model.repository import Repository
 from github_workflow.command_line import WorkflowCommand
 from github_workflow.exceptions import (
     ForeignRepositoryError,
+    ForkBranchDivergedError,
     NotAForkError,
     PersonOnlyCommandError,
     PullRequestNotProposableError,
 )
 from github_workflow.install import Launcher
 from github_workflow.settings import WorkflowSettings
-from github_workflow.work import DescriptionEnding, WorkflowStep
+from github_workflow.policy import WritePolicy
+from github_workflow.work import DescriptionEnding, LocalBranchFollowing, WorkflowStep
 
 # %% proposing
 
@@ -182,6 +186,59 @@ class UpstreamProposal(WorkflowStep):
         :return: The comment on the fork's pull request.
         """
         return f"Opened upstream: {url}"
+
+
+# %% following the upstream
+
+
+@dataclass(frozen=True)
+class ForkMainSync(WorkflowStep):
+    """
+    The fork's default branch fast-forwarded to the same branch of the repository it was
+    forked from, as GitHub's *Sync fork* does, and the local copy after it; only ever
+    fast-forwarded, never merged or forced.
+
+    :raises NotAForkError: If the repository was forked from none.
+    :raises ForkBranchDivergedError: If the fork's branch has commits of its own.
+    """
+
+    policy: WritePolicy
+    """
+    The checkout of the owner's fork, and its default branch.
+    """
+
+    fork_details: ForkDetails
+    """
+    Reads which repository the fork was forked from.
+    """
+
+    sync: ForkSync
+    """
+    Compares the fork's branch with the upstream's, and brings it up to theirs.
+    """
+
+    def run(self) -> str:
+        repository = self.policy.remote.repository
+        upstream = self.fork_details.upstream()
+        if upstream is None:
+            raise NotAForkError(repository)
+        branch = self.policy.default_branch
+        comparison = self.sync.compare(
+            branch, f"{upstream.owner}:{upstream.name}:{branch}"
+        )
+        if comparison.behind_by:
+            raise ForkBranchDivergedError(branch, upstream, comparison.behind_by)
+        if not comparison.ahead_by:
+            return f"{branch} is up to date with {upstream}'s"
+        self.sync.sync_with_upstream(branch)
+        followed = RemoteBranch(self.policy.remote.name, branch)
+        git = self.policy.checkout.git
+        git.fetch_branch(followed).raise_if_failed()
+        local = LocalBranchFollowing(git).follow(followed)
+        return (
+            f"{branch} fast-forwarded by {comparison.ahead_by} commit(s) to "
+            f"{upstream}'s{local}"
+        )
 
 
 # %% the suggestion

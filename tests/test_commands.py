@@ -1033,3 +1033,39 @@ def test_a_finding_filed_elsewhere_carries_no_test(tmp_path: Path):
     """
     with pytest.raises(SystemExit):
         filing_elsewhere(tmp_path, ToolRepository.WORKFLOW, "--test=test_it.py")
+
+
+# %% following the upstream
+
+
+def test_a_fork_s_main_behind_its_upstream_is_synced_through_the_command_line(
+    github: ReplayedApi,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+):
+    fork = RepositoryRoute(
+        Repository(settings.owner, RepositoriesByOwner.repository_name)
+    )
+    github.answers[("GET", f"/{fork.root}")] = RecordedAnswer.from_file(
+        HTTPStatus.OK, UpstreamDataset.FORK.value
+    )
+    upstream = json.loads(UpstreamDataset.FORK.value.read_text())[RestJSONKey.PARENT]
+    default = RepositoriesByOwner.default_branch
+    head = f"{upstream[RestJSONKey.FULL_NAME].replace('/', ':')}:{default}"
+    github.answers[("GET", f"/{fork.comparison(default, head)}")] = RecordedAnswer(
+        HTTPStatus.OK,
+        json.dumps({RestJSONKey.AHEAD_BY: 2, RestJSONKey.BEHIND_BY: 0}),
+    )
+    github.answers[("POST", f"/{fork.merge_upstream}")] = RecordedAnswer(
+        HTTPStatus.OK, json.dumps({"merge_type": "fast-forward"})
+    )
+
+    run(
+        github_workflow.__name__,
+        repositories.clone(owned_url, "session"),
+        WorkflowCommand.SYNC,
+        "--upstream",
+    )
+
+    assert non_reads(github) == [("POST", f"/{fork.merge_upstream}")]

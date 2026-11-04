@@ -12,23 +12,28 @@ import pytest
 from basstler_domain_model.github.repository_client import (
     Commenter,
     ForkDetails,
+    ForkSync,
     PullRequestsFromForks,
     RepositoryDetails,
 )
-from basstler_domain_model.github.rest_models import RestPullRequest
+from basstler_domain_model.github.rest_models import BranchComparison, RestPullRequest
 from basstler_domain_model.github.vocabulary import PullRequestState
 from basstler_domain_model.repository import Repository
 
 from github_workflow.exceptions import (
     ForeignRepositoryError,
+    ForkBranchDivergedError,
     NotAForkError,
     PersonOnlyCommandError,
     PullRequestNotProposableError,
 )
 from github_workflow.settings import WorkflowSettings
-from github_workflow.upstream import UpstreamProposal, UpstreamSuggestion
+from github_workflow.policy import WritePolicy
+from github_workflow.upstream import ForkMainSync, UpstreamProposal, UpstreamSuggestion
 
 from .pull_requests import REPOSITORY, pull_request
+from .repositories_by_owner import RepositoriesByOwner
+from .test_work import work  # noqa: F401  (a fixture)
 
 FORK = Repository.parse(REPOSITORY)
 """
@@ -225,3 +230,74 @@ def test_a_draft_on_a_repository_that_is_no_fork_suggests_nothing():
     described = suggestion.appended_to("What the change does.", "feature")
 
     assert described == "What the change does."
+
+
+# %% following the upstream
+
+
+@dataclass(frozen=True)
+class ForkSyncInMemory(ForkSync, ForkDetails):
+    """
+    A fork as far ahead of and behind its upstream as told, recording every sync.
+    """
+
+    comparison: BranchComparison
+    """
+    How far the upstream's branch is ahead of and behind the fork's.
+    """
+
+    forked_from: Repository | None = UPSTREAM
+    """
+    The repository it was forked from.
+    """
+
+    synced: list[str] = field(default_factory=list)
+    """
+    Every branch synced.
+    """
+
+    def compare(self, base: str, head: str) -> BranchComparison:
+        return self.comparison
+
+    def sync_with_upstream(self, branch: str) -> None:
+        self.synced.append(branch)
+
+    def upstream(self) -> Repository | None:
+        return self.forked_from
+
+
+def test_a_fork_s_main_behind_its_upstream_is_synced(work: WritePolicy):
+    fork = ForkSyncInMemory(BranchComparison(ahead_by=2, behind_by=0))
+
+    ForkMainSync(work, fork, fork).run()
+
+    assert fork.synced == [RepositoriesByOwner.default_branch]
+
+
+def test_a_fork_s_main_up_to_date_is_left_alone(work: WritePolicy):
+    fork = ForkSyncInMemory(BranchComparison(ahead_by=0, behind_by=0))
+
+    ForkMainSync(work, fork, fork).run()
+
+    assert fork.synced == []
+
+
+def test_a_fork_s_main_with_commits_of_its_own_is_refused(work: WritePolicy):
+    """
+    It is only ever fast-forwarded: never merged, never forced.
+    """
+    fork = ForkSyncInMemory(BranchComparison(ahead_by=2, behind_by=1))
+
+    with pytest.raises(ForkBranchDivergedError):
+        ForkMainSync(work, fork, fork).run()
+
+    assert fork.synced == []
+
+
+def test_a_repository_that_is_no_fork_follows_no_upstream(work: WritePolicy):
+    fork = ForkSyncInMemory(BranchComparison(ahead_by=2, behind_by=0), forked_from=None)
+
+    with pytest.raises(NotAForkError):
+        ForkMainSync(work, fork, fork).run()
+
+    assert fork.synced == []
