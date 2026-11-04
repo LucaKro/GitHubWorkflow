@@ -46,6 +46,7 @@ from github_workflow.work import (
     DescriptionEnding,
     DescriptionRewrite,
     DraftOpening,
+    LocalBranchFollowing,
     PullRequestBranches,
     PushWork,
     RepositoryCloning,
@@ -441,6 +442,25 @@ def test_a_draft_for_a_branch_github_lacks_is_refused(work: WritePolicy):
         draft(work, github, None).run()
 
     assert github.writes == []
+
+
+def test_a_checked_out_default_branch_behind_github_s_is_fast_forwarded(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+):
+    """
+    A cloud session often starts on the default branch.
+    """
+    other = repositories.clone(owned_url, "other").git
+    other.run("commit", "--quiet", "--allow-empty", "--message", "Moved on")
+    other.run("push", "--quiet", "origin", f"HEAD:{RepositoriesByOwner.default_branch}")
+    git = work.checkout.git
+    git.run("switch", "--quiet", RepositoriesByOwner.default_branch)
+    default = RemoteBranch(work.remote.name, RepositoriesByOwner.default_branch)
+    git.fetch_branch(default).raise_if_failed()
+
+    LocalBranchFollowing(git).follow(default)
+
+    assert git.commit_at("HEAD") == other.commit_at("HEAD")
 
 
 # %% syncing
