@@ -179,10 +179,10 @@ them:
 ## What the agent may do without asking
 
 - push its own work branch
+- fast-forward a fork's default branch to its upstream's, with `sync --upstream`
 - save notes and progress
 - mark its own throwaway branches as discarded
 - open draft pull requests
-- fast-forward a fork's default branch to its upstream's, with `sync --upstream`
 
 Everything else written to GitHub needs my go-ahead.
 
