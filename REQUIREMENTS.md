@@ -73,6 +73,12 @@ them:
   (wrong in edge cases, or a maintainability risk), *low* (cosmetic, or cleanup).
 - Only I move a finding out of *unreviewed*; a session accepts, shelves or rejects one
   only when I say so.
+- A stage I pick on GitHub counts at once, even while the label it replaces is still on
+  (a repository without the label workflow keeps it): my pick outranks *unreviewed*, and
+  of several I picked, the most cautious counts - *incorrect*, then *shelved*, then
+  *accepted*. Each finding is listed and counted once, under that stage. The label
+  workflow, where a repository has it, only tidies the labels; no fork needs it on its
+  default branch.
 - Apart from its stage, a finding may be *proven*: a test fails on the default branch
   as GitHub has it, and is posted on the issue - with the commit it failed on - but
   never committed. A finding stays *unreviewed* when proven; being proven never
