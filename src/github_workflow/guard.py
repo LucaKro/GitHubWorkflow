@@ -17,7 +17,7 @@ import shlex
 import sys
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import PurePath
 from typing import Any
@@ -1111,6 +1111,12 @@ class CommandGuard:
     they run.
     """
 
+    enclosing_line_names_git: bool = False
+    """
+    Whether a command line the judged one runs inside - through ``eval`` or a shell's
+    ``-c`` - names git or gh, so an expansion in the judged line could be either.
+    """
+
     @classproperty
     def marker_change(cls) -> Denial:
         """
@@ -1127,18 +1133,21 @@ class CommandGuard:
         :return: Why it is denied, ``None`` when it may run.
         """
         line = CommandLine(command_line)
-        mentions_git = re.search(r"\b(git|gh)\b", command_line)
+        mentions_git = self.enclosing_line_names_git or bool(
+            re.search(r"\b(git|gh)\b", command_line)
+        )
         if line.runs_input_through_a_shell() and mentions_git:
             return Denial(
                 "a shell reading its input could run git or gh unseen", saw_write=False
             )
+        judge = replace(self, enclosing_line_names_git=mentions_git)
         for words in line.simple_commands():
             if mentions_git and "$" in SimpleCommand(words).program:
                 return Denial(
                     "a program named by an expansion could be git or gh",
                     saw_write=False,
                 )
-            reason = self.denial_of(words)
+            reason = judge.denial_of(words)
             if reason is not None:
                 return reason
         return None

@@ -7,3 +7,5 @@ echo -D feature | xargs git branch
 $'git' push origin main
 G=git; $G push origin main
 eval "git fetch; $X push origin main"
+X=git; eval "$X push origin main"
+X=git; bash -c "$X push origin main"
