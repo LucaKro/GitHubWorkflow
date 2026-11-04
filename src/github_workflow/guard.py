@@ -33,6 +33,7 @@ from github_workflow.coarse_guard import (
 from github_workflow.command_line import (
     BranchSubcommand,
     FindingSubcommand,
+    ReviewSubcommand,
     StackSubcommand,
     ToolRepository,
     WorkflowCommand,
@@ -883,6 +884,49 @@ class DescriptionRewriting(StrEnum):
         )
 
 
+class OwnPullRequestTool(StrEnum):
+    """
+    The GitHub MCP tools writing to a pull request's labels or review threads, which the
+    workflow's commands write on the work branch's own pull request.
+    """
+
+    LABELS = "issue_write"
+    """
+    Writes an issue or pull request, its labels among it.
+    """
+
+    REPLY = "add_reply_to_pull_request_comment"
+    """
+    Replies in a review thread.
+    """
+
+    RESOLVE = "resolve_review_thread"
+    """
+    Resolves a review thread.
+    """
+
+    def instead(self) -> str:
+        """
+        :return: The workflow command line doing the same on the work branch's own
+            pull request.
+        """
+        match self:
+            case OwnPullRequestTool.LABELS:
+                arguments = ["--add <label>", "--remove <label>"]
+                return WorkflowCommand.command_line(WorkflowCommand.LABEL, *arguments)
+            case OwnPullRequestTool.REPLY:
+                return WorkflowCommand.command_line(
+                    WorkflowCommand.REVIEW,
+                    ReviewSubcommand.REPLY,
+                    "<comment>",
+                    "--body-file <file>",
+                )
+            case OwnPullRequestTool.RESOLVE:
+                return WorkflowCommand.command_line(
+                    WorkflowCommand.REVIEW, ReviewSubcommand.RESOLVE, "<comment>"
+                )
+
+
 class GoAheadCommand(StrEnum):
     """
     The workflow commands that write to GitHub only on the person's go-ahead, by their
@@ -1469,6 +1513,8 @@ class ToolGuard:
                 return Denial(reason, PullRequestOpening.instead())
             if name == DescriptionRewriting.TOOL:
                 return Denial(reason, DescriptionRewriting.instead())
+            if name in OwnPullRequestTool._value2member_map_:
+                return Denial(reason, OwnPullRequestTool(name).instead())
             return Denial(reason)
         return None
 

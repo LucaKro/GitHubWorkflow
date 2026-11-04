@@ -16,6 +16,7 @@ from types import TracebackType
 
 from basstler_domain_model.environment import ClaudeCodeVariable
 from basstler_domain_model.exceptions import DataclassException
+from basstler_domain_model.github.readers import PullRequestSource, ReadSource
 from basstler_domain_model.github.repository_client import (
     GitHubRepository,
     RepositoryDetails,
@@ -27,12 +28,20 @@ from github_workflow.command_line import (
     BranchSubcommand,
     FindingSubcommand,
     NotesSubcommand,
+    ReviewSubcommand,
     StackSubcommand,
     ToolRepository,
     WorkflowCommand,
 )
 from github_workflow.exceptions import ForeignRepositoryError
 from github_workflow.notes.branch import NotesBranch
+from github_workflow.own_pull_request import (
+    PullRequestLabelling,
+    ReviewReply,
+    ReviewResolution,
+    ReviewThreadListing,
+    WorkBranchPullRequest,
+)
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
 from github_workflow.proofs import DefaultBranchProofRunner, FindingTest
@@ -298,6 +307,33 @@ class WorkflowSession(RepositoryDetails):
                 return RepositoryCloning(
                     Repository.parse(arguments.repository), directory, self.settings
                 )
+            case WorkflowCommand.LABEL, _:
+                return PullRequestLabelling(
+                    WorkBranchPullRequest(self.policy, self.github),
+                    self.github,
+                    self.github,
+                    tuple(arguments.add or ()),
+                    tuple(arguments.remove or ()),
+                )
+            case WorkflowCommand.REVIEW, ReviewSubcommand.LIST:
+                return ReviewThreadListing(
+                    WorkBranchPullRequest(self.policy, self.github), self.thread_source
+                )
+            case WorkflowCommand.REVIEW, ReviewSubcommand.REPLY:
+                return ReviewReply(
+                    WorkBranchPullRequest(self.policy, self.github),
+                    self.thread_source,
+                    ReadSource.detect().writer(self.github.api, self.remote.repository),
+                    arguments.comment,
+                    arguments.body_file.read_text(),
+                )
+            case WorkflowCommand.REVIEW, ReviewSubcommand.RESOLVE:
+                return ReviewResolution(
+                    WorkBranchPullRequest(self.policy, self.github),
+                    self.thread_source,
+                    ReadSource.detect().writer(self.github.api, self.remote.repository),
+                    arguments.comment,
+                )
             case WorkflowCommand.UPSTREAM, _:
                 fork = Repository.parse(arguments.repository)
                 github = GitHubRepository.from_environment(fork)
@@ -313,6 +349,15 @@ class WorkflowSession(RepositoryDetails):
                     self.settings,
                     ClaudeCodeVariable.COMMAND_MARKER.read() is not None,
                 )
+
+    @property
+    def thread_source(self) -> PullRequestSource:
+        """
+        Reads the review threads of the owner's repository's pull requests, through
+        whichever API the place this runs in reaches.
+        """
+        repository = self.remote.repository
+        return ReadSource.detect().reader(self.github.api, repository, repository.owner)
 
     @staticmethod
     def report(
@@ -529,6 +574,37 @@ class WorkflowSession(RepositoryDetails):
             help="clone a repository: the owner's to work in, anyone's to read",
         )
         clone.add_argument("repository", help="the repository, as owner/name")
+        label = commands.add_parser(
+            WorkflowCommand.LABEL,
+            help="label the work branch's own pull request, without asking",
+        )
+        label.add_argument(
+            "--add", action="append", metavar="LABEL", help="a label to add, repeatable"
+        )
+        label.add_argument(
+            "--remove",
+            action="append",
+            metavar="LABEL",
+            help="a label to remove, repeatable",
+        )
+        review = commands.add_parser(
+            WorkflowCommand.REVIEW,
+            help="the review threads of the work branch's own pull request",
+        )
+        review_actions = review.add_subparsers(dest="action", required=True)
+        review_actions.add_parser(
+            ReviewSubcommand.LIST, help="list the threads, each with its identifier"
+        )
+        reply = review_actions.add_parser(
+            ReviewSubcommand.REPLY, help="reply in a thread, without asking"
+        )
+        reply.add_argument("comment", type=int, help="the thread's identifier")
+        reply.add_argument("--body-file", required=True, type=Path)
+        resolve = review_actions.add_parser(
+            ReviewSubcommand.RESOLVE,
+            help="resolve a thread once its fix is pushed, without asking",
+        )
+        resolve.add_argument("comment", type=int, help="the thread's identifier")
         upstream = commands.add_parser(
             WorkflowCommand.UPSTREAM,
             help="open a fork's pull request on its upstream; the person's alone",

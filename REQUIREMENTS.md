@@ -183,6 +183,9 @@ them:
 - save notes and progress
 - mark its own throwaway branches as discarded
 - open draft pull requests
+- on the work branch's own open pull request: add or remove labels the repository has
+  (`label`), and reply to or resolve its review threads (`review`), resolving only once
+  the branch's commits are pushed; unresolving a thread stays mine
 - in a cloud session, attach `LucaKro/GitHubWorkflow` or `LucaKro/basstler_domain_model`
   to the session, with push access, to list or file a finding there; never another
   account's copy of either

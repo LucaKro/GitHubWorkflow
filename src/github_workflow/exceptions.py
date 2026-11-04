@@ -396,6 +396,102 @@ class PullRequestNotOpenError(DataclassException, RuntimeError):
 
 
 @dataclass
+class NoOpenPullRequestError(DataclassException, LookupError):
+    """
+    Raised when the work branch has no open pull request to write to.
+    """
+
+    branch: str
+    """
+    The work branch.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.branch} has no open pull request"
+
+    def suggest_correction(self) -> str:
+        return "Open its draft first."
+
+
+@dataclass
+class NothingToLabelError(DataclassException, ValueError):
+    """
+    Raised when a pull request is to be labelled with no label to add or remove.
+    """
+
+    branch: str
+    """
+    The work branch.
+    """
+
+    def error_message(self) -> str:
+        return f"labelling {self.branch}'s pull request was given no label"
+
+    def suggest_correction(self) -> str:
+        return "Name a label to add with --add, or to remove with --remove."
+
+
+@dataclass
+class UnknownLabelError(DataclassException, LookupError):
+    """
+    Raised when a label to add is not one of the repository's.
+    """
+
+    labels: tuple[str, ...]
+    """
+    The labels the repository lacks.
+    """
+
+    def error_message(self) -> str:
+        return f"the repository has no label {', '.join(self.labels)}"
+
+    def suggest_correction(self) -> str:
+        return "Use a label the repository has; creating one is the person's to do."
+
+
+@dataclass
+class ReviewThreadNotFoundError(DataclassException, LookupError):
+    """
+    Raised when a pull request has no review thread holding the comment named.
+    """
+
+    number: int
+    """
+    The pull request.
+    """
+
+    comment: int
+    """
+    The comment named.
+    """
+
+    def error_message(self) -> str:
+        return f"#{self.number} has no review thread with comment {self.comment}"
+
+    def suggest_correction(self) -> str:
+        return "List the threads with `review list` to see their identifiers."
+
+
+@dataclass
+class UnpushedWorkError(DataclassException, RuntimeError):
+    """
+    Raised when a review thread is to be resolved while the work branch has commits
+    GitHub's copy lacks.
+    """
+
+    branch: str
+    """
+    The work branch.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.branch} has commits GitHub's copy lacks"
+
+    def suggest_correction(self) -> str:
+        return "Push the fix first, so the thread is resolved by what reviewers see."
+
+
+@dataclass
 class NothingToDescribeError(DataclassException, ValueError):
     """
     Raised when a pull request is to be rewritten with neither a new description nor a

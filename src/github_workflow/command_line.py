@@ -90,6 +90,16 @@ class WorkflowCommand(StrEnum):
     person's alone, never a session's.
     """
 
+    LABEL = "label"
+    """
+    Add labels of the repository's to the work branch's pull request, or remove them.
+    """
+
+    REVIEW = "review"
+    """
+    List, reply to or resolve the review threads of the work branch's pull request.
+    """
+
     @classmethod
     def command_line(cls, *arguments: str) -> str:
         """
@@ -187,6 +197,27 @@ class FindingSubcommand(StrEnum):
     """
     Write the Actions workflow completing finding labels picked on GitHub into the
     checkout.
+    """
+
+
+class ReviewSubcommand(StrEnum):
+    """
+    What ``review`` does.
+    """
+
+    LIST = "list"
+    """
+    List the threads, each with the identifier the others take.
+    """
+
+    REPLY = "reply"
+    """
+    Reply in a thread.
+    """
+
+    RESOLVE = "resolve"
+    """
+    Resolve a thread, once its fix is pushed.
     """
 
 

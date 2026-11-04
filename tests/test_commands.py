@@ -1098,3 +1098,34 @@ def test_the_default_branch_s_new_commits_are_merged_through_the_command_line(
     run(github_workflow.__name__, checkout, WorkflowCommand.SYNC, "--base")
 
     assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
+
+
+# %% the work branch's own pull request
+
+
+def test_the_work_branch_s_pull_request_is_labelled_through_the_command_line(
+    github: ReplayedApi,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+):
+    route = RepositoryRoute(
+        Repository(settings.owner, RepositoriesByOwner.repository_name)
+    )
+    github.answers[
+        ("GET", f"/{route.pull_requests_for_head(settings.owner, 'feature')}")
+    ] = RecordedAnswer.from_file(
+        HTTPStatus.OK, UpstreamDataset.FORK_PULL_REQUESTS.value
+    )
+    github.answers[("GET", f"/{route.listing(route.labels)}")] = RecordedAnswer(
+        HTTPStatus.OK, json.dumps([{RestJSONKey.NAME: "bug-fix"}])
+    )
+    github.answers[("POST", f"/{route.issue_labels(3)}")] = RecordedAnswer(
+        HTTPStatus.OK, "[]"
+    )
+    checkout = repositories.clone(owned_url, "session")
+    checkout.git.run("switch", "--quiet", "--create", "feature")
+
+    run(github_workflow.__name__, checkout, WorkflowCommand.LABEL, "--add", "bug-fix")
+
+    assert non_reads(github) == [("POST", f"/{route.issue_labels(3)}")]
