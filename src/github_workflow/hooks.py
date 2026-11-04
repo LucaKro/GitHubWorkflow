@@ -63,6 +63,16 @@ class HookValue(StrEnum):
     The hook event the session start answers.
     """
 
+    STOP = "Stop"
+    """
+    The hook event ending each of the model's turns, which saves unsaved notes.
+    """
+
+    SESSION_END = "SessionEnd"
+    """
+    The hook event ending the session, which saves unsaved notes too.
+    """
+
     USER_PROMPT_SUBMIT = "UserPromptSubmit"
     """
     The hook event the session start answers instead, on the first prompt, when the
