@@ -84,3 +84,9 @@ def test_the_header_names_the_credit_a_commit_refuses_and_the_line_it_carries():
 
 def test_the_header_says_how_to_report_an_unnecessary_refusal():
     assert ToolRepository.refusal_hint() in block().render()
+
+
+def test_the_header_names_exactly_the_owner_s_repositories_a_session_may_attach():
+    hint = ToolRepository.refusal_hint()
+
+    assert f"attach {' and '.join(ToolRepository)} with push access" in hint

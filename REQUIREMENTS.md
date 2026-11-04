@@ -179,6 +179,9 @@ them:
 - save notes and progress
 - mark its own throwaway branches as discarded
 - open draft pull requests
+- in a cloud session, attach `LucaKro/GitHubWorkflow` or `LucaKro/basstler_domain_model`
+  to the session, with push access, to list or file a finding there; never another
+  account's copy of either
 
 Everything else written to GitHub needs my go-ahead.
 
