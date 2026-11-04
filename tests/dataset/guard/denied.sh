@@ -76,3 +76,8 @@ git archive --remote=https://github.com/LucaKro/GitHubWorkflow main
 git archive --remote origin main
 git archive HEAD -o .git/hooks/pre-commit
 git archive -o.git/hooks/pre-commit HEAD
+git fetch https://github.com/cram2/cognitive_robot_abstract_machine main:main
+git fetch https://github.com/cram2/cognitive_robot_abstract_machine main:refs/heads/main
+git fetch ext::sh main
+git fetch file:///tmp/repository main
+git fetch git@github.com:cram2/cognitive_robot_abstract_machine.git main
