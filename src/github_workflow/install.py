@@ -1,8 +1,10 @@
 """
-Install the runtime the plugin's hooks run: a virtual environment holding this plugin's
-own copy of the workflow and the pinned domain model, built beside the one in use and
-switched over to only once its guard works. A runtime built from this plugin, as its
-content is now, is left alone.
+Install the runtime the plugin's hooks run: a virtual environment with this plugin's own
+copy of the workflow's source and the pinned domain model's source on its path, built
+beside the one in use and switched over to only once its guard works. Both are pure
+Python without dependencies, so nothing is built or installed, and no package index is
+reached: the only download is the domain model's source, from GitHub. A runtime built
+from this plugin, as its content is now, is left alone.
 
 Runs on the standard library alone, before any runtime exists, so it is run as a file
 rather than imported from the package. A step that fails ends it with the step and what
@@ -26,6 +28,7 @@ import os
 import shutil
 import subprocess
 import sys
+import sysconfig
 import tempfile
 from dataclasses import dataclass
 from enum import StrEnum
@@ -43,6 +46,39 @@ class RuntimeFile(StrEnum):
     """
     Holds the directory of the plugin the runtime was built from, and a digest of its
     content.
+    """
+
+    SOURCE_PATHS = "github-workflow.pth"
+    """
+    Lists the source directories the runtime's interpreter imports from, in its
+    site-packages.
+    """
+
+
+class RuntimeSource(StrEnum):
+    """
+    The directories inside a runtime holding the source it runs.
+    """
+
+    WORKFLOW = "github-workflow"
+    """
+    The plugin's own copy of the workflow's source.
+    """
+
+    DOMAIN_MODEL = "basstler-domain-model"
+    """
+    A checkout of the domain model at its pinned commit.
+    """
+
+
+class RuntimeDirectory(StrEnum):
+    """
+    The directories inside a runtime the installer creates.
+    """
+
+    SOURCES = "sources"
+    """
+    Holds every :class:`RuntimeSource`.
     """
 
 
@@ -63,15 +99,21 @@ class UnstampedDirectory(StrEnum):
     """
 
 
-class Requirement(StrEnum):
+class DomainModelSource(StrEnum):
     """
-    What the runtime installs besides the plugin itself.
+    Where the runtime takes the domain model's source from: the shared GitHub and git
+    model, public, pinned to one commit so that only a change here changes what a
+    runtime runs.
     """
 
-    DOMAIN_MODEL = "basstler-domain-model @ git+https://github.com/LucaKro/basstler_domain_model@74f32209287af46ffbb96e5c2a1bb25798801a8a"
+    REPOSITORY = "https://github.com/LucaKro/basstler_domain_model"
     """
-    The shared GitHub and git model, public, which no index serves, pinned to one
-    commit so that only a change here changes what a runtime runs.
+    The repository it is fetched from.
+    """
+
+    COMMIT = "74f32209287af46ffbb96e5c2a1bb25798801a8a"
+    """
+    The commit it is pinned to.
     """
 
 
@@ -243,16 +285,46 @@ class RuntimeInstallation:
             tempfile.mkdtemp(prefix=f".{self.location.name}-", dir=self.location.parent)
         )
         python = build / "bin" / "python"
-        created = self._ran([sys.executable, "-m", "venv", str(build)])
+        created = self._ran([sys.executable, "-m", "venv", "--without-pip", str(build)])
         if created is None or created.returncode != 0:
             shutil.rmtree(build)
             build.mkdir()
             self._run(
-                ["virtualenv", "--quiet", "-p", sys.executable, str(build)], build
+                ["virtualenv", "--quiet", "--no-pip", "-p", sys.executable, str(build)],
+                build,
             )
-        pip = [str(python), "-I", "-m", "pip", "install", "--quiet"]
-        self._run([*pip, Requirement.DOMAIN_MODEL], build)
-        self._run([*pip, str(self.plugin)], build)
+        sources = build / RuntimeDirectory.SOURCES
+        workflow = sources / RuntimeSource.WORKFLOW
+        shutil.copytree(
+            self.plugin / "src",
+            workflow,
+            ignore=shutil.ignore_patterns(UnstampedDirectory.BYTECODE),
+        )
+        domain_model = sources / RuntimeSource.DOMAIN_MODEL
+        domain_model.mkdir(parents=True)
+        git = ["git", "-C", str(domain_model)]
+        self._run([*git, "init", "--quiet"], build)
+        self._run(
+            [
+                *git,
+                "fetch",
+                "--quiet",
+                "--depth=1",
+                DomainModelSource.REPOSITORY,
+                DomainModelSource.COMMIT,
+            ],
+            build,
+        )
+        self._run([*git, "checkout", "--quiet", "FETCH_HEAD"], build)
+        site_packages = Path(
+            sysconfig.get_path(
+                "purelib", "venv", {"base": str(build), "platbase": str(build)}
+            )
+        )
+        site_packages.mkdir(parents=True, exist_ok=True)
+        (site_packages / RuntimeFile.SOURCE_PATHS).write_text(
+            f"{workflow}\n{domain_model / 'src'}\n"
+        )
         push = {"tool_name": "Bash", "tool_input": {"command": "git push"}}
         checked = subprocess.run(
             [str(python), "-I", "-m", "github_workflow.guard"],

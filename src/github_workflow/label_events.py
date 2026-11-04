@@ -34,7 +34,7 @@ from github_workflow.findings import (
     FindingStage,
     Priority,
 )
-from github_workflow.install import Requirement
+from github_workflow.install import DomainModelSource
 from github_workflow.locations import ProjectFile, WorkflowTemplate
 from github_workflow.work import WorkflowStep
 
@@ -147,9 +147,13 @@ class ActionRequirement(StrEnum):
     What the Actions workflow installs to run the completion.
     """
 
-    DOMAIN_MODEL = Requirement.DOMAIN_MODEL.value
+    DOMAIN_MODEL = (
+        f"basstler-domain-model @ git+{DomainModelSource.REPOSITORY.value}"
+        f"@{DomainModelSource.COMMIT.value}"
+    )
     """
-    The shared GitHub and git model, which no index serves.
+    The shared GitHub and git model, which no index serves, at the runtime's pinned
+    commit.
     """
 
     WORKFLOW = "github-workflow @ git+https://github.com/LucaKro/GitHubWorkflow@main"
