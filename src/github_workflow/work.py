@@ -8,7 +8,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from basstler_domain_model.git.commands import (
     GitCommandRunner,
@@ -36,6 +38,9 @@ from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
 from github_workflow.settings import WorkflowSettings
 from github_workflow.stacks import StackPlacement
+
+if TYPE_CHECKING:
+    from basstler_domain_model.github.repository_client import GitHubRepository
 
 # %% one step
 
@@ -291,6 +296,66 @@ class DescriptionRewrite(WorkflowStep):
 # %% bringing a branch up to date
 
 
+class TrackingReferenceWrite(StrEnum):
+    """
+    How the reflog names a write of a remote-tracking reference from what GitHub holds,
+    compared as the start of the entry.
+    """
+
+    FETCH = "fetch"
+    """
+    A fetch stored the branch.
+    """
+
+    PULL = "pull"
+    """
+    A pull stored the branch.
+    """
+
+    PUSH = "update by push"
+    """
+    A push sent the branch.
+    """
+
+
+class PullRequestBranches(ABC):
+    """
+    The branches pull requests on the owner's repository were opened from.
+    """
+
+    @abstractmethod
+    def opened_from(self, branch: str) -> bool:
+        """
+        :param branch: A branch of the owner's repository.
+        :return: Whether a pull request, open or closed, was opened from it.
+        """
+
+
+@dataclass(frozen=True)
+class GitHubPullRequestBranches(PullRequestBranches):
+    """
+    The branches pull requests were opened from, as GitHub lists the pull requests.
+    """
+
+    github: GitHubRepository
+    """
+    The owner's repository on GitHub.
+    """
+
+    repository: str
+    """
+    The repository's full name, which a pull request's head names when it is from
+    this repository.
+    """
+
+    def opened_from(self, branch: str) -> bool:
+        return any(
+            pull_request.head.repository == self.repository
+            and pull_request.head.branch == branch
+            for pull_request in self.github.all_pull_requests()
+        )
+
+
 @dataclass(frozen=True)
 class BranchSync(WorkflowStep):
     """
@@ -307,6 +372,11 @@ class BranchSync(WorkflowStep):
     The checkout and the remote synced with.
     """
 
+    pull_request_branches: PullRequestBranches
+    """
+    The branches pull requests were opened from, which shows a branch was on GitHub.
+    """
+
     def run(self) -> str:
         git = self.policy.checkout.git
         name = git.checked_out_branch()
@@ -317,7 +387,11 @@ class BranchSync(WorkflowStep):
         fetched = git.fetch_branch(branch)
         if not fetched.succeeded and git.has_remote_branch(branch):
             fetched.raise_if_failed()
-        if not fetched.succeeded and last_seen is not None:
+        if (
+            not fetched.succeeded
+            and last_seen is not None
+            and self.was_on_github(branch)
+        ):
             raise BranchDeletedFromGitHubError(name)
         if not fetched.succeeded:
             return f"{name} is not on GitHub yet"
@@ -334,6 +408,22 @@ class BranchSync(WorkflowStep):
             raise UnpushedCommitsError(name)
         git.reset_kept(on_github)
         return f"{name} moved to the branch GitHub rebased"
+
+    def was_on_github(self, branch: RemoteBranch) -> bool:
+        """
+        :param branch: A branch GitHub does not have, whose remote-tracking reference
+            the checkout has.
+        :return: Whether GitHub had it: a fetch or a push wrote its remote-tracking
+            reference, or a pull request was opened from it.
+        """
+        reflog = self.policy.checkout.git.attempt(
+            "reflog", "show", "--format=%gs", branch.tracking_reference
+        )
+        entries = reflog.output.splitlines() if reflog.succeeded else []
+        writes = tuple(TrackingReferenceWrite)
+        if any(entry.startswith(writes) for entry in entries):
+            return True
+        return self.pull_request_branches.opened_from(branch.name)
 
 
 # %% stacks and notes

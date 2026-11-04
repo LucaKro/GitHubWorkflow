@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -44,6 +45,7 @@ from github_workflow.work import (
     CommitWork,
     DescriptionRewrite,
     DraftOpening,
+    PullRequestBranches,
     PushWork,
     RepositoryCloning,
 )
@@ -52,6 +54,21 @@ from .repositories_by_owner import RepositoriesByOwner
 from .stacked_pull_requests import DraftsAndStacksInMemory, DraftsInMemory
 
 # %% helpers
+
+
+@dataclass(frozen=True)
+class PullRequestBranchesInMemory(PullRequestBranches):
+    """
+    The branches pull requests were opened from, as a set.
+    """
+
+    branches: frozenset[str] = frozenset()
+    """
+    Each branch a pull request was opened from.
+    """
+
+    def opened_from(self, branch: str) -> bool:
+        return branch in self.branches
 
 
 class DefaultBranchOfTheScratchRepositories(RepositoryDetails):
@@ -419,7 +436,7 @@ def test_a_branch_github_moved_on_is_fast_forwarded(
 ):
     other = other_clone_pushing(repositories, owned_url, settings)
 
-    BranchSync(work).run()
+    BranchSync(work, PullRequestBranchesInMemory()).run()
 
     assert work.checkout.git.commit_at("HEAD") == other.checkout.git.commit_at("HEAD")
 
@@ -438,7 +455,7 @@ def test_a_branch_github_rebased_is_moved_to_github_s(
     rebaser.run("commit", "--quiet", "--amend", "--message", "Rebased")
     rebaser.run("push", "--quiet", "--force", "origin", "feature")
 
-    BranchSync(work).run()
+    BranchSync(work, PullRequestBranchesInMemory()).run()
 
     assert work.checkout.git.commit_at("HEAD") == rebaser.commit_at("HEAD")
 
@@ -454,7 +471,7 @@ def test_a_branch_with_unpushed_commits_github_diverged_from_is_left_alone(
     before = work.checkout.git.commit_at("HEAD")
 
     with pytest.raises(UnpushedCommitsError):
-        BranchSync(work).run()
+        BranchSync(work, PullRequestBranchesInMemory()).run()
 
     assert work.checkout.git.commit_at("HEAD") == before
 
@@ -470,7 +487,41 @@ def test_a_branch_deleted_from_github_is_not_reported_as_never_pushed(
     deleter.run("push", "--quiet", "origin", "--delete", "feature")
 
     with pytest.raises(BranchDeletedFromGitHubError):
-        BranchSync(work).run()
+        BranchSync(work, PullRequestBranchesInMemory()).run()
+
+
+def test_a_branch_the_sandbox_tracks_but_never_pushed_is_not_reported_deleted(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    """
+    A cloud session's sandbox creates the remote-tracking reference of the session's
+    branch at setup, without pushing the branch.
+    """
+    policy = policy_in(repositories.clone(owned_url, "sandbox"), settings)
+    git = policy.checkout.git
+    git.run("switch", "--quiet", "--create", "claude/session-branch")
+    git.run("update-ref", "refs/remotes/origin/claude/session-branch", "HEAD")
+
+    BranchSync(policy, PullRequestBranchesInMemory()).run()
+
+
+def test_a_cloned_branch_deleted_after_its_pull_request_is_reported_deleted(
+    work: WritePolicy,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+):
+    """
+    A clone writes no reflog entry for the branches it tracks, so the pull request
+    opened from the branch shows it was on GitHub.
+    """
+    session = policy_in(repositories.clone(owned_url, "session"), settings)
+    session.checkout.git.run("switch", "--quiet", "feature")
+    deleter = repositories.clone(owned_url, "deleter").git
+    deleter.run("push", "--quiet", "origin", "--delete", "feature")
+
+    with pytest.raises(BranchDeletedFromGitHubError):
+        BranchSync(session, PullRequestBranchesInMemory(frozenset({"feature"}))).run()
 
 
 def cut_off_from_github(policy: WritePolicy, repositories: RepositoriesByOwner) -> None:
@@ -493,7 +544,7 @@ def test_a_pushed_branch_is_not_reported_deleted_when_github_cannot_be_reached(
     cut_off_from_github(work, repositories)
 
     with pytest.raises(GitCommandFailed):
-        BranchSync(work).run()
+        BranchSync(work, PullRequestBranchesInMemory()).run()
 
 
 def test_a_branch_is_not_reported_unpushed_when_github_cannot_be_reached(
@@ -503,7 +554,7 @@ def test_a_branch_is_not_reported_unpushed_when_github_cannot_be_reached(
     cut_off_from_github(work, repositories)
 
     with pytest.raises(GitCommandFailed):
-        BranchSync(work).run()
+        BranchSync(work, PullRequestBranchesInMemory()).run()
 
 
 # %% rewriting a draft's description

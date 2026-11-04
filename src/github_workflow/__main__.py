@@ -57,6 +57,7 @@ from github_workflow.work import (
     BranchStart,
     BranchSwitch,
     BranchSync,
+    GitHubPullRequestBranches,
     CommitWork,
     DescriptionRewrite,
     DraftOpening,
@@ -178,7 +179,12 @@ class WorkflowSession(RepositoryDetails):
                     self.recheck(arguments.finding, arguments.python), draft
                 )
             case WorkflowCommand.SYNC, _:
-                return BranchSync(self.policy)
+                return BranchSync(
+                    self.policy,
+                    GitHubPullRequestBranches(
+                        self.github, self.remote.repository.full_name
+                    ),
+                )
             case WorkflowCommand.STACK, StackSubcommand.ON:
                 return StackPlacing(self.placement, arguments.below, arguments.above)
             case WorkflowCommand.NOTES, NotesSubcommand.SAVE:
