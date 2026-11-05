@@ -5,20 +5,20 @@ fork's pull request on its upstream, linking back to it.
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import pytest
 
 from basstler_domain_model.github.repository_client import (
     Commenter,
     ForkDetails,
-    ForkSync,
     PullRequestsFromForks,
     RepositoryDetails,
 )
-from basstler_domain_model.github.rest_models import BranchComparison, RestPullRequest
+from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import PullRequestState
-from basstler_domain_model.github.exceptions import GitHubRequestFailed
 from basstler_domain_model.repository import GitHubAddress, Repository
 
 from github_workflow.exceptions import (
@@ -30,10 +30,12 @@ from github_workflow.exceptions import (
 )
 from github_workflow.settings import WorkflowSettings
 from github_workflow.policy import WritePolicy
+from github_workflow.push_hook import PushHook
 from github_workflow.upstream import ForkMainSync, UpstreamProposal, UpstreamSuggestion
 
 from .pull_requests import REPOSITORY, pull_request
 from .repositories_by_owner import RepositoriesByOwner
+from .test_push_hook import in_claude_code  # noqa: F401  (a fixture)
 from .test_work import work  # noqa: F401  (a fixture)
 
 FORK = Repository.parse(REPOSITORY)
@@ -255,32 +257,16 @@ def test_a_draft_on_a_repository_that_is_no_fork_suggests_nothing():
 
 
 @dataclass(frozen=True)
-class ForkSyncInMemory(ForkSync, ForkDetails):
+class ForkOfTheUpstream(ForkDetails):
     """
-    A fork behind a proxy refusing cross-fork compares, as a cloud session's does,
-    recording every sync.
+    A fork, answering which repository it was forked from and nothing else, so a sync
+    can write to GitHub only through git, as behind a cloud session's proxy.
     """
 
     forked_from: Repository | None = UPSTREAM
     """
     The repository it was forked from.
     """
-
-    synced: list[str] = field(default_factory=list)
-    """
-    Every branch synced.
-    """
-
-    def compare(self, base: str, head: str) -> BranchComparison:
-        raise GitHubRequestFailed(
-            status=400,
-            detail="Cross-fork compare selectors are not permitted through this proxy.",
-            method="GET",
-            path=f"compare/{base}...{head}",
-        )
-
-    def sync_with_upstream(self, branch: str) -> None:
-        self.synced.append(branch)
 
     def upstream(self) -> Repository | None:
         return self.forked_from
@@ -324,29 +310,64 @@ def with_upstream(
     )
 
 
-def test_a_fork_s_main_behind_its_upstream_is_synced(
+def default_branch_tips(
+    work: WritePolicy, repositories: RepositoriesByOwner
+) -> tuple[str, str]:
+    """
+    :param work: The rules of a clone of the fork.
+    :param repositories: The scratch repositories.
+    :return: Where the fork's default branch is on GitHub, and where the upstream's is.
+    """
+    default = RepositoriesByOwner.default_branch
+    upstream = repositories.root / UPSTREAM.owner / f"{UPSTREAM.name}.git"
+    git = work.checkout.git
+    return (
+        git.run("ls-remote", work.remote.push_url, default).split()[0],
+        git.run("ls-remote", str(upstream), default).split()[0],
+    )
+
+
+def test_a_fork_s_main_behind_its_upstream_is_fast_forwarded(
     work: WritePolicy, repositories: RepositoriesByOwner
 ):
     """
-    Even where the proxy refuses cross-fork compares, as in a cloud session.
+    Through git alone, as where the proxy refuses GitHub's compares and merge-upstream.
     """
     with_upstream(work, repositories, ahead=2, own=0)
-    fork = ForkSyncInMemory()
 
-    ForkMainSync(work, fork, fork).run()
+    ForkMainSync(work, ForkOfTheUpstream()).run()
 
-    assert fork.synced == [RepositoriesByOwner.default_branch]
+    ours, theirs = default_branch_tips(work, repositories)
+    local = work.checkout.git.commit_at(RepositoriesByOwner.default_branch)
+    assert (ours, local) == (theirs, theirs)
+
+
+def test_a_fork_s_main_is_fast_forwarded_past_the_checkout_s_push_hook(
+    work: WritePolicy,
+    repositories: RepositoriesByOwner,
+    in_claude_code: None,  # noqa: F811
+):
+    """
+    The hook refuses every change to the default branch a session would push.
+    """
+    with_upstream(work, repositories, ahead=1, own=0)
+    PushHook(work.checkout, Path(sys.executable)).install()
+
+    ForkMainSync(work, ForkOfTheUpstream()).run()
+
+    ours, theirs = default_branch_tips(work, repositories)
+    assert ours == theirs
 
 
 def test_a_fork_s_main_up_to_date_is_left_alone(
     work: WritePolicy, repositories: RepositoriesByOwner
 ):
     with_upstream(work, repositories, ahead=0, own=0)
-    fork = ForkSyncInMemory()
+    before, _ = default_branch_tips(work, repositories)
 
-    ForkMainSync(work, fork, fork).run()
+    ForkMainSync(work, ForkOfTheUpstream()).run()
 
-    assert fork.synced == []
+    assert default_branch_tips(work, repositories)[0] == before
 
 
 def test_a_fork_s_main_with_commits_of_its_own_is_refused(
@@ -356,18 +377,14 @@ def test_a_fork_s_main_with_commits_of_its_own_is_refused(
     It is only ever fast-forwarded: never merged, never forced.
     """
     with_upstream(work, repositories, ahead=2, own=1)
-    fork = ForkSyncInMemory()
+    before, _ = default_branch_tips(work, repositories)
 
     with pytest.raises(ForkBranchDivergedError):
-        ForkMainSync(work, fork, fork).run()
+        ForkMainSync(work, ForkOfTheUpstream()).run()
 
-    assert fork.synced == []
+    assert default_branch_tips(work, repositories)[0] == before
 
 
 def test_a_repository_that_is_no_fork_follows_no_upstream(work: WritePolicy):
-    fork = ForkSyncInMemory(forked_from=None)
-
     with pytest.raises(NotAForkError):
-        ForkMainSync(work, fork, fork).run()
-
-    assert fork.synced == []
+        ForkMainSync(work, ForkOfTheUpstream(forked_from=None)).run()

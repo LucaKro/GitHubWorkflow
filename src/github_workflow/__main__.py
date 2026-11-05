@@ -203,7 +203,7 @@ class WorkflowSession(RepositoryDetails):
                     self.recheck(arguments.finding, arguments.python), draft
                 )
             case WorkflowCommand.SYNC, _ if arguments.upstream:
-                return ForkMainSync(self.policy, self.github, self.github)
+                return ForkMainSync(self.policy, self.github)
             case WorkflowCommand.SYNC, _ if arguments.base:
                 return BaseMerge(self.policy, self.github, self.github)
             case WorkflowCommand.SYNC, _:
