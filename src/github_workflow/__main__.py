@@ -568,7 +568,7 @@ class WorkflowSession(RepositoryDetails):
         reject.add_argument("--reason", required=True)
         comment = finding_actions.add_parser(
             FindingSubcommand.COMMENT,
-            help="comment on an open finding, on the person's go-ahead",
+            help="comment on an open finding",
         )
         comment.add_argument("number", type=int)
         comment.add_argument("--body-file", type=Path, required=True)
