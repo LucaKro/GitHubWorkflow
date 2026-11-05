@@ -40,6 +40,7 @@ from github_workflow.exceptions import (
     NothingToDescribeError,
     PullRequestNotOpenError,
     PushRefusedError,
+    UnbuildablePullRequestError,
     UnpushedCommitsError,
 )
 from github_workflow.notes.saving import NotesSave
@@ -306,9 +307,9 @@ class DraftOpening(WorkflowStep):
 @dataclass(frozen=True)
 class DescriptionRewrite(WorkflowStep):
     """
-    A new description, title or both for an open pull request on the owner's
-    repository, a draft or ready for review, so it follows the pushed commits; a closed
-    or merged one keeps its own.
+    A new description, title or both for an open pull request on the owner's repository,
+    a draft or ready for review, so it follows the pushed commits; a closed or merged
+    one keeps its own.
 
     :raises NothingToDescribeError: If neither is given.
     :raises PullRequestNotOpenError: If the pull request is not open.
@@ -411,8 +412,8 @@ class GitHubPullRequestBranches(PullRequestBranches):
 
     repository: str
     """
-    The repository's full name, which a pull request's head names when it is from
-    this repository.
+    The repository's full name, which a pull request's head names when it is from this
+    repository.
     """
 
     def opened_from(self, branch: str) -> bool:
@@ -497,10 +498,48 @@ class BranchSync(WorkflowStep):
 
 
 @dataclass(frozen=True)
+class WorkBranchMerge:
+    """
+    A branch as GitHub has it merged into the checked-out work branch, committed as the
+    person, never forced; a conflicting merge is undone and its files named.
+    """
+
+    policy: WritePolicy
+    """
+    The checkout and its work branch.
+    """
+
+    def merge(self, merged: RemoteBranch, described: str) -> str:
+        """
+        :param merged: The branch to merge.
+        :param described: How the report names it.
+        :return: What was merged, or that nothing had to be.
+        :raises DefaultBranchWriteError: If the default branch is checked out.
+        :raises MergeConflictError: If the merge conflicts.
+        """
+        branch = self.policy.work_branch()
+        git = self.policy.checkout.git
+        git.fetch_branch(merged).raise_if_failed()
+        if git.contains(merged.tracking_reference, "HEAD"):
+            return f"{branch} has {described}'s commits already"
+        result = git.merge(
+            merged.tracking_reference,
+            self.policy.commit_message(f"Merge {described} into {branch}"),
+        )
+        if not result.succeeded:
+            conflicted = git.conflicted_files()
+            if not conflicted:
+                result.raise_if_failed()
+            git.abort_merge()
+            raise MergeConflictError(branch, described, tuple(conflicted))
+        push = WorkflowCommand.command_line(WorkflowCommand.PUSH)
+        return f"merged {described} into {branch}; push it with `{push}`"
+
+
+@dataclass(frozen=True)
 class BaseMerge(WorkflowStep):
     """
-    GitHub's default branch merged into the checked-out work branch, committed as the
-    person, never forced; a conflicting merge is undone and its files named.
+    GitHub's default branch merged into the checked-out work branch.
 
     :raises DefaultBranchWriteError: If the default branch is checked out.
     :raises StackedBranchMergeError: If the branch's pull request is in a stack.
@@ -530,22 +569,52 @@ class BaseMerge(WorkflowStep):
             if pull_request.state is PullRequestState.OPEN and stacked:
                 raise StackedBranchMergeError(branch, pull_request.number)
         default = RemoteBranch(self.policy.remote.name, self.policy.default_branch)
-        git = self.policy.checkout.git
-        git.fetch_branch(default).raise_if_failed()
-        if git.contains(default.tracking_reference, "HEAD"):
-            return f"{branch} has {default.name}'s commits already"
-        merged = git.merge(
-            default.tracking_reference,
-            self.policy.commit_message(f"Merge {default.name} into {branch}"),
-        )
-        if not merged.succeeded:
-            conflicted = git.conflicted_files()
-            if not conflicted:
-                merged.raise_if_failed()
-            git.abort_merge()
-            raise MergeConflictError(branch, default.name, tuple(conflicted))
-        push = WorkflowCommand.command_line(WorkflowCommand.PUSH)
-        return f"merged {default.name} into {branch}; push it with `{push}`"
+        return WorkBranchMerge(self.policy).merge(default, default.name)
+
+
+@dataclass(frozen=True)
+class PullRequestMerge(WorkflowStep):
+    """
+    The branch of another open pull request on the owner's repository merged into the
+    checked-out work branch, so the work builds on it before it reaches the default
+    branch.
+
+    :raises DefaultBranchWriteError: If the default branch is checked out.
+    :raises UnbuildablePullRequestError: If the pull request is not open, or its branch
+        is on another repository.
+    :raises MergeConflictError: If the merge conflicts.
+    """
+
+    policy: WritePolicy
+    """
+    The checkout, its work branch and the owner's remote.
+    """
+
+    pull_requests: PullRequestReader
+    """
+    Reads the pull request.
+    """
+
+    number: int
+    """
+    The pull request to build on.
+    """
+
+    def run(self) -> str:
+        self.policy.work_branch()
+        below = self.pull_requests.pull_request(self.number)
+        if below.state is not PullRequestState.OPEN:
+            raise UnbuildablePullRequestError(self.number, f"it is {below.state}")
+        repository = self.policy.remote.repository.full_name
+        if below.head.repository != repository:
+            raise UnbuildablePullRequestError(
+                self.number,
+                f"its branch is on {below.head.repository or 'no repository'}, not "
+                f"on {repository}",
+            )
+        merged = RemoteBranch(self.policy.remote.name, below.head.branch)
+        described = f"#{self.number}'s branch {below.head.branch}"
+        return WorkBranchMerge(self.policy).merge(merged, described)
 
 
 # %% stacks and notes
@@ -616,6 +685,7 @@ class RepositoryCloning(WorkflowStep):
     """
     A clone of a repository, the owner's or anyone else's, carrying the workflow's push
     hook, so a session's push from it meets the same rules as from its own checkout:
+
     nothing is pushed to somebody else's repository, which is cloned only to be read.
     """
 

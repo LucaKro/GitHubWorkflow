@@ -18,11 +18,13 @@ from basstler_domain_model.environment import GitIdentityVariable
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
 from basstler_domain_model.git.exceptions import GitCommandFailed
 from basstler_domain_model.github.repository_client import (
+    PullRequestReader,
     PullRequestsFromForks,
     RepositoryDetails,
 )
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.stack_models import Stack
+from basstler_domain_model.github.vocabulary import PullRequestState
 from basstler_domain_model.repository import Repository
 
 from github_workflow.__main__ import WorkflowSession
@@ -39,6 +41,7 @@ from github_workflow.exceptions import (
     PullRequestNotOpenError,
     PushRefusedError,
     StackedBranchMergeError,
+    UnbuildablePullRequestError,
     UnpushedCommitsError,
 )
 from github_workflow.policy import Attribution, WritePolicy
@@ -57,6 +60,7 @@ from github_workflow.work import (
     DraftOpening,
     LocalBranchFollowing,
     PullRequestBranches,
+    PullRequestMerge,
     PushWork,
     RepositoryCloning,
 )
@@ -737,6 +741,100 @@ def test_a_branch_that_has_the_default_branch_s_commits_is_left_alone(
     base_merge(work).run()
 
     assert git.commit_at("HEAD") == before
+
+
+# %% building on another pull request
+
+
+@dataclass(frozen=True)
+class PullRequestsByNumber(PullRequestReader):
+    """
+    Answers each pull request asked for from the ones given.
+    """
+
+    pull_requests: dict[int, RestPullRequest]
+    """
+    The pull requests, by number.
+    """
+
+    def pull_request(self, number: int) -> RestPullRequest:
+        return self.pull_requests[number]
+
+    def open_pull_requests(self) -> list[RestPullRequest]:
+        raise NotImplementedError
+
+
+def pushed_below(
+    work: WritePolicy,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    state: PullRequestState = PullRequestState.OPEN,
+    repository: str | None = None,
+) -> tuple[PullRequestMerge, GitCommandRunner]:
+    """
+    Push a branch ``below`` with a commit of its own, as another session's pull request
+    56 would.
+
+    :param work: The rules of a clone on a pushed work branch.
+    :param repositories: The scratch repositories.
+    :param owned_url: The owner's repository.
+    :param state: Whether pull request 56 is open.
+    :param repository: The repository its branch is on, the owner's when ``None``.
+    :return: The merge of its branch into the work branch, and the clone that pushed it.
+    """
+    other = repositories.clone(owned_url, "other").git
+    other.run("switch", "--quiet", "--create", "below")
+    (other.working_directory / "below.txt").write_text("below\n")
+    other.run("add", "below.txt")
+    other.run("commit", "--quiet", "--message", "Make the tests load")
+    other.run("push", "--quiet", "origin", "below")
+    on = work.remote.repository.full_name if repository is None else repository
+    below = pull_request(56, "below", state=state, repository=on)
+    return PullRequestMerge(work, PullRequestsByNumber({56: below}), 56), other
+
+
+def test_another_pull_request_s_branch_is_merged_into_the_work_branch(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+):
+    merge, other = pushed_below(work, repositories, owned_url)
+
+    merge.run()
+
+    git = work.checkout.git
+    assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
+    assert Attribution.ACKNOWLEDGEMENT in last_message(git)
+
+
+@pytest.mark.parametrize(
+    "state, repository",
+    [(PullRequestState.CLOSED, None), (PullRequestState.OPEN, "someone-else/project")],
+    ids=["closed", "on another repository"],
+)
+def test_a_pull_request_that_cannot_be_built_on_is_refused(
+    work: WritePolicy,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    state: PullRequestState,
+    repository: str | None,
+):
+    merge, _ = pushed_below(work, repositories, owned_url, state, repository)
+    git = work.checkout.git
+    before = git.commit_at("HEAD")
+
+    with pytest.raises(UnbuildablePullRequestError):
+        merge.run()
+
+    assert git.commit_at("HEAD") == before
+
+
+def test_the_default_branch_builds_on_no_pull_request(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    policy = policy_in(repositories.clone(owned_url, "on-default"), settings)
+    below = pull_request(56, "below", repository=policy.remote.repository.full_name)
+
+    with pytest.raises(DefaultBranchWriteError):
+        PullRequestMerge(policy, PullRequestsByNumber({56: below}), 56).run()
 
 
 # %% rewriting a pull request's description and title
