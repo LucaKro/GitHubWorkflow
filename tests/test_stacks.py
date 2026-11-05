@@ -23,7 +23,7 @@ from github_workflow.settings import WorkflowSettings
 from github_workflow.stacks import StackPlacement
 
 from .repositories_by_owner import RepositoriesByOwner
-from .stacked_pull_requests import StackedPullRequestsInMemory
+from .stacked_pull_requests import DraftsInMemory, StackedPullRequestsInMemory
 
 # %% helpers
 
@@ -94,6 +94,23 @@ def test_placing_a_pull_request_where_it_already_is_writes_nothing():
 
     assert placement(repository).place(1, 2) == existing
     assert repository.writes == []
+
+
+def test_a_stack_held_above_only_by_closed_pull_requests_is_made_again():
+    """
+    GitHub keeps closed pull requests in their stack, so the replacement of one takes
+    its place in a stack made from the open ones.
+    """
+    repository = DraftsInMemory(
+        {1: "main", 2: "main", 3: "main", 4: "main", 5: "main"},
+        closed=frozenset({3, 4}),
+    )
+    existing = existing_stack(repository, 1, 2, 3, 4)
+
+    stack = placement(repository).place(2, 5)
+
+    assert stack.numbers == [1, 2, 5]
+    assert f"unstack {existing.number}" in repository.writes
 
 
 def test_a_pull_request_others_already_build_on_is_not_built_on_again():

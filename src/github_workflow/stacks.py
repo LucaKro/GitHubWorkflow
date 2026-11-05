@@ -14,6 +14,7 @@ from basstler_domain_model.github.repository_client import (
     StackWriter,
 )
 from basstler_domain_model.github.stack_models import Stack
+from basstler_domain_model.github.vocabulary import PullRequestState
 
 from github_workflow.exceptions import StackContinuesAboveError
 
@@ -51,8 +52,11 @@ class StackPlacement:
         """
         :param below: The pull request to build on.
         :param above: The pull request to put on top of it.
-        :return: The stack holding both, *above* right on top of *below*.
-        :raises StackContinuesAboveError: If other pull requests already sit on *below*.
+        :return: The stack holding both, *above* right on top of *below*. A stack in
+            which only closed or merged pull requests sit on *below* is dissolved and
+            made again from its open ones and *above*, since GitHub keeps those in it.
+        :raises StackContinuesAboveError: If other open pull requests already sit on
+            *below*.
         """
         below_branch = self.pull_requests.pull_request(below).head.branch
         above_base = self.pull_requests.pull_request(above).base
@@ -61,9 +65,21 @@ class StackPlacement:
         stack = self.stacks.stack_of(below)
         if stack is None:
             return self.stacking.create_stack([below, above])
-        on_top = stack.numbers[stack.numbers.index(below) + 1 :]
+        position = stack.numbers.index(below)
+        on_top = stack.numbers[position + 1 :]
         if on_top[:1] == [above]:
             return stack
-        if on_top:
+        if not on_top:
+            return self.stacking.add_to_stack(stack, [above])
+        if any(self.is_open(number) for number in on_top):
             raise StackContinuesAboveError(below, tuple(on_top))
-        return self.stacking.add_to_stack(stack, [above])
+        self.stacking.unstack(stack)
+        kept = [number for number in stack.numbers[:position] if self.is_open(number)]
+        return self.stacking.create_stack([*kept, below, above])
+
+    def is_open(self, number: int) -> bool:
+        """
+        :param number: A pull request.
+        :return: Whether it is open.
+        """
+        return self.pull_requests.pull_request(number).state is PullRequestState.OPEN

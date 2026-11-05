@@ -13,7 +13,10 @@ from pathlib import Path
 import pytest
 
 from basstler_domain_model.github.issue_models import Issue, IssueComment
-from basstler_domain_model.github.repository_client import PullRequestReader
+from basstler_domain_model.github.repository_client import (
+    PullRequestCloser,
+    PullRequestReader,
+)
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import (
     ClosingKeyword,
@@ -56,6 +59,7 @@ from github_workflow.findings import (
     FindingUnproving,
     Priority,
     ProvenFindingFiling,
+    SessionPullRequestClosing,
 )
 from github_workflow.hooks import Tone
 from github_workflow.policy import WritePolicy
@@ -536,6 +540,40 @@ def test_a_finding_the_person_has_not_accepted_is_not_closed(
         closing(board, settings).run()
 
     assert board.writes == []
+
+
+# %% closing a session's own pull requests
+
+
+@dataclass(frozen=True)
+class ClosedInMemory(PullRequestCloser):
+    """
+    Records every pull request closed.
+    """
+
+    closed: list[int] = field(default_factory=list)
+    """
+    The pull requests closed, in order.
+    """
+
+    def close_pull_request(self, number: int) -> None:
+        self.closed.append(number)
+
+
+@pytest.mark.parametrize("labelled", [True, False], ids=["label there", "label made"])
+def test_a_session_s_pull_request_is_closed_marked_and_explained(labelled: bool):
+    board = labelled_board() if labelled else IssuesInMemory({})
+    closer = ClosedInMemory()
+
+    SessionPullRequestClosing(board, board, closer).retire(3, "Replaced by #5.")
+
+    made = [] if labelled else [f"create_label {ClosedBy.SESSION}"]
+    assert board.writes == [
+        *made,
+        f"add_labels 3 {[ClosedBy.SESSION]}",
+        "add_comment 3 Replaced by #5. Closed by a session on its own.",
+    ]
+    assert closer.closed == [3]
 
 
 # %% commenting and editing

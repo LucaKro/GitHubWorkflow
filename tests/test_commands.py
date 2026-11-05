@@ -33,6 +33,7 @@ from basstler_domain_model.github.routes import QueryParameter, RepositoryRoute
 from basstler_domain_model.github.vocabulary import (
     ClosingKeyword,
     IssueState,
+    PullRequestState,
     RestJSONKey,
 )
 from basstler_domain_model.locations import PathEnumeration
@@ -42,7 +43,11 @@ import github_workflow
 import github_workflow.session_start
 from github_workflow.__main__ import WorkflowSession
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.command_line import FindingSubcommand, ToolRepository
+from github_workflow.command_line import (
+    BranchSubcommand,
+    FindingSubcommand,
+    ToolRepository,
+)
 from github_workflow.environment import WorkflowVariable
 from github_workflow.exceptions import (
     ForeignRepositoryError,
@@ -50,6 +55,7 @@ from github_workflow.exceptions import (
     PersonOnlyCommandError,
 )
 from github_workflow.findings import (
+    ClosedBy,
     FindingClosing,
     FindingDraftOpening,
     FindingFiling,
@@ -1333,6 +1339,54 @@ def test_a_conflicting_merge_is_resolved_and_finished_through_the_command_line(
     assert (
         checkout.root / "shared.txt"
     ).read_text() == "main's line\nthe branch's line\n"
+
+
+def test_discarding_a_branch_closes_its_open_draft(
+    github: ReplayedApi,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+):
+    checkout = repositories.clone(owned_url, "session")
+    git = checkout.git
+    git.run("switch", "--quiet", "--create", "tried")
+    git.run("commit", "--quiet", "--allow-empty", "--message", "Try")
+    git.run("push", "--quiet", "--set-upstream", "origin", "tried")
+    route = RepositoryRoute(
+        Repository(settings.owner, RepositoriesByOwner.repository_name)
+    )
+    draft = json.loads(UpstreamDataset.FORK_PULL_REQUESTS.value.read_text())[0]
+    draft["head"]["ref"] = "tried"
+    github.answers[
+        ("GET", f"/{route.pull_requests_for_head(settings.owner, 'tried')}")
+    ] = RecordedAnswer(HTTPStatus.OK, json.dumps([draft]))
+    github.answers[("GET", f"/{route.listing(route.labels)}")] = RecordedAnswer(
+        HTTPStatus.OK, json.dumps([{RestJSONKey.NAME: ClosedBy.SESSION}])
+    )
+    github.answers[("POST", f"/{route.issue_labels(3)}")] = RecordedAnswer(
+        HTTPStatus.OK, "[]"
+    )
+    github.answers[("POST", f"/{route.issue_comments(3)}")] = RecordedAnswer(
+        HTTPStatus.CREATED, json.dumps({RestJSONKey.HTML_URL: "https://github.com/c"})
+    )
+    github.answers[("PATCH", f"/{route.pull_request(3)}")] = RecordedAnswer(
+        HTTPStatus.OK, json.dumps(draft)
+    )
+
+    run(
+        github_workflow.__name__,
+        checkout,
+        WorkflowCommand.BRANCH,
+        BranchSubcommand.DISCARD,
+        "tried",
+    )
+
+    closed = [
+        sent.payload
+        for sent in github.sent
+        if (sent.method, sent.path) == ("PATCH", f"/{route.pull_request(3)}")
+    ]
+    assert closed == [{RestJSONKey.STATE: PullRequestState.CLOSED}]
 
 
 # %% the work branch's own pull request

@@ -35,7 +35,12 @@ from github_workflow.work import BranchStart, CommitWork, PushWork
 
 from .pull_requests import REPOSITORY, pull_request
 from .repositories_by_owner import RepositoriesByOwner
-from .test_work import policy_in, write
+from .test_work import (
+    PullRequestsFromBranchesInMemory,
+    RetiredInMemory,
+    policy_in,
+    write,
+)
 
 # %% helpers
 
@@ -321,12 +326,52 @@ def pushed_work(
     return policy, NotesBranch.on(policy.checkout.git, policy.remote, settings)
 
 
+def discard(
+    policy: WritePolicy,
+    notes: NotesBranch,
+    opened: list[RestPullRequest] | None = None,
+    retired: RetiredInMemory | None = None,
+    name: str | None = None,
+) -> BranchDiscard:
+    """
+    :param policy: The rules of a clone on a pushed branch.
+    :param notes: Its notes branch.
+    :param opened: The pull requests opened from its branches.
+    :param retired: Records the pull requests closed.
+    :param name: The branch to discard, the checked-out one when ``None``.
+    :return: The discard.
+    """
+    return BranchDiscard(
+        policy,
+        notes,
+        PullRequestsFromBranchesInMemory(opened or []),
+        retired or RetiredInMemory(),
+        name,
+    )
+
+
+def test_a_discarded_branch_s_open_pull_request_is_closed(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    policy, notes = pushed_work(repositories, owned_url, settings)
+    retired = RetiredInMemory()
+    opened = [
+        pull_request(3, "tried"),
+        pull_request(2, "tried", state=PullRequestState.CLOSED),
+        pull_request(4, "elsewhere"),
+    ]
+
+    discard(policy, notes, opened, retired).run()
+
+    assert [number for number, _ in retired.retired] == [3]
+
+
 def test_a_discarded_branch_is_listed_with_its_commit(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ):
     policy, notes = pushed_work(repositories, owned_url, settings)
 
-    BranchDiscard(policy, notes).run()
+    discard(policy, notes).run()
 
     listed = notes.read(NotesFile.DISCARDED_BRANCHES.value)
     assert DiscardedBranches.from_text(listed) == DiscardedBranches(
@@ -340,7 +385,7 @@ def test_discarding_the_default_branch_is_refused(
     policy, notes = pushed_work(repositories, owned_url, settings)
 
     with pytest.raises(UndiscardableBranchError):
-        BranchDiscard(policy, notes, policy.default_branch).run()
+        discard(policy, notes, name=policy.default_branch).run()
 
 
 def test_discarding_a_branch_github_lacks_is_refused(
@@ -350,4 +395,4 @@ def test_discarding_a_branch_github_lacks_is_refused(
     BranchStart(policy, "never-pushed").run()
 
     with pytest.raises(NothingToDiscardError):
-        BranchDiscard(policy, notes).run()
+        discard(policy, notes).run()
