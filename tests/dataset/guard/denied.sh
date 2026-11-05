@@ -84,3 +84,7 @@ git fetch https://github.com/cram2/cognitive_robot_abstract_machine main:refs/he
 git fetch ext::sh main
 git fetch file:///tmp/repository main
 git fetch git@github.com:cram2/cognitive_robot_abstract_machine.git main
+git branch 2 > out.txt
+git branch "2">out.txt
+> out.txt git push
+git push 2>&1
