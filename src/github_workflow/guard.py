@@ -863,8 +863,12 @@ class GitWrite(StrEnum):
                     + "` for another open pull request's branch)"
                 )
             case GitWrite.CLONE:
-                return WorkflowCommand.command_line(
-                    WorkflowCommand.CLONE, "<owner>/<name>"
+                return (
+                    WorkflowCommand.command_line(
+                        WorkflowCommand.CLONE, "<owner>/<name> --directory <directory>"
+                    )
+                    + "`; to review a pull request, then run in the clone `git fetch "
+                    "origin +refs/pull/<number>/head:refs/remotes/pull/<number>"
                 )
 
 

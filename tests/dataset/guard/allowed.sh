@@ -50,6 +50,7 @@ git fetch https://github.com/cram2/cognitive_robot_abstract_machine main
 git fetch https://github.com/cram2/cognitive_robot_abstract_machine main:refs/remotes/upstream-readonly/main
 git fetch --depth=50 https://github.com/cram2/cognitive_robot_abstract_machine +main:refs/remotes/upstream/main
 git fetch --quiet origin +main:refs/remotes/origin/main
+git fetch origin +refs/pull/888/head:refs/remotes/pull/888
 git branch --show-current 2>&1
 git branch -a 2>&1 | head
 git tag -l 2>/dev/null

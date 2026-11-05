@@ -360,6 +360,12 @@ class WorkflowSession(RepositoryDetails):
                     arguments.title,
                     UpstreamSuggestion(self.github, self.remote.repository),
                 )
+            case WorkflowCommand.CLONE, _ if arguments.directory:
+                return RepositoryCloning(
+                    Repository.parse(arguments.repository),
+                    arguments.directory,
+                    self.settings,
+                )
             case WorkflowCommand.CLONE, _:
                 around = ProjectCheckout.around(self.directory)
                 directory = self.directory if around is None else around.root.parent
@@ -673,6 +679,12 @@ class WorkflowSession(RepositoryDetails):
             help="clone a repository: the owner's to work in, anyone's to read",
         )
         clone.add_argument("repository", help="the repository, as owner/name")
+        clone.add_argument(
+            "--directory",
+            type=Path,
+            help="the directory to clone it into, under its name; next to the "
+            "checkout, or into the current directory outside one, when left out",
+        )
         label = commands.add_parser(
             WorkflowCommand.LABEL,
             help="label the work branch's own pull request, without asking",

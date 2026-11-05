@@ -24,7 +24,9 @@ contradicts one of these changes this file first.
 - Reading includes cloning: `clone` clones anyone's repository, so a session can read an
   upstream's pull request. Every clone it makes carries the workflow's `pre-push` hook,
   so nothing is pushed from a clone of somebody else's repository, however the push is
-  started.
+  started. `clone --directory` puts the clone where the session names, so a clone of
+  the upstream need not collide with the fork's checkout of the same name; a pull
+  request's head is then fetched into a remote-tracking reference, which only reads.
 
 ## Cloud sessions
 
