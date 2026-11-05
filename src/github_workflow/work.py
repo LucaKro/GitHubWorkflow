@@ -24,6 +24,7 @@ from basstler_domain_model.github.repository_client import (
     PullRequestReader,
     PullRequestsFromForks,
     PullRequestWriter,
+    RepositoryDetails,
     StackReader,
 )
 from basstler_domain_model.github.vocabulary import PullRequestState
@@ -226,15 +227,16 @@ class PushWork(WorkflowStep):
 
 class DescriptionEnding(ABC):
     """
-    What a draft's description ends with, given its branch.
+    What the description of a pull request onto the default branch ends with, given its
+    branch.
     """
 
     @abstractmethod
     def appended_to(self, body: str, branch: str) -> str:
         """
-        :param body: A draft's description.
-        :param branch: The draft's branch.
-        :return: The description with its ending.
+        :param body: A pull request's description, which may end with it already.
+        :param branch: The pull request's branch.
+        :return: The description, ending with it once.
         """
 
 
@@ -308,7 +310,8 @@ class DescriptionRewrite(WorkflowStep):
     """
     A new description, title or both for an open pull request on the owner's
     repository, a draft or ready for review, so it follows the pushed commits; a closed
-    or merged one keeps its own.
+    or merged one keeps its own. A new description of one onto the default branch ends
+    as a draft's does.
 
     :raises NothingToDescribeError: If neither is given.
     :raises PullRequestNotOpenError: If the pull request is not open.
@@ -329,6 +332,11 @@ class DescriptionRewrite(WorkflowStep):
     Writes its title, a pull request being an issue to GitHub too.
     """
 
+    repository: RepositoryDetails
+    """
+    Reads the repository's default branch.
+    """
+
     number: int
     """
     The pull request.
@@ -344,6 +352,12 @@ class DescriptionRewrite(WorkflowStep):
     The new title, ``None`` to keep the old one.
     """
 
+    ending: DescriptionEnding | None = None
+    """
+    What the new description of a pull request onto the default branch ends with,
+    ``None`` for nothing.
+    """
+
     def run(self) -> str:
         if self.body is None and self.title is None:
             raise NothingToDescribeError(self.number)
@@ -352,7 +366,13 @@ class DescriptionRewrite(WorkflowStep):
             raise PullRequestNotOpenError(self.number)
         rewritten = []
         if self.body is not None:
-            self.writer.set_description(self.number, self.body)
+            onto_default = pull_request.base == self.repository.default_branch()
+            body = (
+                self.ending.appended_to(self.body, pull_request.head.branch)
+                if self.ending is not None and onto_default
+                else self.body
+            )
+            self.writer.set_description(self.number, body)
             rewritten.append("description")
         if self.title is not None:
             self.titles.set_issue_title(self.number, self.title)

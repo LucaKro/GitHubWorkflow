@@ -203,7 +203,8 @@ Everything else written to GitHub needs my go-ahead.
   stacked, or is open upstream already.
 - No session runs it, not even with my go-ahead: the guard denies it, and the command
   refuses to run where Claude Code's command marker is set. `draft` on a fork ends the
-  description with the command line, for me to copy.
+  description with the command line, for me to copy, and `describe` keeps it there,
+  once, whatever text it is given.
 - A refusal tells me why, as its reason and what to do instead, without a traceback.
 - `github-workflow` runs the workflow on any machine with the plugin: the runtime install
   writes it to `~/.local/bin`, says so when that is not on my `PATH`, and never replaces

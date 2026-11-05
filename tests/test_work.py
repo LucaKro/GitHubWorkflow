@@ -752,7 +752,10 @@ def rewrite(
     :return: The rewrite of pull request 1, and the board its title is written on.
     """
     board = IssuesInMemory({})
-    return DescriptionRewrite(github, github, board, 1, body, title), board
+    rewrite = DescriptionRewrite(
+        github, github, board, DefaultBranchOfTheScratchRepositories(), 1, body, title
+    )
+    return rewrite, board
 
 
 @pytest.mark.parametrize(
@@ -768,6 +771,26 @@ def test_an_open_pull_request_s_description_is_rewritten(drafts: frozenset[int])
     step.run()
 
     assert (github.writes, board.writes) == (["set_description 1 A new body"], [])
+
+
+def test_a_new_description_onto_the_default_branch_ends_as_a_draft_s_does():
+    github = DraftsInMemory({1: RepositoriesByOwner.default_branch})
+    step, _ = rewrite(github, "A new body")
+    ending = EndingNamingTheBranch()
+
+    replace(step, ending=ending).run()
+
+    described = ending.appended_to("A new body", github.branch_of(1))
+    assert github.writes == [f"set_description 1 {described}"]
+
+
+def test_a_new_description_of_a_stacked_pull_request_is_kept_as_given():
+    github = DraftsInMemory({1: RepositoriesByOwner.default_branch, 2: "branch-1"})
+    step, _ = rewrite(github, "A new body")
+
+    replace(step, number=2, ending=EndingNamingTheBranch()).run()
+
+    assert github.writes == ["set_description 2 A new body"]
 
 
 def test_an_open_pull_request_s_title_is_rewritten():
