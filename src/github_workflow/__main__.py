@@ -327,12 +327,17 @@ class WorkflowSession(RepositoryDetails):
                     PullRequestSignalReader.of(self.github), arguments.number
                 )
             case WorkflowCommand.DESCRIBE, _:
+                number = (
+                    WorkBranchPullRequest(self.policy, self.github).find().number
+                    if arguments.number is None
+                    else arguments.number
+                )
                 return DescriptionRewrite(
                     self.github,
                     self.github,
                     self.github,
                     self.github,
-                    arguments.number,
+                    number,
                     arguments.body_file.read_text() if arguments.body_file else None,
                     arguments.title,
                     UpstreamSuggestion(self.github, self.remote.repository),
@@ -575,7 +580,7 @@ class WorkflowSession(RepositoryDetails):
         reject.add_argument("--reason", required=True)
         comment = finding_actions.add_parser(
             FindingSubcommand.COMMENT,
-            help="comment on an open finding, on the person's go-ahead",
+            help="comment on an open finding",
         )
         comment.add_argument("number", type=int)
         comment.add_argument("--body-file", type=Path, required=True)
@@ -632,7 +637,12 @@ class WorkflowSession(RepositoryDetails):
             WorkflowCommand.DESCRIBE,
             help="rewrite an open pull request's description or title",
         )
-        describe.add_argument("number", type=int, help="the open pull request")
+        describe.add_argument(
+            "number",
+            type=int,
+            nargs="?",
+            help="the open pull request, the work branch's own when left out",
+        )
         describe.add_argument("--body-file", type=Path, help="the new description")
         describe.add_argument("--title", help="the new title")
         clone = commands.add_parser(

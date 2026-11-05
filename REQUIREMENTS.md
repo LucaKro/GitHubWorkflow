@@ -197,8 +197,12 @@ them:
 - mark its own throwaway branches as discarded
 - open draft pull requests
 - on the work branch's own open pull request: add or remove labels the repository has
-  (`label`), and reply to or resolve its review threads (`review`), resolving only once
-  the branch's commits are pushed; unresolving a thread stays mine
+  (`label`), rewrite its description and title (`describe` without a number), and
+  reply to or resolve its review threads (`review`), resolving only once the branch's
+  commits are pushed; unresolving a thread stays mine
+- add a comment to a finding (`finding comment`)
+- delete branches that are merged or marked discarded, still at the commit they were
+  marked at (`cleanup`)
 - in a cloud session, attach `LucaKro/GitHubWorkflow` or `LucaKro/basstler_domain_model`
   to the session, with push access, to list or file a finding there; never another
   account's copy of either
@@ -228,8 +232,8 @@ Everything else written to GitHub needs my go-ahead.
   its proof.
 - Pull requests stay small through a standing note, not through a measured limit.
 - A pull request's description and title follow its pushed commits: `describe` rewrites
-  them on any open pull request of mine, a draft or ready for review, on my go-ahead; a
-  closed or merged one keeps its own.
+  them on any open pull request of mine, a draft or ready for review, on my go-ahead,
+  and on the work branch's own without asking; a closed or merged one keeps its own.
 - Starting a work branch from the default branch also fast-forwards my local default
   branch to GitHub's, unless it has commits of its own.
 - Dependent pull requests are rare, and use GitHub's native stacks when they happen,
