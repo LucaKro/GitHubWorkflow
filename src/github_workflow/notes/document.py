@@ -171,9 +171,10 @@ class NotesBlock:
             f"description with the `{WorkflowCommand.UPSTREAM}` command line opening it "
             f"upstream; that command is the person's alone, never run it.",
             f"On the work branch's own pull request, label it with "
-            f"`{self.workflow_command} {WorkflowCommand.LABEL}` and answer its review "
-            f"threads with `{self.workflow_command} {WorkflowCommand.REVIEW}`, without "
-            f"asking.",
+            f"`{self.workflow_command} {WorkflowCommand.LABEL}`, rewrite its "
+            f"description with `{self.workflow_command} {WorkflowCommand.DESCRIBE}` "
+            f"(no number), and answer its review threads with "
+            f"`{self.workflow_command} {WorkflowCommand.REVIEW}`, without asking.",
             ToolRepository.refusal_hint(),
             f"Mark a branch you pushed but no longer need with "
             f"`{self.workflow_command} branch discard`; the cleanup deletes it.",
