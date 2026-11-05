@@ -50,3 +50,9 @@ git fetch https://github.com/cram2/cognitive_robot_abstract_machine main
 git fetch https://github.com/cram2/cognitive_robot_abstract_machine main:refs/remotes/upstream-readonly/main
 git fetch --depth=50 https://github.com/cram2/cognitive_robot_abstract_machine +main:refs/remotes/upstream/main
 git fetch --quiet origin +main:refs/remotes/origin/main
+git branch --show-current 2>&1
+git branch -a 2>&1 | head
+git tag -l 2>/dev/null
+git log --oneline -1 2>/dev/null
+git stash list > stashes.txt 2>&1
+git remote -v &>/dev/null && echo yes

@@ -1224,6 +1224,123 @@ class SimpleCommand:
         return words[: len(leading.split())] == leading.split()
 
 
+class Redirection(StrEnum):
+    """
+    An operator sending a command's input or output elsewhere; the word after it is
+    where, and never part of the command.
+    """
+
+    OUTPUT = ">"
+    """
+    Writes the output to a file.
+    """
+
+    APPENDED_OUTPUT = ">>"
+    """
+    Appends the output to a file.
+    """
+
+    FORCED_OUTPUT = ">|"
+    """
+    Writes the output to a file, even one the shell keeps from being overwritten.
+    """
+
+    DUPLICATED_OUTPUT = ">&"
+    """
+    Sends the output where another file descriptor goes.
+    """
+
+    INPUT = "<"
+    """
+    Reads the input from a file.
+    """
+
+    DUPLICATED_INPUT = "<&"
+    """
+    Reads the input from another file descriptor.
+    """
+
+    INPUT_AND_OUTPUT = "<>"
+    """
+    Opens a file for both.
+    """
+
+    HERE_DOCUMENT = "<<"
+    """
+    Reads the input from the lines up to the word after it.
+    """
+
+    HERE_STRING = "<<<"
+    """
+    Reads the input from the word after it.
+    """
+
+    BOTH_OUTPUTS = "&>"
+    """
+    Writes the output and the errors to a file.
+    """
+
+    BOTH_OUTPUTS_APPENDED = "&>>"
+    """
+    Appends the output and the errors to a file.
+    """
+
+    @property
+    def takes_a_descriptor(self) -> bool:
+        """
+        Whether a file descriptor's number may be written right before it, as in
+        ``2>``.
+        """
+        return self.value[0] in "<>"
+
+
+@dataclass
+class ShellInput:
+    """
+    A command line read one character at a time, which knows where its reading stands.
+    """
+
+    text: str
+    """
+    The command line.
+    """
+
+    position: int = 0
+    """
+    How many characters were read.
+    """
+
+    def read(self, size: int = 1) -> str:
+        """
+        :param size: How many characters to read.
+        :return: The next ones.
+        """
+        start = self.position
+        self.position = min(len(self.text), start + size)
+        return self.text[start : self.position]
+
+    def readline(self) -> str:
+        """
+        :return: The rest of the current line, its line break included.
+        """
+        end = self.text.find("\n", self.position)
+        return self.read(len(self.text) - self.position if end < 0 else end + 1)
+
+    def ends_in_a_descriptor(self, word: str) -> bool:
+        """
+        :param word: The word just read.
+        :return: Whether it is a file descriptor's number, unquoted and standing alone,
+            written right before the operator read after it.
+        """
+        before = self.text[: self.position - 1]
+        if not word.isdigit() or self.text[self.position - 1] not in "<>":
+            return False
+        if not before.endswith(word):
+            return False
+        start = len(before) - len(word)
+        return start == 0 or before[start - 1] in " \t;&|()"
+
+
 @dataclass(frozen=True)
 class CommandLine:
     """
@@ -1262,7 +1379,8 @@ class CommandLine:
     def simple_commands(self) -> list[list[str]]:
         """
         :return: The words of every simple command the line runs, those in command
-            substitutions included. A here-document is data unless a shell reads it.
+            substitutions included, without their redirections. A here-document is data
+            unless a shell reads it.
         :raises ValueError: If its quotes do not balance.
         """
         text = self._without_here_documents()
@@ -1274,17 +1392,31 @@ class CommandLine:
             if inner
             for command in CommandLine(inner).simple_commands()
         ]
-        lexer = shlex.shlex(
-            text.replace("\n", " ; "), posix=True, punctuation_chars=True
-        )
+        read = ShellInput(text.replace("\n", " ; "))
+        lexer = shlex.shlex(read, posix=True, punctuation_chars=True)
         lexer.whitespace_split = True
         current: list[str] = []
+        descriptor_read = False
+        target_follows = False
         for word in lexer:
-            if word and set(word) <= set(";&|()<>"):
+            operator = word and set(word) <= set(";&|()<>")
+            if target_follows and not operator:
+                target_follows = False
+                continue
+            if word in list(Redirection):
+                if descriptor_read and Redirection(word).takes_a_descriptor:
+                    current.pop()
+                descriptor_read = False
+                target_follows = True
+                continue
+            target_follows = False
+            if operator:
                 commands.append(current)
                 current = []
+                descriptor_read = False
                 continue
             current.append(word)
+            descriptor_read = read.ends_in_a_descriptor(word)
         commands.append(current)
         return [command for command in commands if command]
 

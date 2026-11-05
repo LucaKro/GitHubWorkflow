@@ -23,6 +23,7 @@ import github_workflow.guard as guard
 from github_workflow.guard import (
     SessionVariable,
     CommandGuard,
+    CommandLine,
     DescriptionRewriting,
     OwnPullRequestTool,
     GitWrite,
@@ -137,6 +138,21 @@ def test_a_read_is_let_through(command: str):
 @pytest.mark.parametrize("command", GuardDataset.DENIED.lines())
 def test_a_write_is_denied(command: str):
     assert CommandGuard().denial(command) is not None
+
+
+@pytest.mark.parametrize(
+    "command, words",
+    [
+        ("git branch --show-current 2>&1", ["git", "branch", "--show-current"]),
+        ("git log -1 2>/dev/null", ["git", "log", "-1"]),
+        ("git branch 2 >out.txt", ["git", "branch", "2"]),
+        ('git branch "2">out.txt', ["git", "branch", "2"]),
+        (">out.txt git push", ["git", "push"]),
+    ],
+    ids=["descriptor", "target", "spaced number", "quoted number", "leading"],
+)
+def test_a_redirection_is_no_word_of_its_command(command: str, words: list[str]):
+    assert CommandLine(command).simple_commands() == [words]
 
 
 def test_a_here_document_a_program_reads_is_data():
