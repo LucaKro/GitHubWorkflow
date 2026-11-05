@@ -81,6 +81,8 @@ from github_workflow.work import (
     BranchSwitch,
     BranchSync,
     GitHubPullRequestBranches,
+    MergeAbort,
+    MergeCompletion,
     CommitWork,
     DescriptionRewrite,
     DraftOpening,
@@ -220,6 +222,10 @@ class WorkflowSession(RepositoryDetails):
                 return BaseMerge(self.policy, self.github, self.github)
             case WorkflowCommand.SYNC, _ if arguments.on is not None:
                 return PullRequestMerge(self.policy, self.github, arguments.on)
+            case WorkflowCommand.SYNC, _ if arguments.resolved:
+                return MergeCompletion(self.policy, arguments.resolved)
+            case WorkflowCommand.SYNC, _ if arguments.abort:
+                return MergeAbort(self.policy)
             case WorkflowCommand.SYNC, _:
                 return BranchSync(
                     self.policy,
@@ -476,6 +482,20 @@ class WorkflowSession(RepositoryDetails):
             type=int,
             help="instead, merge the branch of this open pull request into the work "
             "branch, to build on it",
+        )
+        instead.add_argument(
+            "--continue",
+            dest="resolved",
+            nargs="+",
+            type=Path,
+            metavar="FILE",
+            help="instead, commit the merge in progress, once these files it left "
+            "conflicting are resolved",
+        )
+        instead.add_argument(
+            "--abort",
+            action="store_true",
+            help="instead, undo the merge in progress",
         )
         stack = commands.add_parser(WorkflowCommand.STACK, help="stack pull requests")
         stack_actions = stack.add_subparsers(dest="action", required=True)
