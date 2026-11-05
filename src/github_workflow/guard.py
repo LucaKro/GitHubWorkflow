@@ -975,9 +975,7 @@ class GoAheadCommand(StrEnum):
     FINDING_ACCEPT = f"{WorkflowCommand.FINDING} {FindingSubcommand.ACCEPT}"
     FINDING_SHELVE = f"{WorkflowCommand.FINDING} {FindingSubcommand.SHELVE}"
     FINDING_REJECT = f"{WorkflowCommand.FINDING} {FindingSubcommand.REJECT}"
-    FINDING_COMMENT = f"{WorkflowCommand.FINDING} {FindingSubcommand.COMMENT}"
     FINDING_EDIT = f"{WorkflowCommand.FINDING} {FindingSubcommand.EDIT}"
-    CLEANUP = WorkflowCommand.CLEANUP.value
     STACK = f"{WorkflowCommand.STACK} {StackSubcommand.ON}"
     DESCRIBE = WorkflowCommand.DESCRIBE.value
 
@@ -988,7 +986,25 @@ class GoAheadCommand(StrEnum):
         :return: The command needing the go-ahead that it runs, ``None`` when it runs
             none.
         """
-        return next((member for member in cls if command.runs_workflow(member)), None)
+        return next(
+            (
+                member
+                for member in cls
+                if command.runs_workflow(member) and member.asks_about(command)
+            ),
+            None,
+        )
+
+    def asks_about(self, command: SimpleCommand) -> bool:
+        """
+        :param command: A simple command running this workflow command.
+        :return: Whether it needs the go-ahead: always, but for :attr:`DESCRIBE`
+            without a pull request's number, which rewrites the work branch's own.
+        """
+        if self is not GoAheadCommand.DESCRIBE:
+            return True
+        given = command.workflow_words() or []
+        return any(word.isdigit() for word in given[len(self.split()) :])
 
 
 class PersonOnlyCommand(StrEnum):
@@ -1216,11 +1232,10 @@ class SimpleCommand:
         """
         return list(self.words[self.program_start + 1 :])
 
-    def runs_workflow(self, leading: str) -> bool:
+    def workflow_words(self) -> list[str] | None:
         """
-        :param leading: A workflow command's leading words, such as ``finding accept``.
-        :return: Whether this runs ``python -m github_workflow``, or the launcher, with
-            them.
+        :return: The words this gives ``python -m github_workflow``, or the launcher,
+            options left out, ``None`` when it runs neither.
         """
         arguments = self.arguments
         if self.program == Launcher.COMMAND:
@@ -1228,12 +1243,20 @@ class SimpleCommand:
         elif self.program.startswith("python") and "-m" in arguments[:-1]:
             module = arguments.index("-m") + 1
             if arguments[module] != github_workflow.__name__:
-                return False
+                return None
             given = arguments[module + 1 :]
         else:
-            return False
-        words = [word for word in given if not word.startswith("-")]
-        return words[: len(leading.split())] == leading.split()
+            return None
+        return [word for word in given if not word.startswith("-")]
+
+    def runs_workflow(self, leading: str) -> bool:
+        """
+        :param leading: A workflow command's leading words, such as ``finding accept``.
+        :return: Whether this runs ``python -m github_workflow``, or the launcher, with
+            them.
+        """
+        words = self.workflow_words()
+        return words is not None and words[: len(leading.split())] == leading.split()
 
 
 class Redirection(StrEnum):

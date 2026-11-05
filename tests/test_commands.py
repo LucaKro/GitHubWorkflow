@@ -1071,6 +1071,32 @@ def test_a_rewritten_description_keeps_the_line_closing_its_finding(
     assert closing in written[RestJSONKey.BODY]
 
 
+def test_describe_without_a_number_rewrites_the_work_branch_s_own_pull_request(
+    github: ReplayedApi,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+):
+    route = RepositoryRoute(
+        Repository(settings.owner, RepositoriesByOwner.repository_name)
+    )
+    github.answers[
+        ("GET", f"/{route.pull_requests_for_head(settings.owner, 'feature')}")
+    ] = RecordedAnswer.from_file(
+        HTTPStatus.OK, UpstreamDataset.FORK_PULL_REQUESTS.value
+    )
+    checkout = repositories.clone(owned_url, "session")
+    checkout.git.run("switch", "--quiet", "--create", "feature")
+    (checkout.root / "body.md").write_text("What it does.\n")
+
+    step = step_for(
+        checkout, WorkflowCommand.DESCRIBE, f"--body-file={checkout.root / 'body.md'}"
+    )
+
+    opened = json.loads(UpstreamDataset.FORK_PULL_REQUESTS.value.read_text())[0]
+    assert step.number == opened[RestJSONKey.NUMBER]
+
+
 # %% findings on another of the owner's repositories
 
 
