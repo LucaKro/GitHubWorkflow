@@ -1,6 +1,0 @@
-[project]
-name = "doubling"
-
-[tool.github-workflow.proofs]
-pytest-options = ["-o", "python_functions=check_*"]
-setup = ["scripts/generate_factor.py --wrong"]

@@ -22,7 +22,6 @@ from github_workflow.exceptions import (
     PassingTestError,
 )
 from github_workflow.locations import ProjectFile
-from github_workflow.proof_settings import ProofSettings
 from github_workflow.proofs import (
     BranchTip,
     FindingTest,
@@ -80,34 +79,6 @@ class ProofDataset(PathEnumeration):
     A test module holding no test.
     """
 
-    SHOWN_WRONG_BY_ANOTHER_NAME = (
-        Path(__file__).parent / "dataset" / "proofs" / "shown_wrong_by_another_name.py"
-    )
-    """
-    A test failing on the wrong package, which pytest collects only when told to.
-    """
-
-    GENERATED_FACTOR_SHOWN_WRONG = (
-        Path(__file__).parent / "dataset" / "proofs" / "generated_factor_shown_wrong.py"
-    )
-    """
-    A test failing on the factor a setup script generates.
-    """
-
-    GENERATE_FACTOR = (
-        Path(__file__).parent / "dataset" / "proofs" / "generate_factor.py"
-    )
-    """
-    The setup script, generating the wrong factor.
-    """
-
-    PROOF_SETTINGS = (
-        Path(__file__).parent / "dataset" / "proofs" / "proof_settings.toml"
-    )
-    """
-    A ``pyproject.toml`` saying how the project's proofs run.
-    """
-
 
 class DoublingProjectFile(PathEnumeration):
     """
@@ -122,11 +93,6 @@ class DoublingProjectFile(PathEnumeration):
     TEST = Path("tests") / "test_doubling.py"
     """
     The finding's test.
-    """
-
-    SETUP_SCRIPT = Path("scripts") / "generate_factor.py"
-    """
-    The script generating a module git ignores.
     """
 
 
@@ -167,22 +133,15 @@ def publish_package(checkout: ProjectCheckout, package: ProofDataset) -> None:
 
 
 def runner(
-    checkout: ProjectCheckout,
-    python: str = sys.executable,
-    settings: ProofSettings = ProofSettings(),
+    checkout: ProjectCheckout, python: str = sys.executable
 ) -> DefaultBranchProofRunner:
     """
     :param checkout: The checkout.
     :param python: The interpreter the tests run with.
-    :param settings: How the project's proofs run.
     :return: Runs tests on the checkout's default branch on GitHub.
     """
     return DefaultBranchProofRunner(
-        checkout.git,
-        RemoteName.ORIGIN,
-        RepositoriesByOwner.default_branch,
-        python,
-        settings,
+        checkout.git, RemoteName.ORIGIN, RepositoriesByOwner.default_branch, python
     )
 
 
@@ -323,70 +282,6 @@ def test_an_interpreter_that_cannot_run_pytest_proves_nothing(
     )
 
     assert attempt.outcome is ProofOutcome.BROKEN
-
-
-# %% the project's own setup
-
-
-def publish_setup_script(checkout: ProjectCheckout) -> None:
-    """
-    Put the setup script generating the wrong factor on GitHub's default branch, with
-    the doubling package.
-
-    :param checkout: A checkout on the default branch.
-    """
-    script = checkout.root / DoublingProjectFile.SETUP_SCRIPT
-    script.parent.mkdir(parents=True, exist_ok=True)
-    script.write_text(ProofDataset.GENERATE_FACTOR.read_text())
-    checkout.git.run("add", str(DoublingProjectFile.SETUP_SCRIPT))
-    publish_package(checkout, ProofDataset.DOUBLING_CORRECT)
-
-
-def test_the_project_s_pytest_options_are_given_to_pytest(checkout: ProjectCheckout):
-    publish_package(checkout, ProofDataset.DOUBLING_WRONG)
-    settings = ProofSettings(pytest_options=("-o", "python_functions=check_*"))
-
-    attempt = runner(checkout, settings=settings).attempt(
-        finding_test(ProofDataset.SHOWN_WRONG_BY_ANOTHER_NAME)
-    )
-
-    assert attempt.outcome is ProofOutcome.FAILS
-
-
-def test_the_project_s_setup_runs_before_the_test(checkout: ProjectCheckout):
-    publish_setup_script(checkout)
-    settings = ProofSettings(setup=(str(DoublingProjectFile.SETUP_SCRIPT),))
-
-    attempt = runner(checkout, settings=settings).attempt(
-        finding_test(ProofDataset.GENERATED_FACTOR_SHOWN_WRONG)
-    )
-
-    assert (attempt.outcome, attempt.message) == (ProofOutcome.FAILS, "assert 3 == 2")
-
-
-def test_a_failing_setup_leaves_the_test_broken(checkout: ProjectCheckout):
-    publish_package(checkout, ProofDataset.DOUBLING_WRONG)
-    settings = ProofSettings(setup=("scripts/missing.py",))
-
-    attempt = runner(checkout, settings=settings).attempt(
-        finding_test(ProofDataset.DOUBLING_SHOWN_WRONG)
-    )
-
-    assert attempt.outcome is ProofOutcome.BROKEN
-
-
-def test_the_settings_are_read_from_the_project_s_pyproject(tmp_path: Path):
-    (tmp_path / ProjectFile.PYPROJECT).write_text(
-        ProofDataset.PROOF_SETTINGS.read_text()
-    )
-
-    assert ProofSettings.read(tmp_path) == ProofSettings(
-        ("-o", "python_functions=check_*"), ("scripts/generate_factor.py --wrong",)
-    )
-
-
-def test_a_project_without_a_pyproject_has_no_settings(tmp_path: Path):
-    assert ProofSettings.read(tmp_path) == ProofSettings()
 
 
 # %% the test file

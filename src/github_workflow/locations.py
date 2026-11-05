@@ -79,11 +79,6 @@ class ProjectFile(PathEnumeration):
     Where a Python project laid out with a source directory keeps its packages.
     """
 
-    PYPROJECT = Path("pyproject.toml")
-    """
-    The Python project's settings, which may say how its proofs run.
-    """
-
 
 class GitFile(PathEnumeration):
     """

@@ -9,9 +9,6 @@ from typing import TYPE_CHECKING
 
 from basstler_domain_model.exceptions import DataclassException
 
-from github_workflow.locations import ProjectFile
-from github_workflow.proof_settings import ProofSettingKey
-
 if TYPE_CHECKING:
     from basstler_domain_model.repository import Repository
 
@@ -821,11 +818,7 @@ class BrokenTestError(DataclassException, ValueError):
     def suggest_correction(self) -> str:
         return (
             "Fix the test, and run it with the interpreter the project's tests run "
-            "with (--python). When what is missing is the project's own test setup, "
-            f"give its pytest options ({ProofSettingKey.PYTEST_OPTIONS}) and the "
-            f"commands preparing a run ({ProofSettingKey.SETUP}) in the "
-            f"[{ProofSettingKey.TOOL}.{ProofSettingKey.WORKFLOW}."
-            f"{ProofSettingKey.PROOFS}] table of its {ProjectFile.PYPROJECT}."
+            "with (--python)."
         )
 
 

@@ -44,7 +44,6 @@ from github_workflow.own_pull_request import (
 )
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
-from github_workflow.proof_settings import ProofSettings
 from github_workflow.proofs import DefaultBranchProofRunner, FindingTest
 from github_workflow.cleanup import BranchCleanup, BranchDiscard, KeptBranches
 from github_workflow.findings import (
@@ -158,11 +157,7 @@ class WorkflowSession(RepositoryDetails):
         :return: Runs a finding's test on the owner's default branch.
         """
         return DefaultBranchProofRunner(
-            self.checkout.git,
-            self.remote.name,
-            self.default_branch(),
-            python,
-            ProofSettings.read(self.checkout.root),
+            self.checkout.git, self.remote.name, self.default_branch(), python
         )
 
     def recheck(self, number: int, python: str) -> FindingRecheck:
