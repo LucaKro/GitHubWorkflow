@@ -230,6 +230,10 @@ Everything else written to GitHub needs my go-ahead.
   committed as me, never a rebase or a force; a merge that conflicts is undone and its
   files named, for me to decide. A branch whose pull request is in a stack is left to
   GitHub's *Rebase stack*.
+- A work branch builds on another open pull request of my repository before it is
+  merged with `sync --on <number>`, which merges that pull request's branch the same
+  way. A draft of a finding stacked on it (`draft --finding --on <number>`) rechecks
+  the proof on that branch rather than on the default branch.
 
 ## Open questions
 
