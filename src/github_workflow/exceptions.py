@@ -417,8 +417,8 @@ class UnbuildablePullRequestError(DataclassException, ValueError):
 @dataclass
 class StackedBranchMergeError(DataclassException, ValueError):
     """
-    Raised when the default branch is to be merged into a branch whose pull request is
-    in a stack.
+    Raised when the default branch is to be merged into a branch whose pull request sits
+    higher in a stack, targeting the branch below it.
     """
 
     branch: str
@@ -432,10 +432,16 @@ class StackedBranchMergeError(DataclassException, ValueError):
     """
 
     def error_message(self) -> str:
-        return f"{self.branch}'s pull request #{self.pull_request} is in a stack"
+        return (
+            f"{self.branch}'s pull request #{self.pull_request} sits higher in a stack"
+        )
 
     def suggest_correction(self) -> str:
-        return "Use GitHub's Rebase stack, which brings every pull request in it along."
+        return (
+            "Merge the default branch into the stack's bottom pull request, and its "
+            "branch into this one with `sync --on <number>`; or use GitHub's Rebase "
+            "stack."
+        )
 
 
 @dataclass

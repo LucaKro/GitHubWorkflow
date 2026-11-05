@@ -229,8 +229,9 @@ Everything else written to GitHub needs my go-ahead.
 - Dependent pull requests are rare, and use GitHub's native stacks when they happen,
   restacked and merged by GitHub.
 - A work branch takes in the default branch's new commits with `sync --base`: a merge,
-  committed as me, never a rebase or a force. A branch whose pull request is in a stack
-  is left to GitHub's *Rebase stack*.
+  committed as me, never a rebase or a force. That includes the bottom pull request of
+  a stack, which targets the default branch; a branch higher in a stack takes in the
+  one below with `sync --on`, or is left to GitHub's *Rebase stack*.
 - A merge that conflicts is left in progress, its files named. The session resolves
   them and finishes it with `sync --continue <files>`, which refuses while a conflict
   is still marked or a file still conflicts, or undoes it with `sync --abort`. Nothing

@@ -806,21 +806,38 @@ def test_a_branch_mid_merge_is_neither_committed_to_nor_pushed(
         PushWork(work).run()
 
 
-def test_a_branch_in_a_stack_is_left_to_github_s_rebase_stack(
+def test_a_branch_higher_in_a_stack_does_not_take_in_the_default_branch(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
 ):
+    """
+    It targets the branch below it, not the default branch.
+    """
     default_branch_moved_on(repositories, owned_url)
     stacks = StackedPullRequestsInMemory({})
     stacks.existing_stacks.append(Stack(1, "main", True, stacks.stacked([3, 4])))
+    above = pull_request(4, "feature", base=stacks.branch_of(3))
     git = work.checkout.git
     before = git.commit_at("HEAD")
 
     with pytest.raises(StackedBranchMergeError):
-        BaseMerge(
-            work, PullRequestsFromBranchesInMemory([pull_request(3, "feature")]), stacks
-        ).run()
+        BaseMerge(work, PullRequestsFromBranchesInMemory([above]), stacks).run()
 
     assert git.commit_at("HEAD") == before
+
+
+def test_the_bottom_of_a_stack_takes_in_the_default_branch(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+):
+    other = default_branch_moved_on(repositories, owned_url)
+    stacks = StackedPullRequestsInMemory({})
+    stacks.existing_stacks.append(Stack(1, "main", True, stacks.stacked([3, 4])))
+
+    BaseMerge(
+        work, PullRequestsFromBranchesInMemory([pull_request(3, "feature")]), stacks
+    ).run()
+
+    git = work.checkout.git
+    assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
 
 
 def test_the_default_branch_takes_in_nothing(
