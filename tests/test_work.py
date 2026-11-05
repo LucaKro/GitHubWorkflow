@@ -18,11 +18,13 @@ from basstler_domain_model.environment import GitIdentityVariable
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
 from basstler_domain_model.git.exceptions import GitCommandFailed
 from basstler_domain_model.github.repository_client import (
+    PullRequestReader,
     PullRequestsFromForks,
     RepositoryDetails,
 )
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.stack_models import Stack
+from basstler_domain_model.github.vocabulary import PullRequestState
 from basstler_domain_model.repository import Repository
 
 from github_workflow.__main__ import WorkflowSession
@@ -34,12 +36,17 @@ from github_workflow.exceptions import (
     BranchNotPushedError,
     DefaultBranchWriteError,
     DetachedHeadError,
+    ConflictMarkersLeftError,
     MergeConflictError,
+    MergeInProgressError,
+    NoMergeInProgressError,
     NothingToDescribeError,
     PullRequestNotOpenError,
     PushRefusedError,
     StackedBranchMergeError,
+    UnbuildablePullRequestError,
     UnpushedCommitsError,
+    UnresolvedConflictError,
 )
 from github_workflow.policy import Attribution, WritePolicy
 from github_workflow.push_hook import PushHook
@@ -56,7 +63,11 @@ from github_workflow.work import (
     DescriptionRewrite,
     DraftOpening,
     LocalBranchFollowing,
+    MergeAbort,
+    MergeCompletion,
+    MergeInProgress,
     PullRequestBranches,
+    PullRequestMerge,
     PushWork,
     RepositoryCloning,
 )
@@ -689,34 +700,144 @@ def test_the_default_branch_s_new_commits_are_merged_into_the_work_branch(
     assert Attribution.ACKNOWLEDGEMENT in last_message(git)
 
 
-def test_a_conflicting_merge_is_refused_and_leaves_the_branch_as_it_was(
+def test_a_conflicting_merge_is_left_in_progress_naming_its_files(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
 ):
     default_branch_moved_on(repositories, owned_url, "a.txt")
     git = work.checkout.git
-    before = git.commit_at("HEAD")
 
+    with pytest.raises(MergeConflictError) as raised:
+        base_merge(work).run()
+
+    assert raised.value.files == ("a.txt",)
+    assert MergeInProgress(git).exists()
+
+
+# %% finishing or undoing a conflicting merge
+
+
+def conflicted(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+) -> GitCommandRunner:
+    """
+    Leave a merge of the default branch into the work branch in progress, conflicting in
+    ``a.txt``.
+
+    :param work: The rules of a clone on a pushed work branch with ``a.txt``.
+    :param repositories: The scratch repositories.
+    :param owned_url: The owner's repository.
+    :return: The clone that moved the default branch on.
+    """
+    other = default_branch_moved_on(repositories, owned_url, "a.txt")
     with pytest.raises(MergeConflictError):
         base_merge(work).run()
+    return other
+
+
+def test_a_resolved_merge_is_committed_as_the_person(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+):
+    other = conflicted(work, repositories, owned_url)
+    (work.checkout.root / "a.txt").write_text("both sides\n")
+
+    MergeCompletion(work, [Path("a.txt")]).run()
+
+    git = work.checkout.git
+    parents = git.run("log", "--max-count=1", "--format=%P").split()
+    assert (len(parents), git.contains(other.commit_at("HEAD"), "HEAD")) == (2, True)
+    assert Attribution.ACKNOWLEDGEMENT in last_message(git)
+    assert not MergeInProgress(git).exists()
+
+
+def test_a_file_still_marking_a_conflict_is_refused(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+):
+    conflicted(work, repositories, owned_url)
+
+    with pytest.raises(ConflictMarkersLeftError):
+        MergeCompletion(work, [Path("a.txt")]).run()
+
+    assert MergeInProgress(work.checkout.git).exists()
+
+
+def test_a_conflicting_file_left_out_is_refused(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+):
+    conflicted(work, repositories, owned_url)
+    (work.checkout.root / "b.txt").write_text("unrelated\n")
+
+    with pytest.raises(UnresolvedConflictError):
+        MergeCompletion(work, [Path("b.txt")]).run()
+
+    assert MergeInProgress(work.checkout.git).exists()
+
+
+def test_an_undone_merge_leaves_the_branch_as_it_was(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+):
+    git = work.checkout.git
+    before = git.commit_at("HEAD")
+    conflicted(work, repositories, owned_url)
+
+    MergeAbort(work).run()
 
     assert (git.commit_at("HEAD"), git.run("status", "--porcelain")) == (before, "")
 
 
-def test_a_branch_in_a_stack_is_left_to_github_s_rebase_stack(
+def test_no_merge_in_progress_has_nothing_to_finish(work: WritePolicy):
+    with pytest.raises(NoMergeInProgressError):
+        MergeCompletion(work, [Path("a.txt")]).run()
+
+
+def test_no_merge_in_progress_has_nothing_to_undo(work: WritePolicy):
+    with pytest.raises(NoMergeInProgressError):
+        MergeAbort(work).run()
+
+
+def test_a_branch_mid_merge_is_neither_committed_to_nor_pushed(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
 ):
+    conflicted(work, repositories, owned_url)
+    path = write(work.checkout, "c.txt")
+
+    with pytest.raises(MergeInProgressError):
+        CommitWork(work, "More", [path]).run()
+    with pytest.raises(MergeInProgressError):
+        PushWork(work).run()
+
+
+def test_a_branch_higher_in_a_stack_does_not_take_in_the_default_branch(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+):
+    """
+    It targets the branch below it, not the default branch.
+    """
     default_branch_moved_on(repositories, owned_url)
     stacks = StackedPullRequestsInMemory({})
     stacks.existing_stacks.append(Stack(1, "main", True, stacks.stacked([3, 4])))
+    above = pull_request(4, "feature", base=stacks.branch_of(3))
     git = work.checkout.git
     before = git.commit_at("HEAD")
 
     with pytest.raises(StackedBranchMergeError):
-        BaseMerge(
-            work, PullRequestsFromBranchesInMemory([pull_request(3, "feature")]), stacks
-        ).run()
+        BaseMerge(work, PullRequestsFromBranchesInMemory([above]), stacks).run()
 
     assert git.commit_at("HEAD") == before
+
+
+def test_the_bottom_of_a_stack_takes_in_the_default_branch(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+):
+    other = default_branch_moved_on(repositories, owned_url)
+    stacks = StackedPullRequestsInMemory({})
+    stacks.existing_stacks.append(Stack(1, "main", True, stacks.stacked([3, 4])))
+
+    BaseMerge(
+        work, PullRequestsFromBranchesInMemory([pull_request(3, "feature")]), stacks
+    ).run()
+
+    git = work.checkout.git
+    assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
 
 
 def test_the_default_branch_takes_in_nothing(
@@ -737,6 +858,100 @@ def test_a_branch_that_has_the_default_branch_s_commits_is_left_alone(
     base_merge(work).run()
 
     assert git.commit_at("HEAD") == before
+
+
+# %% building on another pull request
+
+
+@dataclass(frozen=True)
+class PullRequestsByNumber(PullRequestReader):
+    """
+    Answers each pull request asked for from the ones given.
+    """
+
+    pull_requests: dict[int, RestPullRequest]
+    """
+    The pull requests, by number.
+    """
+
+    def pull_request(self, number: int) -> RestPullRequest:
+        return self.pull_requests[number]
+
+    def open_pull_requests(self) -> list[RestPullRequest]:
+        raise NotImplementedError
+
+
+def pushed_below(
+    work: WritePolicy,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    state: PullRequestState = PullRequestState.OPEN,
+    repository: str | None = None,
+) -> tuple[PullRequestMerge, GitCommandRunner]:
+    """
+    Push a branch ``below`` with a commit of its own, as another session's pull request
+    56 would.
+
+    :param work: The rules of a clone on a pushed work branch.
+    :param repositories: The scratch repositories.
+    :param owned_url: The owner's repository.
+    :param state: Whether pull request 56 is open.
+    :param repository: The repository its branch is on, the owner's when ``None``.
+    :return: The merge of its branch into the work branch, and the clone that pushed it.
+    """
+    other = repositories.clone(owned_url, "other").git
+    other.run("switch", "--quiet", "--create", "below")
+    (other.working_directory / "below.txt").write_text("below\n")
+    other.run("add", "below.txt")
+    other.run("commit", "--quiet", "--message", "Make the tests load")
+    other.run("push", "--quiet", "origin", "below")
+    on = work.remote.repository.full_name if repository is None else repository
+    below = pull_request(56, "below", state=state, repository=on)
+    return PullRequestMerge(work, PullRequestsByNumber({56: below}), 56), other
+
+
+def test_another_pull_request_s_branch_is_merged_into_the_work_branch(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+):
+    merge, other = pushed_below(work, repositories, owned_url)
+
+    merge.run()
+
+    git = work.checkout.git
+    assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
+    assert Attribution.ACKNOWLEDGEMENT in last_message(git)
+
+
+@pytest.mark.parametrize(
+    "state, repository",
+    [(PullRequestState.CLOSED, None), (PullRequestState.OPEN, "someone-else/project")],
+    ids=["closed", "on another repository"],
+)
+def test_a_pull_request_that_cannot_be_built_on_is_refused(
+    work: WritePolicy,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    state: PullRequestState,
+    repository: str | None,
+):
+    merge, _ = pushed_below(work, repositories, owned_url, state, repository)
+    git = work.checkout.git
+    before = git.commit_at("HEAD")
+
+    with pytest.raises(UnbuildablePullRequestError):
+        merge.run()
+
+    assert git.commit_at("HEAD") == before
+
+
+def test_the_default_branch_builds_on_no_pull_request(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    policy = policy_in(repositories.clone(owned_url, "on-default"), settings)
+    below = pull_request(56, "below", repository=policy.remote.repository.full_name)
+
+    with pytest.raises(DefaultBranchWriteError):
+        PullRequestMerge(policy, PullRequestsByNumber({56: below}), 56).run()
 
 
 # %% rewriting a pull request's description and title
