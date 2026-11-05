@@ -2,3 +2,4 @@ another-pull-request-is-merged-into-the-work-branch 751ecd3afb720cc2e8bdeab9bf0f
 building-on-another-pull-request a293b7be9cc1563ce4f12edc4ff11291c70f4713
 workspace-members-are-imported-from-the-default-branch 55c4cacbe9527765706c321aaad6973c8087ae2d
 workspace-members-from-the-default-branch 888db2bef362abf410562eb28745081635e34ef7
+workspace-packages-from-the-default-branch 88a18eea50809a7880b67b67d65facf8461f5916
