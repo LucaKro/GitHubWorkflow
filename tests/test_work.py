@@ -1213,6 +1213,26 @@ def test_a_clone_from_inside_a_checkout_goes_next_to_it(
     assert step == RepositoryCloning(repository, checkout.root.parent, settings)
 
 
+def test_a_clone_of_the_upstream_goes_into_the_directory_the_session_names(
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+    tmp_path: Path,
+):
+    checkout = repositories.clone(owned_url, RepositoriesByOwner.repository_name)
+    upstream = Repository(
+        RepositoriesByOwner.foreign_owner, RepositoriesByOwner.repository_name
+    )
+    directory = tmp_path / upstream.owner
+    arguments = WorkflowSession.parser().parse_args(
+        [WorkflowCommand.CLONE, upstream.full_name, "--directory", str(directory)]
+    )
+
+    step = WorkflowSession(checkout.root, settings).step(arguments)
+
+    assert step == RepositoryCloning(upstream, directory, settings)
+
+
 def test_a_clone_from_outside_a_checkout_goes_into_the_directory(
     tmp_path: Path, settings: WorkflowSettings
 ):
