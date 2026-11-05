@@ -24,6 +24,7 @@ from github_workflow.guard import (
     SessionVariable,
     CommandGuard,
     DescriptionRewriting,
+    OwnPullRequestTool,
     GitWrite,
     PullRequestOpening,
     ToolGuard,
@@ -209,6 +210,15 @@ def test_a_reading_tool_is_let_through(tool: str):
 )
 def test_a_github_tool_that_writes_is_denied(tool: str):
     assert ToolGuard({HookKey.TOOL_NAME: tool}).denial() is not None
+
+
+@pytest.mark.parametrize("tool", list(OwnPullRequestTool))
+def test_a_github_tool_labelling_or_answering_reviews_names_the_workflow_s_command(
+    tool: OwnPullRequestTool,
+):
+    denial = ToolGuard({HookKey.TOOL_NAME: f"mcp__github__{tool}"}).denial()
+
+    assert denial.instead == tool.instead()
 
 
 def test_the_github_tool_opening_a_pull_request_names_the_workflow_s_draft():
