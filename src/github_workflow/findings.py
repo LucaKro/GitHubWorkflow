@@ -21,6 +21,7 @@ from basstler_domain_model.github.issue_models import Issue
 from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.repository_client import (
     IssueBoard,
+    PullRequestReader,
     RepositoryLabels,
 )
 from basstler_domain_model.github.vocabulary import (
@@ -33,10 +34,13 @@ from github_workflow.exceptions import (
     AlreadyProvenError,
     BrokenTestError,
     FindingNotAcceptedError,
+    FindingStillFailsError,
+    FixNotMergedError,
     MissingProofError,
     NotAFindingError,
     NothingToEditError,
     ProofNoLongerHoldsError,
+    UnprovenFindingCloseError,
 )
 from github_workflow.hooks import ReportLine, Tone
 from github_workflow.proofs import FindingTest, Proof, ProofOutcome, ProofRunner
@@ -187,6 +191,22 @@ class Priority(FindingLabel):
         return "; ".join(
             f"{priority.level}: {priority.description}" for priority in cls
         )
+
+
+class ClosedBy(FindingLabel):
+    """
+    Who closed a finding, when it was not the person, so they can list what sessions
+    closed.
+    """
+
+    SESSION = (
+        "closed by session",
+        "Closed by a session on its own, once its fix was merged and its proof passed",
+        "c2e0c6",
+    )
+    """
+    Closed by a session, with ``finding close``.
+    """
 
 
 class Evidence(FindingLabel):
@@ -489,6 +509,80 @@ class FindingRejection(FindingChange):
         self.board.add_comment(self.number, f"Rejected: {self.reason}")
         self.board.close_issue(self.number, IssueStateReason.NOT_PLANNED)
         return f"rejected finding #{self.number}"
+
+
+# %% closing a fixed finding
+
+
+@dataclass(frozen=True)
+class FindingClosing(FindingChange):
+    """
+    An open, accepted, proven finding closed as completed, without asking, once the
+    code shows it fixed: the pull request named is merged into the default branch, and
+    the finding's proof test now passes there. Labelled :attr:`ClosedBy.SESSION`, with
+    a comment naming the pull request.
+
+    :raises FindingNotAcceptedError: If it is no open, accepted finding.
+    :raises UnprovenFindingCloseError: If it carries no proof a trusted author posted.
+    :raises FixNotMergedError: If the pull request is not merged into the default
+        branch.
+    :raises FindingStillFailsError: If its proof test still fails there.
+    :raises BrokenTestError: If its proof test did not run.
+    """
+
+    pull_requests: PullRequestReader
+    """
+    Reads the pull request named as the fix.
+    """
+
+    runner: ProofRunner
+    """
+    Runs the proof test on the default branch.
+    """
+
+    authors: Collection[str]
+    """
+    The logins whose proofs count.
+    """
+
+    default_branch: str
+    """
+    The branch the fix has to be merged into.
+    """
+
+    fixed_by: int
+    """
+    The pull request that fixed it.
+    """
+
+    def run(self) -> str:
+        issue = self.board.issue(self.number)
+        accepted = FindingStage.of(issue) is FindingStage.ACCEPTED
+        if issue.state is not IssueState.OPEN or not accepted:
+            raise FindingNotAcceptedError(self.number)
+        proof = Proof.posted_in(self.board.comments(self.number), self.authors)
+        if Evidence.of(issue) is not Evidence.PROVEN or proof is None:
+            raise UnprovenFindingCloseError(self.number)
+        fix = self.pull_requests.pull_request(self.fixed_by)
+        if not fix.merged or fix.base != self.default_branch:
+            raise FixNotMergedError(self.fixed_by, self.default_branch)
+        attempt = self.runner.attempt(proof.test)
+        if attempt.outcome is ProofOutcome.BROKEN:
+            raise BrokenTestError(str(proof.test.path), attempt.message)
+        if attempt.outcome is ProofOutcome.FAILS:
+            raise FindingStillFailsError(self.number, attempt.tip, attempt.message)
+        self.create_missing_labels()
+        self.board.add_labels(self.number, [ClosedBy.SESSION])
+        self.board.add_comment(
+            self.number,
+            f"Fixed by #{self.fixed_by}: its proof test passes on {attempt.tip}. "
+            f"Closed by a session on its own.",
+        )
+        self.board.close_issue(self.number, IssueStateReason.COMPLETED)
+        return (
+            f"closed finding #{self.number}, fixed by #{self.fixed_by}; tell the person "
+            f"you closed it"
+        )
 
 
 # %% commenting and editing

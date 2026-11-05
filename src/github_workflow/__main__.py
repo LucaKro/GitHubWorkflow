@@ -48,6 +48,7 @@ from github_workflow.proofs import BranchProofRunner, FindingTest
 from github_workflow.cleanup import BranchCleanup, BranchDiscard, KeptBranches
 from github_workflow.findings import (
     FindingAcceptance,
+    FindingClosing,
     FindingComment,
     FindingEdit,
     FindingDraftOpening,
@@ -297,6 +298,17 @@ class WorkflowSession(RepositoryDetails):
             case WorkflowCommand.FINDING, FindingSubcommand.RECHECK:
                 return self.recheck(
                     arguments.number, arguments.python, self.default_branch()
+                )
+            case WorkflowCommand.FINDING, FindingSubcommand.CLOSE:
+                return FindingClosing(
+                    self.github,
+                    self.github,
+                    arguments.number,
+                    self.github,
+                    self.proof_runner(arguments.python, self.default_branch()),
+                    {self.settings.owner, self.github.authenticated_login()},
+                    self.default_branch(),
+                    arguments.fixed_by,
                 )
             case WorkflowCommand.FINDING, FindingSubcommand.AUTOMATE:
                 return FindingAutomation(self.checkout.root)
@@ -600,6 +612,16 @@ class WorkflowSession(RepositoryDetails):
             parents=[python_argument],
         )
         recheck.add_argument("number", type=int)
+        close = finding_actions.add_parser(
+            FindingSubcommand.CLOSE,
+            help="close an accepted, proven finding once its fix is merged and its "
+            "proof passes on the default branch",
+            parents=[python_argument],
+        )
+        close.add_argument("number", type=int)
+        close.add_argument(
+            "--fixed-by", type=int, required=True, help="the merged pull request"
+        )
         finding_actions.add_parser(
             FindingSubcommand.AUTOMATE,
             help="write the Actions workflow completing finding labels picked on GitHub",

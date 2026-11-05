@@ -936,6 +936,79 @@ class BrokenTestError(DataclassException, ValueError):
 
 
 @dataclass
+class UnprovenFindingCloseError(DataclassException, ValueError):
+    """
+    Raised when a session is to close a finding no proof test shows fixed.
+    """
+
+    number: int
+    """
+    The finding.
+    """
+
+    def error_message(self) -> str:
+        return f"#{self.number} carries no proof test to show its fix landed"
+
+    def suggest_correction(self) -> str:
+        return "Leave closing it to the person running the tool, and tell them it is fixed."
+
+
+@dataclass
+class FixNotMergedError(DataclassException, ValueError):
+    """
+    Raised when a finding is to be closed as fixed by a pull request not merged into the
+    default branch.
+    """
+
+    pull_request: int
+    """
+    The pull request named as the fix.
+    """
+
+    default_branch: str
+    """
+    The branch it has to be merged into.
+    """
+
+    def error_message(self) -> str:
+        return f"#{self.pull_request} is not merged into {self.default_branch}"
+
+    def suggest_correction(self) -> str:
+        return "Close the finding once its fix is merged, naming that pull request."
+
+
+@dataclass
+class FindingStillFailsError(DataclassException, ValueError):
+    """
+    Raised when a finding is to be closed as fixed while its proof test still fails on
+    the default branch.
+    """
+
+    number: int
+    """
+    The finding.
+    """
+
+    tip: BranchTip
+    """
+    The default branch's commit the test failed on.
+    """
+
+    detail: str
+    """
+    Pytest's message on the failure.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"the test proving #{self.number} still fails on {self.tip}: {self.detail}"
+        )
+
+    def suggest_correction(self) -> str:
+        return "Leave it open: its fix is not on the default branch."
+
+
+@dataclass
 class MissingProofError(DataclassException, LookupError):
     """
     Raised when a finding carries no proof to run again: it is not labelled proven, or
