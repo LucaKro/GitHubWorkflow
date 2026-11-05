@@ -31,6 +31,7 @@ from basstler_domain_model.github.vocabulary import (
 
 from github_workflow.exceptions import (
     AlreadyProvenError,
+    BrokenTestError,
     FindingNotAcceptedError,
     MissingProofError,
     NotAFindingError,
@@ -629,15 +630,19 @@ class FindingRecheck(WorkflowStep):
         """
         :raises MissingProofError: If it is not proven by a test a trusted author
             posted.
-        :raises ProofNoLongerHoldsError: If the test no longer fails.
+        :raises ProofNoLongerHoldsError: If the test passes.
+        :raises BrokenTestError: If the test did not run, or fails only because it is
+            broken.
         """
         issue = self.board.issue(self.number)
         proof = Proof.posted_in(self.board.comments(self.number), self.authors)
         if Evidence.of(issue) is not Evidence.PROVEN or proof is None:
             raise MissingProofError(self.number)
         attempt = self.runner.attempt(proof.test)
-        if attempt.outcome is not ProofOutcome.FAILS:
-            raise ProofNoLongerHoldsError(self.number, attempt.tip, attempt.message)
+        if attempt.outcome is ProofOutcome.BROKEN:
+            raise BrokenTestError(str(proof.test.path), attempt.message)
+        if attempt.outcome is ProofOutcome.PASSES:
+            raise ProofNoLongerHoldsError(self.number, attempt.tip)
         return f"#{self.number} still fails on {attempt.tip}: {attempt.message}"
 
 

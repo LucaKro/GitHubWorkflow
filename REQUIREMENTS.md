@@ -108,7 +108,12 @@ them:
 - A draft pull request works on a finding only when the finding is *accepted* and
   *proven*, and its test, run again on the default branch, still fails; the draft
   closes the finding when merged. A proof that no longer holds stops the work: the
-  session asks me whether the finding is fixed.
+  session asks me whether the finding is fixed. A test that did not run, run again, is
+  broken, never "no longer fails", and says what pytest reported.
+- A project says what its proofs need to run in `[tool.github-workflow.proofs]` of its
+  `pyproject.toml`: pytest's options (`pytest-options`), and command lines its
+  interpreter runs in the default branch's files first (`setup`), such as a script
+  generating files git ignores.
 
 ## Notes and progress
 
