@@ -31,7 +31,7 @@ from basstler_domain_model.github.repository_client import (
 from basstler_domain_model.github.routes import QueryParameter, RepositoryRoute
 from basstler_domain_model.github.vocabulary import IssueState, RestJSONKey
 from basstler_domain_model.locations import PathEnumeration
-from basstler_domain_model.repository import Repository
+from basstler_domain_model.repository import GitHubAddress, Repository
 
 import github_workflow
 import github_workflow.session_start
@@ -1044,29 +1044,35 @@ def test_a_fork_s_main_behind_its_upstream_is_synced_through_the_command_line(
     owned_url: str,
     settings: WorkflowSettings,
 ):
+    """
+    The branches are compared with git, so GitHub is asked for nothing but the fork's
+    details and the sync.
+    """
     fork = RepositoryRoute(
         Repository(settings.owner, RepositoriesByOwner.repository_name)
     )
     github.answers[("GET", f"/{fork.root}")] = RecordedAnswer.from_file(
         HTTPStatus.OK, UpstreamDataset.FORK.value
     )
-    upstream = json.loads(UpstreamDataset.FORK.value.read_text())[RestJSONKey.PARENT]
-    default = RepositoriesByOwner.default_branch
-    head = f"{upstream[RestJSONKey.FULL_NAME].replace('/', ':')}:{default}"
-    github.answers[("GET", f"/{fork.comparison(default, head)}")] = RecordedAnswer(
-        HTTPStatus.OK,
-        json.dumps({RestJSONKey.AHEAD_BY: 2, RestJSONKey.BEHIND_BY: 0}),
-    )
     github.answers[("POST", f"/{fork.merge_upstream}")] = RecordedAnswer(
         HTTPStatus.OK, json.dumps({"merge_type": "fast-forward"})
     )
-
-    run(
-        github_workflow.__name__,
-        repositories.clone(owned_url, "session"),
-        WorkflowCommand.SYNC,
-        "--upstream",
+    checkout = repositories.clone(owned_url, "session")
+    parent = json.loads(UpstreamDataset.FORK.value.read_text())[RestJSONKey.PARENT]
+    upstream = repositories.root / f"{parent[RestJSONKey.FULL_NAME]}.git"
+    default = RepositoriesByOwner.default_branch
+    checkout.git.run(
+        "init", "--quiet", "--bare", f"--initial-branch={default}", str(upstream)
     )
+    checkout.git.run("push", "--quiet", str(upstream), f"HEAD:refs/heads/{default}")
+    writer = repositories.clone(f"file://{upstream}", "upstream-writer").git
+    writer.run("commit", "--quiet", "--allow-empty", "--message", "Upstream moved on")
+    writer.run("push", "--quiet", str(upstream), f"HEAD:refs/heads/{default}")
+    checkout.git.run(
+        "config", f"url.file://{repositories.root}/.insteadOf", f"{GitHubAddress.WEB}/"
+    )
+
+    run(github_workflow.__name__, checkout, WorkflowCommand.SYNC, "--upstream")
 
     assert non_reads(github) == [("POST", f"/{fork.merge_upstream}")]
 
