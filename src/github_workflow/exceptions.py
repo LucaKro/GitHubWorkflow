@@ -278,7 +278,8 @@ class UnpushedCommitsError(DataclassException, RuntimeError):
 @dataclass
 class MergeConflictError(DataclassException, ValueError):
     """
-    Raised when merging a branch into a work branch conflicts; the merge is undone.
+    Raised when merging a branch into a work branch conflicts; the merge is left in
+    progress.
     """
 
     branch: str
@@ -299,11 +300,94 @@ class MergeConflictError(DataclassException, ValueError):
     def error_message(self) -> str:
         return (
             f"merging {self.merged_branch} into {self.branch} conflicts in "
-            f"{', '.join(self.files)}; the merge was undone, nothing changed"
+            f"{', '.join(self.files)}; the merge is in progress"
         )
 
     def suggest_correction(self) -> str:
-        return "Ask the person how to bring the two together."
+        return (
+            "Edit those files to their resolved content, keeping both sides' intent and "
+            f"no conflict markers, then run `sync --continue {' '.join(self.files)}`. "
+            "To give up instead, run `sync --abort`, which leaves the branch as it was."
+        )
+
+
+@dataclass
+class MergeInProgressError(DataclassException, RuntimeError):
+    """
+    Raised when the work branch is committed to, pushed or merged into while a merge is
+    in progress on it.
+    """
+
+    branch: str
+    """
+    The work branch.
+    """
+
+    def error_message(self) -> str:
+        return f"a merge is in progress on {self.branch}"
+
+    def suggest_correction(self) -> str:
+        return (
+            "Finish it with `sync --continue <resolved files>`, or undo it with "
+            "`sync --abort`."
+        )
+
+
+@dataclass
+class NoMergeInProgressError(DataclassException, RuntimeError):
+    """
+    Raised when a merge is to be finished or undone and none is in progress.
+    """
+
+    branch: str
+    """
+    The work branch.
+    """
+
+    def error_message(self) -> str:
+        return f"no merge is in progress on {self.branch}"
+
+    def suggest_correction(self) -> str:
+        return "Start one with `sync --base` or `sync --on <number>`."
+
+
+@dataclass
+class ConflictMarkersLeftError(DataclassException, ValueError):
+    """
+    Raised when a file given as resolved still marks a conflict.
+    """
+
+    files: tuple[str, ...]
+    """
+    The files still marking one.
+    """
+
+    def error_message(self) -> str:
+        return f"{', '.join(self.files)} still mark a conflict; nothing was committed"
+
+    def suggest_correction(self) -> str:
+        return (
+            "Resolve every conflict in them, removing the markers, then run it again."
+        )
+
+
+@dataclass
+class UnresolvedConflictError(DataclassException, ValueError):
+    """
+    Raised when a merge is to be finished while files it left conflicting are not
+    resolved.
+    """
+
+    files: tuple[str, ...]
+    """
+    The files still conflicting.
+    """
+
+    def error_message(self) -> str:
+        return f"{', '.join(self.files)} still conflict; nothing was committed"
+
+    def suggest_correction(self) -> str:
+        return "Resolve them too, and name them among the resolved files."
 
 
 @dataclass

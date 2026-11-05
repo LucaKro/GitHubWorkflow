@@ -33,7 +33,11 @@ from basstler_domain_model.repository import GitHubAddress, Repository
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.command_line import WorkflowCommand
 from github_workflow.exceptions import (
+    ConflictMarkersLeftError,
     MergeConflictError,
+    MergeInProgressError,
+    NoMergeInProgressError,
+    UnresolvedConflictError,
     StackedBranchMergeError,
     BranchDeletedFromGitHubError,
     BranchNotPushedError,
@@ -192,7 +196,11 @@ class CommitWork(WorkflowStep):
     """
 
     def run(self) -> str:
+        """
+        :raises MergeInProgressError: If a merge is in progress.
+        """
         branch = self.policy.work_branch()
+        MergeInProgress(self.policy.checkout.git).refuse_while_in_progress(branch)
         commit = self.policy.checkout.git.commit(
             self.policy.commit_message(self.message), self.paths
         )
@@ -212,7 +220,11 @@ class PushWork(WorkflowStep):
     """
 
     def run(self) -> str:
+        """
+        :raises MergeInProgressError: If a merge is in progress.
+        """
         branch = RemoteBranch(self.policy.remote.name, self.policy.work_branch())
+        MergeInProgress(self.policy.checkout.git).refuse_while_in_progress(branch.name)
         pushed = self.policy.checkout.git.push(
             ProposedPush(
                 branch.remote, f"{branch.name}:{branch.reference}", sets_upstream=True
@@ -309,10 +321,10 @@ class DraftOpening(WorkflowStep):
 @dataclass(frozen=True)
 class DescriptionRewrite(WorkflowStep):
     """
-    A new description, title or both for an open pull request on the owner's
-    repository, a draft or ready for review, so it follows the pushed commits; a closed
-    or merged one keeps its own. A new description of one onto the default branch ends
-    as a draft's does.
+    A new description, title or both for an open pull request on the owner's repository,
+    a draft or ready for review, so it follows the pushed commits; a closed or merged
+    one keeps its own. A new description of one onto the default branch ends as a
+    draft's does.
 
     :raises NothingToDescribeError: If neither is given.
     :raises PullRequestNotOpenError: If the pull request is not open.
@@ -517,11 +529,77 @@ class BranchSync(WorkflowStep):
 # %% taking in the default branch
 
 
+class ConflictMarker(StrEnum):
+    """
+    The lines git writes into a file around each conflict a merge leaves, compared as
+    the start of a line.
+    """
+
+    OURS = "<<<<<<< "
+    """
+    Opens a conflict, with the branch's own side.
+    """
+
+    THEIRS = ">>>>>>> "
+    """
+    Closes a conflict, after the merged branch's side.
+    """
+
+    @classmethod
+    def left_in(cls, text: str) -> bool:
+        """
+        :param text: A file's text.
+        :return: Whether a conflict is still marked in it.
+        """
+        return any(line.startswith(tuple(cls)) for line in text.splitlines())
+
+
+@dataclass(frozen=True)
+class MergeInProgress:
+    """
+    The merge a checkout is in the middle of, if any: started, conflicting, and neither
+    committed nor undone yet.
+    """
+
+    git: GitCommandRunner
+    """
+    The checkout.
+    """
+
+    def exists(self) -> bool:
+        """
+        :return: Whether a merge is in progress.
+        """
+        return self.git.attempt(
+            "rev-parse", "--quiet", "--verify", "MERGE_HEAD"
+        ).succeeded
+
+    def message(self) -> str:
+        """
+        :return: The commit message the merge was started with, without the lines git
+            adds as comments.
+        """
+        path = self.git.working_directory / self.git.run(
+            "rev-parse", "--git-path", "MERGE_MSG"
+        )
+        lines = path.read_text().splitlines()
+        return "\n".join(line for line in lines if not line.startswith("#")).strip()
+
+    def refuse_while_in_progress(self, branch: str) -> None:
+        """
+        :param branch: The checked-out branch.
+        :raises MergeInProgressError: If a merge is in progress.
+        """
+        if self.exists():
+            raise MergeInProgressError(branch)
+
+
 @dataclass(frozen=True)
 class WorkBranchMerge:
     """
     A branch as GitHub has it merged into the checked-out work branch, committed as the
-    person, never forced; a conflicting merge is undone and its files named.
+    person, never forced; a conflicting merge is left in progress, its files named, for
+    :class:`MergeCompletion` or :class:`MergeAbort` to end.
     """
 
     policy: WritePolicy
@@ -535,10 +613,12 @@ class WorkBranchMerge:
         :param described: How the report names it.
         :return: What was merged, or that nothing had to be.
         :raises DefaultBranchWriteError: If the default branch is checked out.
+        :raises MergeInProgressError: If a merge is in progress already.
         :raises MergeConflictError: If the merge conflicts.
         """
         branch = self.policy.work_branch()
         git = self.policy.checkout.git
+        MergeInProgress(git).refuse_while_in_progress(branch)
         git.fetch_branch(merged).raise_if_failed()
         if git.contains(merged.tracking_reference, "HEAD"):
             return f"{branch} has {described}'s commits already"
@@ -550,10 +630,79 @@ class WorkBranchMerge:
             conflicted = git.conflicted_files()
             if not conflicted:
                 result.raise_if_failed()
-            git.abort_merge()
             raise MergeConflictError(branch, described, tuple(conflicted))
         push = WorkflowCommand.command_line(WorkflowCommand.PUSH)
         return f"merged {described} into {branch}; push it with `{push}`"
+
+
+@dataclass(frozen=True)
+class MergeCompletion(WorkflowStep):
+    """
+    The merge in progress on the work branch committed as the person, once the files it
+    left conflicting hold their resolved content.
+
+    :raises DefaultBranchWriteError: If the default branch is checked out.
+    :raises NoMergeInProgressError: If no merge is in progress.
+    :raises ConflictMarkersLeftError: If a resolved file still marks a conflict.
+    :raises UnresolvedConflictError: If a file the merge left conflicting is not among
+        the resolved ones.
+    """
+
+    policy: WritePolicy
+    """
+    The checkout, its work branch and who commits.
+    """
+
+    resolved: Sequence[Path]
+    """
+    The files resolved, as they are in the working tree.
+    """
+
+    def run(self) -> str:
+        branch = self.policy.work_branch()
+        git = self.policy.checkout.git
+        merge = MergeInProgress(git)
+        if not merge.exists():
+            raise NoMergeInProgressError(branch)
+        marked = [
+            str(path)
+            for path in self.resolved
+            if ConflictMarker.left_in((git.working_directory / path).read_text())
+        ]
+        if marked:
+            raise ConflictMarkersLeftError(tuple(marked))
+        git.run("add", "--", *map(str, self.resolved))
+        unresolved = git.conflicted_files()
+        if unresolved:
+            raise UnresolvedConflictError(tuple(unresolved))
+        message = self.policy.commit_message(merge.message())
+        git.run("commit", "--quiet", "--message", message)
+        push = WorkflowCommand.command_line(WorkflowCommand.PUSH)
+        commit = git.commit_at("HEAD")
+        return f"committed the merge {commit[:7]} on {branch}; push it with `{push}`"
+
+
+@dataclass(frozen=True)
+class MergeAbort(WorkflowStep):
+    """
+    The merge in progress on the work branch undone, its commit and files as before.
+
+    :raises DefaultBranchWriteError: If the default branch is checked out.
+    :raises NoMergeInProgressError: If no merge is in progress.
+    """
+
+    policy: WritePolicy
+    """
+    The checkout and its work branch.
+    """
+
+    def run(self) -> str:
+        branch = self.policy.work_branch()
+        git = self.policy.checkout.git
+        if not MergeInProgress(git).exists():
+            raise NoMergeInProgressError(branch)
+        git.abort_merge()
+        return f"undid the merge on {branch}; it is as it was before"
 
 
 @dataclass(frozen=True)
