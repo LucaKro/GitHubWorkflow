@@ -848,8 +848,17 @@ class GitWrite(StrEnum):
                 return WorkflowCommand.command_line(
                     WorkflowCommand.BRANCH, BranchSubcommand.START, "<name>"
                 )
-            case GitWrite.PULL | GitWrite.MERGE:
+            case GitWrite.PULL:
                 return WorkflowCommand.command_line(WorkflowCommand.SYNC)
+            case GitWrite.MERGE:
+                return (
+                    WorkflowCommand.command_line(WorkflowCommand.SYNC, "--base")
+                    + " (or `"
+                    + WorkflowCommand.command_line(
+                        WorkflowCommand.SYNC, "--on <number>"
+                    )
+                    + "` for another open pull request's branch)"
+                )
             case GitWrite.CLONE:
                 return WorkflowCommand.command_line(
                     WorkflowCommand.CLONE, "<owner>/<name>"

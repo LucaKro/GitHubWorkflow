@@ -26,7 +26,7 @@ from github_workflow.proof_settings import ProofSettings
 from github_workflow.proofs import (
     BranchTip,
     FindingTest,
-    DefaultBranchProofRunner,
+    BranchProofRunner,
     Proof,
     ProofOutcome,
 )
@@ -184,14 +184,14 @@ def runner(
     checkout: ProjectCheckout,
     python: str = sys.executable,
     settings: ProofSettings = ProofSettings(),
-) -> DefaultBranchProofRunner:
+) -> BranchProofRunner:
     """
     :param checkout: The checkout.
     :param python: The interpreter the tests run with.
     :param settings: How the project's proofs run.
     :return: Runs tests on the checkout's default branch on GitHub.
     """
-    return DefaultBranchProofRunner(
+    return BranchProofRunner(
         checkout.git,
         RemoteName.ORIGIN,
         RepositoriesByOwner.default_branch,

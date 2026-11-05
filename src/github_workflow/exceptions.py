@@ -281,8 +281,7 @@ class UnpushedCommitsError(DataclassException, RuntimeError):
 @dataclass
 class MergeConflictError(DataclassException, ValueError):
     """
-    Raised when merging the default branch into a work branch conflicts; the merge is
-    undone.
+    Raised when merging a branch into a work branch conflicts; the merge is undone.
     """
 
     branch: str
@@ -290,9 +289,9 @@ class MergeConflictError(DataclassException, ValueError):
     The work branch.
     """
 
-    default_branch: str
+    merged_branch: str
     """
-    The branch merged into it.
+    The branch merged into it, as the report names it.
     """
 
     files: tuple[str, ...]
@@ -302,12 +301,36 @@ class MergeConflictError(DataclassException, ValueError):
 
     def error_message(self) -> str:
         return (
-            f"merging {self.default_branch} into {self.branch} conflicts in "
+            f"merging {self.merged_branch} into {self.branch} conflicts in "
             f"{', '.join(self.files)}; the merge was undone, nothing changed"
         )
 
     def suggest_correction(self) -> str:
         return "Ask the person how to bring the two together."
+
+
+@dataclass
+class UnbuildablePullRequestError(DataclassException, ValueError):
+    """
+    Raised when a work branch is to build on a pull request whose branch cannot be
+    merged into it.
+    """
+
+    number: int
+    """
+    The pull request.
+    """
+
+    reason: str
+    """
+    Why its branch cannot be merged.
+    """
+
+    def error_message(self) -> str:
+        return f"cannot build on #{self.number}: {self.reason}"
+
+    def suggest_correction(self) -> str:
+        return "Build on an open pull request whose branch is on the same repository."
 
 
 @dataclass

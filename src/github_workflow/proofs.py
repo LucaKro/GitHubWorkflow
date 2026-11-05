@@ -160,7 +160,7 @@ class ProofOutcome(Enum):
 @dataclass(frozen=True)
 class ProofAttempt:
     """
-    A finding's test, run once on the default branch.
+    A finding's test, run once on a branch.
     """
 
     test: FindingTest
@@ -170,7 +170,7 @@ class ProofAttempt:
 
     tip: BranchTip
     """
-    The default branch's commit it ran on.
+    The branch's commit it ran on.
     """
 
     outcome: ProofOutcome
@@ -319,22 +319,22 @@ class PytestOption(StrEnum):
 
 class ProofRunner(ABC):
     """
-    Runs a finding's test on the default branch.
+    Runs a finding's test on a branch, the default branch unless told otherwise.
     """
 
     @abstractmethod
     def attempt(self, test: FindingTest) -> ProofAttempt:
         """
         :param test: The test.
-        :return: How it fared on the default branch's latest commit.
+        :return: How it fared on the branch's latest commit.
         """
 
 
 @dataclass(frozen=True)
-class DefaultBranchProofRunner(ProofRunner):
+class BranchProofRunner(ProofRunner):
     """
-    Runs a finding's test on the default branch as GitHub has it now, in a scratch copy
-    of its files.
+    Runs a finding's test on a branch as GitHub has it now, in a scratch copy of its
+    files: the default branch, or the branch of the pull request a draft builds on.
     """
 
     git: GitCommandRunner
@@ -344,12 +344,12 @@ class DefaultBranchProofRunner(ProofRunner):
 
     remote: str
     """
-    The owner's remote, holding the default branch.
+    The owner's remote, holding the branch.
     """
 
-    default_branch: str
+    branch: str
     """
-    The repository's default branch.
+    The branch the test runs on.
     """
 
     python: str
@@ -364,14 +364,14 @@ class DefaultBranchProofRunner(ProofRunner):
 
     def attempt(self, test: FindingTest) -> ProofAttempt:
         """
-        Overrides :meth:`ProofRunner.attempt`: the default branch is fetched from
-        GitHub first, and its packages are imported from its commit rather than from
+        Overrides :meth:`ProofRunner.attempt`: the branch is fetched from GitHub
+        first, and its packages are imported from its commit rather than from
         wherever the interpreter installed them. A setup command that fails leaves the
         test broken.
 
-        :raises GitCommandFailed: If the default branch cannot be fetched.
+        :raises GitCommandFailed: If the branch cannot be fetched.
         """
-        branch = RemoteBranch(self.remote, self.default_branch)
+        branch = RemoteBranch(self.remote, self.branch)
         fetched = self.git.fetch_branch(branch)
         fetched.raise_if_failed()
         tip = BranchTip(branch.name, self.git.commit_at(branch.tracking_reference))
