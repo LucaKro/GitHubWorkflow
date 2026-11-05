@@ -5,6 +5,7 @@ The writes a session makes to git and GitHub, each one step that checks the
 
 from __future__ import annotations
 
+import re
 import sys
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
@@ -27,7 +28,7 @@ from basstler_domain_model.github.repository_client import (
     RepositoryDetails,
     StackReader,
 )
-from basstler_domain_model.github.vocabulary import PullRequestState
+from basstler_domain_model.github.vocabulary import ClosingKeyword, PullRequestState
 from basstler_domain_model.repository import GitHubAddress, Repository
 
 from github_workflow.checkout import ProjectCheckout
@@ -306,12 +307,45 @@ class DraftOpening(WorkflowStep):
 
 
 @dataclass(frozen=True)
+class ClosingLines:
+    """
+    The lines of a pull request's description that close an issue once it is merged,
+    such as ``Fixes #148``.
+    """
+
+    description: str
+    """
+    The description.
+    """
+
+    def lines(self) -> list[str]:
+        """
+        :return: The closing lines, in order.
+        """
+        keyword = "|".join(map(re.escape, ClosingKeyword))
+        closing = re.compile(rf"(?:{keyword}) #\d+")
+        stripped = (line.strip() for line in self.description.splitlines())
+        return [line for line in stripped if closing.fullmatch(line)]
+
+    def kept_in(self, rewritten: str) -> str:
+        """
+        :param rewritten: A new description replacing this one.
+        :return: It, ending with every closing line of this one it lacks.
+        """
+        held = ClosingLines(rewritten).lines()
+        missing = [line for line in self.lines() if line not in held]
+        if not missing:
+            return rewritten
+        return f"{rewritten.rstrip()}\n\n" + "\n".join(missing) + "\n"
+
+
+@dataclass(frozen=True)
 class DescriptionRewrite(WorkflowStep):
     """
     A new description, title or both for an open pull request on the owner's
     repository, a draft or ready for review, so it follows the pushed commits; a closed
-    or merged one keeps its own. A new description of one onto the default branch ends
-    as a draft's does.
+    or merged one keeps its own. A new description keeps the lines of the old one that
+    close an issue, and one onto the default branch ends as a draft's does.
 
     :raises NothingToDescribeError: If neither is given.
     :raises PullRequestNotOpenError: If the pull request is not open.
@@ -366,11 +400,12 @@ class DescriptionRewrite(WorkflowStep):
             raise PullRequestNotOpenError(self.number)
         rewritten = []
         if self.body is not None:
+            kept = ClosingLines(pull_request.body or "").kept_in(self.body)
             onto_default = pull_request.base == self.repository.default_branch()
             body = (
-                self.ending.appended_to(self.body, pull_request.head.branch)
+                self.ending.appended_to(kept, pull_request.head.branch)
                 if self.ending is not None and onto_default
-                else self.body
+                else kept
             )
             self.writer.set_description(self.number, body)
             rewritten.append("description")
