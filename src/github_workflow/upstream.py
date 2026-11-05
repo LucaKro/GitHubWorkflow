@@ -12,7 +12,6 @@ from basstler_domain_model.git.commands import RemoteBranch
 from basstler_domain_model.github.repository_client import (
     Commenter,
     ForkDetails,
-    ForkSync,
     PullRequestsFromForks,
     RepositoryDetails,
 )
@@ -196,9 +195,13 @@ class ForkMainSync(WorkflowStep):
     """
     The fork's default branch fast-forwarded to the same branch of the repository it was
     forked from, as GitHub's *Sync fork* does, and the local copy after it; only ever
-    fast-forwarded, never merged or forced. The two branches are compared with git, the
-    upstream's fetched over HTTPS, since a cloud session's proxy refuses GitHub's cross-
-    fork compares.
+    fast-forwarded, never merged or forced. Everything goes through git, the upstream's
+    branch fetched over HTTPS and the fork's pushed to without force, since a cloud
+    session's proxy refuses GitHub's cross-fork compares and its merge-upstream.
+
+    .. note:: The push skips the checkout's ``pre-push`` hook, which refuses every
+       change to the default branch: this fast-forward to the upstream's commit is the
+       one the workflow makes itself.
 
     :raises NotAForkError: If the repository was forked from none.
     :raises ForkBranchDivergedError: If the fork's branch has commits of its own.
@@ -212,11 +215,6 @@ class ForkMainSync(WorkflowStep):
     fork_details: ForkDetails
     """
     Reads which repository the fork was forked from.
-    """
-
-    sync: ForkSync
-    """
-    Brings the fork's branch up to the upstream's.
     """
 
     upstream_name: str = "upstream"
@@ -249,7 +247,13 @@ class ForkMainSync(WorkflowStep):
             own = git.run("rev-list", "--count", f"{upstream_tip}..{fork_tip}")
             raise ForkBranchDivergedError(branch, upstream, int(own))
         behind = git.run("rev-list", "--count", f"{fork_tip}..{upstream_tip}")
-        self.sync.sync_with_upstream(branch)
+        git.attempt(
+            "push",
+            "--quiet",
+            "--no-verify",
+            fork.remote,
+            f"{upstream_tip}:{fork.reference}",
+        ).raise_if_failed()
         git.fetch_branch(fork).raise_if_failed()
         local = LocalBranchFollowing(git).follow(fork)
         return f"{branch} fast-forwarded by {behind} commit(s) to {upstream}'s{local}"

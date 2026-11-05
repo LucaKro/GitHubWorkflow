@@ -1083,17 +1083,14 @@ def test_a_fork_s_main_behind_its_upstream_is_synced_through_the_command_line(
     settings: WorkflowSettings,
 ):
     """
-    The branches are compared with git, so GitHub is asked for nothing but the fork's
-    details and the sync.
+    The branches are compared and the fork moved with git, so GitHub's API is asked for
+    nothing but the fork's details.
     """
     fork = RepositoryRoute(
         Repository(settings.owner, RepositoriesByOwner.repository_name)
     )
     github.answers[("GET", f"/{fork.root}")] = RecordedAnswer.from_file(
         HTTPStatus.OK, UpstreamDataset.FORK.value
-    )
-    github.answers[("POST", f"/{fork.merge_upstream}")] = RecordedAnswer(
-        HTTPStatus.OK, json.dumps({"merge_type": "fast-forward"})
     )
     checkout = repositories.clone(owned_url, "session")
     parent = json.loads(UpstreamDataset.FORK.value.read_text())[RestJSONKey.PARENT]
@@ -1112,7 +1109,8 @@ def test_a_fork_s_main_behind_its_upstream_is_synced_through_the_command_line(
 
     run(github_workflow.__name__, checkout, WorkflowCommand.SYNC, "--upstream")
 
-    assert non_reads(github) == [("POST", f"/{fork.merge_upstream}")]
+    fork_tip = checkout.git.run("ls-remote", owned_url, default).split()[0]
+    assert (non_reads(github), fork_tip) == ([], writer.commit_at("HEAD"))
 
 
 # %% taking in the default branch
