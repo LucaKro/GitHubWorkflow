@@ -44,7 +44,7 @@ from github_workflow.own_pull_request import (
 )
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
-from github_workflow.proofs import DefaultBranchProofRunner, FindingTest
+from github_workflow.proofs import BranchProofRunner, FindingTest
 from github_workflow.cleanup import BranchCleanup, BranchDiscard, KeptBranches
 from github_workflow.findings import (
     FindingAcceptance,
@@ -81,10 +81,13 @@ from github_workflow.work import (
     BranchSwitch,
     BranchSync,
     GitHubPullRequestBranches,
+    MergeAbort,
+    MergeCompletion,
     CommitWork,
     DescriptionRewrite,
     DraftOpening,
     NotesSaving,
+    PullRequestMerge,
     PushWork,
     RepositoryCloning,
     StackPlacing,
@@ -151,24 +154,30 @@ class WorkflowSession(RepositoryDetails):
         """:return: Places pull requests in the repository's native stacks."""
         return StackPlacement(self.github, self.github, self.github, self.github)
 
-    def proof_runner(self, python: str) -> DefaultBranchProofRunner:
+    def proof_runner(self, python: str, branch: str) -> BranchProofRunner:
         """
         :param python: The interpreter the project's tests run with.
-        :return: Runs a finding's test on the owner's default branch.
+        :param branch: The owner's branch to run it on.
+        :return: Runs a finding's test on the branch.
         """
-        return DefaultBranchProofRunner(
-            self.checkout.git, self.remote.name, self.default_branch(), python
+        return BranchProofRunner(
+            self.checkout.git,
+            self.remote.name,
+            branch,
+            python,
         )
 
-    def recheck(self, number: int, python: str) -> FindingRecheck:
+    def recheck(self, number: int, python: str, branch: str) -> FindingRecheck:
         """
         :param number: A finding.
         :param python: The interpreter the project's tests run with.
+        :param branch: The owner's branch to run it on.
         :return: Runs its proof again, trusting proofs the owner or the account the
             workflow writes as posted.
         """
         authors = {self.settings.owner, self.github.authenticated_login()}
-        return FindingRecheck(self.github, self.proof_runner(python), authors, number)
+        runner = self.proof_runner(python, branch)
+        return FindingRecheck(self.github, runner, authors, number)
 
     def step(self, arguments: argparse.Namespace) -> WorkflowStep:
         """
@@ -199,13 +208,24 @@ class WorkflowSession(RepositoryDetails):
                 )
                 if arguments.finding is None:
                     return draft
+                built_on = (
+                    self.default_branch()
+                    if arguments.on is None
+                    else self.github.pull_request(arguments.on).head.branch
+                )
                 return FindingDraftOpening(
-                    self.recheck(arguments.finding, arguments.python), draft
+                    self.recheck(arguments.finding, arguments.python, built_on), draft
                 )
             case WorkflowCommand.SYNC, _ if arguments.upstream:
                 return ForkMainSync(self.policy, self.github)
             case WorkflowCommand.SYNC, _ if arguments.base:
                 return BaseMerge(self.policy, self.github, self.github)
+            case WorkflowCommand.SYNC, _ if arguments.on is not None:
+                return PullRequestMerge(self.policy, self.github, arguments.on)
+            case WorkflowCommand.SYNC, _ if arguments.resolved:
+                return MergeCompletion(self.policy, arguments.resolved)
+            case WorkflowCommand.SYNC, _ if arguments.abort:
+                return MergeAbort(self.policy)
             case WorkflowCommand.SYNC, _:
                 return BranchSync(
                     self.policy,
@@ -231,7 +251,7 @@ class WorkflowSession(RepositoryDetails):
                     body,
                     priority,
                     FindingTest.read(self.checkout, arguments.test),
-                    self.proof_runner(arguments.python),
+                    self.proof_runner(arguments.python, self.default_branch()),
                 )
             case WorkflowCommand.FINDING, FindingSubcommand.PRIORITIZE:
                 return FindingPrioritization(
@@ -268,14 +288,16 @@ class WorkflowSession(RepositoryDetails):
                     self.github,
                     arguments.number,
                     FindingTest.read(self.checkout, arguments.test),
-                    self.proof_runner(arguments.python),
+                    self.proof_runner(arguments.python, self.default_branch()),
                 )
             case WorkflowCommand.FINDING, FindingSubcommand.MARK_UNPROVEN:
                 return FindingUnproving(
                     self.github, self.github, arguments.number, arguments.reason
                 )
             case WorkflowCommand.FINDING, FindingSubcommand.RECHECK:
-                return self.recheck(arguments.number, arguments.python)
+                return self.recheck(
+                    arguments.number, arguments.python, self.default_branch()
+                )
             case WorkflowCommand.FINDING, FindingSubcommand.AUTOMATE:
                 return FindingAutomation(self.checkout.root)
             case WorkflowCommand.CLEANUP, _:
@@ -454,6 +476,26 @@ class WorkflowSession(RepositoryDetails):
             "--base",
             action="store_true",
             help="instead, merge GitHub's default branch into the work branch",
+        )
+        instead.add_argument(
+            "--on",
+            type=int,
+            help="instead, merge the branch of this open pull request into the work "
+            "branch, to build on it",
+        )
+        instead.add_argument(
+            "--continue",
+            dest="resolved",
+            nargs="+",
+            type=Path,
+            metavar="FILE",
+            help="instead, commit the merge in progress, once these files it left "
+            "conflicting are resolved",
+        )
+        instead.add_argument(
+            "--abort",
+            action="store_true",
+            help="instead, undo the merge in progress",
         )
         stack = commands.add_parser(WorkflowCommand.STACK, help="stack pull requests")
         stack_actions = stack.add_subparsers(dest="action", required=True)

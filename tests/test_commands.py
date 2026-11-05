@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Iterator
+from dataclasses import replace
 from http import HTTPStatus
 from pathlib import Path
 
@@ -63,7 +64,7 @@ from github_workflow.hooks import HookKey, HookValue, Tone
 from github_workflow.locations import GitFile, NotesFile, ProjectFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection
-from github_workflow.proofs import DefaultBranchProofRunner, FindingTest
+from github_workflow.proofs import BranchProofRunner, FindingTest
 from github_workflow.command_line import NotesSubcommand, WorkflowCommand
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.upstream import UpstreamSuggestion
@@ -610,11 +611,11 @@ def owner_s_github(settings: WorkflowSettings) -> GitHubRepository:
     )
 
 
-def runner_in(checkout: ProjectCheckout) -> DefaultBranchProofRunner:
+def runner_in(checkout: ProjectCheckout) -> BranchProofRunner:
     """:param checkout: The checkout.
     :return: Runs tests on its owner's default branch with an interpreter named
     ``project-python``."""
-    return DefaultBranchProofRunner(
+    return BranchProofRunner(
         checkout.git,
         RemoteName.ORIGIN,
         RepositoriesByOwner.default_branch,
@@ -747,6 +748,37 @@ def test_a_draft_naming_a_finding_rechecks_it_first(
         {settings.owner, signed_in},
         3,
     )
+
+
+def test_a_draft_building_on_a_pull_request_rechecks_on_its_branch(
+    github: ReplayedApi,
+    finding_checkout: ProjectCheckout,
+    settings: WorkflowSettings,
+    signed_in: str,
+):
+    """
+    A fix that needs what the pull request below brings is proven against it, not
+    against the default branch.
+    """
+    repository = Repository(settings.owner, RepositoriesByOwner.repository_name)
+    below = json.loads(UpstreamDataset.FORK_PULL_REQUESTS.value.read_text())[0]
+    below["head"]["ref"] = "below"
+    github.answers[("GET", f"/{RepositoryRoute(repository).pull_request(56)}")] = (
+        RecordedAnswer(HTTPStatus.OK, json.dumps(below))
+    )
+
+    step = step_for(
+        finding_checkout,
+        WorkflowCommand.DRAFT,
+        "--title=A title",
+        "--body-file=finding.md",
+        "--finding=3",
+        "--on=56",
+        "--python=project-python",
+    )
+
+    assert isinstance(step, FindingDraftOpening)
+    assert step.recheck.runner == replace(runner_in(finding_checkout), branch="below")
 
 
 # %% commenting on and editing a finding
@@ -1175,6 +1207,80 @@ def test_the_default_branch_s_new_commits_are_merged_through_the_command_line(
     run(github_workflow.__name__, checkout, WorkflowCommand.SYNC, "--base")
 
     assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
+
+
+def test_another_open_pull_request_s_commits_are_merged_into_the_work_branch(
+    github: ReplayedApi,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+):
+    repository = Repository(settings.owner, RepositoriesByOwner.repository_name)
+    other = repositories.clone(owned_url, "other").git
+    other.run("switch", "--quiet", "--create", "below")
+    other.run("commit", "--quiet", "--allow-empty", "--message", "Make tests load")
+    other.run("push", "--quiet", "origin", "below")
+    checkout = repositories.clone(owned_url, "session")
+    git = checkout.git
+    git.run("switch", "--quiet", "--create", "feature")
+    git.run("commit", "--quiet", "--allow-empty", "--message", "Fix it")
+    git.run("push", "--quiet", "--set-upstream", "origin", "feature")
+    below = json.loads(UpstreamDataset.FORK_PULL_REQUESTS.value.read_text())[0]
+    below["number"] = 56
+    below["head"]["ref"] = "below"
+    below["head"]["repo"]["full_name"] = repository.full_name
+    route = RepositoryRoute(repository)
+    github.answers[("GET", f"/{route.pull_request(56)}")] = RecordedAnswer(
+        HTTPStatus.OK, json.dumps(below)
+    )
+    github.answers[
+        ("GET", f"/{route.pull_requests_for_head(settings.owner, 'feature')}")
+    ] = RecordedAnswer(HTTPStatus.OK, "[]")
+
+    run(github_workflow.__name__, checkout, WorkflowCommand.SYNC, "--on", "56")
+
+    assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
+
+
+def test_a_conflicting_merge_is_resolved_and_finished_through_the_command_line(
+    github: ReplayedApi,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+):
+    checkout = repositories.clone(owned_url, "session")
+    git = checkout.git
+    git.run("switch", "--quiet", "--create", "feature")
+    (checkout.root / "shared.txt").write_text("the branch's line\n")
+    git.run("add", "shared.txt")
+    git.run("commit", "--quiet", "--message", "Change it here")
+    git.run("push", "--quiet", "--set-upstream", "origin", "feature")
+    other = repositories.clone(owned_url, "other").git
+    (other.working_directory / "shared.txt").write_text("main's line\n")
+    other.run("add", "shared.txt")
+    other.run("commit", "--quiet", "--message", "Change it on main")
+    other.run("push", "--quiet", "origin", f"HEAD:{RepositoriesByOwner.default_branch}")
+    route = RepositoryRoute(
+        Repository(settings.owner, RepositoriesByOwner.repository_name)
+    )
+    github.answers[
+        ("GET", f"/{route.pull_requests_for_head(settings.owner, 'feature')}")
+    ] = RecordedAnswer(HTTPStatus.OK, "[]")
+
+    run(github_workflow.__name__, checkout, WorkflowCommand.SYNC, "--base")
+    (checkout.root / "shared.txt").write_text("main's line\nthe branch's line\n")
+    run(
+        github_workflow.__name__,
+        checkout,
+        WorkflowCommand.SYNC,
+        "--continue",
+        "shared.txt",
+    )
+
+    assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
+    assert (
+        checkout.root / "shared.txt"
+    ).read_text() == "main's line\nthe branch's line\n"
 
 
 # %% the work branch's own pull request
