@@ -28,7 +28,8 @@ from github_workflow.exceptions import (
     FileOutsideCheckoutError,
     PassingTestError,
 )
-from github_workflow.locations import ProjectFile, ProofFile, WorkflowTemplate
+from github_workflow.locations import ProofFile, WorkflowTemplate
+from github_workflow.workspace import PackageDirectories
 
 # %% the test and where it ran
 
@@ -372,7 +373,7 @@ class DefaultBranchProofRunner(ProofRunner):
             (files / test.path).parent.mkdir(parents=True, exist_ok=True)
             (files / test.path).write_text(test.source)
             report = Path(directory) / ProofFile.REPORT
-            search_path = [str(files / ProjectFile.SOURCE_DIRECTORY)]
+            search_path = PackageDirectories(files).search_path()
             if PythonVariable.MODULE_SEARCH_PATH.read():
                 search_path.append(PythonVariable.MODULE_SEARCH_PATH.read())
             ran = CommandRunner(files).run(
