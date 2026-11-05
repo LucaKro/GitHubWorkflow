@@ -23,6 +23,7 @@ from basstler_domain_model.github.repository_client import (
 )
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.stack_models import Stack
+from basstler_domain_model.github.vocabulary import PullRequestState
 from basstler_domain_model.repository import Repository
 
 from github_workflow.__main__ import WorkflowSession
@@ -39,6 +40,7 @@ from github_workflow.exceptions import (
     PullRequestNotOpenError,
     PushRefusedError,
     StackedBranchMergeError,
+    UnreplaceablePullRequestError,
     UnpushedCommitsError,
 )
 from github_workflow.policy import Attribution, WritePolicy
@@ -57,7 +59,9 @@ from github_workflow.work import (
     DraftOpening,
     LocalBranchFollowing,
     PullRequestBranches,
+    PullRequestRetirement,
     PushWork,
+    Replacement,
     RepositoryCloning,
 )
 
@@ -382,6 +386,21 @@ def test_a_push_from_somebody_else_s_repository_is_refused_before_it_is_tried(
 # %% draft pull requests
 
 
+@dataclass(frozen=True)
+class RetiredInMemory(PullRequestRetirement):
+    """
+    Records every pull request closed, with why.
+    """
+
+    retired: list[tuple[int, str]] = field(default_factory=list)
+    """
+    Each pull request closed, and the reason given.
+    """
+
+    def retire(self, number: int, reason: str) -> None:
+        self.retired.append((number, reason))
+
+
 def draft(
     policy: WritePolicy, github: DraftsAndStacksInMemory, below: int | None
 ) -> DraftOpening:
@@ -439,6 +458,54 @@ def test_a_draft_onto_the_default_branch_ends_its_description(work: WritePolicy)
     replace(draft(work, github, None), ending=ending).run()
 
     assert github.bodies == {1: ending.appended_to("A body", "feature")}
+
+
+@dataclass(frozen=True)
+class ReplacedPullRequestInMemory(DraftsAndStacksInMemory):
+    """
+    The stand-in, answering pull request 4 as given.
+    """
+
+    replaced: RestPullRequest | None = None
+    """
+    Pull request 4.
+    """
+
+    def pull_request(self, number: int) -> RestPullRequest:
+        if number == 4 and self.replaced is not None:
+            return self.replaced
+        return super().pull_request(number)
+
+
+def test_a_replaced_pull_request_is_closed_once_its_draft_is_open(work: WritePolicy):
+    github = DraftsAndStacksInMemory({4: RepositoriesByOwner.default_branch})
+    retired = RetiredInMemory()
+
+    replace(draft(work, github, None), replacement=Replacement(4, retired)).run()
+
+    assert github.writes == [f"open_draft feature {RepositoriesByOwner.default_branch}"]
+    assert retired.retired == [(4, "Replaced by #5.")]
+
+
+@pytest.mark.parametrize(
+    "replaced",
+    [
+        replace(pull_request(4, "old"), state=PullRequestState.CLOSED),
+        pull_request(4, "old", repository="someone-else/project"),
+        pull_request(4, "feature"),
+    ],
+    ids=["closed", "on another repository", "the work branch's own"],
+)
+def test_a_pull_request_a_session_may_not_close_is_not_replaced(
+    work: WritePolicy, replaced: RestPullRequest
+):
+    github = ReplacedPullRequestInMemory({}, replaced=replaced)
+    retired = RetiredInMemory()
+
+    with pytest.raises(UnreplaceablePullRequestError):
+        replace(draft(work, github, None), replacement=Replacement(4, retired)).run()
+
+    assert (github.writes, retired.retired) == ([], [])
 
 
 def test_a_stacked_draft_keeps_its_description_as_given(work: WritePolicy):

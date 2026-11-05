@@ -194,7 +194,12 @@ them:
 - push its own work branch
 - fast-forward a fork's default branch to its upstream's, with `sync --upstream`
 - save notes and progress
-- mark its own throwaway branches as discarded
+- mark its own throwaway branches as discarded, closing their open pull requests
+- open a draft replacing one of its own (`draft --replaces <number>`), closing the old
+  one; a stack the old one held is made again with the new one in its place
+- close a pull request only as discarded or replaced, and only an open one from a work
+  branch on my repository, labelled `closed by session`, with a comment saying why,
+  telling me in chat
 - open draft pull requests
 - on the work branch's own open pull request: add or remove labels the repository has
   (`label`), and reply to or resolve its review threads (`review`), resolving only once

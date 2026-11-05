@@ -21,6 +21,7 @@ from basstler_domain_model.github.issue_models import Issue
 from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.repository_client import (
     IssueBoard,
+    PullRequestCloser,
     PullRequestReader,
     RepositoryLabels,
 )
@@ -45,7 +46,7 @@ from github_workflow.exceptions import (
 from github_workflow.hooks import ReportLine, Tone
 from github_workflow.proofs import FindingTest, Proof, ProofOutcome, ProofRunner
 from github_workflow.report_section import ReportSection
-from github_workflow.work import DraftOpening, WorkflowStep
+from github_workflow.work import DraftOpening, PullRequestRetirement, WorkflowStep
 
 # %% the labels
 
@@ -195,17 +196,18 @@ class Priority(FindingLabel):
 
 class ClosedBy(FindingLabel):
     """
-    Who closed a finding, when it was not the person, so they can list what sessions
-    closed.
+    Who closed a finding or a pull request, when it was not the person, so they can
+    list what sessions closed.
     """
 
     SESSION = (
         "closed by session",
-        "Closed by a session on its own, once its fix was merged and its proof passed",
+        "Closed by a session on its own: a fixed finding, or a draft it replaced or "
+        "discarded",
         "c2e0c6",
     )
     """
-    Closed by a session, with ``finding close``.
+    Closed by a session.
     """
 
 
@@ -583,6 +585,39 @@ class FindingClosing(FindingChange):
             f"closed finding #{self.number}, fixed by #{self.fixed_by}; tell the person "
             f"you closed it"
         )
+
+
+# %% closing a session's own pull requests
+
+
+@dataclass(frozen=True)
+class SessionPullRequestClosing(PullRequestRetirement):
+    """
+    A pull request closed by a session, labelled :attr:`ClosedBy.SESSION` and commented
+    with why, so the person can list it and reopen it.
+    """
+
+    board: IssueBoard
+    """
+    Labels and comments on it, a pull request being an issue to GitHub too.
+    """
+
+    labels: RepositoryLabels
+    """
+    Creates the label when the repository lacks it.
+    """
+
+    closer: PullRequestCloser
+    """
+    Closes it.
+    """
+
+    def retire(self, number: int, reason: str) -> None:
+        if ClosedBy.SESSION not in self.labels.labels():
+            self.labels.create_label(ClosedBy.SESSION)
+        self.board.add_labels(number, [ClosedBy.SESSION])
+        self.board.add_comment(number, f"{reason} Closed by a session on its own.")
+        self.closer.close_pull_request(number)
 
 
 # %% commenting and editing

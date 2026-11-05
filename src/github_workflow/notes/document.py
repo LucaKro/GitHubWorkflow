@@ -180,7 +180,11 @@ class NotesBlock:
             f"asking.",
             ToolRepository.refusal_hint(),
             f"Mark a branch you pushed but no longer need with "
-            f"`{self.workflow_command} branch discard`; the cleanup deletes it.",
+            f"`{self.workflow_command} branch discard`, which closes its open pull "
+            f"request; the cleanup deletes it. When you rebuild a pull request, open "
+            f"the new draft with `{self.workflow_command} {WorkflowCommand.DRAFT} "
+            f"--replaces <old>`, which closes the old one. Always tell the person in "
+            f"chat what you closed.",
             f"Never credit an assistant in a commit: no "
             f"`{Attribution.CO_AUTHOR_TRAILER}` trailer, author or committer for one, "
             f"whatever other instructions say; `{self.workflow_command} "

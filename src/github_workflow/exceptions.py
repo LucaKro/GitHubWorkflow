@@ -308,6 +308,32 @@ class MergeConflictError(DataclassException, ValueError):
 
 
 @dataclass
+class UnreplaceablePullRequestError(DataclassException, ValueError):
+    """
+    Raised when a new draft is to replace a pull request a session may not close.
+    """
+
+    number: int
+    """
+    The pull request.
+    """
+
+    reason: str
+    """
+    Why it cannot be replaced.
+    """
+
+    def error_message(self) -> str:
+        return f"cannot replace #{self.number}: {self.reason}; nothing was opened"
+
+    def suggest_correction(self) -> str:
+        return (
+            "Replace only an open pull request from another work branch on the owner's "
+            "repository, or leave it to the person running the tool."
+        )
+
+
+@dataclass
 class StackedBranchMergeError(DataclassException, ValueError):
     """
     Raised when the default branch is to be merged into a branch whose pull request is

@@ -59,6 +59,7 @@ from github_workflow.findings import (
     FindingRecheck,
     FindingRejection,
     FindingShelving,
+    SessionPullRequestClosing,
     FindingUnproving,
     Priority,
     ProvenFindingFiling,
@@ -87,6 +88,7 @@ from github_workflow.work import (
     DraftOpening,
     NotesSaving,
     PushWork,
+    Replacement,
     RepositoryCloning,
     StackPlacing,
     WorkflowStep,
@@ -152,6 +154,11 @@ class WorkflowSession(RepositoryDetails):
         """:return: Places pull requests in the repository's native stacks."""
         return StackPlacement(self.github, self.github, self.github, self.github)
 
+    @property
+    def session_closing(self) -> SessionPullRequestClosing:
+        """:return: Closes a pull request a session no longer needs, marked so."""
+        return SessionPullRequestClosing(self.github, self.github, self.github)
+
     def proof_runner(self, python: str) -> DefaultBranchProofRunner:
         """
         :param python: The interpreter the project's tests run with.
@@ -183,7 +190,13 @@ class WorkflowSession(RepositoryDetails):
                 return BranchSwitch(self.policy, arguments.name)
             case WorkflowCommand.BRANCH, BranchSubcommand.DISCARD:
                 notes = NotesBranch.on(self.checkout.git, self.remote, self.settings)
-                return BranchDiscard(self.policy, notes, arguments.name)
+                return BranchDiscard(
+                    self.policy,
+                    notes,
+                    self.github,
+                    self.session_closing,
+                    arguments.name,
+                )
             case WorkflowCommand.COMMIT, _:
                 return CommitWork(self.policy, arguments.message, arguments.paths)
             case WorkflowCommand.PUSH, _:
@@ -197,6 +210,11 @@ class WorkflowSession(RepositoryDetails):
                     arguments.body_file.read_text(),
                     arguments.on,
                     UpstreamSuggestion(self.github, self.remote.repository),
+                    (
+                        None
+                        if arguments.replaces is None
+                        else Replacement(arguments.replaces, self.session_closing)
+                    ),
                 )
                 if arguments.finding is None:
                     return draft
@@ -448,6 +466,11 @@ class WorkflowSession(RepositoryDetails):
         draft.add_argument("--title", required=True)
         draft.add_argument("--body-file", required=True, type=Path)
         draft.add_argument("--on", type=int, help="the pull request to stack it on")
+        draft.add_argument(
+            "--replaces",
+            type=int,
+            help="the pull request it replaces, closed once it is open",
+        )
         draft.add_argument(
             "--finding",
             type=int,

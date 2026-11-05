@@ -41,6 +41,7 @@ from github_workflow.exceptions import (
     NothingToDescribeError,
     PullRequestNotOpenError,
     PushRefusedError,
+    UnreplaceablePullRequestError,
     UnpushedCommitsError,
 )
 from github_workflow.notes.saving import NotesSave
@@ -240,6 +241,37 @@ class DescriptionEnding(ABC):
         """
 
 
+class PullRequestRetirement(ABC):
+    """
+    An open pull request of the owner's that a session no longer needs, closed and
+    marked as closed by a session, with why.
+    """
+
+    @abstractmethod
+    def retire(self, number: int, reason: str) -> None:
+        """
+        :param number: The pull request.
+        :param reason: Why it is closed, commented on it.
+        """
+
+
+@dataclass(frozen=True)
+class Replacement:
+    """
+    The pull request a new draft replaces, closed once the draft is open.
+    """
+
+    number: int
+    """
+    The pull request replaced.
+    """
+
+    retirement: PullRequestRetirement
+    """
+    Closes it.
+    """
+
+
 @dataclass(frozen=True)
 class DraftOpening(WorkflowStep):
     """
@@ -283,10 +315,21 @@ class DraftOpening(WorkflowStep):
     nothing.
     """
 
+    replacement: Replacement | None = None
+    """
+    The pull request the draft replaces, ``None`` for none.
+    """
+
     def run(self) -> str:
+        """
+        :raises UnreplaceablePullRequestError: If the pull request to replace is not
+            open, is on another repository, or is the work branch's own.
+        """
         branch = RemoteBranch(self.policy.remote.name, self.policy.work_branch())
         if not self.policy.checkout.git.has_remote_branch(branch):
             raise BranchNotPushedError(branch.name)
+        if self.replacement is not None:
+            self.check_replaceable(self.replacement.number, branch.name)
         base = (
             self.policy.default_branch
             if self.below is None
@@ -299,10 +342,34 @@ class DraftOpening(WorkflowStep):
         )
         number = self.opener.open_draft(branch.name, base, self.title, body)
         opened = f"opened draft #{number}: {branch.name} onto {base}"
+        if self.replacement is not None:
+            replaced = self.replacement.number
+            self.replacement.retirement.retire(replaced, f"Replaced by #{number}.")
+            opened += f"; closed #{replaced}, which it replaces: tell the person"
         if self.below is None:
             return opened
         stack = self.placement.place(self.below, number)
         return f"{opened}, in stack {stack.number}"
+
+    def check_replaceable(self, number: int, branch: str) -> None:
+        """
+        :param number: The pull request to replace.
+        :param branch: The work branch the draft is opened from.
+        :raises UnreplaceablePullRequestError: If it is not open, is on another
+            repository, or is the work branch's own.
+        """
+        replaced = self.placement.pull_requests.pull_request(number)
+        repository = self.policy.remote.repository.full_name
+        if replaced.state is not PullRequestState.OPEN:
+            raise UnreplaceablePullRequestError(number, f"it is {replaced.state}")
+        if replaced.head.repository != repository:
+            raise UnreplaceablePullRequestError(
+                number, f"its branch is not on {repository}"
+            )
+        if replaced.head.branch == branch:
+            raise UnreplaceablePullRequestError(
+                number, "it is this branch's own: rewrite it with `describe` instead"
+            )
 
 
 @dataclass(frozen=True)

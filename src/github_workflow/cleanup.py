@@ -14,7 +14,10 @@ from enum import StrEnum
 from typing import Self
 
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
-from basstler_domain_model.github.repository_client import GitHubRepository
+from basstler_domain_model.github.repository_client import (
+    GitHubRepository,
+    PullRequestsFromForks,
+)
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import PullRequestState
 
@@ -30,7 +33,7 @@ from github_workflow.notes.branch import NotesBranch
 from github_workflow.policy import WritePolicy
 from github_workflow.remotes import OwnedRemote
 from github_workflow.report_section import ReportSection
-from github_workflow.work import WorkflowStep
+from github_workflow.work import PullRequestRetirement, WorkflowStep
 
 # %% branches listed with their commits
 
@@ -85,7 +88,8 @@ class DiscardedBranches(BranchTips):
 class BranchDiscard(WorkflowStep):
     """
     A pushed branch marked as thrown away on the notes branch, so the cleanup deletes it
-    while it is still at the commit it was discarded at.
+    while it is still at the commit it was discarded at, and its open pull requests
+    closed.
     """
 
     policy: WritePolicy
@@ -96,6 +100,16 @@ class BranchDiscard(WorkflowStep):
     notes: NotesBranch
     """
     The notes branch, which lists the discarded branches.
+    """
+
+    pull_requests: PullRequestsFromForks
+    """
+    Finds the pull requests open from the branch.
+    """
+
+    retirement: PullRequestRetirement
+    """
+    Closes them.
     """
 
     name: str | None = None
@@ -120,8 +134,22 @@ class BranchDiscard(WorkflowStep):
             {NotesFile.DISCARDED_BRANCHES.value: discarded.to_text()},
             f"Discard {branch}",
         )
+        owner = self.policy.remote.repository.owner
+        closed = [
+            pull_request.number
+            for pull_request in self.pull_requests.pull_requests_from(owner, branch)
+            if pull_request.state is PullRequestState.OPEN
+        ]
+        for number in closed:
+            self.retirement.retire(
+                number, f"Discarded: its branch {branch} is marked for deletion."
+            )
         command = WorkflowCommand.command_line(WorkflowCommand.CLEANUP)
-        return f"{branch} marked for deletion; `{command}` deletes it"
+        marked = f"{branch} marked for deletion; `{command}` deletes it"
+        if not closed:
+            return marked
+        listed = ", ".join(f"#{number}" for number in closed)
+        return f"{marked}; closed its pull request {listed}: tell the person"
 
 
 # %% which branches
