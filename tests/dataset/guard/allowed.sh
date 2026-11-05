@@ -56,3 +56,7 @@ git tag -l 2>/dev/null
 git log --oneline -1 2>/dev/null
 git stash list > stashes.txt 2>&1
 git remote -v &>/dev/null && echo yes
+git merge-tree --write-tree origin/main origin/feature
+git merge-tree --write-tree --name-only origin/main origin/feature
+git merge-tree --write-tree --merge-base=abc123 main feature
+git merge-tree abc123 main feature

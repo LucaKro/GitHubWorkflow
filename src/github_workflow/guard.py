@@ -358,7 +358,9 @@ class GitProgramOption(StrEnum):
 
 class GitReading(StrEnum):
     """
-    The git subcommands that only read, whatever their arguments.
+    The git subcommands that only read, whatever their arguments: they move no
+    reference and leave the index and the working files alone. ``merge-tree`` may store
+    the merged files as objects nothing refers to, which ``git gc`` removes.
     """
 
     STATUS = "status"
@@ -374,6 +376,7 @@ class GitReading(StrEnum):
     LS_REMOTE = "ls-remote"
     CAT_FILE = "cat-file"
     MERGE_BASE = "merge-base"
+    MERGE_TREE = "merge-tree"
     DESCRIBE = "describe"
     SHORTLOG = "shortlog"
     FOR_EACH_REF = "for-each-ref"
