@@ -285,7 +285,8 @@ class ToolRepository(StrEnum):
         attachable = " and ".join(cls)
         return (
             f"When the workflow refuses something unnecessarily or lacks it, check "
-            f"`{listing}` and file it there: `{filing} --priority <level> --title "
+            f"`{listing}` and file it there without asking first: `{filing} "
+            f"--priority <level> --title "
             f"<title> --body-file <file>`, with what you ran, what happened and what "
             f"should have; for git and GitHub themselves, --repository "
             f"{cls.DOMAIN_MODEL}. A cloud session reaches only the repositories "

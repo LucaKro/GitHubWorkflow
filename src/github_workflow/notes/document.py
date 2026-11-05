@@ -152,7 +152,9 @@ class NotesBlock:
             f"`{self.workflow_command}` ({', '.join(WorkflowCommand)}; `--help` "
             f"for each).",
             f"File what you notice outside this work with `{finding} "
-            f"{FindingSubcommand.FILE}` instead of acting on it ({self.finding_guide}); "
+            f"{FindingSubcommand.FILE}` instead of acting on it ({self.finding_guide}), "
+            f"on your own: never ask whether to file, the person reviews findings on "
+            f"GitHub; "
             f"when a test failing on the default branch is easy to write, pass it, "
             f"uncommitted, with `--test`. Accept, shelve or reject a finding only when "
             f"the person says so; add to one with `{finding} {FindingSubcommand.COMMENT}` "

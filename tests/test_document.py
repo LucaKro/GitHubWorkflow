@@ -90,3 +90,14 @@ def test_the_header_names_exactly_the_owner_s_repositories_a_session_may_attach(
     hint = ToolRepository.refusal_hint()
 
     assert f"attach {' and '.join(ToolRepository)} with push access" in hint
+
+
+def test_the_header_tells_a_session_to_file_findings_without_asking():
+    """
+    A session that asks whether to file a finding costs the person a turn; they review
+    findings on GitHub.
+    """
+    rendered = block().render()
+
+    assert "never ask whether to file" in rendered
+    assert "file it there without asking first" in ToolRepository.refusal_hint()
