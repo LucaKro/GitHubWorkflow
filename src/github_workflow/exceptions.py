@@ -854,17 +854,11 @@ class ProofNoLongerHoldsError(DataclassException, RuntimeError):
 
     tip: BranchTip
     """
-    The default branch's commit the test was run on.
-    """
-
-    detail: str
-    """
-    What pytest said went wrong, empty when the test passed.
+    The default branch's commit the test passed on.
     """
 
     def error_message(self) -> str:
-        detail = f": {self.detail}" if self.detail else ""
-        return f"the test proving #{self.number} no longer fails on {self.tip}{detail}"
+        return f"the test proving #{self.number} no longer fails on {self.tip}"
 
     def suggest_correction(self) -> str:
         return "Stop, and ask the person running the tool whether the finding is fixed."

@@ -28,7 +28,8 @@ from github_workflow.exceptions import (
     FileOutsideCheckoutError,
     PassingTestError,
 )
-from github_workflow.locations import ProjectFile, ProofFile, WorkflowTemplate
+from github_workflow.locations import ProofFile, WorkflowTemplate
+from github_workflow.workspace import PackageDirectories
 
 # %% the test and where it ran
 
@@ -270,13 +271,19 @@ class JUnitReport:
         """
         :param cases: The report's test cases.
         :param element: The kind of outcome to read.
-        :return: The first line of the message of each outcome of that kind.
+        :return: The first line of the message of each outcome of that kind, followed
+            by the last line of pytest's report on it when that adds to it, such as the
+            exception a module could not be collected with.
         """
-        return tuple(
-            outcome.get(JUnitAttribute.MESSAGE, "").partition("\n")[0]
-            for case in cases
-            for outcome in case.iter(element)
-        )
+        described = []
+        for case in cases:
+            for outcome in case.iter(element):
+                message = outcome.get(JUnitAttribute.MESSAGE, "").partition("\n")[0]
+                reported = (outcome.text or "").strip().splitlines()
+                last = reported[-1].strip() if reported else ""
+                adds = last and last not in message and element is JUnitElement.ERROR
+                described.append(f"{message}: {last}" if adds else message)
+        return tuple(described)
 
     def attempt(self, test: FindingTest, tip: BranchTip) -> ProofAttempt:
         """
@@ -366,7 +373,7 @@ class DefaultBranchProofRunner(ProofRunner):
             (files / test.path).parent.mkdir(parents=True, exist_ok=True)
             (files / test.path).write_text(test.source)
             report = Path(directory) / ProofFile.REPORT
-            search_path = [str(files / ProjectFile.SOURCE_DIRECTORY)]
+            search_path = PackageDirectories(files).search_path()
             if PythonVariable.MODULE_SEARCH_PATH.read():
                 search_path.append(PythonVariable.MODULE_SEARCH_PATH.read())
             ran = CommandRunner(files).run(

@@ -100,6 +100,8 @@ them:
 - A test passing on the default branch proves nothing: a bug only on a work branch is
   no finding. Neither does a test that is broken rather than failing - one that cannot
   be collected or set up, or fails on its own import, name or syntax error.
+- The test imports the default branch's packages, a uv workspace's members' included,
+  ahead of any the interpreter has installed from the working checkout.
 - The code runs the test and decides whether it proves the finding; the agent's word
   is not taken for it. A proof counts only when posted by me or by the account the
   workflow writes as.
@@ -110,7 +112,8 @@ them:
 - A draft pull request works on a finding only when the finding is *accepted* and
   *proven*, and its test, run again on the default branch, still fails; the draft
   closes the finding when merged. A proof that no longer holds stops the work: the
-  session asks me whether the finding is fixed.
+  session asks me whether the finding is fixed. A test that did not run, run again, is
+  broken, never "no longer fails", and says what pytest reported.
 
 ## Notes and progress
 
