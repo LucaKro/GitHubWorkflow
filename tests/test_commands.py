@@ -1207,6 +1207,47 @@ def test_another_open_pull_request_s_commits_are_merged_into_the_work_branch(
     assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
 
 
+def test_a_conflicting_merge_is_resolved_and_finished_through_the_command_line(
+    github: ReplayedApi,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+):
+    checkout = repositories.clone(owned_url, "session")
+    git = checkout.git
+    git.run("switch", "--quiet", "--create", "feature")
+    (checkout.root / "shared.txt").write_text("the branch's line\n")
+    git.run("add", "shared.txt")
+    git.run("commit", "--quiet", "--message", "Change it here")
+    git.run("push", "--quiet", "--set-upstream", "origin", "feature")
+    other = repositories.clone(owned_url, "other").git
+    (other.working_directory / "shared.txt").write_text("main's line\n")
+    other.run("add", "shared.txt")
+    other.run("commit", "--quiet", "--message", "Change it on main")
+    other.run("push", "--quiet", "origin", f"HEAD:{RepositoriesByOwner.default_branch}")
+    route = RepositoryRoute(
+        Repository(settings.owner, RepositoriesByOwner.repository_name)
+    )
+    github.answers[
+        ("GET", f"/{route.pull_requests_for_head(settings.owner, 'feature')}")
+    ] = RecordedAnswer(HTTPStatus.OK, "[]")
+
+    run(github_workflow.__name__, checkout, WorkflowCommand.SYNC, "--base")
+    (checkout.root / "shared.txt").write_text("main's line\nthe branch's line\n")
+    run(
+        github_workflow.__name__,
+        checkout,
+        WorkflowCommand.SYNC,
+        "--continue",
+        "shared.txt",
+    )
+
+    assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
+    assert (
+        checkout.root / "shared.txt"
+    ).read_text() == "main's line\nthe branch's line\n"
+
+
 # %% the work branch's own pull request
 
 

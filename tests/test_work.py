@@ -36,13 +36,17 @@ from github_workflow.exceptions import (
     BranchNotPushedError,
     DefaultBranchWriteError,
     DetachedHeadError,
+    ConflictMarkersLeftError,
     MergeConflictError,
+    MergeInProgressError,
+    NoMergeInProgressError,
     NothingToDescribeError,
     PullRequestNotOpenError,
     PushRefusedError,
     StackedBranchMergeError,
     UnbuildablePullRequestError,
     UnpushedCommitsError,
+    UnresolvedConflictError,
 )
 from github_workflow.policy import Attribution, WritePolicy
 from github_workflow.push_hook import PushHook
@@ -59,6 +63,9 @@ from github_workflow.work import (
     DescriptionRewrite,
     DraftOpening,
     LocalBranchFollowing,
+    MergeAbort,
+    MergeCompletion,
+    MergeInProgress,
     PullRequestBranches,
     PullRequestMerge,
     PushWork,
@@ -693,17 +700,110 @@ def test_the_default_branch_s_new_commits_are_merged_into_the_work_branch(
     assert Attribution.ACKNOWLEDGEMENT in last_message(git)
 
 
-def test_a_conflicting_merge_is_refused_and_leaves_the_branch_as_it_was(
+def test_a_conflicting_merge_is_left_in_progress_naming_its_files(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
 ):
     default_branch_moved_on(repositories, owned_url, "a.txt")
     git = work.checkout.git
-    before = git.commit_at("HEAD")
 
-    with pytest.raises(MergeConflictError):
+    with pytest.raises(MergeConflictError) as raised:
         base_merge(work).run()
 
+    assert raised.value.files == ("a.txt",)
+    assert MergeInProgress(git).exists()
+
+
+# %% finishing or undoing a conflicting merge
+
+
+def conflicted(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+) -> GitCommandRunner:
+    """
+    Leave a merge of the default branch into the work branch in progress, conflicting in
+    ``a.txt``.
+
+    :param work: The rules of a clone on a pushed work branch with ``a.txt``.
+    :param repositories: The scratch repositories.
+    :param owned_url: The owner's repository.
+    :return: The clone that moved the default branch on.
+    """
+    other = default_branch_moved_on(repositories, owned_url, "a.txt")
+    with pytest.raises(MergeConflictError):
+        base_merge(work).run()
+    return other
+
+
+def test_a_resolved_merge_is_committed_as_the_person(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+):
+    other = conflicted(work, repositories, owned_url)
+    (work.checkout.root / "a.txt").write_text("both sides\n")
+
+    MergeCompletion(work, [Path("a.txt")]).run()
+
+    git = work.checkout.git
+    parents = git.run("log", "--max-count=1", "--format=%P").split()
+    assert (len(parents), git.contains(other.commit_at("HEAD"), "HEAD")) == (2, True)
+    assert Attribution.ACKNOWLEDGEMENT in last_message(git)
+    assert not MergeInProgress(git).exists()
+
+
+def test_a_file_still_marking_a_conflict_is_refused(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+):
+    conflicted(work, repositories, owned_url)
+
+    with pytest.raises(ConflictMarkersLeftError):
+        MergeCompletion(work, [Path("a.txt")]).run()
+
+    assert MergeInProgress(work.checkout.git).exists()
+
+
+def test_a_conflicting_file_left_out_is_refused(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+):
+    conflicted(work, repositories, owned_url)
+    (work.checkout.root / "b.txt").write_text("unrelated\n")
+
+    with pytest.raises(UnresolvedConflictError):
+        MergeCompletion(work, [Path("b.txt")]).run()
+
+    assert MergeInProgress(work.checkout.git).exists()
+
+
+def test_an_undone_merge_leaves_the_branch_as_it_was(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+):
+    git = work.checkout.git
+    before = git.commit_at("HEAD")
+    conflicted(work, repositories, owned_url)
+
+    MergeAbort(work).run()
+
     assert (git.commit_at("HEAD"), git.run("status", "--porcelain")) == (before, "")
+
+
+def test_no_merge_in_progress_has_nothing_to_finish(work: WritePolicy):
+    with pytest.raises(NoMergeInProgressError):
+        MergeCompletion(work, [Path("a.txt")]).run()
+
+
+def test_no_merge_in_progress_has_nothing_to_undo(work: WritePolicy):
+    with pytest.raises(NoMergeInProgressError):
+        MergeAbort(work).run()
+
+
+def test_a_branch_mid_merge_is_neither_committed_to_nor_pushed(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+):
+    conflicted(work, repositories, owned_url)
+    path = write(work.checkout, "c.txt")
+
+    with pytest.raises(MergeInProgressError):
+        CommitWork(work, "More", [path]).run()
+    with pytest.raises(MergeInProgressError):
+        PushWork(work).run()
 
 
 def test_a_branch_in_a_stack_is_left_to_github_s_rebase_stack(
