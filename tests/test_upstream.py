@@ -225,6 +225,24 @@ def test_a_draft_on_a_fork_suggests_the_command_to_the_person():
     assert UpstreamSuggestion.command_for(FORK, "feature") in described
 
 
+def test_a_description_ending_with_the_suggestion_keeps_it_once():
+    suggestion = UpstreamSuggestion(ForkInMemory(), FORK)
+    described = suggestion.appended_to("What the change does.", "feature")
+
+    assert suggestion.appended_to(described, "feature") == described
+
+
+def test_a_suggestion_amid_a_description_moves_to_its_end():
+    suggestion = UpstreamSuggestion(ForkInMemory(), FORK)
+    described = suggestion.appended_to("What the change does.", "feature")
+
+    rewritten = suggestion.appended_to(f"{described}\nAfter the review.", "feature")
+
+    command = UpstreamSuggestion.command_for(FORK, "feature")
+    assert rewritten.count(command) == 1
+    assert rewritten.index("After the review.") < rewritten.index(command)
+
+
 def test_a_draft_on_a_repository_that_is_no_fork_suggests_nothing():
     suggestion = UpstreamSuggestion(ForkInMemory(forked_from=None), FORK)
 

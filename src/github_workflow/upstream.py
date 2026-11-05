@@ -279,12 +279,13 @@ class UpstreamSuggestion(DescriptionEnding):
         upstream = self.fork_details.upstream()
         if upstream is None:
             return body
-        return (
-            f"{body.rstrip()}\n\n---\n\n"
+        ending = (
+            f"---\n\n"
             f"To open this pull request on {upstream}, run this yourself (a Claude "
             f"Code session may not):\n\n"
-            f"```bash\n{self.command_for(self.repository, branch)}\n```\n"
+            f"```bash\n{self.command_for(self.repository, branch)}\n```"
         )
+        return f"{body.replace(ending, '').rstrip()}\n\n{ending}\n"
 
     @staticmethod
     def command_for(repository: Repository, branch: str) -> str:

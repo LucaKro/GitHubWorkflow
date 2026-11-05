@@ -966,6 +966,44 @@ def test_a_draft_on_a_fork_ends_with_the_command_for_the_person(
     assert step.ending == UpstreamSuggestion(owner_s_github(settings), fork)
 
 
+def test_a_rewritten_description_of_a_fork_s_pull_request_keeps_the_upstream_line(
+    github: ReplayedApi,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+):
+    answer_as_a_fork(github, settings)
+    fork = Repository(settings.owner, RepositoriesByOwner.repository_name)
+    route = RepositoryRoute(fork)
+    opened = json.loads(UpstreamDataset.FORK_PULL_REQUESTS.value.read_text())[0]
+    github.answers[("GET", f"/{route.pull_request(3)}")] = RecordedAnswer(
+        HTTPStatus.OK, json.dumps(opened)
+    )
+    github.answers[("PATCH", f"/{route.pull_request(3)}")] = RecordedAnswer(
+        HTTPStatus.OK, json.dumps(opened)
+    )
+    checkout = repositories.clone(owned_url, "session")
+    (checkout.root / "body.md").write_text("What it does, after the review.\n")
+
+    run(
+        github_workflow.__name__,
+        checkout,
+        WorkflowCommand.DESCRIBE,
+        "3",
+        f"--body-file={checkout.root / 'body.md'}",
+    )
+
+    written = [sent.payload for sent in github.sent if sent.method == "PATCH"]
+    suggestion = UpstreamSuggestion(owner_s_github(settings), fork)
+    assert written == [
+        {
+            RestJSONKey.BODY: suggestion.appended_to(
+                "What it does, after the review.\n", "feature"
+            )
+        }
+    ]
+
+
 # %% findings on another of the owner's repositories
 
 

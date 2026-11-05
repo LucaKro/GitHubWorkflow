@@ -297,9 +297,11 @@ class WorkflowSession(RepositoryDetails):
                     self.github,
                     self.github,
                     self.github,
+                    self.github,
                     arguments.number,
                     arguments.body_file.read_text() if arguments.body_file else None,
                     arguments.title,
+                    UpstreamSuggestion(self.github, self.remote.repository),
                 )
             case WorkflowCommand.CLONE, _:
                 around = ProjectCheckout.around(self.directory)
