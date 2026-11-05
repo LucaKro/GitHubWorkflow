@@ -610,7 +610,7 @@ class GitHubHost(StrEnum):
 
 class GitHubToolReading(StrEnum):
     """
-    How the names of GitHub MCP tools that only read start or end.
+    How the names of GitHub MCP tools that only read start.
     """
 
     GET = "get_"
@@ -628,9 +628,36 @@ class GitHubToolReading(StrEnum):
     Searches.
     """
 
+    @classmethod
+    def names_a_read(cls, name: str) -> bool:
+        """
+        :param name: A GitHub MCP tool's name, without its server's prefix.
+        :return: Whether the tool only reads.
+        """
+        return name.startswith(tuple(cls)) or name.endswith(
+            tuple(GitHubToolReadingEnding)
+        )
+
+
+class GitHubToolReadingEnding(StrEnum):
+    """
+    How the names of GitHub MCP tools that only read end, in the newer tool names,
+    which name the thing first and what they do with it last.
+    """
+
     READ = "_read"
     """
-    Reads, in the newer tool names.
+    Reads, such as ``pull_request_read``.
+    """
+
+    LIST = "_list"
+    """
+    Lists things, such as ``actions_list``.
+    """
+
+    GET = "_get"
+    """
+    Reads one thing, such as ``actions_get``.
     """
 
 
@@ -1457,12 +1484,7 @@ class ToolGuard:
             return CommandGuard().denial(command)
         if GitHubTool.names(tool):
             name = tool.rsplit("__", 1)[-1]
-            reading = (
-                GitHubToolReading.GET,
-                GitHubToolReading.LIST,
-                GitHubToolReading.SEARCH,
-            )
-            if name.startswith(reading) or name.endswith(GitHubToolReading.READ):
+            if GitHubToolReading.names_a_read(name):
                 return None
             reason = f"the GitHub tool {name} writes"
             if name == PullRequestOpening.TOOL:

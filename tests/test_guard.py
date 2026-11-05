@@ -195,14 +195,17 @@ def test_a_write_no_workflow_command_does_names_none():
 @pytest.mark.parametrize(
     "tool",
     ["mcp__github__get_file_contents", "mcp__github__list_pull_requests"]
-    + ["mcp__github__search_code", "mcp__github__pull_request_read", "Read"],
+    + ["mcp__github__search_code", "mcp__github__pull_request_read", "Read"]
+    + ["mcp__github__actions_list", "mcp__github__actions_get"],
 )
 def test_a_reading_tool_is_let_through(tool: str):
     assert ToolGuard({HookKey.TOOL_NAME: tool}).denial() is None
 
 
 @pytest.mark.parametrize(
-    "tool", ["mcp__github__create_pull_request", "mcp__github__merge_pull_request"]
+    "tool",
+    ["mcp__github__create_pull_request", "mcp__github__merge_pull_request"]
+    + ["mcp__github__issue_write", "mcp__github__actions_run_trigger"],
 )
 def test_a_github_tool_that_writes_is_denied(tool: str):
     assert ToolGuard({HookKey.TOOL_NAME: tool}).denial() is not None
