@@ -538,15 +538,20 @@ def test_a_recheck_runs_the_posted_test_again_and_writes_nothing(
     assert (failing.ran, board.writes) == ([finding_test()], [])
 
 
-@pytest.mark.parametrize("outcome", [ProofOutcome.PASSES, ProofOutcome.BROKEN])
-def test_a_proof_whose_test_no_longer_fails_is_reported(
-    settings: WorkflowSettings, outcome: ProofOutcome
-):
+def test_a_proof_whose_test_no_longer_fails_is_reported(settings: WorkflowSettings):
     board = labelled_board(proven(finding(1, FindingStage.ACCEPTED, Priority.HIGH)))
     with_proof_posted(board, 1, settings.owner)
 
     with pytest.raises(ProofNoLongerHoldsError):
-        FindingRecheck(board, runner(outcome), [settings.owner], 1).run()
+        FindingRecheck(board, runner(ProofOutcome.PASSES), [settings.owner], 1).run()
+
+
+def test_a_recheck_whose_test_never_ran_reports_it_broken(settings: WorkflowSettings):
+    board = labelled_board(proven(finding(1, FindingStage.ACCEPTED, Priority.HIGH)))
+    with_proof_posted(board, 1, settings.owner)
+
+    with pytest.raises(BrokenTestError):
+        FindingRecheck(board, runner(ProofOutcome.BROKEN), [settings.owner], 1).run()
 
 
 def test_a_finding_labelled_proven_without_a_posted_proof_cannot_be_rechecked(

@@ -8,10 +8,11 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import tempfile
 from abc import ABC, abstractmethod
 from collections.abc import Collection, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, StrEnum, auto
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,7 @@ from github_workflow.exceptions import (
     PassingTestError,
 )
 from github_workflow.locations import ProjectFile, ProofFile, WorkflowTemplate
+from github_workflow.proof_settings import ProofSettings
 
 # %% the test and where it ran
 
@@ -270,13 +272,19 @@ class JUnitReport:
         """
         :param cases: The report's test cases.
         :param element: The kind of outcome to read.
-        :return: The first line of the message of each outcome of that kind.
+        :return: The first line of the message of each outcome of that kind, followed
+            by the last line of pytest's report on it when that adds to it, such as the
+            exception a module could not be collected with.
         """
-        return tuple(
-            outcome.get(JUnitAttribute.MESSAGE, "").partition("\n")[0]
-            for case in cases
-            for outcome in case.iter(element)
-        )
+        described = []
+        for case in cases:
+            for outcome in case.iter(element):
+                message = outcome.get(JUnitAttribute.MESSAGE, "").partition("\n")[0]
+                reported = (outcome.text or "").strip().splitlines()
+                last = reported[-1].strip() if reported else ""
+                adds = last and last not in message and element is JUnitElement.ERROR
+                described.append(f"{message}: {last}" if adds else message)
+        return tuple(described)
 
     def attempt(self, test: FindingTest, tip: BranchTip) -> ProofAttempt:
         """
@@ -348,11 +356,17 @@ class DefaultBranchProofRunner(ProofRunner):
     The interpreter the project's tests run with.
     """
 
+    settings: ProofSettings = field(default_factory=ProofSettings)
+    """
+    How the project's proofs run.
+    """
+
     def attempt(self, test: FindingTest) -> ProofAttempt:
         """
         Overrides :meth:`ProofRunner.attempt`: the default branch is fetched from
         GitHub first, and its packages are imported from its commit rather than from
-        wherever the interpreter installed them.
+        wherever the interpreter installed them. A setup command that fails leaves the
+        test broken.
 
         :raises GitCommandFailed: If the default branch cannot be fetched.
         """
@@ -369,15 +383,24 @@ class DefaultBranchProofRunner(ProofRunner):
             search_path = [str(files / ProjectFile.SOURCE_DIRECTORY)]
             if PythonVariable.MODULE_SEARCH_PATH.read():
                 search_path.append(PythonVariable.MODULE_SEARCH_PATH.read())
+            environment = {
+                PythonVariable.MODULE_SEARCH_PATH: os.pathsep.join(search_path)
+            }
+            for line in self.settings.setup:
+                prepared = CommandRunner(files).run(
+                    self.python, *shlex.split(line), environment=environment
+                )
+                if not prepared.succeeded:
+                    failure = f"the setup {line} failed: {prepared.summary}"
+                    return ProofAttempt(test, tip, ProofOutcome.BROKEN, failure)
             ran = CommandRunner(files).run(
                 self.python,
                 "-m",
                 "pytest",
+                *self.settings.pytest_options,
                 f"{PytestOption.JUNIT_XML}={report}",
                 str(test.path),
-                environment={
-                    PythonVariable.MODULE_SEARCH_PATH: os.pathsep.join(search_path)
-                },
+                environment=environment,
             )
             if not report.exists():
                 return ProofAttempt(test, tip, ProofOutcome.BROKEN, ran.summary)

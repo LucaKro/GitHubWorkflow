@@ -9,6 +9,9 @@ from typing import TYPE_CHECKING
 
 from basstler_domain_model.exceptions import DataclassException
 
+from github_workflow.locations import ProjectFile
+from github_workflow.proof_settings import ProofSettingKey
+
 if TYPE_CHECKING:
     from basstler_domain_model.repository import Repository
 
@@ -818,7 +821,11 @@ class BrokenTestError(DataclassException, ValueError):
     def suggest_correction(self) -> str:
         return (
             "Fix the test, and run it with the interpreter the project's tests run "
-            "with (--python)."
+            "with (--python). When what is missing is the project's own test setup, "
+            f"give its pytest options ({ProofSettingKey.PYTEST_OPTIONS}) and the "
+            f"commands preparing a run ({ProofSettingKey.SETUP}) in the "
+            f"[{ProofSettingKey.TOOL}.{ProofSettingKey.WORKFLOW}."
+            f"{ProofSettingKey.PROOFS}] table of its {ProjectFile.PYPROJECT}."
         )
 
 
@@ -854,17 +861,11 @@ class ProofNoLongerHoldsError(DataclassException, RuntimeError):
 
     tip: BranchTip
     """
-    The default branch's commit the test was run on.
-    """
-
-    detail: str
-    """
-    What pytest said went wrong, empty when the test passed.
+    The default branch's commit the test passed on.
     """
 
     def error_message(self) -> str:
-        detail = f": {self.detail}" if self.detail else ""
-        return f"the test proving #{self.number} no longer fails on {self.tip}{detail}"
+        return f"the test proving #{self.number} no longer fails on {self.tip}"
 
     def suggest_correction(self) -> str:
         return "Stop, and ask the person running the tool whether the finding is fixed."
