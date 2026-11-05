@@ -85,6 +85,12 @@ them:
   GitHub.
 - Only I move a finding out of *unreviewed*; a session accepts, shelves or rejects one
   only when I say so.
+- A session closes a finding on its own only as fixed: an *accepted*, proven finding
+  on my repository, once the pull request fixing it is merged into the default branch
+  and its proof test passes there (`finding close <number> --fixed-by <pull request>`).
+  It closes it as completed, with a comment naming the pull request and the label
+  `closed by session`, and tells me in chat. Closing as not planned or as a duplicate,
+  an unproven finding, or an issue that is no finding stays mine.
 - A stage I pick on GitHub counts at once, even while the label it replaces is still on
   (a repository without the label workflow keeps it): my pick outranks *unreviewed*, and
   of several I picked, the most cautious counts - *incorrect*, then *shelved*, then

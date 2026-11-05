@@ -7,31 +7,39 @@ in a draft only once accepted and proven.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
 
 from basstler_domain_model.github.issue_models import Issue, IssueComment
+from basstler_domain_model.github.repository_client import PullRequestReader
+from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import (
     ClosingKeyword,
     IssueState,
     IssueStateReason,
+    PullRequestState,
 )
 
 from github_workflow.exceptions import (
     AlreadyProvenError,
     BrokenTestError,
     FindingNotAcceptedError,
+    FindingStillFailsError,
+    FixNotMergedError,
     MissingProofError,
     NotAFindingError,
     NothingToEditError,
     PassingTestError,
     ProofNoLongerHoldsError,
+    UnprovenFindingCloseError,
 )
 from github_workflow.findings import (
+    ClosedBy,
     Evidence,
     FindingAcceptance,
+    FindingClosing,
     FindingComment,
     FindingDraftOpening,
     FindingEdit,
@@ -62,6 +70,7 @@ from .issues_in_memory import (
     finding,
     labelled_board,
 )
+from .pull_requests import pull_request
 from .stacked_pull_requests import DraftsAndStacksInMemory
 from .test_work import work
 
@@ -395,6 +404,136 @@ def test_rejecting_a_closed_finding_is_refused():
 
     with pytest.raises(NotAFindingError):
         FindingRejection(board, board, 1, "Done already").run()
+
+    assert board.writes == []
+
+
+# %% closing a fixed finding
+
+
+@dataclass(frozen=True)
+class FixesInMemory(PullRequestReader):
+    """
+    Answers pull request 157, merged into the default branch or not.
+    """
+
+    merged: bool = True
+    """
+    Whether it is merged.
+    """
+
+    base: str = "main"
+    """
+    The branch it targets.
+    """
+
+    def pull_request(self, number: int) -> RestPullRequest:
+        state = PullRequestState.CLOSED if self.merged else PullRequestState.OPEN
+        opened = pull_request(number, "fix", state=state, base=self.base)
+        return replace(opened, merged=self.merged)
+
+    def open_pull_requests(self) -> list[RestPullRequest]:
+        raise NotImplementedError
+
+
+def closing(
+    board: IssuesInMemory,
+    settings: WorkflowSettings,
+    outcome: ProofOutcome = ProofOutcome.PASSES,
+    fixes: FixesInMemory = FixesInMemory(),
+) -> FindingClosing:
+    """
+    :param board: The findings.
+    :param settings: The workflow's settings.
+    :param outcome: How the proof test fares on the default branch now.
+    :param fixes: The pull request named as the fix.
+    :return: The closing of finding 1 as fixed by pull request 157.
+    """
+    return FindingClosing(
+        board, board, 1, fixes, runner(outcome), [settings.owner], "main", 157
+    )
+
+
+def proven_accepted(settings: WorkflowSettings) -> IssuesInMemory:
+    """
+    :param settings: The workflow's settings.
+    :return: A board with finding 1 accepted, proven, and its proof posted.
+    """
+    board = labelled_board(proven(finding(1, FindingStage.ACCEPTED, Priority.HIGH)))
+    with_proof_posted(board, 1, settings.owner)
+    return board
+
+
+def test_a_fixed_finding_is_closed_as_completed_and_marked_as_a_session_s(
+    settings: WorkflowSettings,
+):
+    board = proven_accepted(settings)
+
+    closing(board, settings).run()
+
+    assert [write.split()[0] for write in board.writes] == [
+        "add_labels",
+        "add_comment",
+        "close_issue",
+    ]
+    assert board.writes[0] == f"add_labels 1 {[ClosedBy.SESSION]}"
+    assert "#157" in board.writes[1]
+    assert board.writes[2] == f"close_issue 1 {IssueStateReason.COMPLETED}"
+
+
+@pytest.mark.parametrize(
+    "fixes",
+    [FixesInMemory(merged=False), FixesInMemory(base="another-branch")],
+    ids=["not merged", "merged elsewhere"],
+)
+def test_a_fix_not_merged_into_the_default_branch_closes_nothing(
+    settings: WorkflowSettings, fixes: FixesInMemory
+):
+    board = proven_accepted(settings)
+
+    with pytest.raises(FixNotMergedError):
+        closing(board, settings, fixes=fixes).run()
+
+    assert board.writes == []
+
+
+@pytest.mark.parametrize(
+    "outcome, error",
+    [
+        (ProofOutcome.FAILS, FindingStillFailsError),
+        (ProofOutcome.BROKEN, BrokenTestError),
+    ],
+    ids=["still fails", "broken"],
+)
+def test_a_finding_whose_proof_does_not_pass_stays_open(
+    settings: WorkflowSettings, outcome: ProofOutcome, error: type[Exception]
+):
+    board = proven_accepted(settings)
+
+    with pytest.raises(error):
+        closing(board, settings, outcome).run()
+
+    assert board.writes == []
+
+
+def test_an_unproven_finding_is_left_to_the_person(settings: WorkflowSettings):
+    board = labelled_board(finding(1, FindingStage.ACCEPTED, Priority.HIGH))
+
+    with pytest.raises(UnprovenFindingCloseError):
+        closing(board, settings).run()
+
+    assert board.writes == []
+
+
+@pytest.mark.parametrize("stage", [FindingStage.UNREVIEWED, FindingStage.SHELVED])
+def test_a_finding_the_person_has_not_accepted_is_not_closed(
+    settings: WorkflowSettings, stage: FindingStage
+):
+    board = labelled_board(proven(finding(1, stage, Priority.HIGH)))
+    with_proof_posted(board, 1, settings.owner)
+
+    with pytest.raises(FindingNotAcceptedError):
+        closing(board, settings).run()
 
     assert board.writes == []
 

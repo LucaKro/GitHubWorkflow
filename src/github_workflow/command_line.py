@@ -153,6 +153,11 @@ class FindingSubcommand(StrEnum):
     List the open findings.
     """
 
+    CLOSE = "close"
+    """
+    Close an accepted, proven finding whose fix is merged and whose proof now passes.
+    """
+
     ACCEPT = "accept"
     """
     Accept an unreviewed or shelved finding, on the person's word.

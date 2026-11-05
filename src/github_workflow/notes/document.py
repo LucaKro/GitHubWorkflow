@@ -167,6 +167,10 @@ class NotesBlock:
             f"with `{self.workflow_command} {WorkflowCommand.DRAFT} --finding`, which "
             f"needs it accepted and proven. Give the commands running a test the "
             f"project's interpreter with `--python`.",
+            f"Once an accepted, proven finding's fix is merged, close it with `{finding} "
+            f"{FindingSubcommand.CLOSE} <number> --fixed-by <pull request>`, which "
+            f"closes it only when its proof now passes on the default branch; never "
+            f"close one otherwise, and always tell the person in chat what you closed.",
             f"On a fork, `{self.workflow_command} {WorkflowCommand.DRAFT}` ends the "
             f"description with the `{WorkflowCommand.UPSTREAM}` command line opening it "
             f"upstream; that command is the person's alone, never run it.",

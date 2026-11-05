@@ -45,6 +45,7 @@ from github_workflow.exceptions import (
     PersonOnlyCommandError,
 )
 from github_workflow.findings import (
+    FindingClosing,
     FindingDraftOpening,
     FindingFiling,
     FindingListing,
@@ -721,6 +722,31 @@ def test_a_recheck_trusts_the_owner_and_the_signed_in_account(
         runner_in(finding_checkout),
         {settings.owner, signed_in},
         3,
+    )
+
+
+def test_a_fixed_finding_is_closed_through_the_command_line(
+    finding_checkout: ProjectCheckout, settings: WorkflowSettings, signed_in: str
+):
+    step = step_for(
+        finding_checkout,
+        WorkflowCommand.FINDING,
+        FindingSubcommand.CLOSE,
+        "3",
+        "--fixed-by=157",
+        "--python=project-python",
+    )
+
+    github = owner_s_github(settings)
+    assert step == FindingClosing(
+        github,
+        github,
+        3,
+        github,
+        runner_in(finding_checkout),
+        {settings.owner, signed_in},
+        RepositoriesByOwner.default_branch,
+        157,
     )
 
 
