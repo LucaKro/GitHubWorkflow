@@ -203,3 +203,17 @@ class RepositoryFile(PathEnumeration):
     """
     The branch deletion workflow, where GitHub Actions finds it.
     """
+
+
+# %% the plugin's data
+
+
+class PluginDataDirectory(PathEnumeration):
+    """
+    The directories the workflow keeps in the plugin's data directory.
+    """
+
+    CLONES = Path("clones")
+    """
+    The clones of somebody else's repositories, as ``<owner>/<name>``.
+    """

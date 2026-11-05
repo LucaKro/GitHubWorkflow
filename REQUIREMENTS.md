@@ -24,9 +24,13 @@ contradicts one of these changes this file first.
 - Reading includes cloning: `clone` clones anyone's repository, so a session can read an
   upstream's pull request. Every clone it makes carries the workflow's `pre-push` hook,
   so nothing is pushed from a clone of somebody else's repository, however the push is
-  started. `clone --directory` puts the clone where the session names, so a clone of
-  the upstream need not collide with the fork's checkout of the same name; a pull
-  request's head is then fetched into a remote-tracking reference, which only reads.
+  started. The session does not choose where a clone goes: one of my repositories goes
+  next to the checkout, somebody else's into the plugin's own data directory, which
+  Claude Code gives the plugin's hooks and the session start passes on, as
+  `clones/<owner>/<name>`. So it stays out of my directories and never collides with
+  the fork's checkout of the same name. Without that directory, somebody else's
+  repository is not cloned. A repository cloned before is reused. A pull request's head
+  is then fetched into a remote-tracking reference, which only reads.
 
 ## Cloud sessions
 
