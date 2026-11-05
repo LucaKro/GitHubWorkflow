@@ -708,10 +708,12 @@ class MergeAbort(WorkflowStep):
 @dataclass(frozen=True)
 class BaseMerge(WorkflowStep):
     """
-    GitHub's default branch merged into the checked-out work branch.
+    GitHub's default branch merged into the checked-out work branch: one whose pull
+    request targets the default branch, the bottom of a stack included.
 
     :raises DefaultBranchWriteError: If the default branch is checked out.
-    :raises StackedBranchMergeError: If the branch's pull request is in a stack.
+    :raises StackedBranchMergeError: If the branch's pull request sits higher in a
+        stack, targeting the branch below it.
     :raises MergeConflictError: If the merge conflicts.
     """
 
@@ -735,7 +737,8 @@ class BaseMerge(WorkflowStep):
         owner = self.policy.remote.repository.owner
         for pull_request in self.pull_requests.pull_requests_from(owner, branch):
             stacked = self.stacks.stack_of(pull_request.number) is not None
-            if pull_request.state is PullRequestState.OPEN and stacked:
+            above = pull_request.base != self.policy.default_branch
+            if pull_request.state is PullRequestState.OPEN and stacked and above:
                 raise StackedBranchMergeError(branch, pull_request.number)
         default = RemoteBranch(self.policy.remote.name, self.policy.default_branch)
         return WorkBranchMerge(self.policy).merge(default, default.name)
