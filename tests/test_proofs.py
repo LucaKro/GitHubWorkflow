@@ -25,7 +25,7 @@ from github_workflow.locations import ProjectFile
 from github_workflow.proofs import (
     BranchTip,
     FindingTest,
-    DefaultBranchProofRunner,
+    BranchProofRunner,
     Proof,
     ProofOutcome,
 )
@@ -148,13 +148,13 @@ def publish_package(checkout: ProjectCheckout, package: ProofDataset) -> None:
 
 def runner(
     checkout: ProjectCheckout, python: str = sys.executable
-) -> DefaultBranchProofRunner:
+) -> BranchProofRunner:
     """
     :param checkout: The checkout.
     :param python: The interpreter the tests run with.
     :return: Runs tests on the checkout's default branch on GitHub.
     """
-    return DefaultBranchProofRunner(
+    return BranchProofRunner(
         checkout.git, RemoteName.ORIGIN, RepositoriesByOwner.default_branch, python
     )
 
