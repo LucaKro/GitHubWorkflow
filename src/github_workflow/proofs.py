@@ -50,6 +50,19 @@ class FindingTest:
     Its text.
     """
 
+    def misses_its_own_file(self, message: str) -> bool:
+        """
+        :param message: pytest's message on a failure of this test.
+        :return: Whether it failed only because a file under the test's own top
+            directory, such as its data, is missing from the copy it ran in.
+        """
+        if len(self.path.parts) < 2:
+            return False
+        exception, _, said = message.partition(":")
+        missing = said.rpartition(": ")[2].strip("'\"")
+        own = exception == MissingFileException.FILE_NOT_FOUND_ERROR
+        return own and f"/{self.path.parts[0]}/" in missing
+
     @classmethod
     def read(cls, checkout: ProjectCheckout, file: Path) -> FindingTest:
         """
@@ -87,6 +100,14 @@ class BranchTip:
 
 
 # %% how a test fared
+
+
+class MissingFileException(StrEnum):
+    """
+    The exception a test fails with when a file it opens is not there.
+    """
+
+    FILE_NOT_FOUND_ERROR = "FileNotFoundError"
 
 
 class BrokenTestException(StrEnum):
@@ -291,7 +312,11 @@ class JUnitReport:
         :param tip: The commit it ran on.
         :return: How the test fared.
         """
-        broken = [*self.errors, *filter(BrokenTestException.reported_in, self.failures)]
+        broken = [
+            *self.errors,
+            *filter(BrokenTestException.reported_in, self.failures),
+            *filter(test.misses_its_own_file, self.failures),
+        ]
         if broken:
             return ProofAttempt(test, tip, ProofOutcome.BROKEN, broken[0])
         if self.failures:
