@@ -43,6 +43,10 @@ contradicts one of these changes this file first.
   dependencies, so it runs their source, the plugin's own copy and the domain model's
   at its pinned commit, fetched from GitHub. A session whose network allows GitHub but
   not PyPI still gets the guard.
+- A new runtime is switched to only once its guard works and its commands load, so a
+  domain model pinned too old for the workflow's code leaves the runtime in use alone;
+  a test builds a runtime with the pinned commit, so such a pin fails before it is
+  merged.
 - A plugin synced after the session started brings hooks newer than the runtime the
   session start installed. Each hook runs its own plugin copy's code, with the runtime
   only supplying the libraries, so a hook never fails for a module the older runtime
