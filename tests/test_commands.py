@@ -76,6 +76,7 @@ from github_workflow.locations import GitFile, NotesFile, ProjectFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection
 from github_workflow.proofs import BranchProofRunner, FindingTest
+from github_workflow.pull_request_overview import PullRequestLabel
 from github_workflow.command_line import NotesSubcommand, WorkflowCommand
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.upstream import UpstreamSuggestion
@@ -333,8 +334,18 @@ def test_a_session_in_somebody_else_s_repository_loads_nothing(
 
 
 def test_a_session_start_is_shown_to_the_person_and_given_to_the_model(
-    repositories: RepositoriesByOwner, owned_url: str
+    github: ReplayedApi,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
 ):
+    route = RepositoryRoute(
+        Repository(settings.owner, RepositoriesByOwner.repository_name)
+    )
+    github.answers[("GET", f"/{route.listing(route.labels)}")] = RecordedAnswer(
+        HTTPStatus.OK, json.dumps([{RestJSONKey.NAME: PullRequestLabel.SHELVED}])
+    )
+
     finished = start_session(repositories.clone(owned_url, "session"))
 
     answer = json.loads(finished.stdout)

@@ -2,7 +2,8 @@
 The owner's open pull requests, one line each with the signals that ask for attention:
 
 failing checks, a conflict or a base moved on, and unresolved review threads - that they
-are there, never what they say. The details come only when asked for.
+are there, never what they say. The details come only when asked for. The pull requests
+the person shelved are left out, named together on one line.
 """
 
 from __future__ import annotations
@@ -17,14 +18,34 @@ from basstler_domain_model.github.readers import PullRequestSource, ReadSource
 from basstler_domain_model.github.repository_client import (
     GitHubRepository,
     PullRequestReader,
+    RepositoryLabels,
     ReviewRequests,
 )
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import MergeableState
 
 from github_workflow.hooks import ReportLine, Tone
+from github_workflow.labels import DescribedLabel
 from github_workflow.report_section import ReportSection
 from github_workflow.work import WorkflowStep
+
+# %% shelving
+
+
+class PullRequestLabel(DescribedLabel):
+    """
+    The labels the person puts on a pull request to say how sessions treat it.
+    """
+
+    SHELVED = (
+        "pull request: shelved",
+        "Set aside by the person; sessions leave it alone unless it is named",
+        "d4c5f9",
+    )
+    """
+    Set aside by the person: left out of the pull requests a session works on.
+    """
+
 
 # %% one pull request
 
@@ -162,12 +183,19 @@ class PullRequestSignalReader:
 @dataclass(frozen=True)
 class PullRequestOverview(ReportSection):
     """
-    One line per open pull request, and how many wait on the person's review.
+    One line per open pull request the person has not shelved, one naming those they
+    have, and how many wait on the person's review.
     """
 
     reader: PullRequestSignalReader
     """
     Reads the pull requests' signals.
+    """
+
+    labels: RepositoryLabels
+    """
+    Lists the repository's labels, and creates the shelving label for the person to
+    pick where it lacks it.
     """
 
     requests: ReviewRequests
@@ -183,13 +211,31 @@ class PullRequestOverview(ReportSection):
     def lines(self) -> list[ReportLine]:
         with ThreadPoolExecutor() as pool:
             counted = pool.submit(self.requests.awaiting_my_review)
+            labelled = pool.submit(self.labels.labels)
+            listed = self.reader.pull_requests.open_pull_requests()
+            shelved = [
+                pull_request.number
+                for pull_request in listed
+                if PullRequestLabel.SHELVED in pull_request.labels
+            ]
             numbers = [
                 pull_request.number
-                for pull_request in self.reader.pull_requests.open_pull_requests()
+                for pull_request in listed
+                if pull_request.number not in shelved
             ]
             read = list(pool.map(self.reader.signals, numbers))
+        if PullRequestLabel.SHELVED not in labelled.result():
+            self.labels.create_label(PullRequestLabel.SHELVED)
         waiting = counted.result()
         lines = [signals.line(self.checked_out) for signals in read]
+        if shelved:
+            lines.append(
+                ReportLine(
+                    "github-workflow: shelved by you, left alone unless you name them: "
+                    + ", ".join(f"#{number}" for number in shelved),
+                    Tone.NEWS,
+                )
+            )
         if waiting:
             plural = "s wait" if waiting > 1 else " waits"
             lines.append(

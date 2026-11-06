@@ -59,7 +59,9 @@ agent:
 
 - my standing notes
 - this branch's progress
-- one line per other open pull request on the repository
+- one line per other open pull request on the repository, except those I labelled
+  `pull request: shelved` (created for me to pick): a session leaves those alone
+  unless I name one, and they are named together on one line, without signals
 - warnings about this branch's pull request
 - what was brought up to date: the fork's default branch and the work branch, as
   described under what the agent may do without asking, and what could not be
@@ -259,9 +261,10 @@ them:
   telling me in chat
 - open draft pull requests
 - on the work branch's own open pull request: add or remove labels the repository has
-  (`label`), rewrite its description and title (`describe` without a number), and
-  reply to or resolve its review threads (`review`), resolving only once the branch's
-  commits are pushed; unresolving a thread stays mine
+  (`label`), except `pull request: shelved`, which only I set, rewrite its description
+  and title (`describe` without a number), and reply to or resolve its review threads
+  (`review`), resolving only once the branch's commits are pushed; unresolving a
+  thread stays mine
 - add a comment to a finding (`finding comment`), a closed one too, such as a correction
   after the fix landed, and on another of my repositories with `--repository`
 - delete branches that are merged or marked discarded, still at the commit they were

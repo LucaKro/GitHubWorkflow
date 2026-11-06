@@ -24,6 +24,7 @@ from basstler_domain_model.repository import Repository
 from github_workflow.exceptions import (
     NoOpenPullRequestError,
     NothingToLabelError,
+    PersonOnlyLabelError,
     ReviewThreadNotFoundError,
     UnknownLabelError,
     UnpushedWorkError,
@@ -36,6 +37,7 @@ from github_workflow.own_pull_request import (
     WorkBranchPullRequest,
 )
 from github_workflow.policy import WritePolicy
+from github_workflow.pull_request_overview import PullRequestLabel
 
 from .issues_in_memory import IssuesInMemory
 from .pull_requests import REPOSITORY, pull_request
@@ -117,6 +119,23 @@ def test_labelling_nothing_is_refused(work: WritePolicy):  # noqa: F811
         PullRequestLabelling(
             own(work, pull_request(3, "feature")), board, board, (), ()
         ).run()
+
+
+@pytest.mark.parametrize(
+    "added, removed",
+    [((PullRequestLabel.SHELVED,), ()), ((), (PullRequestLabel.SHELVED,))],
+    ids=["shelving", "unshelving"],
+)
+def test_shelving_is_left_to_the_person(
+    work: WritePolicy, added: tuple[str, ...], removed: tuple[str, ...]  # noqa: F811
+):
+    board = IssuesInMemory({}, {PullRequestLabel.SHELVED})
+    carrying = replace(pull_request(3, "feature"), labels=removed)
+
+    with pytest.raises(PersonOnlyLabelError):
+        PullRequestLabelling(own(work, carrying), board, board, added, removed).run()
+
+    assert board.writes == []
 
 
 # %% review threads

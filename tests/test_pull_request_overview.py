@@ -5,7 +5,7 @@ with the signals that ask for attention, and the details only when asked for.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import pytest
 
@@ -15,8 +15,10 @@ from basstler_domain_model.github.pull_request_models import (
     UpstreamPullRequestSnapshot,
 )
 from basstler_domain_model.github.readers import PullRequestSource
+from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.repository_client import (
     PullRequestReader,
+    RepositoryLabels,
     ReviewRequests,
 )
 from basstler_domain_model.github.rest_models import RestPullRequest
@@ -30,6 +32,7 @@ from basstler_domain_model.github.vocabulary import CheckOutcome, MergeableState
 from github_workflow.hooks import Tone
 from github_workflow.pull_request_overview import (
     PullRequestDetails,
+    PullRequestLabel,
     PullRequestOverview,
     PullRequestSignalReader,
 )
@@ -60,10 +63,12 @@ def thread(resolved: bool) -> ReviewThread:
 
 
 @dataclass(frozen=True)
-class PullRequestsWithSignals(PullRequestReader, PullRequestSource, ReviewRequests):
+class PullRequestsWithSignals(
+    PullRequestReader, PullRequestSource, ReviewRequests, RepositoryLabels
+):
     """
-    Open pull requests with their merge state, checks and threads, and how many wait on
-    the person's review.
+    Open pull requests with their merge state, checks, threads and labels, how many wait
+    on the person's review, and the repository's labels.
     """
 
     mergeable: dict[int, MergeableState] = field(default_factory=dict)
@@ -91,17 +96,29 @@ class PullRequestsWithSignals(PullRequestReader, PullRequestSource, ReviewReques
     How many pull requests wait on the person's review.
     """
 
+    shelved: frozenset[int] = frozenset()
+    """
+    The pull requests the person shelved.
+    """
+
+    present: set[str] = field(default_factory=set)
+    """
+    The repository's labels, with each one created.
+    """
+
     def open_pull_requests(self) -> list[RestPullRequest]:
         return [self.pull_request(number) for number in self.mergeable]
 
     def pull_request(self, number: int) -> RestPullRequest:
-        return pull_request(
+        listed = pull_request(
             number,
             f"branch-{number}",
             title=f"Change {number}",
             draft=number in self.drafts,
             mergeable_state=self.mergeable[number],
         )
+        shelving = (PullRequestLabel.SHELVED,) if number in self.shelved else ()
+        return replace(listed, labels=shelving)
 
     def resolve_pull_request_number(self, branch: str) -> int:
         return int(branch.removeprefix("branch-"))
@@ -121,11 +138,17 @@ class PullRequestsWithSignals(PullRequestReader, PullRequestSource, ReviewReques
     def awaiting_my_review(self) -> int:
         return self.waiting
 
+    def labels(self) -> set[str]:
+        return set(self.present)
+
+    def create_label(self, label: GitHubLabel) -> None:
+        self.present.add(label)
+
     def overview(self, checked_out: str = "elsewhere") -> PullRequestOverview:
         """:param checked_out: The branch the session works on.
         :return: The section over these pull requests."""
         return PullRequestOverview(
-            PullRequestSignalReader(self, self), self, checked_out
+            PullRequestSignalReader(self, self), self, self, checked_out
         )
 
 
@@ -198,6 +221,31 @@ def test_pull_requests_waiting_on_the_person_are_counted():
     [line] = github.overview().lines()
 
     assert line.text == "github-workflow: 2 pull requests wait on your review"
+
+
+def test_a_shelved_pull_request_is_named_apart_without_its_signals():
+    github = PullRequestsWithSignals(
+        mergeable={1: MergeableState.CLEAN, 2: MergeableState.DIRTY},
+        shelved=frozenset({2}),
+    )
+
+    lines = github.overview().lines()
+
+    assert [(line.text, line.tone) for line in lines[1:]] == [
+        (
+            "github-workflow: shelved by you, left alone unless you name them: #2",
+            Tone.NEWS,
+        )
+    ]
+    assert lines[0].text.endswith("Change 1 - ok")
+
+
+def test_the_shelving_label_is_created_for_the_person_to_pick():
+    github = PullRequestsWithSignals()
+
+    github.overview().lines()
+
+    assert github.present == {PullRequestLabel.SHELVED}
 
 
 # %% the details
