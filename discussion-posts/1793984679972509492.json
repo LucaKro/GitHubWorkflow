@@ -1,0 +1,7 @@
+{
+  "category": "General",
+  "title": "Session log",
+  "body": "2026-11-06 17:04 UTC on `runtime-pins-a-domain-model-its-commands-run-with`: closed finding #225 as fixed by #228, its proof test passing on main at 540b21d",
+  "kind": "comment",
+  "introduction": "What sessions did on their own, without asking: the findings and pull requests they closed and the branches they deleted. Each entry is one comment, the newest last, posted by the repository's Actions.\n\nPin this discussion to keep it at the top of the repository's Discussions.\n"
+}
