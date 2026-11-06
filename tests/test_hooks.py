@@ -1,6 +1,7 @@
 """
 Tests for :mod:`github_workflow.hooks`: the session start's lines stand out to the
-person in their tone's colour and reach the model plain.
+person in their tone's colour and reach the model plain, followed by the commands' help
+for the model alone.
 """
 
 from __future__ import annotations
@@ -44,3 +45,14 @@ def test_the_model_gets_the_lines_without_colour():
     assert answer[HookKey.SYSTEM_MESSAGE] == "\n".join(line.shown for line in lines)
     context = answer[HookKey.HOOK_SPECIFIC_OUTPUT][HookKey.ADDITIONAL_CONTEXT]
     assert context == "\n".join(line.text for line in lines)
+
+
+def test_the_model_alone_gets_the_command_help_after_the_lines():
+    lines = [ReportLine("first", Tone.NEWS)]
+    command_help = "usage: workflow <command>"
+
+    answer = json.loads(SessionStartReport(lines, command_help=command_help).json())
+
+    assert answer[HookKey.SYSTEM_MESSAGE] == lines[0].shown
+    context = answer[HookKey.HOOK_SPECIFIC_OUTPUT][HookKey.ADDITIONAL_CONTEXT]
+    assert context == f"{lines[0].text}\n\n{command_help}"

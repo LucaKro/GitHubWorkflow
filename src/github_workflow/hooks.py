@@ -169,7 +169,8 @@ class ReportLine:
 @dataclass(frozen=True)
 class SessionStartReport:
     """
-    What a session starts with: coloured for the person, plain for the model.
+    What a session starts with: coloured for the person, plain for the model, which is
+    also told the commands' help.
     """
 
     lines: list[ReportLine]
@@ -182,15 +183,22 @@ class SessionStartReport:
     The hook event the report answers.
     """
 
+    command_help: str = ""
+    """
+    The workflow commands' help, given to the model alone after the lines; empty for
+    none.
+    """
+
     def json(self) -> str:
         """:return: The hook's output."""
+        lines = "\n".join(line.text for line in self.lines)
         return json.dumps(
             {
                 HookKey.SYSTEM_MESSAGE: "\n".join(line.shown for line in self.lines),
                 HookKey.HOOK_SPECIFIC_OUTPUT: {
                     HookKey.HOOK_EVENT_NAME: self.event,
-                    HookKey.ADDITIONAL_CONTEXT: "\n".join(
-                        line.text for line in self.lines
+                    HookKey.ADDITIONAL_CONTEXT: "\n\n".join(
+                        part for part in (lines, self.command_help) if part
                     ),
                 },
             }

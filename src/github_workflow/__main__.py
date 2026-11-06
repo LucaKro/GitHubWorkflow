@@ -570,7 +570,7 @@ class WorkflowSession(RepositoryDetails):
         """:return: The parser of every command's line."""
         parser = argparse.ArgumentParser(
             prog=WorkflowCommand.command_line(),
-            description=__doc__.strip().splitlines()[0],
+            description=__doc__.strip().split("\n\n")[0],
         )
         parser.set_defaults(action=None)
         commands = parser.add_subparsers(dest="command", required=True)

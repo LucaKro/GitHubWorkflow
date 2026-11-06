@@ -1,6 +1,7 @@
 """
 Tests for :mod:`github_workflow.session_start` and the hook running it: a slow section
-costs only its own line, and the hook keeps one marker per session, named after it.
+costs only its own line, the model is told the commands' help, and the hook keeps one
+marker per session, named after it.
 """
 
 from __future__ import annotations
@@ -16,10 +17,12 @@ import pytest
 
 from basstler_domain_model.locations import PathEnumeration
 
+import github_workflow.__main__
+from github_workflow.__main__ import WorkflowSession
 from github_workflow.environment import WorkflowVariable
-from github_workflow.hooks import Tone
+from github_workflow.hooks import HookKey, Tone
 from github_workflow.report import SectionName
-from github_workflow.session_start import SessionStart
+from github_workflow.session_start import SessionStart, main
 from github_workflow.settings import WorkflowSettings
 
 from .repositories_by_owner import RepositoriesByOwner
@@ -60,6 +63,32 @@ def test_a_section_running_out_of_time_costs_one_red_line(
 
     assert time.monotonic() - started < 5
     assert [line.tone for line in lines] == [Tone.PROBLEM]
+
+
+# %% the commands' help
+
+
+def test_the_model_is_told_the_commands_help(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["session_start"])
+
+    main()
+
+    answer = json.loads(capsys.readouterr().out)
+    context = answer[HookKey.HOOK_SPECIFIC_OUTPUT][HookKey.ADDITIONAL_CONTEXT]
+    assert context.endswith(WorkflowSession.parser().format_help())
+
+
+def test_the_commands_help_describes_them_in_the_whole_first_paragraph():
+    first_paragraph = github_workflow.__main__.__doc__.strip().split("\n\n")[0]
+
+    description = WorkflowSession.parser().description
+
+    assert description.split() == first_paragraph.split()
 
 
 # %% the hook

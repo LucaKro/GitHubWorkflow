@@ -341,7 +341,8 @@ def test_a_session_start_is_shown_to_the_person_and_given_to_the_model(
     given = answer[HookKey.HOOK_SPECIFIC_OUTPUT]
     assert given[HookKey.HOOK_EVENT_NAME] == HookValue.SESSION_START
     shown = answer[HookKey.SYSTEM_MESSAGE].splitlines()
-    plain = given[HookKey.ADDITIONAL_CONTEXT].splitlines()
+    # The commands' help follows the report lines after a blank line, for the model alone.
+    plain = given[HookKey.ADDITIONAL_CONTEXT].split("\n\n")[0].splitlines()
     assert [line for line in plain if any(line in seen for seen in shown)] == plain
     assert not [line for line in shown if line.startswith(f"\033[1;{Tone.PROBLEM}m")]
 

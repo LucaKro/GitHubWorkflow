@@ -59,6 +59,7 @@ agent:
 
 - my standing notes
 - this branch's progress
+- the workflow commands' `--help`, given to the agent alone, not shown to me
 - one line per other open pull request on the repository
 - warnings about this branch's pull request
 - what was brought up to date: the fork's default branch and the work branch, as

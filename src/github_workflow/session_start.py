@@ -4,8 +4,9 @@ What a session starts with, answered to the Claude Code hook.
 Writes the notes and this branch's progress into ``CLAUDE.local.md`` and the push hook
 into the checkout, computes the sections that read the owner's repository on GitHub, and
 checks the runtime; one line per thing the session should know is shown to the person
-and given to the model. Writes no file to a remote; turning on the repository features
-the workflow relies on is the only change it makes on GitHub.
+and given to the model, which is also told the commands' help, once per session. Writes
+no file to a remote; turning on the repository features the workflow relies on is the
+only change it makes on GitHub.
 
 Usage: ``python -m github_workflow.session_start [<hook event>]``, the event being
 ``SessionStart`` unless named.
@@ -21,6 +22,7 @@ from pathlib import Path
 from basstler_domain_model.commands import CommandRunner
 
 import github_workflow.report as report
+from github_workflow.__main__ import WorkflowSession
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.findings import Priority
 from github_workflow.hooks import HookValue, ReportLine, SessionStartReport, Tone
@@ -166,7 +168,8 @@ class SessionStart:
 
 def main() -> None:
     """
-    Print what the session starts with, as the hook's answer.
+    Print what the session starts with, and the commands' help for the model, as the
+    hook's answer.
     """
     checkout = ProjectCheckout.around(Path.cwd())
     if checkout is None:
@@ -179,7 +182,8 @@ def main() -> None:
     else:
         lines = SessionStart(checkout, WorkflowSettings()).report()
     event = HookValue(sys.argv[1]) if sys.argv[1:] else HookValue.SESSION_START
-    print(SessionStartReport(lines, event).json())
+    command_help = WorkflowSession.parser().format_help()
+    print(SessionStartReport(lines, event, command_help).json())
 
 
 if __name__ == "__main__":
