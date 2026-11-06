@@ -121,7 +121,12 @@ them:
 - A session works on a finding only when I ask it to, never because it found one easy
   to prove. Working on an *accepted* finding starts with proving it; when no failing
   test can be written, the session marks it *unproven* with the reason, and leaves it
-  to me.
+  to me. An unproven finding gets no draft.
+- A test that needs another open pull request's changes, or a bug that exists only on
+  a pull request's branch, is proven and rechecked there: `finding prove` and `finding
+  recheck` take `--on <pull request>`, or `--on <branch>` for a branch without one,
+  and the proof records the branch and commit it failed on. The pull request has to be
+  open and its branch on my repository.
 - A draft pull request works on a finding only when the finding is *accepted* and
   *proven*, and its test, run again on the default branch, still fails; the draft
   closes the finding when merged. A proof that no longer holds stops the work: the

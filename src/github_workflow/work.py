@@ -861,6 +861,42 @@ class BaseMerge(WorkflowStep):
 
 
 @dataclass(frozen=True)
+class OpenPullRequestBranch:
+    """
+    The branch of an open pull request on the owner's repository, which work builds on
+    or a finding's test runs on.
+    """
+
+    pull_requests: PullRequestReader
+    """
+    Reads the pull request.
+    """
+
+    repository: Repository
+    """
+    The owner's repository, which the branch has to be on.
+    """
+
+    def of(self, number: int) -> str:
+        """
+        :param number: The pull request.
+        :return: Its branch.
+        :raises UnbuildablePullRequestError: If it is not open, or its branch is on
+            another repository.
+        """
+        pull_request = self.pull_requests.pull_request(number)
+        if pull_request.state is not PullRequestState.OPEN:
+            raise UnbuildablePullRequestError(number, f"it is {pull_request.state}")
+        if pull_request.head.repository != self.repository.full_name:
+            raise UnbuildablePullRequestError(
+                number,
+                f"its branch is on {pull_request.head.repository or 'no repository'}, "
+                f"not on {self.repository.full_name}",
+            )
+        return pull_request.head.branch
+
+
+@dataclass(frozen=True)
 class PullRequestMerge(WorkflowStep):
     """
     The branch of another open pull request on the owner's repository merged into the
@@ -890,18 +926,11 @@ class PullRequestMerge(WorkflowStep):
 
     def run(self) -> str:
         self.policy.work_branch()
-        below = self.pull_requests.pull_request(self.number)
-        if below.state is not PullRequestState.OPEN:
-            raise UnbuildablePullRequestError(self.number, f"it is {below.state}")
-        repository = self.policy.remote.repository.full_name
-        if below.head.repository != repository:
-            raise UnbuildablePullRequestError(
-                self.number,
-                f"its branch is on {below.head.repository or 'no repository'}, not "
-                f"on {repository}",
-            )
-        merged = RemoteBranch(self.policy.remote.name, below.head.branch)
-        described = f"#{self.number}'s branch {below.head.branch}"
+        branch = OpenPullRequestBranch(
+            self.pull_requests, self.policy.remote.repository
+        ).of(self.number)
+        merged = RemoteBranch(self.policy.remote.name, branch)
+        described = f"#{self.number}'s branch {branch}"
         return WorkBranchMerge(self.policy).merge(merged, described)
 
 
