@@ -269,7 +269,12 @@ started with its first entry; I pin it myself, since GitHub's API cannot. Nothin
 entered where the repository has Discussions turned off; the `closed by session` label
 still marks what was closed.
 
-Everything else written to GitHub needs my go-ahead.
+The guard never asks me to confirm a workflow command. What is mine to decide - a
+finding's stage (`finding accept`, `shelve`, `reject`), a finding's text (`finding
+edit`), another pull request's description (`describe <number>`) or its place in a
+stack (`stack on`) - a session does only when I said so in the conversation, and a
+finding accepted, shelved, rejected or edited is entered in the session log, so I see
+it and can undo it on GitHub. Everything else written to GitHub needs me to ask for it.
 
 ## What only I do
 
@@ -296,7 +301,7 @@ Everything else written to GitHub needs my go-ahead.
   its proof.
 - Pull requests stay small through a standing note, not through a measured limit.
 - A pull request's description and title follow its pushed commits: `describe` rewrites
-  them on any open pull request of mine, a draft or ready for review, on my go-ahead,
+  them on any open pull request of mine, a draft or ready for review, when I say so,
   and on the work branch's own without asking; a closed or merged one keeps its own.
 - Starting a work branch from the default branch also fast-forwards my local default
   branch to GitHub's, unless it has commits of its own.

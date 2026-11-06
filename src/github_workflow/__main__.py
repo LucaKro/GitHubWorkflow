@@ -109,6 +109,7 @@ from github_workflow.work import (
     CommitWork,
     DescriptionRewrite,
     DraftOpening,
+    EnteredStep,
     NotesSaving,
     OpenPullRequestBranch,
     PullRequestMerge,
@@ -268,7 +269,8 @@ class WorkflowSession(RepositoryDetails):
         :param arguments: The parsed command line.
         :return: The step it asks for; for ``push``, ``draft`` and ``describe`` of the
             work branch's own pull request, run once the branches are up to date; for
-            ``finding list``, once the labels picked on GitHub are completed.
+            ``finding list``, once the labels picked on GitHub are completed; for a
+            finding accepted, shelved, rejected or edited, entered in the session log.
         """
         step = self.step(arguments)
         match WorkflowCommand(arguments.command):
@@ -290,6 +292,20 @@ class WorkflowSession(RepositoryDetails):
                     self.session_log,
                 )
                 return LabelsCompletedStep(completion, step)
+            case WorkflowCommand.FINDING if arguments.action in (
+                FindingSubcommand.ACCEPT,
+                FindingSubcommand.SHELVE,
+                FindingSubcommand.REJECT,
+            ):
+                return EnteredStep(
+                    step, self.session_log, self.remote.repository.full_name
+                )
+            case WorkflowCommand.FINDING if arguments.action == FindingSubcommand.EDIT:
+                return EnteredStep(
+                    step,
+                    self.session_log,
+                    arguments.repository or self.remote.repository.full_name,
+                )
         return step
 
     def step(self, arguments: argparse.Namespace) -> WorkflowStep:
@@ -731,7 +747,7 @@ class WorkflowSession(RepositoryDetails):
         comment.add_argument("--repository", help=repository_help)
         rewrite = finding_actions.add_parser(
             FindingSubcommand.EDIT,
-            help="rewrite an open finding's title or text, on the person's go-ahead",
+            help="rewrite an open finding's title or text",
         )
         rewrite.add_argument("number", type=int)
         rewrite.add_argument("--title")

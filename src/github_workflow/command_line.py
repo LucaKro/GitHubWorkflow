@@ -181,12 +181,12 @@ class FindingSubcommand(StrEnum):
 
     COMMENT = "comment"
     """
-    Comment on an open finding, on the person's go-ahead.
+    Comment on a finding, open or closed.
     """
 
     EDIT = "edit"
     """
-    Rewrite an open finding's title or text, on the person's go-ahead.
+    Rewrite an open finding's title or text.
     """
 
     PROVE = "prove"

@@ -85,11 +85,6 @@ class GuardDataset(PathEnumeration):
     One workflow command line per line, each only the person's to run.
     """
 
-    NEEDS_GO_AHEAD = Path(__file__).parent / "dataset" / "guard" / "needs_go_ahead.sh"
-    """
-    One workflow command line per line, each confirmed by the person before it runs.
-    """
-
     WITHOUT_GO_AHEAD = (
         Path(__file__).parent / "dataset" / "guard" / "without_go_ahead.sh"
     )
@@ -255,7 +250,7 @@ def test_every_denial_says_how_to_report_an_unnecessary_one():
     assert ToolRepository.refusal_hint() in CommandGuard().denial(command).message()
 
 
-# %% the person's go-ahead
+# %% the person's commands, and the workflow's
 
 
 @pytest.mark.parametrize("command", GuardDataset.PERSON_ONLY.lines())
@@ -268,20 +263,13 @@ def test_a_command_only_the_person_runs_is_denied_not_asked(command: str):
     assert output[HookKey.PERMISSION_DECISION] == HookValue.DENY
 
 
-@pytest.mark.parametrize("command", GuardDataset.NEEDS_GO_AHEAD.lines())
-def test_a_workflow_command_needing_the_person_s_go_ahead_is_asked_about(command: str):
-    output = ToolGuard(hook_input(command)).output()[HookKey.HOOK_SPECIFIC_OUTPUT]
-
-    assert output[HookKey.PERMISSION_DECISION] == HookValue.ASK
-
-
 @pytest.mark.parametrize("command", GuardDataset.WITHOUT_GO_AHEAD.lines())
-def test_a_workflow_command_the_agent_may_run_alone_is_not_asked_about(command: str):
+def test_a_workflow_command_runs_without_the_person_being_asked(command: str):
     assert ToolGuard(hook_input(command)).output() is None
 
 
-def test_a_denial_outweighs_asking():
-    command = f"{GuardDataset.NEEDS_GO_AHEAD.lines()[0]} && git push"
+def test_a_write_chained_to_a_workflow_command_is_still_denied():
+    command = f"{GuardDataset.WITHOUT_GO_AHEAD.lines()[0]} && git push"
 
     output = ToolGuard(hook_input(command)).output()[HookKey.HOOK_SPECIFIC_OUTPUT]
 

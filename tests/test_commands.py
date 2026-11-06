@@ -80,6 +80,7 @@ from github_workflow.command_line import NotesSubcommand, WorkflowCommand
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.upstream import UpstreamSuggestion
 from github_workflow.settings import WorkflowSettings
+from github_workflow.work import EnteredStep
 
 from .repositories_by_owner import RepositoriesByOwner
 
@@ -799,6 +800,28 @@ def test_proving_on_a_closed_pull_request_is_refused(
             "--on=56",
             "--python=project-python",
         )
+
+
+@pytest.mark.parametrize(
+    "decision",
+    [
+        [FindingSubcommand.ACCEPT, "3"],
+        [FindingSubcommand.SHELVE, "3"],
+        [FindingSubcommand.REJECT, "3", "--reason=Not a bug"],
+        [FindingSubcommand.EDIT, "3", "--title=A sharper title"],
+    ],
+    ids=["accept", "shelve", "reject", "edit"],
+)
+def test_a_finding_decision_is_entered_in_the_session_log(
+    github: ReplayedApi, finding_checkout: ProjectCheckout, decision: list[str]
+):
+    arguments = WorkflowSession.parser().parse_args(
+        [WorkflowCommand.FINDING, *decision]
+    )
+
+    step = WorkflowSession(finding_checkout.root, WorkflowSettings()).command(arguments)
+
+    assert isinstance(step, EnteredStep)
 
 
 def test_marking_unproven_keeps_the_reason(

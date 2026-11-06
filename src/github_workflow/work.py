@@ -284,6 +284,33 @@ class SessionLog(ABC):
 
 
 @dataclass(frozen=True)
+class EnteredStep(WorkflowStep):
+    """
+    A step whose outcome is entered in the session log once it ran.
+    """
+
+    step: WorkflowStep
+    """
+    The step asked for.
+    """
+
+    log: SessionLog
+    """
+    Where its outcome is entered.
+    """
+
+    repository: str
+    """
+    The repository it changes, as ``owner/name``, named in the entry.
+    """
+
+    def run(self) -> str:
+        done = self.step.run()
+        self.log.enter(f"{done}, in {self.repository}")
+        return done
+
+
+@dataclass(frozen=True)
 class Replacement:
     """
     The pull request a new draft replaces, closed once the draft is open.
