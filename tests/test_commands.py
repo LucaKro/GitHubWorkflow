@@ -32,6 +32,7 @@ from basstler_domain_model.github.repository_client import (
 from basstler_domain_model.github.routes import QueryParameter, RepositoryRoute
 from basstler_domain_model.github.vocabulary import (
     ClosingKeyword,
+    IssueEventType,
     IssueState,
     PullRequestState,
     RestJSONKey,
@@ -61,6 +62,7 @@ from github_workflow.findings import (
     FindingClosing,
     FindingDraftOpening,
     FindingFiling,
+    FindingLabel,
     FindingListing,
     FindingProving,
     FindingRecheck,
@@ -1557,3 +1559,61 @@ def test_the_work_branch_s_pull_request_is_labelled_through_the_command_line(
     run(github_workflow.__name__, checkout, WorkflowCommand.LABEL, "--add", "bug-fix")
 
     assert non_reads(github) == [("POST", f"/{route.issue_labels(3)}")]
+
+
+# %% completing labels picked on GitHub
+
+
+def test_listing_completes_a_stage_picked_on_github(
+    github: ReplayedApi,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+):
+    route = RepositoryRoute(
+        Repository(settings.owner, RepositoriesByOwner.repository_name)
+    )
+    carried = [FindingStage.UNREVIEWED, Priority.MEDIUM, FindingStage.ACCEPTED]
+    issue = {
+        RestJSONKey.NUMBER: 61,
+        RestJSONKey.TITLE: "A finding",
+        RestJSONKey.STATE: IssueState.OPEN,
+        RestJSONKey.LABELS: [{RestJSONKey.NAME: label} for label in carried],
+    }
+    for stage in (FindingStage.UNREVIEWED, FindingStage.ACCEPTED):
+        listing = route.listing(
+            route.issues(),
+            {QueryParameter.LABELS: stage, QueryParameter.STATE: IssueState.OPEN},
+        )
+        github.answers[("GET", f"/{listing}")] = RecordedAnswer(
+            HTTPStatus.OK, json.dumps([issue])
+        )
+    github.answers[("GET", f"/{route.issue(61)}")] = RecordedAnswer(
+        HTTPStatus.OK, json.dumps(issue)
+    )
+    events = [
+        {
+            RestJSONKey.EVENT: IssueEventType.LABELED,
+            RestJSONKey.LABEL: {RestJSONKey.NAME: label},
+        }
+        for label in carried
+    ]
+    github.answers[("GET", f"/{route.listing(route.issue_events(61))}")] = (
+        RecordedAnswer(HTTPStatus.OK, json.dumps(events))
+    )
+    github.answers[("GET", f"/{route.listing(route.labels)}")] = RecordedAnswer(
+        HTTPStatus.OK,
+        json.dumps([{RestJSONKey.NAME: label} for label in FindingLabel.every_label]),
+    )
+    removed = f"/{route.issue_label(61, FindingStage.UNREVIEWED)}"
+    github.answers[("DELETE", removed)] = RecordedAnswer(HTTPStatus.OK, "[]")
+    checkout = repositories.clone(owned_url, "session")
+
+    run(
+        github_workflow.__name__,
+        checkout,
+        WorkflowCommand.FINDING,
+        FindingSubcommand.LIST,
+    )
+
+    assert ("DELETE", removed) in non_reads(github)

@@ -47,6 +47,7 @@ from github_workflow.discussions import (
 from github_workflow.environment import WorkflowVariable
 from github_workflow.freshness import BranchFreshening, FreshenedStep
 from github_workflow.exceptions import ForeignRepositoryError, UnknownPluginDataError
+from github_workflow.label_events import LabelsCompletedStep, PickedLabelCompletion
 from github_workflow.locations import PluginDataDirectory
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.own_pull_request import (
@@ -186,11 +187,8 @@ class WorkflowSession(RepositoryDetails):
     @property
     def session_log(self) -> DiscussionSessionLog:
         """:return: Where what the session does without asking is entered."""
-        git = self.checkout.git
-        return DiscussionSessionLog(
-            self.github,
-            DiscussionPosting(NotesBranch.on(git, self.remote, self.settings)),
-            git.checked_out_branch(),
+        return DiscussionSessionLog.in_checkout(
+            self.github, self.checkout.git, self.remote, self.settings
         )
 
     @property
@@ -269,7 +267,8 @@ class WorkflowSession(RepositoryDetails):
         """
         :param arguments: The parsed command line.
         :return: The step it asks for; for ``push``, ``draft`` and ``describe`` of the
-            work branch's own pull request, run once the branches are up to date.
+            work branch's own pull request, run once the branches are up to date; for
+            ``finding list``, once the labels picked on GitHub are completed.
         """
         step = self.step(arguments)
         match WorkflowCommand(arguments.command):
@@ -277,6 +276,20 @@ class WorkflowSession(RepositoryDetails):
                 return FreshenedStep(self.freshening, step)
             case WorkflowCommand.DESCRIBE if arguments.number is None:
                 return FreshenedStep(self.freshening, step)
+            case WorkflowCommand.FINDING if arguments.action == FindingSubcommand.LIST:
+                board = self.findings_board(arguments.repository)
+                completion = PickedLabelCompletion(
+                    board,
+                    board,
+                    board,
+                    (
+                        self.remote.repository
+                        if arguments.repository is None
+                        else Repository.parse(arguments.repository)
+                    ),
+                    self.session_log,
+                )
+                return LabelsCompletedStep(completion, step)
         return step
 
     def step(self, arguments: argparse.Namespace) -> WorkflowStep:
