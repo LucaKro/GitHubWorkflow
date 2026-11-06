@@ -171,7 +171,9 @@ class NotesBlock:
             f"`{finding} {FindingSubcommand.PROVE}`, or, when no failing test can be "
             f"written, `{finding} {FindingSubcommand.MARK_UNPROVEN}` with the reason; "
             f"run a proven finding's test again with `{finding} "
-            f"{FindingSubcommand.RECHECK}` before working on it. Open its draft only "
+            f"{FindingSubcommand.RECHECK}` before working on it; when the test needs an "
+            f"open pull request's changes, or fails only on a pull request's branch, "
+            f"give both `--on <pull request>` (or `--on <branch>`). Open its draft only "
             f"with `{self.workflow_command} {WorkflowCommand.DRAFT} --finding`, which "
             f"needs it accepted and proven. Give the commands running a test the "
             f"project's interpreter with `--python`.",

@@ -109,6 +109,7 @@ from github_workflow.work import (
     DescriptionRewrite,
     DraftOpening,
     NotesSaving,
+    OpenPullRequestBranch,
     PullRequestMerge,
     PushWork,
     Replacement,
@@ -225,6 +226,20 @@ class WorkflowSession(RepositoryDetails):
         around = ProjectCheckout.around(self.directory)
         return self.directory if around is None else around.root.parent
 
+    def branch_on(self, on: str | None) -> str:
+        """
+        :param on: An open pull request's number, or a branch, of the owner's
+            repository; ``None`` for the default branch.
+        :return: The branch it names.
+        :raises UnbuildablePullRequestError: If the pull request is not open, or its
+            branch is on another repository.
+        """
+        if on is None:
+            return self.default_branch()
+        if not on.isdigit():
+            return on
+        return OpenPullRequestBranch(self.github, self.remote.repository).of(int(on))
+
     def proof_runner(self, python: str, branch: str) -> BranchProofRunner:
         """
         :param python: The interpreter the project's tests run with.
@@ -304,10 +319,8 @@ class WorkflowSession(RepositoryDetails):
                 )
                 if arguments.finding is None:
                     return draft
-                built_on = (
-                    self.default_branch()
-                    if arguments.on is None
-                    else self.github.pull_request(arguments.on).head.branch
+                built_on = self.branch_on(
+                    None if arguments.on is None else str(arguments.on)
                 )
                 return FindingDraftOpening(
                     self.recheck(arguments.finding, arguments.python, built_on), draft
@@ -384,7 +397,7 @@ class WorkflowSession(RepositoryDetails):
                     self.github,
                     arguments.number,
                     FindingTest.read(self.checkout, arguments.test),
-                    self.proof_runner(arguments.python, self.default_branch()),
+                    self.proof_runner(arguments.python, self.branch_on(arguments.on)),
                 )
             case WorkflowCommand.FINDING, FindingSubcommand.MARK_UNPROVEN:
                 return FindingUnproving(
@@ -392,7 +405,7 @@ class WorkflowSession(RepositoryDetails):
                 )
             case WorkflowCommand.FINDING, FindingSubcommand.RECHECK:
                 return self.recheck(
-                    arguments.number, arguments.python, self.default_branch()
+                    arguments.number, arguments.python, self.branch_on(arguments.on)
                 )
             case WorkflowCommand.FINDING, FindingSubcommand.CLOSE:
                 return FindingClosing(
@@ -712,13 +725,19 @@ class WorkflowSession(RepositoryDetails):
         rewrite.add_argument("--body-file", type=Path)
         prove = finding_actions.add_parser(
             FindingSubcommand.PROVE,
-            help="prove an open finding with a test failing on the default branch",
+            help="prove an open finding with a test failing on the default branch, or on "
+            "the branch --on names",
             parents=[python_argument],
         )
         prove.add_argument("number", type=int)
         prove.add_argument(
             "--test", required=True, type=Path, help="the uncommitted test file"
         )
+        on_help = (
+            "an open pull request's number, or a branch, of the owner's repository to "
+            "run the test on; the default branch when left out"
+        )
+        prove.add_argument("--on", help=on_help)
         unproven = finding_actions.add_parser(
             FindingSubcommand.MARK_UNPROVEN,
             help="mark an open finding no failing test could be written for",
@@ -727,10 +746,12 @@ class WorkflowSession(RepositoryDetails):
         unproven.add_argument("--reason", required=True)
         recheck = finding_actions.add_parser(
             FindingSubcommand.RECHECK,
-            help="run a finding's proof again on the default branch",
+            help="run a finding's proof again on the default branch, or on the branch "
+            "--on names",
             parents=[python_argument],
         )
         recheck.add_argument("number", type=int)
+        recheck.add_argument("--on", help=on_help)
         close = finding_actions.add_parser(
             FindingSubcommand.CLOSE,
             help="close an accepted, proven finding once its fix is merged and its "
