@@ -54,6 +54,7 @@ from github_workflow.exceptions import (
     ForeignRepositoryError,
     NoOwnedRemoteError,
     PersonOnlyCommandError,
+    UnbuildablePullRequestError,
 )
 from github_workflow.findings import (
     ClosedBy,
@@ -702,6 +703,100 @@ def test_proving_runs_the_test_on_the_default_branch(
         finding_test_in(finding_checkout),
         runner_in(finding_checkout),
     )
+
+
+def answer_open_pull_request(
+    github: ReplayedApi, settings: WorkflowSettings, **changes: object
+) -> None:
+    """
+    Have GitHub answer that pull request 56 of the owner's repository is open from the
+    branch ``below``.
+
+    :param github: The replayed GitHub.
+    :param settings: The workflow's settings.
+    :param changes: Top-level fields of the pull request to answer differently.
+    """
+    repository = Repository(settings.owner, RepositoriesByOwner.repository_name)
+    below = json.loads(UpstreamDataset.FORK_PULL_REQUESTS.value.read_text())[0]
+    below["head"]["ref"] = "below"
+    below["head"]["repo"]["full_name"] = repository.full_name
+    below.update(changes)
+    github.answers[("GET", f"/{RepositoryRoute(repository).pull_request(56)}")] = (
+        RecordedAnswer(HTTPStatus.OK, json.dumps(below))
+    )
+
+
+def test_proving_on_a_pull_request_runs_the_test_on_its_branch(
+    github: ReplayedApi, finding_checkout: ProjectCheckout, settings: WorkflowSettings
+):
+    answer_open_pull_request(github, settings)
+
+    step = step_for(
+        finding_checkout,
+        WorkflowCommand.FINDING,
+        FindingSubcommand.PROVE,
+        "3",
+        "--test=tests/test_finding.py",
+        "--on=56",
+        "--python=project-python",
+    )
+
+    assert step.runner == replace(runner_in(finding_checkout), branch="below")
+
+
+def test_proving_on_a_branch_runs_the_test_there(
+    finding_checkout: ProjectCheckout, settings: WorkflowSettings
+):
+    step = step_for(
+        finding_checkout,
+        WorkflowCommand.FINDING,
+        FindingSubcommand.PROVE,
+        "3",
+        "--test=tests/test_finding.py",
+        "--on=without-pull-request",
+        "--python=project-python",
+    )
+
+    assert step.runner == replace(
+        runner_in(finding_checkout), branch="without-pull-request"
+    )
+
+
+def test_rechecking_on_a_pull_request_runs_the_test_on_its_branch(
+    github: ReplayedApi,
+    finding_checkout: ProjectCheckout,
+    settings: WorkflowSettings,
+    signed_in: str,
+):
+    answer_open_pull_request(github, settings)
+
+    step = step_for(
+        finding_checkout,
+        WorkflowCommand.FINDING,
+        FindingSubcommand.RECHECK,
+        "3",
+        "--on=56",
+        "--python=project-python",
+    )
+
+    assert step.runner == replace(runner_in(finding_checkout), branch="below")
+
+
+def test_proving_on_a_closed_pull_request_is_refused(
+    github: ReplayedApi, finding_checkout: ProjectCheckout, settings: WorkflowSettings
+):
+    answer_open_pull_request(github, settings, state=PullRequestState.CLOSED)
+
+    with pytest.raises(UnbuildablePullRequestError):
+        step_for(
+            finding_checkout,
+            WorkflowCommand.FINDING,
+            FindingSubcommand.PROVE,
+            "3",
+            "--test=tests/test_finding.py",
+            "--on=56",
+            "--python=project-python",
+        )
 
 
 def test_marking_unproven_keeps_the_reason(

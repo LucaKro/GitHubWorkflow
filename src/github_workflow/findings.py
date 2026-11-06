@@ -695,9 +695,10 @@ class FindingEdit(FindingChange):
 @dataclass(frozen=True)
 class FindingProving(FindingChange):
     """
-    An open finding proven by a test failing on the default branch: the proof posted on
-    its issue, which is labelled proven. Nothing is written when the test does not fail
-    there.
+    An open finding proven by a test failing on the branch its runner runs it on, the
+    default branch unless an open pull request's or another branch is named: the proof,
+    which records that branch and commit, posted on its issue, which is labelled proven.
+    Nothing is written when the test does not fail there.
     """
 
     test: FindingTest
@@ -707,13 +708,13 @@ class FindingProving(FindingChange):
 
     runner: ProofRunner
     """
-    Runs the test on the default branch.
+    Runs the test on its branch.
     """
 
     def run(self) -> str:
         """
         :raises NotAFindingError: If it is no open finding.
-        :raises PassingTestError: If the test passes on the default branch.
+        :raises PassingTestError: If the test passes on the branch.
         :raises BrokenTestError: If the test is broken.
         """
         issue = self.open_finding(FindingStage.open_stages)
@@ -751,7 +752,8 @@ class FindingUnproving(FindingChange):
 @dataclass(frozen=True)
 class FindingRecheck(WorkflowStep):
     """
-    The test proving a finding run again on the default branch as GitHub has it now,
+    The test proving a finding run again on its runner's branch as GitHub has it now,
+    the default branch unless an open pull request's or another branch is named,
     writing nothing.
     """
 
@@ -762,7 +764,7 @@ class FindingRecheck(WorkflowStep):
 
     runner: ProofRunner
     """
-    Runs the test on the default branch.
+    Runs the test on its branch.
     """
 
     authors: Collection[str]
