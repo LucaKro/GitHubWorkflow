@@ -155,7 +155,8 @@ class NotesBlock:
             "",
             f"Read git directly. Write to git and GitHub only through "
             f"`{self.workflow_command}` ({', '.join(WorkflowCommand)}; `--help` "
-            f"for each).",
+            f"for each), each alone in its Bash call, `cd` before it and `head` or "
+            f"`tail` after it at most, so auto mode does not hold it.",
             f"File what you notice outside this work with `{finding} "
             f"{FindingSubcommand.FILE}` instead of acting on it ({self.finding_guide}), "
             f"on your own: never ask whether to file, the person reviews findings on "

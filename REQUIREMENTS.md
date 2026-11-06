@@ -298,10 +298,14 @@ started with its first entry; I pin it myself, since GitHub's API cannot. Nothin
 entered where the repository has Discussions turned off; the `closed by session` label
 still marks what was closed.
 
-The guard never asks me to confirm a workflow command. What is mine to decide - a
-finding's stage (`finding accept`, `shelve`, `reject`), a finding's text (`finding
-edit`), another pull request's description (`describe <number>`) or its place in a
-stack (`stack on`) - a session does only when I said so in the conversation.
+The guard never asks me to confirm a workflow command, and neither does auto mode: the
+plugin's mod approves a command line that is exactly one workflow command a session
+runs on its own, through `github-workflow`, with at most `cd` before it and `head` or
+`tail` after it, once nothing refused it. What is mine to decide - a finding's stage
+(`finding accept`, `shelve`, `reject`), its priority or text (`finding prioritize`,
+`edit`), another pull request's description (`describe <number>`) or its place in a
+stack (`stack on`) - the mod never approves, and a session does it only when I said so
+in the conversation.
 Everything else written to GitHub needs me to ask for it.
 
 ## What only I do
