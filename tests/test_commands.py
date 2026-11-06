@@ -859,6 +859,26 @@ def test_a_finding_is_commented_on_through_the_command_line(
     assert non_reads(github) == [("POST", path)]
 
 
+@pytest.mark.parametrize(
+    "subcommand", [FindingSubcommand.COMMENT, FindingSubcommand.EDIT]
+)
+def test_a_finding_on_another_of_the_owner_s_repositories_is_reached(
+    finding_checkout: ProjectCheckout, subcommand: FindingSubcommand
+):
+    workflow = Repository(WorkflowSettings().owner, "GitHubWorkflow")
+
+    step = step_for(
+        finding_checkout,
+        WorkflowCommand.FINDING,
+        subcommand,
+        "148",
+        "--body-file=finding.md",
+        f"--repository={workflow.full_name}",
+    )
+
+    assert step.board == GitHubRepository.from_environment(workflow)
+
+
 def test_a_finding_s_text_is_edited_through_the_command_line(
     github: ReplayedApi,
     repositories: RepositoriesByOwner,

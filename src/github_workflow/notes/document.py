@@ -160,8 +160,9 @@ class NotesBlock:
             f"GitHub; "
             f"when a test failing on the default branch is easy to write, pass it, "
             f"uncommitted, with `--test`. Accept, shelve or reject a finding only when "
-            f"the person says so; add to one with `{finding} {FindingSubcommand.COMMENT}` "
-            f"or correct it with `{finding} {FindingSubcommand.EDIT}`.",
+            f"the person says so; add to one with `{finding} {FindingSubcommand.COMMENT}`, "
+            f"a closed one too, or correct it with `{finding} {FindingSubcommand.EDIT}`, "
+            f"each with `--repository` for one on another of the owner's repositories.",
             f"Post an idea, not a finding, with `{self.workflow_command} "
             f"{WorkflowCommand.IDEA} {IdeaSubcommand.FILE} --title <title> --body-file "
             f"<file>` (`--category <name>` for another category than "

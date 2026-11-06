@@ -646,7 +646,8 @@ class SessionPullRequestClosing(PullRequestRetirement):
 @dataclass(frozen=True)
 class FindingComment(FindingChange):
     """
-    A comment on an open finding.
+    A comment on a finding, open or closed, such as a correction made after it was
+    closed.
     """
 
     body: str
@@ -655,7 +656,11 @@ class FindingComment(FindingChange):
     """
 
     def run(self) -> str:
-        self.open_finding(FindingStage.open_stages)
+        """
+        :raises NotAFindingError: If the issue is no finding.
+        """
+        if FindingStage.of(self.board.issue(self.number)) is None:
+            raise NotAFindingError(self.number)
         url = self.board.add_comment(self.number, self.body)
         return f"commented on finding #{self.number}: {url}"
 

@@ -650,15 +650,32 @@ def test_an_edit_changing_nothing_is_refused():
     assert board.writes == []
 
 
-def test_a_closed_finding_is_neither_commented_on_nor_edited():
+def test_a_closed_finding_is_not_edited():
     board = IssuesInMemory(
         {1: Issue(1, "Finding 1", (FindingStage.INCORRECT,), IssueState.CLOSED)}
     )
 
     with pytest.raises(NotAFindingError):
-        FindingComment(board, board, 1, "More").run()
-    with pytest.raises(NotAFindingError):
         FindingEdit(board, board, 1, "A title", None).run()
+
+    assert board.writes == []
+
+
+def test_a_closed_finding_takes_a_correction():
+    board = IssuesInMemory(
+        {1: Issue(1, "Finding 1", (FindingStage.ACCEPTED,), IssueState.CLOSED)}
+    )
+
+    FindingComment(board, board, 1, "A correction").run()
+
+    assert board.writes == ["add_comment 1 A correction"]
+
+
+def test_an_issue_that_is_no_finding_is_not_commented_on():
+    board = IssuesInMemory({1: Issue(1, "An issue", ("bug",), IssueState.OPEN)})
+
+    with pytest.raises(NotAFindingError):
+        FindingComment(board, board, 1, "More").run()
 
     assert board.writes == []
 

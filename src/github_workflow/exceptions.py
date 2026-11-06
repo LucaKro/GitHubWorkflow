@@ -695,8 +695,8 @@ class NothingToDiscardError(DataclassException, LookupError):
 @dataclass
 class NotAFindingError(DataclassException, LookupError):
     """
-    Raised when a finding to be accepted, shelved, rejected, proven or marked unproven
-    is none, or not in a stage that allows it.
+    Raised when a finding to be accepted, shelved, rejected, proven, marked unproven,
+    edited or commented on is none, or not in a stage that allows it.
     """
 
     number: int
@@ -705,7 +705,7 @@ class NotAFindingError(DataclassException, LookupError):
     """
 
     def error_message(self) -> str:
-        return f"#{self.number} is not an open finding that can be changed this way"
+        return f"#{self.number} is no finding that can be changed this way"
 
     def suggest_correction(self) -> str:
         return "List the findings to see the stage each one is in."
