@@ -32,9 +32,15 @@ from basstler_domain_model.github.pull_request_models import (
     UpstreamPullRequestSnapshot,
 )
 from basstler_domain_model.github.readers import UpstreamPullRequestReader
+from basstler_domain_model.github.repository_client import RepositoryWorkflows
+from basstler_domain_model.github.vocabulary import WorkflowRunConclusion
 from basstler_domain_model.repository import Repository
 
-from github_workflow.exceptions import UpstreamReviewsUnansweredError
+from github_workflow.exceptions import (
+    UpstreamReviewsFailedError,
+    UpstreamReviewsNotStartedError,
+    UpstreamReviewsUnansweredError,
+)
 from github_workflow.label_events import ActionRequirement
 from github_workflow.locations import NotesFile, WorkflowTemplate
 from github_workflow.notes.branch import NotesBranch
@@ -183,7 +189,8 @@ class ForwardedUpstreamReviews(UpstreamReviews):
     """
     Has the fork's Actions read it: queues the request on the notes branch with the
     workflow answering it, then waits for the answer there and reads it again from
-    GitHub's recorded answers.
+    GitHub's recorded answers, giving up early when the fork's Actions start no run for
+    it or the run fails.
     """
 
     notes: NotesBranch
@@ -191,9 +198,24 @@ class ForwardedUpstreamReviews(UpstreamReviews):
     The fork's notes branch.
     """
 
+    fork: Repository
+    """
+    The fork, whose Actions answer the request.
+    """
+
+    workflows: RepositoryWorkflows
+    """
+    Reads the fork's workflow runs.
+    """
+
     timeout_seconds: float = 300.0
     """
     How long to wait for the answer.
+    """
+
+    start_seconds: float = 90.0
+    """
+    How long the fork's Actions may take to start the run answering the request.
     """
 
     interval_seconds: float = 5.0
@@ -203,9 +225,12 @@ class ForwardedUpstreamReviews(UpstreamReviews):
 
     def snapshot(self, request: UpstreamReviewRequest) -> UpstreamPullRequestSnapshot:
         """
+        :raises UpstreamReviewsNotStartedError: If the fork's Actions started no run
+            for the request in time.
+        :raises UpstreamReviewsFailedError: If the run answering it failed.
         :raises UpstreamReviewsUnansweredError: If no answer came in time.
         """
-        self.queue(request)
+        queued = self.queue(request)
         answer = NotesFile.UPSTREAM_REVIEW_ANSWERS.value / request.name
         waited = 0.0
         while True:
@@ -214,6 +239,7 @@ class ForwardedUpstreamReviews(UpstreamReviews):
             if saved is not None:
                 answers = json.loads(saved)[UpstreamReviewKey.ANSWERS]
                 return request.snapshot(ReplayingGraphQLClient(answers))
+            self.check_run(queued, waited)
             if waited >= self.timeout_seconds:
                 raise UpstreamReviewsUnansweredError(
                     request.upstream, self.timeout_seconds
@@ -221,9 +247,32 @@ class ForwardedUpstreamReviews(UpstreamReviews):
             time.sleep(self.interval_seconds)
             waited += self.interval_seconds
 
-    def queue(self, request: UpstreamReviewRequest) -> None:
+    def check_run(self, queued: str, waited: float) -> None:
+        """
+        :param queued: The notes branch's commit queuing the request.
+        :param waited: How long the answer was waited for so far.
+        :raises UpstreamReviewsNotStartedError: If no run answering the request started
+            within :attr:`start_seconds`.
+        :raises UpstreamReviewsFailedError: If the run answering it failed.
+        """
+        runs = [
+            run
+            for run in self.workflows.runs_on(self.notes.branch.name)
+            if run.commit == queued
+            and run.path == str(NotesFile.UPSTREAM_REVIEW_WORKFLOW.value)
+        ]
+        if not runs:
+            if waited >= self.start_seconds:
+                raise UpstreamReviewsNotStartedError(self.fork, self.start_seconds)
+            return
+        conclusion = runs[0].conclusion
+        if conclusion not in (None, WorkflowRunConclusion.SUCCESS):
+            raise UpstreamReviewsFailedError(runs[0].url, conclusion)
+
+    def queue(self, request: UpstreamReviewRequest) -> str:
         """
         :param request: The request to write, with the workflow answering it.
+        :return: The notes branch's commit queuing it.
         """
         workflow = WorkflowTemplate.UPSTREAM_REVIEW_WORKFLOW.value.read_text()
         for placeholder, value in {
@@ -247,6 +296,8 @@ class ForwardedUpstreamReviews(UpstreamReviews):
             },
             f"Ask for the upstream reviews of {request.branch}",
         )
+        self.notes.fetch()
+        return self.notes.git.commit_at(self.notes.branch.tracking_reference)
 
 
 # %% answering them, on the runner

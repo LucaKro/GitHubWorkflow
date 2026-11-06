@@ -1171,6 +1171,59 @@ class DiscussionsDisabledError(DataclassException, LookupError):
 
 
 @dataclass
+class UpstreamReviewsNotStartedError(DataclassException, RuntimeError):
+    """
+    Raised when the fork's Actions started no run answering a request for upstream
+    reviews: Actions are off on the fork, or its workflows are.
+    """
+
+    fork: Repository
+    """
+    The fork.
+    """
+
+    start_seconds: float
+    """
+    How long the run was waited for.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"{self.fork}'s Actions started no run reading the upstream reviews within "
+            f"{self.start_seconds:.0f} seconds: Actions or its workflows are off"
+        )
+
+    def suggest_correction(self) -> str:
+        return (
+            f"Ask the person to turn Actions and the fork's workflows on at "
+            f"{self.fork.url}/actions, then list the reviews again."
+        )
+
+
+@dataclass
+class UpstreamReviewsFailedError(DataclassException, RuntimeError):
+    """
+    Raised when the fork's Actions run answering a request for upstream reviews failed.
+    """
+
+    run: str
+    """
+    The run's page, with its log.
+    """
+
+    conclusion: str
+    """
+    How it ended.
+    """
+
+    def error_message(self) -> str:
+        return f"the run reading the upstream reviews ended in {self.conclusion}: {self.run}"
+
+    def suggest_correction(self) -> str:
+        return "Read its log, and file what went wrong as a finding of the workflow."
+
+
+@dataclass
 class UpstreamReviewsUnansweredError(DataclassException, TimeoutError):
     """
     Raised when the fork's Actions did not answer a request for the reviews of a pull
@@ -1194,10 +1247,7 @@ class UpstreamReviewsUnansweredError(DataclassException, TimeoutError):
         )
 
     def suggest_correction(self) -> str:
-        return (
-            "Tell the person: the fork may have Actions turned off, or the run "
-            "reading the reviews failed; its log is on the fork's Actions page."
-        )
+        return "List the reviews again; the run reading them may still be going."
 
 
 @dataclass

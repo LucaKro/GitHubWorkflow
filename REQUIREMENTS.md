@@ -213,8 +213,10 @@ them:
   every workflow on the repository - on a fork, the upstream's scheduled, release and
   bot workflows too - under my account. It tells me they are off, with the link, and I
   decide.
-- A cloud session can see whether issues are on, but not whether Actions are on, so
-  there the tool says nothing about Actions.
+- A cloud session can see whether issues are on, but not whether Actions are on. It can
+  see each workflow's state, so wherever one of the notes branch's workflows is off -
+  as on a fork whose workflows were never turned on, or after GitHub turned them off
+  for inactivity - the session start says so, with the link to the Actions page.
 
 ## How the agent reaches git and GitHub
 
@@ -273,7 +275,10 @@ them:
 - read the reviews and threads of the pull request it has open upstream, which `review
   list` shows after the own pull request's, each comment with its address: directly
   with my login, or, from a cloud session, through the fork's Actions, which read them
-  for a request on the notes branch and save GitHub's answers there. Nothing is ever
+  for a request on the notes branch and save GitHub's answers there; when they start no
+  run for it within a minute and a half, or the run fails, `review list` says so at
+  once, with the link to turn them on or to the run's log. The workflow lives only on
+  the notes branch, never on the default branch or upstream. Nothing is ever
   written upstream: having changed something for an upstream comment, the session says
   so on the own pull request with `review addressed <address> --body-file <what
   changed>`, which links the comment

@@ -14,10 +14,20 @@ from typing import Any
 import pytest
 
 from basstler_domain_model.github.clients import GraphQLClient, ReplayingGraphQLClient
+from basstler_domain_model.github.repository_client import RepositoryWorkflows
+from basstler_domain_model.github.rest_models import Workflow, WorkflowRun
+from basstler_domain_model.github.vocabulary import (
+    WorkflowRunConclusion,
+    WorkflowRunStatus,
+)
 from basstler_domain_model.locations import PathEnumeration
 from basstler_domain_model.repository import Repository
 
-from github_workflow.exceptions import UpstreamReviewsUnansweredError
+from github_workflow.exceptions import (
+    UpstreamReviewsFailedError,
+    UpstreamReviewsNotStartedError,
+    UpstreamReviewsUnansweredError,
+)
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.settings import WorkflowSettings
@@ -139,6 +149,70 @@ def test_an_answer_read_again_gives_what_github_answered():
 # %% asking through the notes branch
 
 
+FORK = Repository("LucaKro", RepositoriesByOwner.repository_name)
+"""
+The owner's fork, whose Actions answer the requests.
+"""
+
+
+@dataclass(frozen=True)
+class RunsOfTheQueuedRequest(RepositoryWorkflows):
+    """
+    The fork's runs on the notes branch: one of the reading workflow, on the notes
+    branch's newest commit, as given, or none.
+    """
+
+    notes: NotesBranch
+    """
+    The notes branch.
+    """
+
+    status: WorkflowRunStatus | None = None
+    """
+    Where the run stands, ``None`` for no run.
+    """
+
+    conclusion: WorkflowRunConclusion | None = None
+    """
+    How it ended, ``None`` until it did.
+    """
+
+    def workflows(self) -> list[Workflow]:
+        return []
+
+    def runs_on(self, branch: str) -> list[WorkflowRun]:
+        if self.status is None:
+            return []
+        tip = self.notes.git.commit_at(self.notes.branch.tracking_reference)
+        return [
+            WorkflowRun(
+                1,
+                str(NotesFile.UPSTREAM_REVIEW_WORKFLOW.value),
+                tip,
+                self.status,
+                self.conclusion,
+                f"{FORK.url}/actions/runs/1",
+            )
+        ]
+
+
+def forwarded(
+    notes: NotesBranch, runs: RunsOfTheQueuedRequest | None = None
+) -> ForwardedUpstreamReviews:
+    """
+    :param notes: The fork's notes branch.
+    :param runs: The fork's runs, none when left out.
+    :return: Reviews read through the fork's Actions, given up on at once.
+    """
+    return ForwardedUpstreamReviews(
+        notes,
+        FORK,
+        runs or RunsOfTheQueuedRequest(notes),
+        timeout_seconds=0,
+        start_seconds=0,
+    )
+
+
 def answered(notes: NotesBranch, name: str) -> None:
     """
     Save GitHub's answers on the notes branch as the runner does.
@@ -164,7 +238,7 @@ def test_a_forwarded_request_is_queued_with_its_workflow(
     notes = notes_in(repositories, owned_url, settings)
     answered(notes, request().name)
 
-    ForwardedUpstreamReviews(notes, timeout_seconds=0).snapshot(request())
+    forwarded(notes).snapshot(request())
 
     notes.fetch()
     queued = notes.read(NotesFile.UPSTREAM_REVIEW_REQUESTS.value / request().name)
@@ -188,17 +262,39 @@ def test_a_forwarded_request_reads_the_saved_answer(
     notes = notes_in(repositories, owned_url, settings)
     answered(notes, request().name)
 
-    snapshot = ForwardedUpstreamReviews(notes, timeout_seconds=0).snapshot(request())
+    snapshot = forwarded(notes).snapshot(request())
 
     assert snapshot == request().snapshot(
         AnswersInOrder(UpstreamReviewDataset.ANSWERS.answers())
     )
 
 
-def test_a_request_left_unanswered_is_refused_in_time(
+def test_a_request_no_run_started_for_is_given_up_on(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ):
     notes = notes_in(repositories, owned_url, settings)
 
+    with pytest.raises(UpstreamReviewsNotStartedError):
+        forwarded(notes).snapshot(request())
+
+
+def test_a_request_whose_run_failed_is_given_up_on(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    notes = notes_in(repositories, owned_url, settings)
+    failed = RunsOfTheQueuedRequest(
+        notes, WorkflowRunStatus.COMPLETED, WorkflowRunConclusion.FAILURE
+    )
+
+    with pytest.raises(UpstreamReviewsFailedError):
+        forwarded(notes, failed).snapshot(request())
+
+
+def test_a_request_whose_run_is_still_going_is_left_unanswered_in_time(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    notes = notes_in(repositories, owned_url, settings)
+    going = RunsOfTheQueuedRequest(notes, WorkflowRunStatus.IN_PROGRESS)
+
     with pytest.raises(UpstreamReviewsUnansweredError):
-        ForwardedUpstreamReviews(notes, timeout_seconds=0).snapshot(request())
+        forwarded(notes, going).snapshot(request())

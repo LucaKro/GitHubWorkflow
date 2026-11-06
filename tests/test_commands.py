@@ -137,7 +137,8 @@ def github(
 ) -> Iterator[ReplayedApi]:
     """
     :return: GitHub as every command run here reaches it, answering that the owner's
-        repository has everything the workflow relies on set up, no open pull request,
+        repository has everything the workflow relies on set up, no workflow, no open
+        pull request,
         nothing waiting on the person's review, no findings, and no pull request
         whose branch is left to delete.
     """
@@ -158,6 +159,9 @@ def github(
             )
         api.answers[("GET", f"/{route.review_requests()}")] = RecordedAnswer(
             HTTPStatus.OK, json.dumps({RestJSONKey.TOTAL_COUNT: 0})
+        )
+        api.answers[("GET", f"/{route.listing(route.workflows)}")] = RecordedAnswer(
+            HTTPStatus.OK, json.dumps({RestJSONKey.WORKFLOWS: []})
         )
         for stage in FindingStage:
             findings = route.listing(

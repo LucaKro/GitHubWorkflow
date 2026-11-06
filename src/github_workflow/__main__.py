@@ -545,7 +545,9 @@ class WorkflowSession(RepositoryDetails):
         if ReadSource.detect() is ReadSource.GRAPHQL:
             return DirectUpstreamReviews(self.github.api)
         return ForwardedUpstreamReviews(
-            NotesBranch.on(self.checkout.git, self.remote, self.settings)
+            NotesBranch.on(self.checkout.git, self.remote, self.settings),
+            self.remote.repository,
+            self.github,
         )
 
     @property

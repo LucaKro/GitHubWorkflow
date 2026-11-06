@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from basstler_domain_model.class_property import classproperty
 from basstler_domain_model.locations import PathEnumeration
 
 # %% the notes branch
@@ -98,6 +99,17 @@ class NotesFile(PathEnumeration):
     """
     The Actions workflow answering the requests.
     """
+
+    @classproperty
+    def workflows(cls) -> list[NotesFile]:
+        """
+        The Actions workflows the notes branch carries.
+        """
+        return [
+            cls.DELETION_WORKFLOW,
+            cls.POSTING_WORKFLOW,
+            cls.UPSTREAM_REVIEW_WORKFLOW,
+        ]
 
     @classmethod
     def progress_of(cls, branch: str) -> Path:
