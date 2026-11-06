@@ -46,7 +46,12 @@ from github_workflow.exceptions import (
 from github_workflow.hooks import ReportLine, Tone
 from github_workflow.proofs import FindingTest, Proof, ProofOutcome, ProofRunner
 from github_workflow.report_section import ReportSection
-from github_workflow.work import DraftOpening, PullRequestRetirement, WorkflowStep
+from github_workflow.work import (
+    DraftOpening,
+    PullRequestRetirement,
+    SessionLog,
+    WorkflowStep,
+)
 
 # %% the labels
 
@@ -522,7 +527,7 @@ class FindingClosing(FindingChange):
     An open, accepted, proven finding closed as completed, without asking, once the
     code shows it fixed: the pull request named is merged into the default branch, and
     the finding's proof test now passes there. Labelled :attr:`ClosedBy.SESSION`, with
-    a comment naming the pull request.
+    a comment naming the pull request, and entered in the session log.
 
     :raises FindingNotAcceptedError: If it is no open, accepted finding.
     :raises UnprovenFindingCloseError: If it carries no proof a trusted author posted.
@@ -557,6 +562,11 @@ class FindingClosing(FindingChange):
     The pull request that fixed it.
     """
 
+    log: SessionLog
+    """
+    Where the close is entered.
+    """
+
     def run(self) -> str:
         issue = self.board.issue(self.number)
         accepted = FindingStage.of(issue) is FindingStage.ACCEPTED
@@ -581,6 +591,10 @@ class FindingClosing(FindingChange):
             f"Closed by a session on its own.",
         )
         self.board.close_issue(self.number, IssueStateReason.COMPLETED)
+        self.log.enter(
+            f"closed finding #{self.number} as fixed by #{self.fixed_by}, its proof test "
+            f"passing on {attempt.tip}"
+        )
         return (
             f"closed finding #{self.number}, fixed by #{self.fixed_by}; tell the person "
             f"you closed it"
@@ -593,8 +607,8 @@ class FindingClosing(FindingChange):
 @dataclass(frozen=True)
 class SessionPullRequestClosing(PullRequestRetirement):
     """
-    A pull request closed by a session, labelled :attr:`ClosedBy.SESSION` and commented
-    with why, so the person can list it and reopen it.
+    A pull request closed by a session, labelled :attr:`ClosedBy.SESSION`, commented
+    with why and entered in the session log, so the person can list it and reopen it.
     """
 
     board: IssueBoard
@@ -612,12 +626,18 @@ class SessionPullRequestClosing(PullRequestRetirement):
     Closes it.
     """
 
+    log: SessionLog
+    """
+    Where the close is entered.
+    """
+
     def retire(self, number: int, reason: str) -> None:
         if ClosedBy.SESSION not in self.labels.labels():
             self.labels.create_label(ClosedBy.SESSION)
         self.board.add_labels(number, [ClosedBy.SESSION])
         self.board.add_comment(number, f"{reason} Closed by a session on its own.")
         self.closer.close_pull_request(number)
+        self.log.enter(f"closed pull request #{number}: {reason}")
 
 
 # %% commenting and editing

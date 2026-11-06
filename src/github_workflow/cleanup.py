@@ -38,7 +38,7 @@ from github_workflow.notes.branch import NotesBranch
 from github_workflow.policy import WritePolicy
 from github_workflow.remotes import OwnedRemote
 from github_workflow.report_section import ReportSection
-from github_workflow.work import PullRequestRetirement, WorkflowStep
+from github_workflow.work import PullRequestRetirement, SessionLog, WorkflowStep
 
 # %% branches listed with their commits
 
@@ -314,8 +314,9 @@ class DeletionPlaceholder(StrEnum):
 @dataclass(frozen=True)
 class BranchCleanup(WorkflowStep):
     """
-    The branches ready for deletion deleted; those this session may not delete are
-    listed on the notes branch with the workflow that deletes them when it is pushed.
+    The branches ready for deletion deleted, and entered in the session log; those this
+    session may not delete are listed on the notes branch with the workflow that
+    deletes them when it is pushed.
     """
 
     git: GitCommandRunner
@@ -338,6 +339,11 @@ class BranchCleanup(WorkflowStep):
     The notes branch, which carries the list and the workflow when deletion is refused.
     """
 
+    log: SessionLog
+    """
+    Where the deletions are entered.
+    """
+
     def run(self) -> str:
         ready = self.kept.ready()
         if not ready:
@@ -350,6 +356,18 @@ class BranchCleanup(WorkflowStep):
             ).succeeded
         ]
         deleted = len(ready) - len(refused)
+        removed = {
+            "deleted": [branch for branch in ready if branch not in refused],
+            "handed to the deletion workflow": refused,
+        }
+        self.log.enter(
+            "branches whose pull requests are closed or which were discarded: "
+            + "; ".join(
+                f"{what} {', '.join(f'`{branch}`' for branch in branches)}"
+                for what, branches in removed.items()
+                if branches
+            )
+        )
         if not refused:
             return f"deleted {deleted} branch{'es' if deleted > 1 else ''}"
         workflow = (

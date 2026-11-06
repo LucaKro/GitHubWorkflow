@@ -77,6 +77,7 @@ from github_workflow.work import (
     PushWork,
     Replacement,
     RepositoryCloning,
+    SessionLog,
 )
 
 from .repositories_by_owner import RepositoriesByOwner
@@ -413,6 +414,21 @@ class RetiredInMemory(PullRequestRetirement):
 
     def retire(self, number: int, reason: str) -> None:
         self.retired.append((number, reason))
+
+
+@dataclass(frozen=True)
+class EntriesInMemory(SessionLog):
+    """
+    Records every entry made in the session log.
+    """
+
+    entries: list[str] = field(default_factory=list)
+    """
+    Each entry, in order.
+    """
+
+    def enter(self, action: str) -> None:
+        self.entries.append(action)
 
 
 def draft(

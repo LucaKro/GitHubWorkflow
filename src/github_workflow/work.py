@@ -269,6 +269,20 @@ class PullRequestRetirement(ABC):
         """
 
 
+class SessionLog(ABC):
+    """
+    Where what a session does without asking is entered, for the person to read in one
+    place.
+    """
+
+    @abstractmethod
+    def enter(self, action: str) -> None:
+        """
+        :param action: What the session did, in one line, naming the issues, pull
+            requests and branches it touched.
+        """
+
+
 @dataclass(frozen=True)
 class Replacement:
     """

@@ -76,7 +76,7 @@ from .issues_in_memory import (
 )
 from .pull_requests import pull_request
 from .stacked_pull_requests import DraftsAndStacksInMemory
-from .test_work import work
+from .test_work import EntriesInMemory, work
 
 # %% proofs
 
@@ -454,7 +454,15 @@ def closing(
     :return: The closing of finding 1 as fixed by pull request 157.
     """
     return FindingClosing(
-        board, board, 1, fixes, runner(outcome), [settings.owner], "main", 157
+        board,
+        board,
+        1,
+        fixes,
+        runner(outcome),
+        [settings.owner],
+        "main",
+        157,
+        EntriesInMemory(),
     )
 
 
@@ -483,6 +491,18 @@ def test_a_fixed_finding_is_closed_as_completed_and_marked_as_a_session_s(
     assert board.writes[0] == f"add_labels 1 {[ClosedBy.SESSION]}"
     assert "#157" in board.writes[1]
     assert board.writes[2] == f"close_issue 1 {IssueStateReason.COMPLETED}"
+
+
+def test_a_fixed_finding_s_close_is_entered_in_the_session_log(
+    settings: WorkflowSettings,
+):
+    step = closing(proven_accepted(settings), settings)
+
+    step.run()
+
+    [entry] = step.log.entries
+    assert f"finding #{step.number}" in entry
+    assert f"#{step.fixed_by}" in entry
 
 
 @pytest.mark.parametrize(
@@ -565,7 +585,9 @@ def test_a_session_s_pull_request_is_closed_marked_and_explained(labelled: bool)
     board = labelled_board() if labelled else IssuesInMemory({})
     closer = ClosedInMemory()
 
-    SessionPullRequestClosing(board, board, closer).retire(3, "Replaced by #5.")
+    SessionPullRequestClosing(board, board, closer, EntriesInMemory()).retire(
+        3, "Replaced by #5."
+    )
 
     made = [] if labelled else [f"create_label {ClosedBy.SESSION}"]
     assert board.writes == [
@@ -574,6 +596,19 @@ def test_a_session_s_pull_request_is_closed_marked_and_explained(labelled: bool)
         "add_comment 3 Replaced by #5. Closed by a session on its own.",
     ]
     assert closer.closed == [3]
+
+
+def test_a_session_s_pull_request_close_is_entered_in_the_session_log():
+    board = labelled_board()
+    log = EntriesInMemory()
+
+    SessionPullRequestClosing(board, board, ClosedInMemory(), log).retire(
+        3, "Replaced by #5."
+    )
+
+    [entry] = log.entries
+    assert "#3" in entry
+    assert "Replaced by #5." in entry
 
 
 # %% commenting and editing

@@ -233,6 +233,14 @@ them:
   to the session, with push access, to list or file a finding there; never another
   account's copy of either
 
+What a session closes or deletes on its own - a finding closed as fixed, a pull request
+closed as discarded or replaced, the branches `cleanup` deletes - is also entered in the
+repository's "Session log" discussion, in the General category: one comment per entry,
+with its time and the session's branch, posted through Actions like an idea. The log is
+started with its first entry; I pin it myself, since GitHub's API cannot. Nothing is
+entered where the repository has Discussions turned off; the `closed by session` label
+still marks what was closed.
+
 Everything else written to GitHub needs my go-ahead.
 
 ## What only I do

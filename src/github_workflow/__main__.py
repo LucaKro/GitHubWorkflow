@@ -38,7 +38,12 @@ from github_workflow.command_line import (
     ToolRepository,
     WorkflowCommand,
 )
-from github_workflow.discussions import DiscussionPost, DiscussionPosting, IdeaFiling
+from github_workflow.discussions import (
+    DiscussionPost,
+    DiscussionPosting,
+    DiscussionSessionLog,
+    IdeaFiling,
+)
 from github_workflow.environment import WorkflowVariable
 from github_workflow.exceptions import ForeignRepositoryError, UnknownPluginDataError
 from github_workflow.locations import PluginDataDirectory
@@ -172,9 +177,21 @@ class WorkflowSession(RepositoryDetails):
         return StackPlacement(self.github, self.github, self.github, self.github)
 
     @property
+    def session_log(self) -> DiscussionSessionLog:
+        """:return: Where what the session does without asking is entered."""
+        git = self.checkout.git
+        return DiscussionSessionLog(
+            self.github,
+            DiscussionPosting(NotesBranch.on(git, self.remote, self.settings)),
+            git.checked_out_branch(),
+        )
+
+    @property
     def session_closing(self) -> SessionPullRequestClosing:
         """:return: Closes a pull request a session no longer needs, marked so."""
-        return SessionPullRequestClosing(self.github, self.github, self.github)
+        return SessionPullRequestClosing(
+            self.github, self.github, self.github, self.session_log
+        )
 
     @property
     def foreign_clones(self) -> Path | None:
@@ -367,6 +384,7 @@ class WorkflowSession(RepositoryDetails):
                     {self.settings.owner, self.github.authenticated_login()},
                     self.default_branch(),
                     arguments.fixed_by,
+                    self.session_log,
                 )
             case WorkflowCommand.FINDING, FindingSubcommand.AUTOMATE:
                 return FindingAutomation(self.checkout.root)
@@ -393,6 +411,7 @@ class WorkflowSession(RepositoryDetails):
                         self.remote,
                         KeptBranches.read(git, self.remote, self.github, notes),
                         notes,
+                        self.session_log,
                     ),
                     None if clones is None else UnusedCloneRemoval(clones),
                 )
