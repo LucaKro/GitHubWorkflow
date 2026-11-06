@@ -174,6 +174,9 @@ them:
   the repository for everyone, and on a public fork issues make the findings public.
 - Where issues are turned off, as they are on a new fork, the tool tells me exactly where
   to turn them on, with the link, and I opt in.
+- Where Discussions are turned off, the tool tells me the same way: ideas and the
+  session log are posted there, and without them `idea file` refuses and nothing is
+  entered in the log.
 - Where Actions are turned off, the tool never turns them on itself: once on, they run
   every workflow on the repository - on a fork, the upstream's scheduled, release and
   bot workflows too - under my account. It tells me they are off, with the link, and I
