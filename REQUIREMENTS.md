@@ -272,9 +272,8 @@ still marks what was closed.
 The guard never asks me to confirm a workflow command. What is mine to decide - a
 finding's stage (`finding accept`, `shelve`, `reject`), a finding's text (`finding
 edit`), another pull request's description (`describe <number>`) or its place in a
-stack (`stack on`) - a session does only when I said so in the conversation, and a
-finding accepted, shelved, rejected or edited is entered in the session log, so I see
-it and can undo it on GitHub. Everything else written to GitHub needs me to ask for it.
+stack (`stack on`) - a session does only when I said so in the conversation.
+Everything else written to GitHub needs me to ask for it.
 
 ## What only I do
 

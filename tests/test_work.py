@@ -67,7 +67,6 @@ from github_workflow.work import (
     DescriptionEnding,
     DescriptionRewrite,
     DraftOpening,
-    EnteredStep,
     LocalBranchFollowing,
     MergeAbort,
     MergeCompletion,
@@ -79,7 +78,6 @@ from github_workflow.work import (
     Replacement,
     RepositoryCloning,
     SessionLog,
-    WorkflowStep,
 )
 
 from .repositories_by_owner import RepositoriesByOwner
@@ -431,24 +429,6 @@ class EntriesInMemory(SessionLog):
 
     def enter(self, action: str) -> None:
         self.entries.append(action)
-
-
-@dataclass(frozen=True)
-class SaysDone(WorkflowStep):
-    """
-    A step that only says it ran.
-    """
-
-    def run(self) -> str:
-        return "done"
-
-
-def test_an_entered_step_s_outcome_is_entered_in_the_session_log():
-    log = EntriesInMemory()
-
-    done = EnteredStep(SaysDone(), log, "an-owner/a-repository").run()
-
-    assert log.entries == [f"{done}, in an-owner/a-repository"]
 
 
 def draft(
