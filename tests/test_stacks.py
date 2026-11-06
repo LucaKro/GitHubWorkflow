@@ -121,6 +121,25 @@ def test_a_pull_request_others_already_build_on_is_not_built_on_again():
         placement(repository).place(1, 3)
 
 
+def test_a_pull_request_others_already_build_on_is_found_unplaceable_first():
+    repository = StackedPullRequestsInMemory({1: "main", 2: "main"})
+    existing_stack(repository, 1, 2)
+
+    with pytest.raises(StackContinuesAboveError):
+        placement(repository).check_placeable(1)
+
+    assert repository.writes == []
+
+
+def test_the_top_of_a_stack_is_placeable():
+    repository = StackedPullRequestsInMemory({1: "main", 2: "main"})
+    existing_stack(repository, 1, 2)
+
+    placement(repository).check_placeable(2)
+
+    assert repository.writes == []
+
+
 # %% only the owner's repository
 
 

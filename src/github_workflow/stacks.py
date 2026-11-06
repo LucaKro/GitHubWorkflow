@@ -71,11 +71,30 @@ class StackPlacement:
             return stack
         if not on_top:
             return self.stacking.add_to_stack(stack, [above])
-        if any(self.is_open(number) for number in on_top):
-            raise StackContinuesAboveError(below, tuple(on_top))
+        self.refuse_open_on_top(below, on_top)
         self.stacking.unstack(stack)
         kept = [number for number in stack.numbers[:position] if self.is_open(number)]
         return self.stacking.create_stack([*kept, below, above])
+
+    def check_placeable(self, below: int) -> None:
+        """
+        :param below: A pull request another is to be put on top of.
+        :raises StackContinuesAboveError: If other open pull requests already sit on
+            it.
+        """
+        stack = self.stacks.stack_of(below)
+        if stack is None:
+            return
+        self.refuse_open_on_top(below, stack.numbers[stack.numbers.index(below) + 1 :])
+
+    def refuse_open_on_top(self, below: int, on_top: list[int]) -> None:
+        """
+        :param below: A pull request in a stack.
+        :param on_top: The pull requests sitting on it in that stack.
+        :raises StackContinuesAboveError: If one of them is open.
+        """
+        if any(self.is_open(number) for number in on_top):
+            raise StackContinuesAboveError(below, tuple(on_top))
 
     def is_open(self, number: int) -> bool:
         """

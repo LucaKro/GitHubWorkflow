@@ -44,6 +44,7 @@ from github_workflow.exceptions import (
     NothingToDescribeError,
     PullRequestNotOpenError,
     PushRefusedError,
+    StackContinuesAboveError,
     StackedBranchMergeError,
     UnbuildablePullRequestError,
     UnreplaceablePullRequestError,
@@ -469,6 +470,19 @@ def test_a_draft_stacked_on_a_pull_request_targets_its_branch_and_joins_its_stac
         f"open_draft feature {github.branch_of(1)}",
         "create_stack [1, 2]",
     ]
+
+
+def test_a_draft_onto_a_pull_request_others_build_on_opens_nothing(
+    work: WritePolicy,
+):
+    default = RepositoriesByOwner.default_branch
+    github = DraftsAndStacksInMemory({1: default, 2: default})
+    github.existing_stacks.append(Stack(7, default, True, github.stacked((1, 2))))
+
+    with pytest.raises(StackContinuesAboveError):
+        draft(work, github, 1).run()
+
+    assert [write for write in github.writes if write.startswith("open_draft")] == []
 
 
 @dataclass(frozen=True)
