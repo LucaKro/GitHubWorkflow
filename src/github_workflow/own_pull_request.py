@@ -22,11 +22,13 @@ from basstler_domain_model.github.vocabulary import PullRequestState
 from github_workflow.exceptions import (
     NoOpenPullRequestError,
     NothingToLabelError,
+    PersonOnlyLabelError,
     ReviewThreadNotFoundError,
     UnknownLabelError,
     UnpushedWorkError,
 )
 from github_workflow.policy import WritePolicy
+from github_workflow.pull_request_overview import PullRequestLabel
 from github_workflow.work import WorkflowStep
 
 # %% the work branch's pull request
@@ -77,6 +79,8 @@ class PullRequestLabelling(WorkflowStep):
     it carries removed.
 
     :raises NothingToLabelError: If no label is named.
+    :raises PersonOnlyLabelError: If a label to add or remove is one only the person
+        sets.
     :raises UnknownLabelError: If a label to add is not one of the repository's.
     """
 
@@ -109,6 +113,8 @@ class PullRequestLabelling(WorkflowStep):
     def run(self) -> str:
         if not self.added and not self.removed:
             raise NothingToLabelError(self.pull_request.policy.work_branch())
+        if PullRequestLabel.SHELVED in {*self.added, *self.removed}:
+            raise PersonOnlyLabelError(PullRequestLabel.SHELVED)
         unknown = sorted(set(self.added) - self.labels.labels())
         if unknown:
             raise UnknownLabelError(tuple(unknown))

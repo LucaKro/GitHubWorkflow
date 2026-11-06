@@ -597,6 +597,24 @@ class NothingToLabelError(DataclassException, ValueError):
 
 
 @dataclass
+class PersonOnlyLabelError(DataclassException, PermissionError):
+    """
+    Raised when a session is to add or remove a label only the person sets.
+    """
+
+    label: str
+    """
+    The label.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.label} is set and removed only by the person running the tool"
+
+    def suggest_correction(self) -> str:
+        return "Leave it to the person."
+
+
+@dataclass
 class UnknownLabelError(DataclassException, LookupError):
     """
     Raised when a label to add is not one of the repository's.

@@ -77,6 +77,7 @@ class SectionName(StrEnum):
                 return PullRequestOverview(
                     PullRequestSignalReader.of(context.github),
                     context.github,
+                    context.github,
                     context.checkout.git.checked_out_branch(),
                 )
             case SectionName.FINDINGS:
