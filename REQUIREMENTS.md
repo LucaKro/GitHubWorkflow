@@ -97,10 +97,13 @@ them:
 - What the workflow itself refused unnecessarily, or lacks, is a finding on GitHubWorkflow
   (or on the domain model, for git and GitHub themselves), filed from any session with
   `--repository`, no checkout needed: unproven, with what was run, what happened and
-  what should have. Every refusal, the guard's and the commands', and the notes header
-  end with how; `finding list --repository` shows first whether it is filed already.
-  They also say never to get around a refusal, with a script or in any other way: a
-  session asks me, or files it.
+  what should have. The notes header says how; `finding list --repository` shows first
+  whether it is filed already. Every refusal, the guard's and the commands', says only
+  why, what to run instead and never to get around it, with a script or in any other
+  way - a session asks me, or files it - and points to the notes for how to report it,
+  so the command list and the filing hint are not repeated each time. Command lines
+  the workflow prints name the launcher, `github-workflow`, where the one on the path
+  runs the same interpreter, and the interpreter's full path otherwise.
 - A session files a finding on its own, never asking me whether to; I review them on
   GitHub.
 - Only I move a finding out of *unreviewed*; a session accepts, shelves or rejects one

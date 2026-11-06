@@ -35,7 +35,6 @@ from github_workflow.command_line import (
     NotesSubcommand,
     ReviewSubcommand,
     StackSubcommand,
-    ToolRepository,
     WorkflowCommand,
 )
 from github_workflow.discussions import (
@@ -536,8 +535,8 @@ class WorkflowSession(RepositoryDetails):
         traceback: TracebackType | None,
     ) -> None:
         """
-        Print a refusal of the workflow's as its reason and what to do instead, and any
-        other error as Python would.
+        Print a refusal of the workflow's as its reason and what to do instead, nothing
+        more, and any other error as Python would.
 
         :param kind: The error's type.
         :param raised: The error.
@@ -546,10 +545,7 @@ class WorkflowSession(RepositoryDetails):
         if not isinstance(raised, DataclassException):
             sys.__excepthook__(kind, raised, traceback)
             return
-        print(
-            f"github-workflow: {raised}\n{ToolRepository.refusal_hint()}",
-            file=sys.stderr,
-        )
+        print(f"github-workflow: {raised}", file=sys.stderr)
 
     def findings_board(self, repository: str | None) -> GitHubRepository:
         """
