@@ -12,6 +12,7 @@ import threading
 from pathlib import Path
 
 import pytest
+from basstler_domain_model.environment import GitHubActionsVariable
 from basstler_domain_model.locations import PathEnumeration
 
 import github_workflow.install
@@ -178,6 +179,77 @@ def test_a_runtime_is_built_without_pip(
     ).install()
 
     assert [command for command in started if "pip" in command] == []
+
+
+def builds_commands_check_fails(
+    command: list[str], **options: object
+) -> subprocess.CompletedProcess[str]:
+    """
+    Stands in for every command a build starts: each succeeds, the new guard denies a
+    push, and creating a virtual environment leaves an interpreter in it, except that
+    loading the workflow's commands fails, as with a domain model too old for them.
+
+    :param command: The command started.
+    :param options: How it is started.
+    :return: How it finished.
+    """
+    words = [str(word) for word in command]
+    if words[1:3] == ["-m", "venv"]:
+        interpreter = Path(words[-1]) / "bin" / "python"
+        interpreter.parent.mkdir(parents=True, exist_ok=True)
+        interpreter.symlink_to(sys.executable)
+    if github_workflow.__name__ in words:
+        return subprocess.CompletedProcess(command, 1, "", "ImportError: too old")
+    return subprocess.CompletedProcess(command, 0, '{"decision": "deny"}', "")
+
+
+def test_a_runtime_whose_commands_do_not_load_is_not_switched_to(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(
+        github_workflow.install.subprocess, "run", builds_commands_check_fails
+    )
+
+    with pytest.raises(SystemExit):
+        RuntimeInstallation(
+            Path(github_workflow.install.__file__).parents[2],
+            tmp_path / "runtime",
+            tmp_path / "bin",
+        ).install()
+
+    assert not (tmp_path / "runtime").exists()
+
+
+@pytest.mark.skipif(
+    GitHubActionsVariable.REPOSITORY_OWNER.read() is not None,
+    reason="downloads the pinned domain model from GitHub",
+)
+def test_a_runtime_built_with_the_pinned_domain_model_runs_its_commands(
+    tmp_path: Path,
+):
+    """
+    Builds a runtime for real, so a pin too old for the workflow's code fails here
+    rather than in a session.
+    """
+    RuntimeInstallation(
+        Path(github_workflow.install.__file__).parents[2],
+        tmp_path / "runtime",
+        tmp_path / "bin",
+    ).install()
+
+    finished = subprocess.run(
+        [
+            str(tmp_path / "runtime" / "bin" / "python"),
+            "-I",
+            "-m",
+            github_workflow.__name__,
+            "--help",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert finished.returncode == 0
 
 
 # %% the launcher

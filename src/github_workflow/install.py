@@ -1,10 +1,10 @@
 """
 Install the runtime the plugin's hooks run: a virtual environment with this plugin's own
 copy of the workflow's source and the pinned domain model's source on its path, built
-beside the one in use and switched over to only once its guard works. Both are pure
-Python without dependencies, so nothing is built or installed, and no package index is
-reached: the only download is the domain model's source, from GitHub. A runtime built
-from this plugin, as its content is now, is left alone.
+beside the one in use and switched over to only once its guard works and its commands
+load. Both are pure Python without dependencies, so nothing is built or installed, and
+no package index is reached: the only download is the domain model's source, from
+GitHub. A runtime built from this plugin, as its content is now, is left alone.
 
 Runs on the standard library alone, before any runtime exists, so it is run as a file
 rather than imported from the package. A step that fails ends it with the step and what
@@ -111,7 +111,7 @@ class DomainModelSource(StrEnum):
     The repository it is fetched from.
     """
 
-    COMMIT = "8eef34f243f126401f3ee37a5c3a9d44c87038f4"
+    COMMIT = "d6975a1a42fffa2a7ab3b9caca19114ed667af12"
     """
     The commit it is pinned to.
     """
@@ -412,6 +412,13 @@ class RuntimeInstallation:
         )
         if '"deny"' not in checked.stdout:
             self._fail("checking the new runtime's guard", checked, build)
+        commands = subprocess.run(
+            [str(python), "-I", "-m", "github_workflow", "--help"],
+            capture_output=True,
+            text=True,
+        )
+        if commands.returncode != 0:
+            self._fail("checking the new runtime's commands", commands, build)
         (build / RuntimeFile.PLUGIN).write_text(stamp)
         RuntimeSwitch(self.location).to(build)
         installed = (
