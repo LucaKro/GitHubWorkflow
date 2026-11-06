@@ -13,12 +13,10 @@ from abc import ABC
 from collections import Counter
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass, replace
-from enum import ReprEnum
 from typing import Self
 
 from basstler_domain_model.class_property import classproperty
 from basstler_domain_model.github.issue_models import Issue
-from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.repository_client import (
     IssueBoard,
     PullRequestCloser,
@@ -44,6 +42,7 @@ from github_workflow.exceptions import (
     UnprovenFindingCloseError,
 )
 from github_workflow.hooks import ReportLine, Tone
+from github_workflow.labels import DescribedLabel
 from github_workflow.proofs import FindingTest, Proof, ProofOutcome, ProofRunner
 from github_workflow.report_section import ReportSection
 from github_workflow.work import (
@@ -56,24 +55,10 @@ from github_workflow.work import (
 # %% the labels
 
 
-class FindingLabel(GitHubLabel, ReprEnum):
+class FindingLabel(DescribedLabel):
     """
-    The base of the labels a finding carries: each its own name, with what it means and
-    its colour.
+    The base of the labels a finding carries.
     """
-
-    def __new__(cls, label: str, description: str, color: str) -> FindingLabel:
-        """
-        :param label: The label's name, as GitHub stores it.
-        :param description: What it means, which it is created with.
-        :param color: Its colour, as six hexadecimal digits.
-        :return: The member.
-        """
-        member = str.__new__(cls, label)
-        member._value_ = label
-        member.description = description
-        member.color = color
-        return member
 
     @classmethod
     def of(cls, issue: Issue) -> Self | None:

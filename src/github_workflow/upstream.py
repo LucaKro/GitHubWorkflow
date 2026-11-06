@@ -9,11 +9,14 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from basstler_domain_model.git.commands import RemoteBranch
+from basstler_domain_model.github.labels import LabelWrite
 from basstler_domain_model.github.repository_client import (
     Commenter,
     ForkDetails,
+    LabelWriter,
     PullRequestsFromForks,
     RepositoryDetails,
+    RepositoryLabels,
 )
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import PullRequestState
@@ -28,6 +31,7 @@ from github_workflow.exceptions import (
     PullRequestNotProposableError,
 )
 from github_workflow.install import Launcher
+from github_workflow.labels import DescribedLabel
 from github_workflow.settings import WorkflowSettings
 from github_workflow.policy import WritePolicy
 from github_workflow.work import DescriptionEnding, LocalBranchFollowing, WorkflowStep
@@ -35,12 +39,28 @@ from github_workflow.work import DescriptionEnding, LocalBranchFollowing, Workfl
 # %% proposing
 
 
+class UpstreamLabel(DescribedLabel):
+    """
+    The labels a fork's pull request carries about its upstream.
+    """
+
+    OPENED_UPSTREAM = (
+        "opened upstream",
+        "This pull request is open on the upstream repository",
+        "1d76db",
+    )
+    """
+    Opened on the repository the fork was forked from, by ``upstream``.
+    """
+
+
 @dataclass(frozen=True)
 class UpstreamProposal(WorkflowStep):
     """
     The open pull request of a branch of the owner's fork opened on the repository the
     fork was forked from, ready for review, with the same title and a description
-    linking back to it; the fork's pull request then links to the new one.
+    linking back to it; the fork's pull request then links to the new one and is
+    labelled :attr:`UpstreamLabel.OPENED_UPSTREAM`.
 
     :raises PersonOnlyCommandError: If a Claude Code session runs it.
     :raises ForeignRepositoryError: If the repository is somebody else's.
@@ -77,6 +97,16 @@ class UpstreamProposal(WorkflowStep):
     commenter: Commenter
     """
     Writes the link to the new pull request on the fork's.
+    """
+
+    labeller: LabelWriter
+    """
+    Labels the fork's pull request.
+    """
+
+    fork_labels: RepositoryLabels
+    """
+    Creates the label when the fork lacks it.
     """
 
     upstream_pull_requests: Callable[[Repository], PullRequestsFromForks]
@@ -130,6 +160,12 @@ class UpstreamProposal(WorkflowStep):
             self.body_linking(local.url),
         )
         self.commenter.add_comment(local.number, self.comment_linking(opened.url))
+        if UpstreamLabel.OPENED_UPSTREAM not in self.fork_labels.labels():
+            self.fork_labels.create_label(UpstreamLabel.OPENED_UPSTREAM)
+        self.labeller.replace_labels(
+            local.number,
+            LabelWrite.replacing(local.labels, [UpstreamLabel.OPENED_UPSTREAM]).labels,
+        )
         return f"opened {upstream}#{opened.number}: {opened.url}"
 
     def local_pull_request(self) -> RestPullRequest:

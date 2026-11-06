@@ -251,8 +251,10 @@ Everything else written to GitHub needs my go-ahead.
 - Opening a fork's pull request on its upstream: `github-workflow upstream <fork>
   <branch>` opens it,
   ready for review, with the same title and a description linking back to the fork's
-  pull request, which then links to it. It refuses a pull request that is not open, is
-  stacked, or is open upstream already.
+  pull request, which then links to it and is labelled `opened upstream` (blue, created
+  on the fork when missing), so the fork's list shows what has gone upstream. It
+  refuses a pull request that is not open, is stacked, or is open upstream already, and
+  a refused run labels nothing.
 - No session runs it, not even with my go-ahead: the guard denies it, and the command
   refuses to run where Claude Code's command marker is set. `draft` on a fork ends the
   description with the command line, for me to copy, and `describe` keeps it there,

@@ -6,16 +6,20 @@ fork's pull request on its upstream, linking back to it.
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass, field
+from collections.abc import Sequence
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
 
+from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.repository_client import (
     Commenter,
     ForkDetails,
+    LabelWriter,
     PullRequestsFromForks,
     RepositoryDetails,
+    RepositoryLabels,
 )
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import PullRequestState
@@ -31,7 +35,12 @@ from github_workflow.exceptions import (
 from github_workflow.settings import WorkflowSettings
 from github_workflow.policy import WritePolicy
 from github_workflow.push_hook import PushHook
-from github_workflow.upstream import ForkMainSync, UpstreamProposal, UpstreamSuggestion
+from github_workflow.upstream import (
+    ForkMainSync,
+    UpstreamLabel,
+    UpstreamProposal,
+    UpstreamSuggestion,
+)
 
 from .pull_requests import REPOSITORY, pull_request
 from .repositories_by_owner import RepositoriesByOwner
@@ -52,10 +61,17 @@ The repository the fork was forked from.
 
 
 @dataclass(frozen=True)
-class ForkInMemory(PullRequestsFromForks, ForkDetails, RepositoryDetails, Commenter):
+class ForkInMemory(
+    PullRequestsFromForks,
+    ForkDetails,
+    RepositoryDetails,
+    Commenter,
+    LabelWriter,
+    RepositoryLabels,
+):
     """
-    A repository with its pull requests, the one it was forked from, and the comments
-    written on it.
+    A repository with its pull requests, the one it was forked from, its labels, and the
+    comments and label sets written on it.
     """
 
     pull_requests: list[RestPullRequest] = field(default_factory=list)
@@ -76,6 +92,16 @@ class ForkInMemory(PullRequestsFromForks, ForkDetails, RepositoryDetails, Commen
     written: list[str] = field(default_factory=list)
     """
     Every comment and pull request written to it.
+    """
+
+    carried: set[str] = field(default_factory=set)
+    """
+    The labels the repository carries, the ones created here included.
+    """
+
+    label_sets: list[tuple[int, list[str]]] = field(default_factory=list)
+    """
+    Each pull request labelled, with the complete label set it was given.
     """
 
     def pull_requests_from(self, owner: str, branch: str) -> list[RestPullRequest]:
@@ -102,6 +128,15 @@ class ForkInMemory(PullRequestsFromForks, ForkDetails, RepositoryDetails, Commen
         self.written.append(f"comment {number}: {body}")
         return f"https://github.com/comment/{number}"
 
+    def replace_labels(self, number: int, labels: Sequence[str]) -> None:
+        self.label_sets.append((number, list(labels)))
+
+    def labels(self) -> set[str]:
+        return set(self.carried)
+
+    def create_label(self, label: GitHubLabel) -> None:
+        self.carried.add(label)
+
 
 def proposal(
     fork: ForkInMemory,
@@ -122,6 +157,8 @@ def proposal(
     return UpstreamProposal(
         repository,
         branch,
+        fork,
+        fork,
         fork,
         fork,
         fork,
@@ -159,6 +196,48 @@ def test_the_fork_s_pull_request_is_given_the_upstream_link():
     assert fork.written == [
         f"comment 3: {UpstreamProposal.comment_linking(opened.url)}"
     ]
+
+
+def test_the_fork_s_pull_request_is_labelled_as_opened_upstream():
+    fork = ForkInMemory([pull_request(3, "feature")])
+    upstream = ForkInMemory(forked_from=None)
+
+    proposal(fork, upstream).run()
+
+    assert fork.label_sets == [(3, [UpstreamLabel.OPENED_UPSTREAM])]
+
+
+def test_the_fork_s_other_labels_are_kept():
+    local = replace(pull_request(3, "feature"), labels=("ready",))
+    fork = ForkInMemory([local])
+    upstream = ForkInMemory(forked_from=None)
+
+    proposal(fork, upstream).run()
+
+    assert fork.label_sets == [(3, [*local.labels, UpstreamLabel.OPENED_UPSTREAM])]
+
+
+@pytest.mark.parametrize("carried", [True, False], ids=["label there", "label made"])
+def test_the_label_is_made_only_where_the_fork_lacks_it(carried: bool):
+    fork = ForkInMemory(
+        [pull_request(3, "feature")],
+        carried={UpstreamLabel.OPENED_UPSTREAM} if carried else set(),
+    )
+    upstream = ForkInMemory(forked_from=None)
+
+    proposal(fork, upstream).run()
+
+    assert fork.carried == {UpstreamLabel.OPENED_UPSTREAM}
+
+
+def test_a_refused_proposal_labels_nothing():
+    fork = ForkInMemory([pull_request(3, "feature", state=PullRequestState.CLOSED)])
+    upstream = ForkInMemory(forked_from=None)
+
+    with pytest.raises(PullRequestNotProposableError):
+        proposal(fork, upstream).run()
+
+    assert (fork.label_sets, fork.carried) == ([], set())
 
 
 def test_a_claude_code_session_may_not_propose():
