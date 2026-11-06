@@ -278,17 +278,7 @@ class WorkflowSession(RepositoryDetails):
                 return FreshenedStep(self.freshening, step)
             case WorkflowCommand.FINDING if arguments.action == FindingSubcommand.LIST:
                 board = self.findings_board(arguments.repository)
-                completion = PickedLabelCompletion(
-                    board,
-                    board,
-                    board,
-                    (
-                        self.remote.repository
-                        if arguments.repository is None
-                        else Repository.parse(arguments.repository)
-                    ),
-                    self.session_log,
-                )
+                completion = PickedLabelCompletion(board, board, board)
                 return LabelsCompletedStep(completion, step)
         return step
 
