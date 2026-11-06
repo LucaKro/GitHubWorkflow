@@ -46,6 +46,7 @@ from github_workflow.labels import DescribedLabel
 from github_workflow.proofs import FindingTest, Proof, ProofOutcome, ProofRunner
 from github_workflow.report_section import ReportSection
 from github_workflow.work import (
+    ClosingLines,
     DraftOpening,
     PullRequestRetirement,
     SessionLog,
@@ -821,7 +822,12 @@ class FindingDraftOpening(WorkflowStep):
         ):
             raise FindingNotAcceptedError(number)
         self.recheck.run()
-        body = f"{self.draft.body}\n\n{ClosingKeyword.FIXES.reference(number)}"
+        fixes = ClosingKeyword.FIXES.reference(number)
+        body = (
+            self.draft.body
+            if fixes in ClosingLines(self.draft.body).lines()
+            else f"{self.draft.body}\n\n{fixes}"
+        )
         return f"{replace(self.draft, body=body).run()}, for finding #{number}"
 
 
