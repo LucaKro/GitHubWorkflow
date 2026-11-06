@@ -352,12 +352,16 @@ class DraftOpening(WorkflowStep):
         """
         :raises UnreplaceablePullRequestError: If the pull request to replace is not
             open, is on another repository, or is the work branch's own.
+        :raises StackContinuesAboveError: If other open pull requests already sit on
+            the one to stack on; nothing is opened then.
         """
         branch = RemoteBranch(self.policy.remote.name, self.policy.work_branch())
         if not self.policy.checkout.git.has_remote_branch(branch):
             raise BranchNotPushedError(branch.name)
         if self.replacement is not None:
             self.check_replaceable(self.replacement.number, branch.name)
+        if self.below is not None:
+            self.placement.check_placeable(self.below)
         base = (
             self.policy.default_branch
             if self.below is None

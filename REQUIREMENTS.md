@@ -303,7 +303,9 @@ Everything else written to GitHub needs my go-ahead.
 - Starting a work branch from the default branch also fast-forwards my local default
   branch to GitHub's, unless it has commits of its own.
 - Dependent pull requests are rare, and use GitHub's native stacks when they happen,
-  restacked and merged by GitHub.
+  restacked and merged by GitHub. `draft --on` checks that the pull request below can
+  take one more on top before it opens anything: a stack is a single line, so one that
+  already has an open pull request on it is refused with no draft opened.
 - A work branch takes in the default branch's new commits with `sync --base`: a merge,
   committed as me, never a rebase or a force. That includes the bottom pull request of
   a stack, which targets the default branch; a branch higher in a stack takes in the
