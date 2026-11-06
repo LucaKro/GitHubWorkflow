@@ -17,7 +17,9 @@ from basstler_domain_model.github.repository_client import GitHubRepository
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.cleanup import CleanupReminder, KeptBranches
 from github_workflow.findings import FindingsSummary
+from github_workflow.freshness import BranchFreshening, FreshnessReport
 from github_workflow.notes.branch import NotesBranch
+from github_workflow.policy import WritePolicy
 from github_workflow.pull_request_overview import (
     PullRequestOverview,
     PullRequestSignalReader,
@@ -55,6 +57,11 @@ class SectionName(StrEnum):
     The branches ready for deletion.
     """
 
+    FRESHNESS = "freshness"
+    """
+    The fork's default branch and the work branch brought up to date.
+    """
+
     def section(self, context: SectionContext) -> ReportSection:
         """
         :param context: Where the section looks.
@@ -82,6 +89,14 @@ class SectionName(StrEnum):
                         NotesBranch.on(
                             context.checkout.git, context.remote, context.settings
                         ),
+                    )
+                )
+            case SectionName.FRESHNESS:
+                return FreshnessReport(
+                    BranchFreshening(
+                        WritePolicy(context.checkout, context.remote, context.github),
+                        context.github,
+                        context.github,
                     )
                 )
 
