@@ -80,6 +80,21 @@ class ProofDataset(PathEnumeration):
     A test module holding no test.
     """
 
+    READS_MISSING_DATA = (
+        Path(__file__).parent / "dataset" / "proofs" / "reads_missing_data.py"
+    )
+    """
+    A test failing only because a data file beside it is missing.
+    """
+
+    CODE_MISSES_A_FILE = (
+        Path(__file__).parent / "dataset" / "proofs" / "code_misses_a_file.py"
+    )
+    """
+    A test failing because a file outside the tests is missing, as code under test
+    could find it.
+    """
+
     WORKSPACE_PYPROJECT = (
         Path(__file__).parent / "dataset" / "proofs" / "workspace_pyproject.toml"
     )
@@ -263,6 +278,7 @@ def test_the_checkout_s_files_are_left_alone(checkout: ProjectCheckout):
         ProofDataset.MISSPELT_IMPORT,
         ProofDataset.UNCOLLECTABLE_MODULE,
         ProofDataset.NO_TESTS,
+        ProofDataset.READS_MISSING_DATA,
     ],
 )
 def test_a_broken_test_proves_nothing(checkout: ProjectCheckout, source: ProofDataset):
@@ -273,6 +289,16 @@ def test_a_broken_test_proves_nothing(checkout: ProjectCheckout, source: ProofDa
     assert attempt.outcome is ProofOutcome.BROKEN
     with pytest.raises(BrokenTestError):
         attempt.proof()
+
+
+def test_a_file_missing_outside_the_tests_still_proves_the_finding(
+    checkout: ProjectCheckout,
+):
+    publish_package(checkout, ProofDataset.DOUBLING_WRONG)
+
+    attempt = runner(checkout).attempt(finding_test(ProofDataset.CODE_MISSES_A_FILE))
+
+    assert attempt.outcome is ProofOutcome.FAILS
 
 
 def test_a_module_that_cannot_be_collected_is_reported_with_its_exception(

@@ -143,7 +143,8 @@ them:
   it files it unproven.
 - A test passing on the default branch proves nothing: a bug only on a work branch is
   no finding. Neither does a test that is broken rather than failing - one that cannot
-  be collected or set up, or fails on its own import, name or syntax error.
+  be collected or set up, fails on its own import, name or syntax error, or on a file
+  of its own, under the tests' directory, that the default branch lacks.
 - The test imports the default branch's packages, a uv workspace's members' included,
   ahead of any the interpreter has installed from the working checkout.
 - The code runs the test and decides whether it proves the finding; the agent's word
