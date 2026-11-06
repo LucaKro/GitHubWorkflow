@@ -255,6 +255,12 @@ def test_every_denial_says_how_to_report_an_unnecessary_one():
     assert ToolRepository.refusal_hint() in CommandGuard().denial(command).message()
 
 
+def test_every_denial_says_never_to_get_around_it():
+    command = GuardDataset.DENIED.lines()[0]
+
+    assert ToolRepository.workaround_ban() in CommandGuard().denial(command).message()
+
+
 # %% the person's go-ahead
 
 

@@ -95,6 +95,8 @@ them:
   `--repository`, no checkout needed: unproven, with what was run, what happened and
   what should have. Every refusal, the guard's and the commands', and the notes header
   end with how; `finding list --repository` shows first whether it is filed already.
+  They also say never to get around a refusal, with a script or in any other way: a
+  session asks me, or files it.
 - A session files a finding on its own, never asking me whether to; I review them on
   GitHub.
 - Only I move a finding out of *unreviewed*; a session accepts, shelves or rejects one
