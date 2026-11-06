@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -37,6 +38,7 @@ from github_workflow.exceptions import (
     BranchNotPushedError,
     DefaultBranchWriteError,
     DetachedHeadError,
+    DraftUnfinishedError,
     ConflictMarkersLeftError,
     MergeConflictError,
     MergeInProgressError,
@@ -550,6 +552,48 @@ def test_a_pull_request_a_session_may_not_close_is_not_replaced(
         replace(draft(work, github, None), replacement=Replacement(4, retired)).run()
 
     assert (github.writes, retired.retired) == ([], [])
+
+
+@dataclass(frozen=True)
+class StackingRefusedInMemory(DraftsAndStacksInMemory):
+    """
+    The stand-in, refusing to create a stack.
+    """
+
+    def create_stack(self, pull_requests: Sequence[int]) -> Stack:
+        raise RuntimeError("GitHub refused the stack")
+
+
+@dataclass(frozen=True)
+class ClosingRefused(PullRequestRetirement):
+    """
+    Refuses to close any pull request.
+    """
+
+    def retire(self, number: int, reason: str) -> None:
+        raise RuntimeError("GitHub refused to close it")
+
+
+def test_a_draft_whose_stacking_fails_is_reported_as_opened(work: WritePolicy):
+    github = StackingRefusedInMemory({1: RepositoriesByOwner.default_branch})
+
+    with pytest.raises(DraftUnfinishedError) as raised:
+        draft(work, github, 1).run()
+
+    assert raised.value.number == 2
+
+
+def test_a_draft_whose_replaced_pull_request_stays_open_is_reported_as_opened(
+    work: WritePolicy,
+):
+    github = DraftsAndStacksInMemory({4: RepositoriesByOwner.default_branch})
+
+    with pytest.raises(DraftUnfinishedError) as raised:
+        replace(
+            draft(work, github, None), replacement=Replacement(4, ClosingRefused())
+        ).run()
+
+    assert raised.value.number == 5
 
 
 def test_a_stacked_draft_keeps_its_description_as_given(work: WritePolicy):

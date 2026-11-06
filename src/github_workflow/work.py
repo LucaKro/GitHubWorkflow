@@ -43,6 +43,7 @@ from github_workflow.exceptions import (
     BranchDeletedFromGitHubError,
     BranchNotPushedError,
     DetachedHeadError,
+    DraftUnfinishedError,
     NothingToDescribeError,
     PullRequestNotOpenError,
     PushRefusedError,
@@ -354,6 +355,8 @@ class DraftOpening(WorkflowStep):
             open, is on another repository, or is the work branch's own.
         :raises StackContinuesAboveError: If other open pull requests already sit on
             the one to stack on; nothing is opened then.
+        :raises DraftUnfinishedError: If closing the replaced pull request or stacking
+            the draft fails once it is opened.
         """
         branch = RemoteBranch(self.policy.remote.name, self.policy.work_branch())
         if not self.policy.checkout.git.has_remote_branch(branch):
@@ -373,7 +376,22 @@ class DraftOpening(WorkflowStep):
             else self.body
         )
         number = self.opener.open_draft(branch.name, base, self.title, body)
-        opened = f"opened draft #{number}: {branch.name} onto {base}"
+        try:
+            return self.finish(number, branch.name, base)
+        except Exception as raised:
+            raise DraftUnfinishedError(number, str(raised)) from raised
+
+    def finish(self, number: int, branch: str, base: str) -> str:
+        """
+        Close the pull request the opened draft replaces, and stack the draft, where
+        asked to.
+
+        :param number: The opened draft.
+        :param branch: The work branch it was opened from.
+        :param base: The branch it targets.
+        :return: What was done.
+        """
+        opened = f"opened draft #{number}: {branch} onto {base}"
         if self.replacement is not None:
             replaced = self.replacement.number
             self.replacement.retirement.retire(replaced, f"Replaced by #{number}.")
