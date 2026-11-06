@@ -317,6 +317,8 @@ Everything else written to GitHub needs me to ask for it.
   restacked and merged by GitHub. `draft --on` checks that the pull request below can
   take one more on top before it opens anything: a stack is a single line, so one that
   already has an open pull request on it is refused with no draft opened.
+  If stacking the draft, or closing the pull request it replaces, fails once the
+  draft is open, the refusal names the opened draft, so it is not opened twice.
 - A work branch takes in the default branch's new commits with `sync --base`: a merge,
   committed as me, never a rebase or a force. That includes the bottom pull request of
   a stack, which targets the default branch; a branch higher in a stack takes in the
