@@ -12,6 +12,7 @@ git branch -D old-branch
 git tag v1.0
 git remote add upstream https://github.com/someone/project
 git config user.name Someone
+git config --global user.email someone@example.com
 git fetch origin main:main
 git stash
 git -c alias.publish=push publish
