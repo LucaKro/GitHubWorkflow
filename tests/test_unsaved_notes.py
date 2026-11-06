@@ -15,7 +15,7 @@ from basstler_domain_model.environment import ClaudeCodeVariable
 from basstler_domain_model.locations import PathEnumeration
 
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.environment import WorkflowVariable
+from github_workflow.environment import PythonVariable, WorkflowVariable
 from github_workflow.hooks import HookKey, HookValue
 from github_workflow.locations import NotesFile
 from github_workflow.notes.document import NotesBlock, NotesSection
@@ -157,3 +157,46 @@ def test_a_failed_save_keeps_the_edits_and_ends_the_turn_normally(
     assert finished.returncode == 0
     assert HookKey.SYSTEM_MESSAGE in json.loads(finished.stdout)
     assert NotesBlock.holds_unsaved_edits(checkout.claude_local.read_text())
+
+
+def test_a_hook_runs_the_plugin_s_own_code_over_an_older_runtime(
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+    tmp_path: Path,
+):
+    plugin = PluginFile.NOTES_SAVE_HOOK.value.parents[1]
+    runtime = tmp_path / "home" / ".virtualenvs" / "githubworkflow-runtime" / "bin"
+    runtime.mkdir(parents=True)
+    older = runtime / "python"
+    older.write_text(
+        "#!/usr/bin/env bash\n"
+        "# An older runtime: the newer modules only come from the plugin's source.\n"
+        f'case ":${{PYTHONPATH:-}}:" in *":{plugin / "src"}:"*) exec "{sys.executable}" "$@" ;; esac\n'
+        'echo "No module named github_workflow.notes.unsaved" >&2\n'
+        "exit 1\n"
+    )
+    older.chmod(0o755)
+    checkout = repositories.clone(owned_url, "session")
+    SessionStart(checkout, settings).load_notes()
+    edit(checkout, NotesSection.STANDING_NOTES, "a note")
+    environment = {
+        name: value
+        for name, value in os.environ.items()
+        if name not in {WorkflowVariable.PYTHON, PythonVariable.MODULE_SEARCH_PATH}
+    }
+
+    subprocess.run(
+        [str(PluginFile.NOTES_SAVE_HOOK.value)],
+        input="{}",
+        capture_output=True,
+        text=True,
+        env={
+            **environment,
+            "HOME": str(tmp_path / "home"),
+            "CLAUDE_PLUGIN_ROOT": str(plugin),
+            ClaudeCodeVariable.PROJECT_DIRECTORY: str(checkout.root),
+        },
+    )
+
+    assert notes_of(checkout, settings).read(NotesFile.STANDING_NOTES) == "a note\n"

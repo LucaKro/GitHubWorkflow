@@ -88,6 +88,9 @@ if [ ! -x "${PYTHON}" ]; then
 fi
 
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
+# The plugin's own code goes first, so a plugin updated after the runtime was installed
+# never runs code older than this hook; the runtime supplies the libraries.
+export PYTHONPATH="${PLUGIN_ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
 if ! OUTPUT="$("${PYTHON}" -m github_workflow.session_start "${EVENT}" 2>"${ERRORS}")"; then
   report "github-workflow: notes not loaded: $(tail -n 1 "${ERRORS}")"
   exit 0
