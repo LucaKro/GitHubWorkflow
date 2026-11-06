@@ -1058,7 +1058,7 @@ def open_finding(api: ReplayedApi, route: RepositoryRoute) -> None:
 def answer_as_a_fork(api: ReplayedApi, settings: WorkflowSettings) -> Repository:
     """
     Answer that the owner's scratch repository is a fork, with an open pull request
-    from ``feature``, and that its upstream has none from it yet.
+    from ``feature``, and no labels yet, and that its upstream has none from it yet.
 
     :param api: The replayed GitHub.
     :param settings: The workflow's settings.
@@ -1090,6 +1090,13 @@ def answer_as_a_fork(api: ReplayedApi, settings: WorkflowSettings) -> Repository
     api.answers[("POST", f"/{fork.issue_comments(3)}")] = RecordedAnswer(
         HTTPStatus.CREATED, json.dumps({RestJSONKey.HTML_URL: "https://github.com/c"})
     )
+    api.answers[("GET", f"/{fork.listing(fork.labels)}")] = RecordedAnswer(
+        HTTPStatus.OK, "[]"
+    )
+    api.answers[("POST", f"/{fork.labels}")] = RecordedAnswer(HTTPStatus.CREATED, "{}")
+    api.answers[("PUT", f"/{fork.issue_labels(3)}")] = RecordedAnswer(
+        HTTPStatus.OK, "[]"
+    )
     return upstream
 
 
@@ -1102,7 +1109,7 @@ def test_the_person_opens_the_fork_s_pull_request_upstream(
     upstream = answer_as_a_fork(github, settings)
     fork = Repository(settings.owner, RepositoriesByOwner.repository_name)
 
-    run(
+    finished = run(
         github_workflow.__name__,
         repositories.clone(owned_url, "anywhere"),
         WorkflowCommand.UPSTREAM,
@@ -1110,9 +1117,13 @@ def test_the_person_opens_the_fork_s_pull_request_upstream(
         "feature",
     )
 
+    fork_route = RepositoryRoute(fork)
+    assert finished.returncode == 0
     assert non_reads(github) == [
         ("POST", f"/{RepositoryRoute(upstream).pull_requests}"),
-        ("POST", f"/{RepositoryRoute(fork).issue_comments(3)}"),
+        ("POST", f"/{fork_route.issue_comments(3)}"),
+        ("POST", f"/{fork_route.labels}"),
+        ("PUT", f"/{fork_route.issue_labels(3)}"),
     ]
 
 
