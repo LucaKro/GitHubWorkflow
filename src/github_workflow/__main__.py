@@ -47,7 +47,13 @@ from github_workflow.own_pull_request import (
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
 from github_workflow.proofs import BranchProofRunner, FindingTest
-from github_workflow.cleanup import BranchCleanup, BranchDiscard, KeptBranches
+from github_workflow.cleanup import (
+    BranchCleanup,
+    BranchDiscard,
+    Cleanup,
+    KeptBranches,
+    UnusedCloneRemoval,
+)
 from github_workflow.findings import (
     FindingAcceptance,
     FindingClosing,
@@ -164,6 +170,15 @@ class WorkflowSession(RepositoryDetails):
         """:return: Closes a pull request a session no longer needs, marked so."""
         return SessionPullRequestClosing(self.github, self.github, self.github)
 
+    @property
+    def foreign_clones(self) -> Path | None:
+        """
+        :return: Where somebody else's repositories are cloned, as ``<owner>/<name>``;
+            ``None`` when the plugin's data directory is not known.
+        """
+        data = WorkflowVariable.PLUGIN_DATA.read()
+        return Path(data) / PluginDataDirectory.CLONES if data else None
+
     def clone_directory(self, repository: Repository) -> Path:
         """
         :param repository: The repository to clone.
@@ -174,10 +189,10 @@ class WorkflowSession(RepositoryDetails):
             data directory is not known.
         """
         if not self.settings.owns(repository):
-            data = WorkflowVariable.PLUGIN_DATA.read()
-            if not data:
+            clones = self.foreign_clones
+            if clones is None:
                 raise UnknownPluginDataError(repository)
-            return Path(data) / PluginDataDirectory.CLONES / repository.owner
+            return clones / repository.owner
         around = ProjectCheckout.around(self.directory)
         return self.directory if around is None else around.root.parent
 
@@ -353,11 +368,15 @@ class WorkflowSession(RepositoryDetails):
                 git = self.checkout.git
                 notes = NotesBranch.on(git, self.remote, self.settings)
                 notes.fetch()
-                return BranchCleanup(
-                    git,
-                    self.remote,
-                    KeptBranches.read(git, self.remote, self.github, notes),
-                    notes,
+                clones = self.foreign_clones
+                return Cleanup(
+                    BranchCleanup(
+                        git,
+                        self.remote,
+                        KeptBranches.read(git, self.remote, self.github, notes),
+                        notes,
+                    ),
+                    None if clones is None else UnusedCloneRemoval(clones),
                 )
             case WorkflowCommand.DETAILS, _:
                 return PullRequestDetails(
@@ -668,7 +687,9 @@ class WorkflowSession(RepositoryDetails):
             help="write the Actions workflow completing finding labels picked on GitHub",
         )
         commands.add_parser(
-            WorkflowCommand.CLEANUP, help="delete branches of closed pull requests"
+            WorkflowCommand.CLEANUP,
+            help="delete branches of closed pull requests, and clones of somebody "
+            "else's repositories no session uses",
         )
         details = commands.add_parser(
             WorkflowCommand.DETAILS, help="what a pull request's signals are about"
