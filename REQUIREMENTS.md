@@ -59,9 +59,14 @@ agent:
 
 - my standing notes
 - this branch's progress
-- one line per other open pull request on the repository, except those I labelled
-  `pull request: shelved` (created for me to pick): a session leaves those alone
-  unless I name one, and they are named together on one line, without signals
+- one line per open pull request on the repository, grouped under headings: open
+  upstream, drafts, ready for review. Those I labelled `pull request: shelved`
+  (created for me to pick) are left out, and a session leaves them alone unless I name
+  one
+- the open findings, each named with its priority, grouped under headings: waiting on
+  my review, accepted and proven, accepted and not proven yet, accepted and marked
+  unproven. Shelved and rejected findings are left out
+- a group with nothing in it is left out
 - warnings about this branch's pull request
 - what was brought up to date: the fork's default branch and the work branch, as
   described under what the agent may do without asking, and what could not be

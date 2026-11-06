@@ -32,10 +32,12 @@ from basstler_domain_model.github.vocabulary import CheckOutcome, MergeableState
 from github_workflow.hooks import Tone
 from github_workflow.pull_request_overview import (
     PullRequestDetails,
+    PullRequestGroup,
     PullRequestLabel,
     PullRequestOverview,
     PullRequestSignalReader,
 )
+from github_workflow.upstream import UpstreamLabel
 
 from .pull_requests import pull_request
 
@@ -101,6 +103,11 @@ class PullRequestsWithSignals(
     The pull requests the person shelved.
     """
 
+    opened_upstream: frozenset[int] = frozenset()
+    """
+    The pull requests labelled as opened upstream.
+    """
+
     present: set[str] = field(default_factory=set)
     """
     The repository's labels, with each one created.
@@ -118,7 +125,10 @@ class PullRequestsWithSignals(
             mergeable_state=self.mergeable[number],
         )
         shelving = (PullRequestLabel.SHELVED,) if number in self.shelved else ()
-        return replace(listed, labels=shelving)
+        upstream = (
+            (UpstreamLabel.OPENED_UPSTREAM,) if number in self.opened_upstream else ()
+        )
+        return replace(listed, labels=shelving + upstream)
 
     def resolve_pull_request_number(self, branch: str) -> int:
         return int(branch.removeprefix("branch-"))
@@ -166,7 +176,7 @@ Checks one of which failed.
 def test_a_pull_request_nothing_asks_attention_for_is_ok():
     github = PullRequestsWithSignals(mergeable={1: MergeableState.CLEAN})
 
-    [line] = github.overview().lines()
+    [_, line] = github.overview().lines()
 
     assert line.text.endswith("Change 1 - ok")
     assert line.tone is Tone.NEWS
@@ -199,20 +209,35 @@ def test_a_pull_request_nothing_asks_attention_for_is_ok():
 def test_a_signal_is_named_and_asks_for_attention(
     github: PullRequestsWithSignals, signal: str
 ):
-    [line] = github.overview().lines()
+    [_, line] = github.overview().lines()
 
     assert line.text.endswith(f"Change 1 - {signal}")
     assert line.tone is Tone.ACTION
 
 
 def test_the_pull_request_of_the_session_s_branch_is_marked():
+    github = PullRequestsWithSignals(mergeable={1: MergeableState.CLEAN})
+
+    [_, line] = github.overview(checked_out="branch-1").lines()
+
+    assert line.text.endswith("Change 1 - this branch · ok")
+
+
+def test_pull_requests_are_grouped_open_upstream_then_drafts_then_ready():
     github = PullRequestsWithSignals(
-        mergeable={1: MergeableState.CLEAN}, drafts=frozenset({1})
+        mergeable={number: MergeableState.CLEAN for number in (1, 2, 3, 4)},
+        drafts=frozenset({2, 4}),
+        opened_upstream=frozenset({3, 4}),
     )
 
-    [line] = github.overview(checked_out="branch-1").lines()
+    lines = github.overview().lines()
 
-    assert line.text.endswith("Change 1 - this branch · draft · ok")
+    headings = [line.text for line in lines if not line.text.startswith(" ")]
+    named = [line.text.split()[0] for line in lines if line.text.startswith(" ")]
+    assert (headings, named) == (
+        [f"github-workflow: {group}:" for group in PullRequestGroup],
+        ["#3", "#4", "#2", "#1"],
+    )
 
 
 def test_pull_requests_waiting_on_the_person_are_counted():
@@ -223,21 +248,12 @@ def test_pull_requests_waiting_on_the_person_are_counted():
     assert line.text == "github-workflow: 2 pull requests wait on your review"
 
 
-def test_a_shelved_pull_request_is_named_apart_without_its_signals():
+def test_a_shelved_pull_request_is_left_out():
     github = PullRequestsWithSignals(
-        mergeable={1: MergeableState.CLEAN, 2: MergeableState.DIRTY},
-        shelved=frozenset({2}),
+        mergeable={1: MergeableState.DIRTY}, shelved=frozenset({1})
     )
 
-    lines = github.overview().lines()
-
-    assert [(line.text, line.tone) for line in lines[1:]] == [
-        (
-            "github-workflow: shelved by you, left alone unless you name them: #2",
-            Tone.NEWS,
-        )
-    ]
-    assert lines[0].text.endswith("Change 1 - ok")
+    assert github.overview().lines() == []
 
 
 def test_the_shelving_label_is_created_for_the_person_to_pick():
