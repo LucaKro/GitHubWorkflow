@@ -1,0 +1,32 @@
+"""
+Tests for :mod:`github_workflow.report_section`: lines about things of one kind are
+shown under a heading.
+"""
+
+from __future__ import annotations
+
+from github_workflow.hooks import ReportLine, Tone
+from github_workflow.report_section import ReportGroup
+
+# %% a group of lines
+
+
+def test_a_group_is_its_heading_followed_by_its_items_indented():
+    group = ReportGroup("drafts", [ReportLine("#1 One", Tone.NEWS)])
+
+    assert group.lines() == [
+        ReportLine("github-workflow: drafts:", Tone.NEWS),
+        ReportLine("  #1 One", Tone.NEWS),
+    ]
+
+
+def test_a_group_with_an_item_asking_for_attention_has_its_heading_ask_too():
+    items = [ReportLine("#1 One", Tone.NEWS), ReportLine("#2 Two", Tone.ACTION)]
+
+    [heading, *_] = ReportGroup("drafts", items).lines()
+
+    assert heading.tone is Tone.ACTION
+
+
+def test_an_empty_group_says_nothing():
+    assert ReportGroup("drafts", []).lines() == []

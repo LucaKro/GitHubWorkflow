@@ -2,14 +2,15 @@
 The owner's open pull requests, one line each with the signals that ask for attention:
 
 failing checks, a conflict or a base moved on, and unresolved review threads - that they
-are there, never what they say. The details come only when asked for. The pull requests
-the person shelved are left out, named together on one line.
+are there, never what they say, grouped by where each stands. The details come only
+when asked for. The pull requests the person shelved are left out.
 """
 
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from enum import StrEnum
 
 from basstler_domain_model.github.pull_request_models import (
     UpstreamPullRequestSnapshot,
@@ -26,7 +27,8 @@ from basstler_domain_model.github.vocabulary import MergeableState
 
 from github_workflow.hooks import ReportLine, Tone
 from github_workflow.labels import DescribedLabel
-from github_workflow.report_section import ReportSection
+from github_workflow.report_section import ReportGroup, ReportSection
+from github_workflow.upstream import UpstreamLabel
 from github_workflow.work import WorkflowStep
 
 # %% shelving
@@ -76,6 +78,11 @@ class PullRequestSignals:
     Whether it is a draft.
     """
 
+    opened_upstream: bool
+    """
+    Whether it is labelled as opened on the upstream repository.
+    """
+
     mergeable: MergeableState | None
     """
     GitHub's word on merging it, ``None`` while GitHub has not worked it out.
@@ -106,16 +113,47 @@ class PullRequestSignals:
     def line(self, checked_out: str) -> ReportLine:
         """
         :param checked_out: The branch the session works on.
-        :return: The pull request in one line, yellow when something asks for
-            attention.
+        :return: The pull request in one line, without the workflow's prefix, yellow
+            when something asks for attention.
         """
         marks = ["this branch"] if self.branch == checked_out else []
-        marks += ["draft"] if self.draft else []
         marks += self.problems or ["ok"]
         return ReportLine(
-            f"github-workflow: #{self.number} {self.title} - {' · '.join(marks)}",
+            f"#{self.number} {self.title} - {' · '.join(marks)}",
             Tone.ACTION if self.problems else Tone.NEWS,
         )
+
+
+class PullRequestGroup(StrEnum):
+    """
+    The groups the session start lists open pull requests in, in the order shown, each
+    member's value its heading.
+    """
+
+    OPENED_UPSTREAM = "pull requests open upstream"
+    """
+    Opened on the upstream repository, whether a draft here or not.
+    """
+
+    DRAFT = "draft pull requests"
+    """
+    Drafts not opened upstream.
+    """
+
+    READY = "pull requests ready for review"
+    """
+    Neither drafts nor opened upstream.
+    """
+
+    @classmethod
+    def of(cls, signals: PullRequestSignals) -> PullRequestGroup:
+        """
+        :param signals: An open pull request.
+        :return: The group it is listed in.
+        """
+        if signals.opened_upstream:
+            return cls.OPENED_UPSTREAM
+        return cls.DRAFT if signals.draft else cls.READY
 
 
 # %% reading them
@@ -172,6 +210,7 @@ class PullRequestSignalReader:
             pull_request.title,
             pull_request.head.branch,
             pull_request.draft,
+            UpstreamLabel.OPENED_UPSTREAM in pull_request.labels,
             pull_request.mergeable_state,
             snapshot,
         )
@@ -183,8 +222,8 @@ class PullRequestSignalReader:
 @dataclass(frozen=True)
 class PullRequestOverview(ReportSection):
     """
-    One line per open pull request the person has not shelved, one naming those they
-    have, and how many wait on the person's review.
+    The open pull requests the person has not shelved, one line each under their
+    :class:`PullRequestGroup`, and how many wait on the person's review.
     """
 
     reader: PullRequestSignalReader
@@ -212,30 +251,25 @@ class PullRequestOverview(ReportSection):
         with ThreadPoolExecutor() as pool:
             counted = pool.submit(self.requests.awaiting_my_review)
             labelled = pool.submit(self.labels.labels)
-            listed = self.reader.pull_requests.open_pull_requests()
-            shelved = [
-                pull_request.number
-                for pull_request in listed
-                if PullRequestLabel.SHELVED in pull_request.labels
-            ]
             numbers = [
                 pull_request.number
-                for pull_request in listed
-                if pull_request.number not in shelved
+                for pull_request in self.reader.pull_requests.open_pull_requests()
+                if PullRequestLabel.SHELVED not in pull_request.labels
             ]
             read = list(pool.map(self.reader.signals, numbers))
         if PullRequestLabel.SHELVED not in labelled.result():
             self.labels.create_label(PullRequestLabel.SHELVED)
+        grouped: dict[PullRequestGroup, list[ReportLine]] = {
+            group: [] for group in PullRequestGroup
+        }
+        for signals in read:
+            grouped[PullRequestGroup.of(signals)].append(signals.line(self.checked_out))
+        lines = [
+            line
+            for group, items in grouped.items()
+            for line in ReportGroup(group, items).lines()
+        ]
         waiting = counted.result()
-        lines = [signals.line(self.checked_out) for signals in read]
-        if shelved:
-            lines.append(
-                ReportLine(
-                    "github-workflow: shelved by you, left alone unless you name them: "
-                    + ", ".join(f"#{number}" for number in shelved),
-                    Tone.NEWS,
-                )
-            )
         if waiting:
             plural = "s wait" if waiting > 1 else " waits"
             lines.append(

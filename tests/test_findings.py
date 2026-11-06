@@ -54,6 +54,7 @@ from github_workflow.findings import (
     FindingRecheck,
     FindingRejection,
     FindingShelving,
+    FindingGroup,
     FindingsSummary,
     FindingStage,
     FindingUnproving,
@@ -61,8 +62,9 @@ from github_workflow.findings import (
     ProvenFindingFiling,
     SessionPullRequestClosing,
 )
-from github_workflow.hooks import Tone
+from github_workflow.hooks import ReportLine, Tone
 from github_workflow.policy import WritePolicy
+from github_workflow.report_section import ReportGroup
 from github_workflow.proofs import BranchTip, FindingTest, ProofAttempt, ProofOutcome
 from github_workflow.settings import WorkflowSettings
 from github_workflow.stacks import StackPlacement
@@ -278,13 +280,12 @@ def test_a_finding_accepted_on_github_is_listed_once_as_accepted():
 
 
 def test_a_finding_accepted_on_github_is_summed_up_once_as_accepted():
-    board = IssuesInMemory(
-        {1: accepted_on_github(finding(1, FindingStage.UNREVIEWED, Priority.HIGH))}
-    )
+    accepted = accepted_on_github(finding(1, FindingStage.UNREVIEWED, Priority.HIGH))
+    board = IssuesInMemory({1: accepted})
 
-    [line] = FindingsSummary(board).lines()
+    lines = FindingsSummary(board).lines()
 
-    assert line.tone is Tone.NEWS
+    assert lines == grouped(FindingGroup.TO_PROVE, [accepted], Tone.NEWS)
 
 
 def test_findings_are_listed_unreviewed_first_and_most_urgent_first():
@@ -934,51 +935,48 @@ def test_a_draft_for_a_finding_whose_test_now_passes_is_refused(
 # %% the section
 
 
-def test_the_summary_counts_unreviewed_findings_by_priority():
-    board = IssuesInMemory(
-        {
-            1: finding(1, FindingStage.UNREVIEWED, Priority.CRITICAL),
-            2: finding(2, FindingStage.UNREVIEWED, Priority.MEDIUM),
-            3: finding(3, FindingStage.ACCEPTED, Priority.HIGH),
-        }
-    )
-
-    [line] = FindingsSummary(board).lines()
-
-    assert line.text == (
-        "github-workflow: findings: 2 unreviewed (1 critical, 1 medium), 1 accepted"
-    )
-    assert line.tone is Tone.ACTION
-
-
-def test_the_summary_counts_shelved_findings_apart():
-    board = IssuesInMemory(
-        {
-            1: finding(1, FindingStage.UNREVIEWED, Priority.LOW),
-            2: finding(2, FindingStage.SHELVED, Priority.HIGH),
-        }
-    )
-
-    [line] = FindingsSummary(board).lines()
-
-    assert line.text == (
-        "github-workflow: findings: 1 unreviewed (1 low), 0 accepted, 1 shelved"
+def unproven(issue: Issue) -> Issue:
+    """:param issue: A finding.
+    :return: It, labelled as no failing test could be written for it."""
+    return Issue(
+        issue.number, issue.title, (*issue.labels, Evidence.UNPROVEN), issue.state
     )
 
 
-def test_the_summary_counts_the_proven_among_the_accepted():
-    board = IssuesInMemory(
-        {
-            1: proven(finding(1, FindingStage.ACCEPTED, Priority.HIGH)),
-            2: finding(2, FindingStage.ACCEPTED, Priority.LOW),
-        }
-    )
+def grouped(group: FindingGroup, issues: list[Issue], tone: Tone) -> list[ReportLine]:
+    """
+    :param group: A group of findings.
+    :param issues: The findings in it, in the order listed.
+    :param tone: How they stand out.
+    :return: The group's lines.
+    """
+    items = [ReportLine(Priority.named(issue), tone) for issue in issues]
+    return ReportGroup(group, items).lines()
 
-    [line] = FindingsSummary(board).lines()
 
-    assert line.text == (
-        "github-workflow: findings: 0 unreviewed, 2 accepted (1 proven)"
-    )
+def test_the_summary_names_each_finding_in_its_group_most_urgent_first():
+    issues = {
+        1: finding(1, FindingStage.UNREVIEWED, Priority.LOW),
+        2: finding(2, FindingStage.UNREVIEWED, Priority.CRITICAL),
+        3: proven(finding(3, FindingStage.ACCEPTED, Priority.HIGH)),
+        4: finding(4, FindingStage.ACCEPTED, Priority.MEDIUM),
+        5: unproven(finding(5, FindingStage.ACCEPTED, Priority.LOW)),
+    }
+
+    lines = FindingsSummary(IssuesInMemory(issues)).lines()
+
+    assert lines == [
+        *grouped(FindingGroup.UNREVIEWED, [issues[2], issues[1]], Tone.ACTION),
+        *grouped(FindingGroup.PROVEN, [issues[3]], Tone.NEWS),
+        *grouped(FindingGroup.TO_PROVE, [issues[4]], Tone.NEWS),
+        *grouped(FindingGroup.UNPROVABLE, [issues[5]], Tone.NEWS),
+    ]
+
+
+def test_the_summary_leaves_shelved_findings_out():
+    board = IssuesInMemory({1: finding(1, FindingStage.SHELVED, Priority.HIGH)})
+
+    assert FindingsSummary(board).lines() == []
 
 
 def test_a_repository_without_findings_says_nothing():

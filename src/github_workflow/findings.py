@@ -10,9 +10,9 @@ issue; only an accepted, proven finding is worked on in a draft pull request.
 from __future__ import annotations
 
 from abc import ABC
-from collections import Counter
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass, replace
+from enum import StrEnum
 from typing import Self
 
 from basstler_domain_model.class_property import classproperty
@@ -44,7 +44,7 @@ from github_workflow.exceptions import (
 from github_workflow.hooks import ReportLine, Tone
 from github_workflow.labels import DescribedLabel
 from github_workflow.proofs import FindingTest, Proof, ProofOutcome, ProofRunner
-from github_workflow.report_section import ReportSection
+from github_workflow.report_section import ReportGroup, ReportSection
 from github_workflow.work import (
     ClosingLines,
     DraftOpening,
@@ -176,6 +176,26 @@ class Priority(FindingLabel):
     def level(self) -> str:
         """:return: The priority's level alone, as the command line takes it."""
         return self._name_.lower()
+
+    @classmethod
+    def most_urgent_first(cls, issues: Sequence[Issue]) -> list[Issue]:
+        """
+        :param issues: Findings.
+        :return: Them, most urgent first, those without a priority last.
+        """
+        return sorted(
+            issues, key=lambda issue: list(cls).index(cls.of(issue) or cls.LOW)
+        )
+
+    @classmethod
+    def named(cls, issue: Issue) -> str:
+        """
+        :param issue: A finding.
+        :return: Its number, priority level and title, as one line names it.
+        """
+        priority = cls.of(issue)
+        level = priority.level if priority else "no priority"
+        return f"#{issue.number} [{level}] {issue.title}"
 
     @classmethod
     def guide(cls) -> str:
@@ -390,17 +410,10 @@ class FindingListing(WorkflowStep):
         """
         lines = []
         for stage, issues in OpenFindings(self.board).by_stage().items():
-            for issue in sorted(
-                issues,
-                key=lambda issue: list(Priority).index(
-                    Priority.of(issue) or Priority.LOW
-                ),
-            ):
-                priority = Priority.of(issue)
-                level = priority.level if priority else "no priority"
+            for issue in Priority.most_urgent_first(issues):
                 evidence = Evidence.of(issue)
                 labels = f"{stage}, {evidence}" if evidence else stage
-                lines.append(f"#{issue.number} [{level}] {issue.title} ({labels})")
+                lines.append(f"{Priority.named(issue)} ({labels})")
         return "\n".join(lines) or "no open findings"
 
 
@@ -834,11 +847,57 @@ class FindingDraftOpening(WorkflowStep):
 # %% the section
 
 
+class FindingGroup(StrEnum):
+    """
+    The groups the session start lists open findings in, in the order shown, each
+    member's value its heading; a shelved finding is in none.
+    """
+
+    UNREVIEWED = "findings waiting on your review"
+    """
+    Filed, and not looked at by the person yet.
+    """
+
+    PROVEN = "accepted findings, proven"
+    """
+    Accepted, with a test failing on the default branch: ready to work on.
+    """
+
+    TO_PROVE = "accepted findings, not proven yet"
+    """
+    Accepted, with no attempt at a failing test yet.
+    """
+
+    UNPROVABLE = "accepted findings, marked unproven"
+    """
+    Accepted, and no test failing on the default branch could be written.
+    """
+
+    @classmethod
+    def of(cls, stage: FindingStage, issue: Issue) -> FindingGroup | None:
+        """
+        :param stage: The stage the finding counts as.
+        :param issue: The finding.
+        :return: The group it is listed in, ``None`` for a shelved one.
+        """
+        if stage is FindingStage.UNREVIEWED:
+            return cls.UNREVIEWED
+        if stage is not FindingStage.ACCEPTED:
+            return None
+        match Evidence.of(issue):
+            case Evidence.PROVEN:
+                return cls.PROVEN
+            case Evidence.UNPROVEN:
+                return cls.UNPROVABLE
+            case None:
+                return cls.TO_PROVE
+
+
 @dataclass(frozen=True)
 class FindingsSummary(ReportSection):
     """
-    How many findings wait for the person, by priority, how many are accepted and how
-    many of those proven, and how many are shelved.
+    The open findings the person or a session acts on, each named under its
+    :class:`FindingGroup`, most urgent first; shelved findings are left out.
     """
 
     board: IssueBoard
@@ -847,26 +906,18 @@ class FindingsSummary(ReportSection):
     """
 
     def lines(self) -> list[ReportLine]:
-        by_stage = OpenFindings(self.board).by_stage()
-        unreviewed = by_stage[FindingStage.UNREVIEWED]
-        accepted = by_stage[FindingStage.ACCEPTED]
-        shelved = by_stage[FindingStage.SHELVED]
-        if not unreviewed and not accepted and not shelved:
-            return []
-        counted = Counter(Priority.of(issue) for issue in unreviewed)
-        by_priority = ", ".join(
-            f"{counted[priority]} {priority.level}"
-            for priority in Priority
-            if counted[priority]
-        )
-        detail = f" ({by_priority})" if by_priority else ""
-        proven = sum(Evidence.of(issue) is Evidence.PROVEN for issue in accepted)
-        ready = f" ({proven} proven)" if proven else ""
-        set_aside = f", {len(shelved)} shelved" if shelved else ""
-        return [
-            ReportLine(
-                f"github-workflow: findings: {len(unreviewed)} unreviewed{detail}, "
-                f"{len(accepted)} accepted{ready}{set_aside}",
-                Tone.ACTION if unreviewed else Tone.NEWS,
-            )
-        ]
+        grouped: dict[FindingGroup, list[Issue]] = {group: [] for group in FindingGroup}
+        for stage, issues in OpenFindings(self.board).by_stage().items():
+            for issue in issues:
+                group = FindingGroup.of(stage, issue)
+                if group is not None:
+                    grouped[group].append(issue)
+        lines = []
+        for group, issues in grouped.items():
+            tone = Tone.ACTION if group is FindingGroup.UNREVIEWED else Tone.NEWS
+            items = [
+                ReportLine(Priority.named(issue), tone)
+                for issue in Priority.most_urgent_first(issues)
+            ]
+            lines += ReportGroup(group, items).lines()
+        return lines

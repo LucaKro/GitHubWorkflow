@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from basstler_domain_model.github.repository_client import GitHubRepository
 
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.hooks import ReportLine
+from github_workflow.hooks import ReportLine, Tone
 from github_workflow.remotes import OwnedRemote
 from github_workflow.settings import WorkflowSettings
 
@@ -58,3 +58,38 @@ class ReportSection(ABC):
         """
         :return: What the session should know, empty when there is nothing to say.
         """
+
+
+# %% a group of lines
+
+
+@dataclass(frozen=True)
+class ReportGroup:
+    """
+    Lines about things of one kind, under a heading that says what they are.
+    """
+
+    heading: str
+    """
+    What the things are, such as ``draft pull requests``.
+    """
+
+    items: list[ReportLine]
+    """
+    One line per thing, without the workflow's prefix.
+    """
+
+    def lines(self) -> list[ReportLine]:
+        """
+        :return: The heading, standing out as much as the most pressing item, followed
+            by the items indented; nothing when there are no items.
+        """
+        if not self.items:
+            return []
+        pressing = any(item.tone is Tone.ACTION for item in self.items)
+        heading = ReportLine(
+            f"github-workflow: {self.heading}:", Tone.ACTION if pressing else Tone.NEWS
+        )
+        return [heading] + [
+            ReportLine(f"  {item.text}", item.tone) for item in self.items
+        ]
