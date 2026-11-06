@@ -43,6 +43,10 @@ contradicts one of these changes this file first.
   dependencies, so it runs their source, the plugin's own copy and the domain model's
   at its pinned commit, fetched from GitHub. A session whose network allows GitHub but
   not PyPI still gets the guard.
+- A plugin synced after the session started brings hooks newer than the runtime the
+  session start installed. Each hook runs its own plugin copy's code, with the runtime
+  only supplying the libraries, so a hook never fails for a module the older runtime
+  lacks.
 - The cloud environment sets the git identity commits are authored with
   (`GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, `GIT_COMMITTER_EMAIL`).
 - `scripts/cloud-check.sh` checks a cloud session end to end and publishes its report

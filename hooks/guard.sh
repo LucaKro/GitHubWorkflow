@@ -60,6 +60,9 @@ if [ ! -x "${PYTHON}" ]; then
   from_source "no interpreter at ${PYTHON}; set GITHUB_WORKFLOW_PYTHON to one with the package installed"
 fi
 
+# The plugin's own code goes first, so a plugin updated after the runtime was installed
+# never runs a guard older than this hook.
+export PYTHONPATH="${PLUGIN_ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
 if ! OUTPUT="$(printf '%s' "${INPUT}" | "${PYTHON}" -m github_workflow.guard 2>&1)"; then
   from_source "the guard failed: $(printf '%s\n' "${OUTPUT}" | tail -n 1)"
 fi
