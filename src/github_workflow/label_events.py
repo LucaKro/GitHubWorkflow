@@ -1,5 +1,6 @@
 """
-Finding labels picked on GitHub, completed by an Actions workflow.
+Finding labels picked on GitHub, completed by an Actions workflow, or by a session where
+the workflow is not installed.
 
 A stage, priority or evidence label replaces the others of its kind, so changing a
 finding by hand takes one pick.
@@ -18,7 +19,13 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from basstler_domain_model.github.repository_client import GitHubRepository
+from basstler_domain_model.github.issue_models import Issue, LabelEvent
+from basstler_domain_model.github.repository_client import (
+    GitHubRepository,
+    IssueBoard,
+    IssueLabelHistory,
+    RepositoryLabels,
+)
 from basstler_domain_model.github.vocabulary import (
     IssueState,
     IssueStateReason,
@@ -34,9 +41,11 @@ from github_workflow.findings import (
     FindingStage,
     Priority,
 )
+from github_workflow.hooks import ReportLine, Tone
 from github_workflow.install import DomainModelSource
 from github_workflow.locations import ProjectFile, WorkflowTemplate
-from github_workflow.work import WorkflowStep
+from github_workflow.report_section import ReportSection
+from github_workflow.work import SessionLog, WorkflowStep
 
 # %% the event
 
@@ -137,6 +146,155 @@ class FindingLabelCompletion(FindingLabelling):
         if stage is FindingStage.INCORRECT and issue.state is IssueState.OPEN:
             self.board.close_issue(self.number, IssueStateReason.NOT_PLANNED)
         return f"moved #{self.number} to {stage}"
+
+
+# %% completing them from a session
+
+
+@dataclass(frozen=True)
+class PickedLabelCompletion:
+    """
+    The finding labels the person picked on GitHub, completed from a session as
+    :class:`FindingLabelCompletion` completes one: on each open finding carrying several
+    labels of one kind, the one added last stays, and an open finding labelled incorrect
+    is closed. What is completed is entered in the session log.
+    """
+
+    board: IssueBoard
+    """
+    Lists and labels the issues.
+    """
+
+    labels: RepositoryLabels
+    """
+    Creates the finding labels the repository lacks.
+    """
+
+    history: IssueLabelHistory
+    """
+    Reads in which order an issue's labels were added.
+    """
+
+    repository: Repository
+    """
+    The repository the findings are on, named in the session log.
+    """
+
+    log: SessionLog
+    """
+    Where what was completed is entered.
+    """
+
+    def complete(self) -> list[str]:
+        """
+        :return: What was completed, one entry per label.
+        """
+        found = {
+            issue.number: issue
+            for stage in FindingStage
+            for issue in self.board.issues([stage], IssueState.OPEN)
+        }
+        done = [
+            FindingLabelCompletion(self.board, self.labels, number, label).run()
+            for number, issue in found.items()
+            for label in self.picks(issue)
+        ]
+        if done:
+            self.log.enter(
+                f"completed the finding labels picked on GitHub in {self.repository}: "
+                f"{'; '.join(done)}"
+            )
+        return done
+
+    def picks(self, issue: Issue) -> list[str]:
+        """
+        :param issue: An open finding.
+        :return: The labels picked on it that are not completed yet: the one added
+            last of each kind it carries several of, or the incorrect stage it still
+            carries open.
+        """
+        kinds = (FindingStage, Priority, Evidence)
+        contested = [
+            kind for kind in kinds if sum(label in kind for label in issue.labels) > 1
+        ]
+        if not contested:
+            incorrect = FindingStage.of(issue) is FindingStage.INCORRECT
+            return [FindingStage.INCORRECT] if incorrect else []
+        events = self.history.label_events(issue.number)
+        return [
+            picked
+            for kind in contested
+            if (picked := self.added_last(kind, issue, events)) is not None
+        ]
+
+    @staticmethod
+    def added_last(
+        kind: type[FindingStage | Priority | Evidence],
+        issue: Issue,
+        events: list[LabelEvent],
+    ) -> str | None:
+        """
+        :param kind: A kind of finding label.
+        :param issue: The finding.
+        :param events: Its labels added and removed, oldest first.
+        :return: The label of that kind it carries that was added last, ``None`` when
+            its events name none.
+        """
+        return next(
+            (
+                event.label
+                for event in reversed(events)
+                if event.added and event.label in kind and event.label in issue.labels
+            ),
+            None,
+        )
+
+
+@dataclass(frozen=True)
+class LabelsCompletedStep(WorkflowStep):
+    """
+    A step run once the finding labels picked on GitHub are completed, saying first
+    what that did.
+    """
+
+    completion: PickedLabelCompletion
+    """
+    Completes the labels.
+    """
+
+    step: WorkflowStep
+    """
+    The step asked for.
+    """
+
+    def run(self) -> str:
+        done = [f"completed: {entry}" for entry in self.completion.complete()]
+        return "\n".join([*done, self.step.run()])
+
+
+@dataclass(frozen=True)
+class LabelsCompletedReport(ReportSection):
+    """
+    A section of the session start computed once the finding labels picked on GitHub
+    are completed, with a line saying what that did.
+    """
+
+    completion: PickedLabelCompletion
+    """
+    Completes the labels.
+    """
+
+    section: ReportSection
+    """
+    The section asked for.
+    """
+
+    def lines(self) -> list[ReportLine]:
+        done = self.completion.complete()
+        completed = [
+            ReportLine(f"github-workflow: completed {'; '.join(done)}", Tone.NEWS)
+        ]
+        return [*(completed if done else []), *self.section.lines()]
 
 
 # %% the Actions workflow

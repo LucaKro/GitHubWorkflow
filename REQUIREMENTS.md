@@ -110,7 +110,11 @@ them:
   of several I picked, the most cautious counts - *incorrect*, then *shelved*, then
   *accepted*. Each finding is listed and counted once, under that stage. The label
   workflow, where a repository has it, only tidies the labels; no fork needs it on its
-  default branch.
+  default branch. Sessions tidy them too, so no repository needs the workflow for it:
+  at session start and in `finding list`, of each kind of finding label an open
+  finding carries several of, the one I added last stays, as the issue's events show,
+  and an open finding labelled *incorrect* is closed as not planned. What was tidied
+  is said, and entered in the session log.
 - Apart from its stage, a finding may be *proven*: a test fails on the default branch
   as GitHub has it, and is posted on the issue - with the commit it failed on - but
   never committed. A finding stays *unreviewed* when proven; being proven never

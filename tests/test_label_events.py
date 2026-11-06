@@ -7,9 +7,11 @@ is written into a checkout.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from basstler_domain_model.github.issue_models import Issue
+from basstler_domain_model.github.issue_models import Issue, LabelEvent
+from basstler_domain_model.github.repository_client import IssueLabelHistory
 from basstler_domain_model.github.vocabulary import IssueState, IssueStateReason
 from basstler_domain_model.locations import PathEnumeration
 from basstler_domain_model.repository import Repository
@@ -22,10 +24,15 @@ from github_workflow.label_events import (
     FindingLabelCompletion,
     IssueLabelled,
     LabelCompletionPlaceholder,
+    LabelsCompletedReport,
+    PickedLabelCompletion,
 )
+from github_workflow.hooks import ReportLine, Tone
 from github_workflow.locations import ProjectFile
+from github_workflow.report_section import ReportSection
 
-from .issues_in_memory import IssuesInMemory, finding
+from .issues_in_memory import IssuesInMemory, finding, labelled_board
+from .test_work import EntriesInMemory
 
 # %% the dataset
 
@@ -155,3 +162,123 @@ def test_the_actions_workflow_is_written_into_the_checkout_filled_in(tmp_path: P
     assert [p for p in LabelCompletionPlaceholder if p in workflow] == []
     assert all(requirement in workflow for requirement in ActionRequirement)
     assert f"python -m {label_events.__name__}" in workflow
+
+
+# %% completing picked labels from a session
+
+
+@dataclass(frozen=True)
+class LabelsAddedInMemory(IssueLabelHistory):
+    """
+    Each issue's labels, added in the order given, none ever removed.
+    """
+
+    added: dict[int, list[str]] = field(default_factory=dict)
+    """
+    The labels added to each issue, oldest first.
+    """
+
+    def label_events(self, number: int) -> list[LabelEvent]:
+        return [LabelEvent(label, True) for label in self.added.get(number, [])]
+
+
+@dataclass(frozen=True)
+class NothingToSay(ReportSection):
+    """
+    A section with nothing to say.
+    """
+
+    def lines(self) -> list[ReportLine]:
+        return []
+
+
+def completion(
+    board: IssuesInMemory, added: dict[int, list[str]]
+) -> PickedLabelCompletion:
+    """
+    :param board: The findings.
+    :param added: The labels added to each issue, oldest first.
+    :return: Completes the labels picked on the board.
+    """
+    return PickedLabelCompletion(
+        board,
+        board,
+        LabelsAddedInMemory(added),
+        Repository("an-owner", "a-repository"),
+        EntriesInMemory(),
+    )
+
+
+def with_labels(*labels: str) -> Issue:
+    """
+    :param labels: The labels it carries.
+    :return: Open issue 1, carrying them.
+    """
+    return Issue(1, "Finding 1", labels, IssueState.OPEN)
+
+
+def test_the_stage_added_last_replaces_the_one_before_it():
+    board = labelled_board(
+        with_labels(FindingStage.UNREVIEWED, Priority.MEDIUM, FindingStage.ACCEPTED)
+    )
+
+    completion(
+        board, {1: [FindingStage.UNREVIEWED, Priority.MEDIUM, FindingStage.ACCEPTED]}
+    ).complete()
+
+    assert board.writes == [f"remove_label 1 {FindingStage.UNREVIEWED}"]
+
+
+def test_the_priority_added_last_replaces_the_one_before_it():
+    board = labelled_board(
+        with_labels(FindingStage.ACCEPTED, Priority.HIGH, Priority.LOW)
+    )
+
+    completion(
+        board, {1: [FindingStage.ACCEPTED, Priority.LOW, Priority.HIGH]}
+    ).complete()
+
+    assert board.writes == [f"remove_label 1 {Priority.LOW}"]
+
+
+def test_an_open_incorrect_finding_is_closed():
+    board = labelled_board(with_labels(FindingStage.INCORRECT, Priority.LOW))
+
+    completion(board, {}).complete()
+
+    assert f"close_issue 1 {IssueStateReason.NOT_PLANNED}" in board.writes
+
+
+def test_a_finding_with_one_label_of_each_kind_is_left_as_it_is():
+    board = labelled_board(finding(1, FindingStage.ACCEPTED, Priority.LOW))
+
+    assert completion(board, {}).complete() == []
+    assert board.writes == []
+
+
+def test_what_was_completed_is_entered_in_the_session_log():
+    board = labelled_board(with_labels(FindingStage.INCORRECT, Priority.LOW))
+    step = completion(board, {})
+
+    done = step.complete()
+
+    [entry] = step.log.entries
+    assert done[0] in entry
+
+
+def test_nothing_completed_enters_nothing():
+    step = completion(
+        labelled_board(finding(1, FindingStage.ACCEPTED, Priority.LOW)), {}
+    )
+
+    step.complete()
+
+    assert step.log.entries == []
+
+
+def test_the_session_start_says_what_was_completed_first():
+    board = labelled_board(with_labels(FindingStage.INCORRECT, Priority.LOW))
+
+    [line] = LabelsCompletedReport(completion(board, {}), NothingToSay()).lines()
+
+    assert line.tone is Tone.NEWS

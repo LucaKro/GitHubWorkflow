@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 
+from basstler_domain_model.git.commands import GitCommandRunner
 from basstler_domain_model.github.discussions import (
     DefaultDiscussionCategory,
     DiscussionCategory,
@@ -22,6 +23,8 @@ from basstler_domain_model.repository import Repository
 from github_workflow.exceptions import DiscussionsDisabledError
 from github_workflow.locations import NotesFile, WorkflowTemplate
 from github_workflow.notes.branch import NotesBranch
+from github_workflow.remotes import OwnedRemote
+from github_workflow.settings import WorkflowSettings
 from github_workflow.work import SessionLog, WorkflowStep
 
 # %% vocabulary
@@ -309,6 +312,27 @@ class DiscussionSessionLog(SessionLog):
     """
     The log discussion's title.
     """
+
+    @classmethod
+    def in_checkout(
+        cls,
+        discussions: RepositoryDiscussions,
+        git: GitCommandRunner,
+        remote: OwnedRemote,
+        settings: WorkflowSettings,
+    ) -> DiscussionSessionLog:
+        """
+        :param discussions: Says whether the repository has Discussions turned on.
+        :param git: Runs git in the checkout the session works in.
+        :param remote: The owner's remote, whose notes branch queues the entries.
+        :param settings: Where the notes live.
+        :return: The session log of a session working on the checked-out branch.
+        """
+        return cls(
+            discussions,
+            DiscussionPosting(NotesBranch.on(git, remote, settings)),
+            git.checked_out_branch(),
+        )
 
     def enter(self, action: str) -> None:
         if not self.discussions.discussions_enabled():

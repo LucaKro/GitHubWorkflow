@@ -16,8 +16,10 @@ from basstler_domain_model.github.repository_client import GitHubRepository
 
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.cleanup import CleanupReminder, KeptBranches
+from github_workflow.discussions import DiscussionSessionLog
 from github_workflow.findings import FindingsSummary
 from github_workflow.freshness import BranchFreshening, FreshnessReport
+from github_workflow.label_events import LabelsCompletedReport, PickedLabelCompletion
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.policy import WritePolicy
 from github_workflow.pull_request_overview import (
@@ -49,7 +51,7 @@ class SectionName(StrEnum):
 
     FINDINGS = "findings"
     """
-    The findings waiting for the person.
+    The findings waiting for the person, once the labels picked on GitHub are completed.
     """
 
     CLEANUP = "cleanup"
@@ -79,7 +81,21 @@ class SectionName(StrEnum):
                     context.checkout.git.checked_out_branch(),
                 )
             case SectionName.FINDINGS:
-                return FindingsSummary(context.github)
+                completion = PickedLabelCompletion(
+                    context.github,
+                    context.github,
+                    context.github,
+                    context.remote.repository,
+                    DiscussionSessionLog.in_checkout(
+                        context.github,
+                        context.checkout.git,
+                        context.remote,
+                        context.settings,
+                    ),
+                )
+                return LabelsCompletedReport(
+                    completion, FindingsSummary(context.github)
+                )
             case SectionName.CLEANUP:
                 return CleanupReminder(
                     KeptBranches.read(
