@@ -477,6 +477,8 @@ class WorkflowSession(RepositoryDetails):
                     github,
                     github,
                     github,
+                    github,
+                    github,
                     GitHubRepository.from_environment,
                     GitHubRepository.from_environment,
                     self.settings,
