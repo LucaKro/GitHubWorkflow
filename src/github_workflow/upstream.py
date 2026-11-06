@@ -263,10 +263,22 @@ class ForkMainSync(WorkflowStep):
         upstream = self.fork_details.upstream()
         if upstream is None:
             raise NotAForkError(repository)
+        tips = self.tips(upstream)
         branch = self.policy.default_branch
+        if tips.ahead == tips.behind == 0:
+            return f"{branch} is up to date with {upstream}'s"
+        if tips.ahead:
+            raise ForkBranchDivergedError(branch, upstream, tips.ahead)
+        return self.fast_forward(upstream, tips)
+
+    def tips(self, upstream: Repository) -> ForkTips:
+        """
+        :param upstream: The repository the fork was forked from.
+        :return: The fork's default branch and the upstream's, as fetched now.
+        """
         git = self.policy.checkout.git
-        fork = RemoteBranch(self.policy.remote.name, branch)
-        theirs = RemoteBranch(self.upstream_name, branch)
+        fork = RemoteBranch(self.policy.remote.name, self.policy.default_branch)
+        theirs = RemoteBranch(self.upstream_name, self.policy.default_branch)
         git.fetch_branch(fork).raise_if_failed()
         git.run(
             "fetch",
@@ -277,22 +289,62 @@ class ForkMainSync(WorkflowStep):
         )
         fork_tip = git.commit_at(fork.tracking_reference)
         upstream_tip = git.commit_at(theirs.tracking_reference)
-        if fork_tip == upstream_tip:
-            return f"{branch} is up to date with {upstream}'s"
-        if not git.contains(fork_tip, upstream_tip):
-            own = git.run("rev-list", "--count", f"{upstream_tip}..{fork_tip}")
-            raise ForkBranchDivergedError(branch, upstream, int(own))
-        behind = git.run("rev-list", "--count", f"{fork_tip}..{upstream_tip}")
+        return ForkTips(
+            fork_tip,
+            upstream_tip,
+            int(git.run("rev-list", "--count", f"{upstream_tip}..{fork_tip}")),
+            int(git.run("rev-list", "--count", f"{fork_tip}..{upstream_tip}")),
+        )
+
+    def fast_forward(self, upstream: Repository, tips: ForkTips) -> str:
+        """
+        :param upstream: The repository the fork was forked from.
+        :param tips: The two branches' tips, the fork's behind and with no commits of
+            its own.
+        :return: What was fast-forwarded, the local copy included.
+        """
+        git = self.policy.checkout.git
+        fork = RemoteBranch(self.policy.remote.name, self.policy.default_branch)
         git.attempt(
             "push",
             "--quiet",
             "--no-verify",
             fork.remote,
-            f"{upstream_tip}:{fork.reference}",
+            f"{tips.upstream}:{fork.reference}",
         ).raise_if_failed()
         git.fetch_branch(fork).raise_if_failed()
         local = LocalBranchFollowing(git).follow(fork)
-        return f"{branch} fast-forwarded by {behind} commit(s) to {upstream}'s{local}"
+        return (
+            f"{fork.name} fast-forwarded by {tips.behind} commit(s) to {upstream}'s"
+            f"{local}"
+        )
+
+
+@dataclass(frozen=True)
+class ForkTips:
+    """
+    A fork's default branch and the same branch of the repository it was forked from.
+    """
+
+    fork: str
+    """
+    The fork's tip.
+    """
+
+    upstream: str
+    """
+    The upstream's tip.
+    """
+
+    ahead: int
+    """
+    How many commits the fork has that the upstream lacks.
+    """
+
+    behind: int
+    """
+    How many commits the upstream has that the fork lacks.
+    """
 
 
 # %% the suggestion

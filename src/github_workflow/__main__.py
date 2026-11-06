@@ -45,6 +45,7 @@ from github_workflow.discussions import (
     IdeaFiling,
 )
 from github_workflow.environment import WorkflowVariable
+from github_workflow.freshness import BranchFreshening, FreshenedStep
 from github_workflow.exceptions import ForeignRepositoryError, UnknownPluginDataError
 from github_workflow.locations import PluginDataDirectory
 from github_workflow.notes.branch import NotesBranch
@@ -177,6 +178,11 @@ class WorkflowSession(RepositoryDetails):
         return StackPlacement(self.github, self.github, self.github, self.github)
 
     @property
+    def freshening(self) -> BranchFreshening:
+        """:return: Brings the fork's default branch and the work branch up to date."""
+        return BranchFreshening(self.policy, self.github, self.github)
+
+    @property
     def session_log(self) -> DiscussionSessionLog:
         """:return: Where what the session does without asking is entered."""
         git = self.checkout.git
@@ -243,6 +249,20 @@ class WorkflowSession(RepositoryDetails):
         authors = {self.settings.owner, self.github.authenticated_login()}
         runner = self.proof_runner(python, branch)
         return FindingRecheck(self.github, runner, authors, number)
+
+    def command(self, arguments: argparse.Namespace) -> WorkflowStep:
+        """
+        :param arguments: The parsed command line.
+        :return: The step it asks for; for ``push``, ``draft`` and ``describe`` of the
+            work branch's own pull request, run once the branches are up to date.
+        """
+        step = self.step(arguments)
+        match WorkflowCommand(arguments.command):
+            case WorkflowCommand.PUSH | WorkflowCommand.DRAFT:
+                return FreshenedStep(self.freshening, step)
+            case WorkflowCommand.DESCRIBE if arguments.number is None:
+                return FreshenedStep(self.freshening, step)
+        return step
 
     def step(self, arguments: argparse.Namespace) -> WorkflowStep:
         """
@@ -817,7 +837,7 @@ def main() -> None:
     sys.excepthook = WorkflowSession.report
     arguments = WorkflowSession.parser().parse_args()
     session = WorkflowSession(Path.cwd(), WorkflowSettings())
-    print(f"github-workflow: {session.step(arguments).run()}")
+    print(f"github-workflow: {session.command(arguments).run()}")
 
 
 if __name__ == "__main__":

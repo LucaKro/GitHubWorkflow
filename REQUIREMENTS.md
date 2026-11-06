@@ -57,6 +57,8 @@ agent:
 - this branch's progress
 - one line per other open pull request on the repository
 - warnings about this branch's pull request
+- what was brought up to date: the fork's default branch and the work branch, as
+  described under what the agent may do without asking, and what could not be
 
 ## Signals
 
@@ -217,6 +219,14 @@ them:
 
 - push its own work branch
 - fast-forward a fork's default branch to its upstream's, with `sync --upstream`
+- keep branches up to date on its own, at session start and before `push`, `draft` and
+  `describe` of the work branch's own pull request: a fork's default branch is
+  fast-forwarded to its upstream's when it is behind and has no commits of its own,
+  then the work branch is merged with the branch its open pull request targets (the
+  default branch when it has none) when it is behind, its working tree holds no
+  changes and `git merge-tree` shows the merge is clean. Never rebased or forced. What
+  cannot be done this way - a conflict, uncommitted changes, a fork's own commits - is
+  reported instead, for the session to settle with `sync`
 - save notes and progress
 - mark its own throwaway branches as discarded, closing their open pull requests
 - open a draft replacing one of its own (`draft --replaces <number>`), closing the old
