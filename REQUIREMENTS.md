@@ -30,7 +30,8 @@ contradicts one of these changes this file first.
   `clones/<owner>/<name>`. So it stays out of my directories and never collides with
   the fork's checkout of the same name. Without that directory, somebody else's
   repository is not cloned. A repository cloned before is reused. A pull request's head
-  is then fetched into a remote-tracking reference, which only reads.
+  is then fetched into a remote-tracking reference, which only reads. `cleanup` removes
+  the clones no session has made or fetched into for a week.
 
 ## Cloud sessions
 

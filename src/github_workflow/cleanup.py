@@ -2,15 +2,20 @@
 Branches GitHub kept although their pull request is closed - closed without merging, or
 merged before GitHub deleted merged branches - and branches discarded as thrown away.
 Listed at session start, deleted by the cleanup command - or, where the session may not
-delete branches, handed to an Actions workflow on the notes branch.
+delete branches, handed to an Actions workflow on the notes branch. The cleanup command
+also removes the clones of somebody else's repositories no session uses any more.
 """
 
 from __future__ import annotations
 
+import shutil
+import time
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import timedelta
 from enum import StrEnum
+from pathlib import Path
 from typing import Self
 
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
@@ -28,7 +33,7 @@ from github_workflow.exceptions import (
     UndiscardableBranchError,
 )
 from github_workflow.hooks import ReportLine, Tone
-from github_workflow.locations import NotesFile, WorkflowTemplate
+from github_workflow.locations import GitStateFile, NotesFile, WorkflowTemplate
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.policy import WritePolicy
 from github_workflow.remotes import OwnedRemote
@@ -370,3 +375,80 @@ class BranchCleanup(WorkflowStep):
             f"so they are listed on {self.notes.branch.name}, whose Actions workflow "
             f"deletes them"
         )
+
+
+# %% clones of somebody else's repositories
+
+
+@dataclass(frozen=True)
+class UnusedCloneRemoval(WorkflowStep):
+    """
+    The clones of somebody else's repositories that no session has made or fetched
+    into for a while, removed, together with an owner's directory they leave empty.
+    """
+
+    clones: Path
+    """
+    The directory holding the clones, as ``<owner>/<name>``.
+    """
+
+    unused_for: timedelta = timedelta(weeks=1)
+    """
+    How long a clone goes unused before no running session is taken to read it.
+    """
+
+    def run(self) -> str:
+        cutoff = time.time() - self.unused_for.total_seconds()
+        unused = [
+            clone
+            for clone in sorted(self.clones.glob("*/*"))
+            if self.last_used(clone) < cutoff
+        ]
+        for clone in unused:
+            shutil.rmtree(clone)
+            if not any(clone.parent.iterdir()):
+                clone.parent.rmdir()
+        if not unused:
+            return "no clone of somebody else's repository is unused"
+        plural = "s" if len(unused) > 1 else ""
+        return (
+            f"removed {len(unused)} clone{plural} of somebody else's repositories "
+            f"unused for {self.unused_for.days} days"
+        )
+
+    @staticmethod
+    def last_used(clone: Path) -> float:
+        """
+        :param clone: A clone of somebody else's repository.
+        :return: When it was last made or fetched into, in seconds since the epoch.
+        """
+        fetched = GitCommandRunner(clone).repository_state_path(GitStateFile.FETCH_HEAD)
+        return (fetched if fetched.exists() else fetched.parent).stat().st_mtime
+
+
+# %% the command
+
+
+@dataclass(frozen=True)
+class Cleanup(WorkflowStep):
+    """
+    The branches ready for deletion deleted, and the clones of somebody else's
+    repositories no session uses removed.
+    """
+
+    branches: BranchCleanup
+    """
+    Deletes the branches.
+    """
+
+    clones: UnusedCloneRemoval | None
+    """
+    Removes the clones, ``None`` when the plugin's data directory, which holds them, is
+    not known.
+    """
+
+    def run(self) -> str:
+        done = [self.branches.run()]
+        if self.clones is not None:
+            done.append(self.clones.run())
+        return "; ".join(done)

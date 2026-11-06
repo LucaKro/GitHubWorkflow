@@ -7,15 +7,20 @@ refused.
 
 from __future__ import annotations
 
+import os
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
 
+import github_workflow
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
+from basstler_domain_model.github.replayed_api import ReplayedApi
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import PullRequestState
 
+from github_workflow.__main__ import WorkflowSession
 from github_workflow.cleanup import (
     BranchCleanup,
     BranchDiscard,
@@ -23,10 +28,13 @@ from github_workflow.cleanup import (
     CleanupReminder,
     DiscardedBranches,
     KeptBranches,
+    UnusedCloneRemoval,
 )
+from github_workflow.command_line import WorkflowCommand
+from github_workflow.environment import WorkflowVariable
 from github_workflow.exceptions import NothingToDiscardError, UndiscardableBranchError
 from github_workflow.hooks import Tone
-from github_workflow.locations import NotesFile
+from github_workflow.locations import NotesFile, PluginDataDirectory
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.policy import WritePolicy
@@ -35,6 +43,7 @@ from github_workflow.work import BranchStart, CommitWork, PushWork
 
 from .pull_requests import REPOSITORY, pull_request
 from .repositories_by_owner import RepositoriesByOwner
+from .test_commands import github, run  # noqa: F401
 from .test_work import (
     PullRequestsFromBranchesInMemory,
     RetiredInMemory,
@@ -396,3 +405,98 @@ def test_discarding_a_branch_github_lacks_is_refused(
 
     with pytest.raises(NothingToDiscardError):
         discard(policy, notes).run()
+
+
+# %% clones of somebody else's repositories
+
+
+def clone_used(clone: Path, seconds_ago: float) -> None:
+    """
+    :param clone: A clone.
+    :param seconds_ago: How long ago it was last made or fetched into.
+    """
+    used = time.time() - seconds_ago
+    for path in [clone, *clone.rglob("*")]:
+        os.utime(path, (used, used))
+
+
+def foreign_clone(directory: Path, foreign_url: str) -> Path:
+    """
+    :param directory: The directory holding the clones as ``<owner>/<name>``.
+    :param foreign_url: Somebody else's repository.
+    :return: Its clone there.
+    """
+    clone = (
+        directory
+        / RepositoriesByOwner.foreign_owner
+        / RepositoriesByOwner.repository_name
+    )
+    GitCommandRunner.clone(foreign_url, clone)
+    return clone
+
+
+def test_a_clone_no_session_used_for_a_month_is_removed(
+    github: ReplayedApi,  # noqa: F811
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    foreign_url: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    data = tmp_path / "plugin-data"
+    monkeypatch.setenv(WorkflowVariable.PLUGIN_DATA, str(data))
+    checkout = repositories.clone(owned_url, "session")
+    clone = foreign_clone(data / PluginDataDirectory.CLONES, foreign_url)
+    clone_used(clone, 30 * 24 * 60 * 60)
+
+    run(github_workflow.__name__, checkout, WorkflowCommand.CLEANUP)
+
+    assert not clone.exists()
+
+
+def test_a_clone_used_within_the_week_is_kept(foreign_url: str, tmp_path: Path):
+    removal = UnusedCloneRemoval(tmp_path / "clones")
+    clone = foreign_clone(removal.clones, foreign_url)
+    clone_used(clone, removal.unused_for.total_seconds() / 2)
+
+    removal.run()
+
+    assert clone.exists()
+
+
+def test_a_fetch_into_an_old_clone_counts_as_using_it(foreign_url: str, tmp_path: Path):
+    removal = UnusedCloneRemoval(tmp_path / "clones")
+    clone = foreign_clone(removal.clones, foreign_url)
+    clone_used(clone, 2 * removal.unused_for.total_seconds())
+
+    GitCommandRunner(clone).fetch("origin")
+
+    removal.run()
+
+    assert clone.exists()
+
+
+def test_an_owner_s_directory_left_empty_is_removed(foreign_url: str, tmp_path: Path):
+    removal = UnusedCloneRemoval(tmp_path / "clones")
+    clone = foreign_clone(removal.clones, foreign_url)
+    clone_used(clone, 2 * removal.unused_for.total_seconds())
+
+    removal.run()
+
+    assert list(removal.clones.iterdir()) == []
+
+
+def test_without_the_plugin_s_data_no_clone_is_looked_at(
+    github: ReplayedApi,  # noqa: F811
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.delenv(WorkflowVariable.PLUGIN_DATA, raising=False)
+    checkout = repositories.clone(owned_url, "session")
+    arguments = WorkflowSession.parser().parse_args([WorkflowCommand.CLEANUP])
+
+    step = WorkflowSession(checkout.root, settings).step(arguments)
+
+    assert step.clones is None

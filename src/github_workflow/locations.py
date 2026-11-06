@@ -217,3 +217,17 @@ class PluginDataDirectory(PathEnumeration):
     """
     The clones of somebody else's repositories, as ``<owner>/<name>``.
     """
+
+
+# %% git's state
+
+
+class GitStateFile(PathEnumeration):
+    """
+    The files git keeps in a repository's git directory that the workflow reads.
+    """
+
+    FETCH_HEAD = Path("FETCH_HEAD")
+    """
+    What the last fetch brought in, rewritten by every fetch.
+    """
