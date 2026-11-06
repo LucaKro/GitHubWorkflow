@@ -313,6 +313,7 @@ Everything else written to GitHub needs me to ask for it.
   and on the work branch's own without asking; a closed or merged one keeps its own.
 - Starting a work branch from the default branch also fast-forwards my local default
   branch to GitHub's, unless it has commits of its own.
+- `branch switch` also switches to a branch only GitHub has, fetching it first.
 - Dependent pull requests are rare, and use GitHub's native stacks when they happen,
   restacked and merged by GitHub. `draft --on` checks that the pull request below can
   take one more on top before it opens anything: a stack is a single line, so one that

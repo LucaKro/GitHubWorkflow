@@ -259,6 +259,35 @@ def test_switching_checks_out_the_branch(work: WritePolicy):
     assert work.checkout.git.checked_out_branch() == RepositoriesByOwner.default_branch
 
 
+def test_switching_to_a_branch_only_github_has_checks_it_out(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    session = policy_in(repositories.clone(owned_url, "session"), settings)
+    elsewhere = policy_in(repositories.clone(owned_url, "elsewhere"), settings)
+    BranchStart(elsewhere, "pushed-elsewhere").run()
+    CommitWork(elsewhere, "Add a file", [write(elsewhere.checkout, "a.txt")]).run()
+    PushWork(elsewhere).run()
+
+    BranchSwitch(session, "pushed-elsewhere").run()
+
+    git = session.checkout.git
+    assert (git.checked_out_branch(), git.commit_at("HEAD")) == (
+        "pushed-elsewhere",
+        elsewhere.checkout.git.commit_at("HEAD"),
+    )
+
+
+def test_switching_to_a_branch_github_lacks_checks_out_the_local_one(
+    work: WritePolicy,
+):
+    BranchStart(work, "unpushed").run()
+    BranchSwitch(work, RepositoriesByOwner.default_branch).run()
+
+    BranchSwitch(work, "unpushed").run()
+
+    assert work.checkout.git.checked_out_branch() == "unpushed"
+
+
 # %% committing
 
 

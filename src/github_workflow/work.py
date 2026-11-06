@@ -156,7 +156,7 @@ class BranchStart(WorkflowStep):
 @dataclass(frozen=True)
 class BranchSwitch(WorkflowStep):
     """
-    Switching to an existing branch.
+    Switching to an existing branch, the checkout's or one only the owner's remote has.
     """
 
     policy: WritePolicy
@@ -170,7 +170,9 @@ class BranchSwitch(WorkflowStep):
     """
 
     def run(self) -> str:
-        self.policy.checkout.git.switch_to(self.name)
+        git = self.policy.checkout.git
+        git.fetch_branch(RemoteBranch(self.policy.remote.name, self.name))
+        git.switch_to(self.name)
         return f"on {self.name}"
 
 
