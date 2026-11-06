@@ -3,8 +3,8 @@ The guard every tool call passes before it runs: it denies writing to git or Git
 directly, so every write goes through the workflow's commands. Reading stays allowed.
 
 Run as a Claude Code ``PreToolUse`` hook: reads the hook's JSON on stdin and prints a
-denial, a request for the person's confirmation of a workflow command that needs their
-go-ahead, or nothing to leave the decision to the usual permissions.
+denial, or nothing to leave the decision to the usual permissions; the workflow's own
+commands run without the person being asked.
 
 Usage: ``python -m github_workflow.guard < hook-input.json``
 """
@@ -32,9 +32,7 @@ from github_workflow.coarse_guard import (
 )
 from github_workflow.command_line import (
     BranchSubcommand,
-    FindingSubcommand,
     ReviewSubcommand,
-    StackSubcommand,
     ToolRepository,
     WorkflowCommand,
 )
@@ -970,47 +968,6 @@ class OwnPullRequestTool(StrEnum):
                 )
 
 
-class GoAheadCommand(StrEnum):
-    """
-    The workflow commands that write to GitHub only on the person's go-ahead, by their
-    leading words.
-    """
-
-    FINDING_ACCEPT = f"{WorkflowCommand.FINDING} {FindingSubcommand.ACCEPT}"
-    FINDING_SHELVE = f"{WorkflowCommand.FINDING} {FindingSubcommand.SHELVE}"
-    FINDING_REJECT = f"{WorkflowCommand.FINDING} {FindingSubcommand.REJECT}"
-    FINDING_EDIT = f"{WorkflowCommand.FINDING} {FindingSubcommand.EDIT}"
-    STACK = f"{WorkflowCommand.STACK} {StackSubcommand.ON}"
-    DESCRIBE = WorkflowCommand.DESCRIBE.value
-
-    @classmethod
-    def run_by(cls, command: SimpleCommand) -> GoAheadCommand | None:
-        """
-        :param command: One simple command.
-        :return: The command needing the go-ahead that it runs, ``None`` when it runs
-            none.
-        """
-        return next(
-            (
-                member
-                for member in cls
-                if command.runs_workflow(member) and member.asks_about(command)
-            ),
-            None,
-        )
-
-    def asks_about(self, command: SimpleCommand) -> bool:
-        """
-        :param command: A simple command running this workflow command.
-        :return: Whether it needs the go-ahead: always, but for :attr:`DESCRIBE`
-            without a pull request's number, which rewrites the work branch's own.
-        """
-        if self is not GoAheadCommand.DESCRIBE:
-            return True
-        given = command.workflow_words() or []
-        return any(word.isdigit() for word in given[len(self.split()) :])
-
-
 class PersonOnlyCommand(StrEnum):
     """
     The workflow commands only the person runs, never a Claude Code session, even with
@@ -1583,18 +1540,6 @@ class CommandGuard:
                 return HttpClientCheck.wget().denial(arguments)
         return None
 
-    def go_ahead_needed(self, command_line: str) -> GoAheadCommand | None:
-        """
-        :param command_line: A Bash command line.
-        :return: The workflow command it runs that needs the person's go-ahead, ``None``
-            when it runs none.
-        """
-        for words in CommandLine(command_line).simple_commands():
-            needed = GoAheadCommand.run_by(SimpleCommand(words))
-            if needed is not None:
-                return needed
-        return None
-
     def _denial_of_wrapped(
         self, wrapper: Wrapper, arguments: list[str]
     ) -> Denial | None:
@@ -1713,8 +1658,8 @@ class ToolGuard:
 
     def output(self) -> dict[str, Any] | None:
         """
-        :return: The hook's output denying the call, or having the person confirm it,
-            ``None`` to leave it to the usual permissions.
+        :return: The hook's output denying the call, ``None`` to leave it to the usual
+            permissions.
         """
         denial = self.denial()
         if denial is not None:
@@ -1726,22 +1671,12 @@ class ToolGuard:
                     f"({denial.reason}): {command}"
                 )
             return decision
-        if self.hook_input.get(HookKey.TOOL_NAME) != HookValue.BASH_TOOL:
-            return None
-        command = self.hook_input[HookKey.TOOL_INPUT][HookKey.COMMAND]
-        needed = CommandGuard().go_ahead_needed(command)
-        if needed is None:
-            return None
-        return self._decision(
-            HookValue.ASK,
-            f"github-workflow: `{needed}` writes to GitHub only on the person's "
-            f"go-ahead",
-        )
+        return None
 
     @staticmethod
     def _decision(decision: HookValue, reason: str) -> dict[str, Any]:
         """
-        :param decision: Whether the call is denied or confirmed by the person.
+        :param decision: What is decided about the call.
         :param reason: Why.
         :return: The hook's output.
         """

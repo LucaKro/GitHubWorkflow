@@ -84,11 +84,6 @@ class HookValue(StrEnum):
     The decision denying a call.
     """
 
-    ASK = "ask"
-    """
-    The decision having the person confirm a call before it runs.
-    """
-
 
 class FileWritingTool(StrEnum):
     """

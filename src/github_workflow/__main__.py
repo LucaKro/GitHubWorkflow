@@ -721,7 +721,7 @@ class WorkflowSession(RepositoryDetails):
         comment.add_argument("--repository", help=repository_help)
         rewrite = finding_actions.add_parser(
             FindingSubcommand.EDIT,
-            help="rewrite an open finding's title or text, on the person's go-ahead",
+            help="rewrite an open finding's title or text",
         )
         rewrite.add_argument("number", type=int)
         rewrite.add_argument("--title")
