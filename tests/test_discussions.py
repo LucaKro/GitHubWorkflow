@@ -20,6 +20,8 @@ from basstler_domain_model.github.discussions import (
     DiscussionCategory,
 )
 from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
+from basstler_domain_model.github.repository_client import PullRequestListState
+from basstler_domain_model.github.routes import QueryParameter, RepositoryRoute
 from basstler_domain_model.github.repository_client import RepositoryDiscussions
 from basstler_domain_model.github.vocabulary import RestJSONKey
 from basstler_domain_model.locations import PathEnumeration
@@ -30,18 +32,27 @@ from github_workflow.command_line import IdeaSubcommand, WorkflowCommand
 from github_workflow.discussions import (
     DiscussionPost,
     DiscussionPostKey,
+    DiscussionPostKind,
     DiscussionPosting,
+    DiscussionSessionLog,
+    DiscussionTitle,
     IdeaFiling,
     PostingPlaceholder,
 )
 from github_workflow.exceptions import DiscussionsDisabledError
-from github_workflow.locations import NotesFile
+from github_workflow.locations import NotesFile, WorkflowTemplate
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.settings import WorkflowSettings
 
 from .repositories_by_owner import RepositoriesByOwner
-from .test_commands import github, root_path, run, setting  # noqa: F401
+from .test_commands import (  # noqa: F401
+    UpstreamDataset,
+    github,
+    root_path,
+    run,
+    setting,
+)
 
 # %% the dataset
 
@@ -59,6 +70,19 @@ class DiscussionDataset(PathEnumeration):
     CATEGORIES = Path(__file__).parent / "dataset" / "discussions" / "categories.json"
     """
     GitHub's answer naming the repository's discussion categories.
+    """
+
+    NO_DISCUSSIONS = (
+        Path(__file__).parent / "dataset" / "discussions" / "no_discussions.json"
+    )
+    """
+    GitHub's answer listing a category without discussions.
+    """
+
+    SESSION_LOG = Path(__file__).parent / "dataset" / "discussions" / "session_log.json"
+    """
+    GitHub's answer listing a category holding the session log twice, the oldest
+    ``D_log``, and another discussion.
     """
 
 
@@ -108,6 +132,18 @@ def queued_posts(notes: NotesBranch) -> list[dict[str, str]]:
     return [json.loads(notes.read(Path(path))) for path in sorted(listed)]
 
 
+def calls_of(record: str) -> list[list[str]]:
+    """
+    :param record: The stand-in ``gh``'s record of its calls.
+    :return: Each call's arguments, in order.
+    """
+    return [
+        call.splitlines()
+        for call in record.split("--- end of call ---\n")
+        if call.strip()
+    ]
+
+
 def idea(title: str, category: DiscussionCategory) -> DiscussionPost:
     """
     :param title: The idea's title.
@@ -123,6 +159,7 @@ def run_posting_workflow(
     settings: WorkflowSettings,
     tmp_path: Path,
     refused_title: str = "",
+    discussions: DiscussionDataset = DiscussionDataset.NO_DISCUSSIONS,
 ) -> tuple[subprocess.CompletedProcess[str], str]:
     """
     Run the posting workflow's script as a push of the notes branch runs it: in a
@@ -133,6 +170,7 @@ def run_posting_workflow(
     :param settings: The workflow's settings.
     :param tmp_path: Where the stand-in ``gh`` records its calls.
     :param refused_title: The title of a post GitHub refuses to create.
+    :param discussions: GitHub's answer listing a category's discussions.
     :return: The finished script, and the stand-in's record of its calls.
     """
     runner = repositories.clone(url, "actions-runner").git
@@ -146,6 +184,8 @@ def run_posting_workflow(
             str(NotesFile.DISCUSSION_POSTS.value),
             str(NotesFile.CATEGORIES_QUERY.value),
             str(NotesFile.CREATE_QUERY.value),
+            str(NotesFile.FIND_QUERY.value),
+            str(NotesFile.COMMENT_QUERY.value),
             Repository(settings.owner, RepositoriesByOwner.repository_name).full_name,
             settings.notes_branch,
         ],
@@ -158,6 +198,7 @@ def run_posting_workflow(
             "GH_CALLS": str(calls),
             "GH_CATEGORIES": str(DiscussionDataset.CATEGORIES.value),
             "GH_REFUSED_TITLE": refused_title,
+            "GH_DISCUSSIONS": str(discussions.value),
         },
     )
     return finished, calls.read_text()
@@ -283,13 +324,13 @@ def test_the_workflow_posts_an_idea_in_its_category(
     posted = idea("An idea", DefaultDiscussionCategory.IDEAS)
     DiscussionPosting(notes).queue(posted)
 
-    _, calls = run_posting_workflow(repositories, owned_url, settings, tmp_path)
+    _, record = run_posting_workflow(repositories, owned_url, settings, tmp_path)
 
-    [_, create] = calls.split("\n\n")[:2]
+    [_, create] = calls_of(record)
     assert {
-        line
-        for line in create.splitlines()
-        if line.startswith(("categoryId=", "title="))
+        argument
+        for argument in create
+        if argument.startswith(("categoryId=", "title="))
     } == {"categoryId=DIC_ideas", f"title={posted.title}"}
 
 
@@ -344,3 +385,135 @@ def test_a_post_github_refuses_is_kept_and_the_others_are_removed(
     assert [post[DiscussionPostKey.TITLE] for post in queued_posts(notes)] == [
         refused.title
     ]
+
+
+# %% the session log
+
+
+def session_log(notes: NotesBranch, enabled: bool = True) -> DiscussionSessionLog:
+    """
+    :param notes: The notes branch the entries are queued on.
+    :param enabled: Whether the repository has Discussions turned on.
+    :return: The session log of a session working on ``work``.
+    """
+    return DiscussionSessionLog(
+        DiscussionsSetTo(enabled), DiscussionPosting(notes), "work"
+    )
+
+
+def test_an_entry_is_queued_as_a_comment_on_the_session_log(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    notes = notes_in(repositories, owned_url, settings)
+    log = session_log(notes)
+
+    log.enter("closed pull request #3")
+
+    [entry] = queued_posts(notes)
+    assert {
+        key: value for key, value in entry.items() if key != DiscussionPostKey.BODY
+    } == {
+        DiscussionPostKey.CATEGORY: log.category,
+        DiscussionPostKey.TITLE: log.title,
+        DiscussionPostKey.KIND: DiscussionPostKind.COMMENT,
+        DiscussionPostKey.INTRODUCTION: (
+            WorkflowTemplate.SESSION_LOG_INTRODUCTION.value.read_text()
+        ),
+    }
+    assert entry[DiscussionPostKey.BODY].endswith(
+        f" on `{log.branch}`: closed pull request #3"
+    )
+
+
+def test_nothing_is_entered_where_discussions_are_off(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    notes = notes_in(repositories, owned_url, settings)
+
+    session_log(notes, enabled=False).enter("closed pull request #3")
+
+    assert not notes.fetch()
+
+
+def test_a_branch_the_cleanup_deletes_is_entered_in_the_session_log(
+    github: ReplayedApi,  # noqa: F811
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+):
+    repository = Repository(settings.owner, RepositoriesByOwner.repository_name)
+    checkout = repositories.clone(owned_url, "session")
+    git = checkout.git
+    git.run("push", "--quiet", "origin", "HEAD:refs/heads/closed-work")
+    closed = json.loads(UpstreamDataset.FORK_PULL_REQUESTS.value.read_text())[0]
+    closed["state"] = "closed"
+    closed["head"]["ref"] = "closed-work"
+    closed["head"]["sha"] = git.commit_at("HEAD")
+    closed["head"]["repo"]["full_name"] = repository.full_name
+    route = RepositoryRoute(repository)
+    listing = route.listing(
+        route.pull_requests, {QueryParameter.STATE: PullRequestListState.ALL.query}
+    )
+    github.answers[("GET", f"/{listing}")] = RecordedAnswer(
+        HTTPStatus.OK, json.dumps([closed])
+    )
+
+    run(github_workflow.__name__, checkout, WorkflowCommand.CLEANUP)
+
+    notes = NotesBranch.on(git, OwnedRemotes.read(git, settings).chosen, settings)
+    [entry] = queued_posts(notes)
+    assert entry[DiscussionPostKey.TITLE] == DiscussionTitle.SESSION_LOG
+    assert "`closed-work`" in entry[DiscussionPostKey.BODY]
+
+
+def test_the_workflow_comments_on_the_oldest_session_log(
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+    tmp_path: Path,
+):
+    notes = notes_in(repositories, owned_url, settings)
+    session_log(notes).enter("closed pull request #3")
+
+    _, record = run_posting_workflow(
+        repositories,
+        owned_url,
+        settings,
+        tmp_path,
+        discussions=DiscussionDataset.SESSION_LOG,
+    )
+
+    commented = [
+        argument
+        for call in calls_of(record)
+        for argument in call
+        if argument.startswith("discussionId=")
+    ]
+    assert commented == ["discussionId=D_log"]
+
+
+def test_the_workflow_starts_the_session_log_when_there_is_none(
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+    tmp_path: Path,
+):
+    notes = notes_in(repositories, owned_url, settings)
+    log = session_log(notes)
+    log.enter("closed pull request #3")
+
+    _, record = run_posting_workflow(repositories, owned_url, settings, tmp_path)
+
+    calls = calls_of(record)
+    [created] = [call for call in calls if f"title={log.title}" in call]
+    commented = [
+        argument
+        for call in calls
+        for argument in call
+        if argument.startswith("discussionId=")
+    ]
+    assert (
+        f"body={WorkflowTemplate.SESSION_LOG_INTRODUCTION.value.read_text().rstrip()}"
+        in "\n".join(created)
+    )
+    assert commented == ["discussionId=D_created"]

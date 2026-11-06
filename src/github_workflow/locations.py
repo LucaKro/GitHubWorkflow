@@ -72,6 +72,16 @@ class NotesFile(PathEnumeration):
     The mutation the posting script creates a discussion with.
     """
 
+    FIND_QUERY = Path(".github/scripts/find-discussions.graphql")
+    """
+    The query the posting script finds the discussion a comment goes on with.
+    """
+
+    COMMENT_QUERY = Path(".github/scripts/add-discussion-comment.graphql")
+    """
+    The mutation the posting script comments on a discussion with.
+    """
+
     @classmethod
     def progress_of(cls, branch: str) -> Path:
         """
@@ -167,6 +177,25 @@ class WorkflowTemplate(PathEnumeration):
     CREATE_QUERY = Path(__file__).parent / "templates" / "create_discussion.graphql"
     """
     The mutation creating a discussion.
+    """
+
+    FIND_QUERY = Path(__file__).parent / "templates" / "find_discussions.graphql"
+    """
+    The query listing a category's discussions, the oldest first.
+    """
+
+    COMMENT_QUERY = (
+        Path(__file__).parent / "templates" / "add_discussion_comment.graphql"
+    )
+    """
+    The mutation commenting on a discussion.
+    """
+
+    SESSION_LOG_INTRODUCTION = (
+        Path(__file__).parent / "templates" / "session_log_introduction.md"
+    )
+    """
+    The text the session log discussion is started with.
     """
 
     LABEL_COMPLETION_WORKFLOW = (

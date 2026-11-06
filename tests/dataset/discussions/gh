@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 # Stands in for gh in the posting script's tests: records each call's arguments, one per
-# line and a blank line after the call, in GH_CALLS, answers the categories query with
-# GH_CATEGORIES, and answers a create with a discussion's address unless its title is
-# GH_REFUSED_TITLE.
+# line and an end-of-call line after the call, in GH_CALLS. Answers the categories query
+# with GH_CATEGORIES and the discussions query with GH_DISCUSSIONS, a create with the new
+# discussion's id or address, as its --jq filter asks, unless its title is
+# GH_REFUSED_TITLE, and a comment with the comment's address.
 set -euo pipefail
-printf '%s\n' "$@" "" >>"${GH_CALLS}"
+printf '%s\n' "$@" "--- end of call ---" >>"${GH_CALLS}"
 for argument in "$@"; do
   case "${argument}" in
     query=@*categories*) cat "${GH_CATEGORIES}"; exit 0 ;;
+    query=@*find-discussions*) cat "${GH_DISCUSSIONS}"; exit 0 ;;
+    query=@*add-discussion-comment*) echo "https://github.com/discussions/1#comment"; exit 0 ;;
     title="${GH_REFUSED_TITLE:-}") echo "GraphQL: refused" >&2; exit 1 ;;
+    *.discussion.id) echo "D_created"; exit 0 ;;
   esac
 done
 echo "https://github.com/discussions/1"

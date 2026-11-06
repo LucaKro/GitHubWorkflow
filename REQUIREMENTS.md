@@ -174,6 +174,9 @@ them:
   the repository for everyone, and on a public fork issues make the findings public.
 - Where issues are turned off, as they are on a new fork, the tool tells me exactly where
   to turn them on, with the link, and I opt in.
+- Where Discussions are turned off, the tool tells me the same way: ideas and the
+  session log are posted there, and without them `idea file` refuses and nothing is
+  entered in the log.
 - Where Actions are turned off, the tool never turns them on itself: once on, they run
   every workflow on the repository - on a fork, the upstream's scheduled, release and
   bot workflows too - under my account. It tells me they are off, with the link, and I
@@ -232,6 +235,14 @@ them:
 - in a cloud session, attach `LucaKro/GitHubWorkflow` or `LucaKro/basstler_domain_model`
   to the session, with push access, to list or file a finding there; never another
   account's copy of either
+
+What a session closes or deletes on its own - a finding closed as fixed, a pull request
+closed as discarded or replaced, the branches `cleanup` deletes - is also entered in the
+repository's "Session log" discussion, in the General category: one comment per entry,
+with its time and the session's branch, posted through Actions like an idea. The log is
+started with its first entry; I pin it myself, since GitHub's API cannot. Nothing is
+entered where the repository has Discussions turned off; the `closed by session` label
+still marks what was closed.
 
 Everything else written to GitHub needs my go-ahead.
 

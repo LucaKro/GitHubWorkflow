@@ -1,14 +1,17 @@
 """
 The repository features the workflow relies on - GitHub deleting merged branches,
-issues, and Actions - each reported where it is off, with where to turn it on. The
-workflow never turns one on: the person opts in.
+issues, Actions and Discussions - each reported where it is off, with where to turn it
+on. The workflow never turns one on: the person opts in.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from basstler_domain_model.github.repository_client import RepositorySettings
+from basstler_domain_model.github.repository_client import (
+    RepositoryDiscussions,
+    RepositorySettings,
+)
 from basstler_domain_model.repository import Repository
 
 from github_workflow.hooks import ReportLine, Tone
@@ -20,8 +23,8 @@ from github_workflow.report_section import ReportSection
 @dataclass(frozen=True)
 class RepositorySetup(ReportSection):
     """
-    Merged-branch deletion, issues and Actions on one repository, each reported when it
-    is off.
+    Merged-branch deletion, issues, Actions and Discussions on one repository, each
+    reported when it is off.
     """
 
     repository: Repository
@@ -32,6 +35,11 @@ class RepositorySetup(ReportSection):
     settings: RepositorySettings
     """
     Reads its settings.
+    """
+
+    discussions: RepositoryDiscussions
+    """
+    Says whether it has Discussions turned on.
     """
 
     def lines(self) -> list[ReportLine]:
@@ -63,6 +71,16 @@ class RepositorySetup(ReportSection):
                     "fork among them, under your account",
                     "Actions",
                     f"{self.repository.settings_url}/actions",
+                )
+            )
+        if not self.discussions.discussions_enabled():
+            lines.append(
+                self._left_off(
+                    "Discussions",
+                    "ideas and the session log, which records what sessions close "
+                    "and delete on their own, are posted there",
+                    '"Discussions"',
+                    self.repository.settings_url,
                 )
             )
         return lines

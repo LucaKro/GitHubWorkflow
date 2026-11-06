@@ -45,6 +45,7 @@ from .pull_requests import REPOSITORY, pull_request
 from .repositories_by_owner import RepositoriesByOwner
 from .test_commands import github, run  # noqa: F401
 from .test_work import (
+    EntriesInMemory,
     PullRequestsFromBranchesInMemory,
     RetiredInMemory,
     policy_in,
@@ -205,7 +206,7 @@ def cleanup_in(
         frozenset({RepositoriesByOwner.default_branch, settings.notes_branch}),
     )
     notes = NotesBranch.on(git, remote, settings)
-    return BranchCleanup(git, remote, branches, notes), git
+    return BranchCleanup(git, remote, branches, notes, EntriesInMemory()), git
 
 
 def test_a_ready_branch_is_deleted(
@@ -216,6 +217,17 @@ def test_a_ready_branch_is_deleted(
     cleanup.run()
 
     assert "closed-work" not in repositories.branches(owned_url)
+
+
+def test_a_deleted_branch_is_entered_in_the_session_log(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+):
+    cleanup, _ = cleanup_in(repositories, owned_url, settings)
+
+    cleanup.run()
+
+    [entry] = cleanup.log.entries
+    assert "`closed-work`" in entry
 
 
 def test_a_branch_the_session_may_not_delete_is_listed_for_the_workflow(

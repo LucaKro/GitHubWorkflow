@@ -48,6 +48,7 @@ from github_workflow.command_line import (
     FindingSubcommand,
     ToolRepository,
 )
+from github_workflow.discussions import DiscussionPosting, DiscussionSessionLog
 from github_workflow.environment import WorkflowVariable
 from github_workflow.exceptions import (
     ForeignRepositoryError,
@@ -750,6 +751,8 @@ def test_a_fixed_finding_is_closed_through_the_command_line(
     )
 
     github = owner_s_github(settings)
+    git = finding_checkout.git
+    notes = NotesBranch.on(git, OwnedRemotes.read(git, settings).chosen, settings)
     assert step == FindingClosing(
         github,
         github,
@@ -759,6 +762,9 @@ def test_a_fixed_finding_is_closed_through_the_command_line(
         {settings.owner, signed_in},
         RepositoriesByOwner.default_branch,
         157,
+        DiscussionSessionLog(
+            github, DiscussionPosting(notes), git.checked_out_branch()
+        ),
     )
 
 
