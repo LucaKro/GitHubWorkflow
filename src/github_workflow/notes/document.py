@@ -16,6 +16,7 @@ from basstler_domain_model.github.discussions import DefaultDiscussionCategory
 from github_workflow.command_line import (
     FindingSubcommand,
     IdeaSubcommand,
+    ReviewSubcommand,
     ToolRepository,
     WorkflowCommand,
 )
@@ -144,6 +145,7 @@ class NotesBlock:
     def render(self) -> str:
         """:return: The block, markers included."""
         finding = f"{self.workflow_command} {WorkflowCommand.FINDING}"
+        review = f"{self.workflow_command} {WorkflowCommand.REVIEW}"
         lines = [
             BlockMarker.START,
             "# GitHub workflow notes",
@@ -190,7 +192,11 @@ class NotesBlock:
             f"`{self.workflow_command} {WorkflowCommand.LABEL}`, rewrite its "
             f"description with `{self.workflow_command} {WorkflowCommand.DESCRIBE}` "
             f"(no number), and answer its review threads with "
-            f"`{self.workflow_command} {WorkflowCommand.REVIEW}`, without asking.",
+            f"`{self.workflow_command} {WorkflowCommand.REVIEW}`, without asking. "
+            f"Once it is open upstream, `{review} {ReviewSubcommand.LIST}` also shows "
+            f"the reviews there; never answer them upstream: after changing something "
+            f"for one, say so on the own pull request with `{review} "
+            f"{ReviewSubcommand.ADDRESSED} <its address> --body-file <what changed>`.",
             ToolRepository.refusal_hint(),
             f"Mark a branch you pushed but no longer need with "
             f"`{self.workflow_command} branch discard`, which closes its open pull "

@@ -16,12 +16,16 @@ from basstler_domain_model.github.review_models import (
     ReviewThread,
     ThreadComment,
 )
+from basstler_domain_model.github.repository_client import Commenter, ForkDetails
+from basstler_domain_model.github.rest_models import RestPullRequest
+from basstler_domain_model.github.review_models import Review
 from basstler_domain_model.github.review_writers import ReviewThreadWriter
 from basstler_domain_model.github.readers import PullRequestSource
-from basstler_domain_model.github.vocabulary import PullRequestState
+from basstler_domain_model.github.vocabulary import PullRequestState, ReviewState
 from basstler_domain_model.repository import Repository
 
 from github_workflow.exceptions import (
+    ForeignReviewAddressError,
     NoOpenPullRequestError,
     NothingToLabelError,
     PersonOnlyLabelError,
@@ -31,6 +35,7 @@ from github_workflow.exceptions import (
 )
 from github_workflow.own_pull_request import (
     PullRequestLabelling,
+    ReviewAddressing,
     ReviewReply,
     ReviewResolution,
     ReviewThreadListing,
@@ -38,6 +43,8 @@ from github_workflow.own_pull_request import (
 )
 from github_workflow.policy import WritePolicy
 from github_workflow.pull_request_overview import PullRequestLabel
+from github_workflow.upstream import UpstreamLabel
+from github_workflow.upstream_reviews import UpstreamReviewRequest, UpstreamReviews
 
 from .issues_in_memory import IssuesInMemory
 from .pull_requests import REPOSITORY, pull_request
@@ -219,16 +226,175 @@ def writer() -> ThreadWriterInMemory:
     return ThreadWriterInMemory(None, Repository.parse(REPOSITORY))
 
 
+UPSTREAM = Repository.parse("an-upstream-owner/project")
+"""
+The repository the owner's was forked from.
+"""
+
+
+@dataclass(frozen=True)
+class ForkOf(ForkDetails):
+    """
+    The owner's repository, forked from the repository given.
+    """
+
+    forked_from: Repository | None
+    """
+    The upstream, ``None`` for a repository that is no fork.
+    """
+
+    def upstream(self) -> Repository | None:
+        return self.forked_from
+
+
+@dataclass(frozen=True)
+class UpstreamReviewsInMemory(UpstreamReviews):
+    """
+    Answers every request with the threads and reviews given, keeping the requests.
+    """
+
+    threads: list[ReviewThread] = field(default_factory=list)
+    """
+    The upstream pull request's threads.
+    """
+
+    reviews: list[Review] = field(default_factory=list)
+    """
+    Its reviews.
+    """
+
+    requests: list[UpstreamReviewRequest] = field(default_factory=list)
+    """
+    Every request, in order.
+    """
+
+    def snapshot(self, request: UpstreamReviewRequest) -> UpstreamPullRequestSnapshot:
+        self.requests.append(request)
+        return UpstreamPullRequestSnapshot(
+            9,
+            "A title",
+            f"https://github.com/{UPSTREAM}/pull/9",
+            self.reviews,
+            self.threads,
+            None,
+        )
+
+
+def opened_upstream(number: int) -> RestPullRequest:
+    """:param number: A pull request.
+    :return: It from the work branch, labelled as opened upstream."""
+    return replace(
+        pull_request(number, "feature"), labels=(UpstreamLabel.OPENED_UPSTREAM,)
+    )
+
+
 def test_unresolved_threads_are_listed_first_by_their_first_comment(
     work: WritePolicy,  # noqa: F811
 ):
     listing = ReviewThreadListing(
-        own(work, pull_request(3, "feature")), threads(thread(8, True), thread(9))
+        own(work, pull_request(3, "feature")),
+        threads(thread(8, True), thread(9)),
+        ForkOf(None),
+        UpstreamReviewsInMemory(),
     )
 
     listed = listing.run().splitlines()
 
     assert [line.split()[0] for line in listed] == ["9", "8"]
+
+
+def test_the_upstream_pull_request_s_reviews_and_threads_follow_with_addresses(
+    work: WritePolicy,  # noqa: F811
+):
+    upstream_thread = thread(77)
+    review = Review(
+        Author("upstream-reviewer"),
+        ReviewState.CHANGES_REQUESTED,
+        "Rename it.\nPlease.",
+        "",
+    )
+    upstream = UpstreamReviewsInMemory([upstream_thread], [review])
+    listing = ReviewThreadListing(
+        own(work, opened_upstream(3)), threads(thread(8)), ForkOf(UPSTREAM), upstream
+    )
+
+    listed = listing.run().splitlines()
+
+    assert listed[1:] == [
+        f"upstream {UPSTREAM}#9 https://github.com/{UPSTREAM}/pull/9:",
+        f"review by upstream-reviewer ({ReviewState.CHANGES_REQUESTED}): Rename it.",
+        f"{ReviewThreadListing.described(upstream_thread)} "
+        f"{upstream_thread.comments[0].url}",
+    ]
+    assert [(request.upstream, request.branch) for request in upstream.requests] == [
+        (UPSTREAM, "feature")
+    ]
+
+
+def test_a_pull_request_not_opened_upstream_reads_nothing_upstream(
+    work: WritePolicy,  # noqa: F811
+):
+    upstream = UpstreamReviewsInMemory([thread(77)])
+
+    ReviewThreadListing(
+        own(work, pull_request(3, "feature")), threads(), ForkOf(UPSTREAM), upstream
+    ).run()
+
+    assert upstream.requests == []
+
+
+@dataclass(frozen=True)
+class CommentsInMemory(Commenter):
+    """
+    Records every comment written.
+    """
+
+    comments: list[tuple[int, str]] = field(default_factory=list)
+    """
+    Each comment's pull request and text.
+    """
+
+    def add_comment(self, number: int, body: str) -> str:
+        self.comments.append((number, body))
+        return "https://comment"
+
+
+def test_an_addressed_upstream_comment_is_linked_on_the_own_pull_request(
+    work: WritePolicy,  # noqa: F811
+):
+    comments = CommentsInMemory()
+    address = f"https://github.com/{UPSTREAM}/pull/9#discussion_r77"
+
+    ReviewAddressing(
+        own(work, opened_upstream(3)),
+        ForkOf(UPSTREAM),
+        comments,
+        address,
+        "Renamed it.",
+    ).run()
+
+    assert comments.comments == [(3, f"Addressed upstream: {address}\n\nRenamed it.")]
+
+
+@pytest.mark.parametrize(
+    "forked_from, address",
+    [
+        (UPSTREAM, "https://github.com/someone-else/project/pull/9#discussion_r77"),
+        (None, f"https://github.com/{UPSTREAM}/pull/9#discussion_r77"),
+    ],
+    ids=["another repository", "no fork"],
+)
+def test_an_address_not_upstream_is_refused(
+    work: WritePolicy, forked_from: Repository | None, address: str  # noqa: F811
+):
+    comments = CommentsInMemory()
+
+    with pytest.raises(ForeignReviewAddressError):
+        ReviewAddressing(
+            own(work, opened_upstream(3)), ForkOf(forked_from), comments, address, "x"
+        ).run()
+
+    assert comments.comments == []
 
 
 def test_a_thread_is_replied_to_by_its_first_comment(

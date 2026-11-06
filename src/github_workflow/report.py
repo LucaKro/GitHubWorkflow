@@ -71,7 +71,10 @@ class SectionName(StrEnum):
         match self:
             case SectionName.SETUP:
                 return RepositorySetup(
-                    context.remote.repository, context.github, context.github
+                    context.remote.repository,
+                    context.github,
+                    context.github,
+                    context.github,
                 )
             case SectionName.PULL_REQUESTS:
                 return PullRequestOverview(

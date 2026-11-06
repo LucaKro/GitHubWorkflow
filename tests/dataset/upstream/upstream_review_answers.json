@@ -1,0 +1,4 @@
+[
+  {"repository": {"pullRequests": {"nodes": [{"number": 9, "state": "OPEN", "headRepositoryOwner": {"login": "LucaKro"}}]}}},
+  {"repository": {"pullRequest": {"number": 9, "title": "Add the thing", "url": "https://github.com/an-upstream-owner/project/pull/9", "commits": {"nodes": []}, "reviews": {"nodes": [{"author": {"login": "upstream-reviewer"}, "state": "CHANGES_REQUESTED", "body": "Please rename it.", "submittedAt": "2026-11-06T10:00:00Z"}]}, "reviewThreads": {"pageInfo": {"hasNextPage": false, "endCursor": null}, "nodes": [{"id": "thread-1", "isResolved": false, "isOutdated": false, "path": "src/thing.py", "line": 3, "comments": {"nodes": [{"databaseId": 77, "author": {"login": "upstream-reviewer"}, "body": "Rename this", "createdAt": "2026-11-06T10:00:00Z", "url": "https://github.com/an-upstream-owner/project/pull/9#discussion_r77"}]}}]}}}}
+]

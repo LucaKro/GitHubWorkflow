@@ -11,10 +11,13 @@ from dataclasses import dataclass
 from basstler_domain_model.github.repository_client import (
     RepositoryDiscussions,
     RepositorySettings,
+    RepositoryWorkflows,
 )
+from basstler_domain_model.github.vocabulary import WorkflowState
 from basstler_domain_model.repository import Repository
 
 from github_workflow.hooks import ReportLine, Tone
+from github_workflow.locations import NotesFile
 from github_workflow.report_section import ReportSection
 
 # %% the features
@@ -23,8 +26,8 @@ from github_workflow.report_section import ReportSection
 @dataclass(frozen=True)
 class RepositorySetup(ReportSection):
     """
-    Merged-branch deletion, issues, Actions and Discussions on one repository, each
-    reported when it is off.
+    Merged-branch deletion, issues, Actions, the notes branch's workflows and
+    Discussions on one repository, each reported when it is off.
     """
 
     repository: Repository
@@ -40,6 +43,11 @@ class RepositorySetup(ReportSection):
     discussions: RepositoryDiscussions
     """
     Says whether it has Discussions turned on.
+    """
+
+    workflows: RepositoryWorkflows
+    """
+    Says whether GitHub runs each of its Actions workflows.
     """
 
     def lines(self) -> list[ReportLine]:
@@ -71,6 +79,23 @@ class RepositorySetup(ReportSection):
                     "fork among them, under your account",
                     "Actions",
                     f"{self.repository.settings_url}/actions",
+                )
+            )
+        notes_workflows = {str(file.value) for file in NotesFile.workflows}
+        off = [
+            workflow
+            for workflow in self.workflows.workflows()
+            if workflow.path in notes_workflows
+            and workflow.state not in (WorkflowState.ACTIVE, WorkflowState.DELETED)
+        ]
+        if off:
+            named = ", ".join(f"{workflow.name} ({workflow.state})" for workflow in off)
+            lines.append(
+                self._left_off(
+                    f"the notes branch's workflows {named}",
+                    "they post ideas, delete branches and read upstream reviews",
+                    "each workflow, or the workflows of a fork",
+                    f"{self.repository.url}/actions",
                 )
             )
         if not self.discussions.discussions_enabled():

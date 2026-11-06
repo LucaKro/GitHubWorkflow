@@ -243,6 +243,11 @@ class ReviewSubcommand(StrEnum):
     Resolve a thread, once its fix is pushed.
     """
 
+    ADDRESSED = "addressed"
+    """
+    Say on the pull request what was changed for a review comment upstream, linking it.
+    """
+
 
 class IdeaSubcommand(StrEnum):
     """

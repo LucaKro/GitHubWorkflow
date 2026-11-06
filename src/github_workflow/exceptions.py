@@ -1165,3 +1165,112 @@ class DiscussionsDisabledError(DataclassException, LookupError):
             "Ask the person running the tool to turn Discussions on in the repository's "
             "settings, or to say where else the idea should go."
         )
+
+
+# %% upstream reviews
+
+
+@dataclass
+class UpstreamReviewsNotStartedError(DataclassException, RuntimeError):
+    """
+    Raised when the fork's Actions started no run answering a request for upstream
+    reviews: Actions are off on the fork, or its workflows are.
+    """
+
+    fork: Repository
+    """
+    The fork.
+    """
+
+    start_seconds: float
+    """
+    How long the run was waited for.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"{self.fork}'s Actions started no run reading the upstream reviews within "
+            f"{self.start_seconds:.0f} seconds: Actions or its workflows are off"
+        )
+
+    def suggest_correction(self) -> str:
+        return (
+            f"Ask the person to turn Actions and the fork's workflows on at "
+            f"{self.fork.url}/actions, then list the reviews again."
+        )
+
+
+@dataclass
+class UpstreamReviewsFailedError(DataclassException, RuntimeError):
+    """
+    Raised when the fork's Actions run answering a request for upstream reviews failed.
+    """
+
+    run: str
+    """
+    The run's page, with its log.
+    """
+
+    conclusion: str
+    """
+    How it ended.
+    """
+
+    def error_message(self) -> str:
+        return f"the run reading the upstream reviews ended in {self.conclusion}: {self.run}"
+
+    def suggest_correction(self) -> str:
+        return "Read its log, and file what went wrong as a finding of the workflow."
+
+
+@dataclass
+class UpstreamReviewsUnansweredError(DataclassException, TimeoutError):
+    """
+    Raised when the fork's Actions did not answer a request for the reviews of a pull
+    request opened upstream in time.
+    """
+
+    upstream: Repository
+    """
+    The repository the pull request is open on.
+    """
+
+    timeout_seconds: float
+    """
+    How long the answer was waited for.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"the fork's Actions did not read the reviews on {self.upstream} within "
+            f"{self.timeout_seconds:.0f} seconds"
+        )
+
+    def suggest_correction(self) -> str:
+        return "List the reviews again; the run reading them may still be going."
+
+
+@dataclass
+class ForeignReviewAddressError(DataclassException, ValueError):
+    """
+    Raised when an address said to be addressed is not on a pull request of the
+    repository the owner's was forked from.
+    """
+
+    address: str
+    """
+    The address given.
+    """
+
+    upstream: Repository | None
+    """
+    The repository the owner's was forked from, ``None`` when it is no fork.
+    """
+
+    def error_message(self) -> str:
+        if self.upstream is None:
+            return f"{self.address} is no upstream review: the repository is no fork"
+        return f"{self.address} is not on a pull request of {self.upstream}"
+
+    def suggest_correction(self) -> str:
+        return "Give the address `review list` shows for the upstream comment."

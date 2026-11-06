@@ -64,6 +64,7 @@ class SessionCommand(StrEnum):
     REVIEW_LIST = f"{WorkflowCommand.REVIEW} {ReviewSubcommand.LIST}"
     REVIEW_REPLY = f"{WorkflowCommand.REVIEW} {ReviewSubcommand.REPLY}"
     REVIEW_RESOLVE = f"{WorkflowCommand.REVIEW} {ReviewSubcommand.RESOLVE}"
+    REVIEW_ADDRESSED = f"{WorkflowCommand.REVIEW} {ReviewSubcommand.ADDRESSED}"
     DESCRIBE = WorkflowCommand.DESCRIBE.value
     """
     Only of the work branch's own pull request: ``describe`` naming another's number is

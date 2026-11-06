@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from basstler_domain_model.class_property import classproperty
 from basstler_domain_model.locations import PathEnumeration
 
 # %% the notes branch
@@ -81,6 +82,34 @@ class NotesFile(PathEnumeration):
     """
     The mutation the posting script comments on a discussion with.
     """
+
+    UPSTREAM_REVIEW_REQUESTS = Path("upstream-review-requests")
+    """
+    The directory holding a session's requests for the reviews of a pull request opened
+    upstream, one file each.
+    """
+
+    UPSTREAM_REVIEW_ANSWERS = Path("upstream-reviews")
+    """
+    The directory holding each answered request: GitHub's answers to the reads, as
+    recorded by the Actions workflow.
+    """
+
+    UPSTREAM_REVIEW_WORKFLOW = Path(".github/workflows/read-upstream-reviews.yml")
+    """
+    The Actions workflow answering the requests.
+    """
+
+    @classproperty
+    def workflows(cls) -> list[NotesFile]:
+        """
+        The Actions workflows the notes branch carries.
+        """
+        return [
+            cls.DELETION_WORKFLOW,
+            cls.POSTING_WORKFLOW,
+            cls.UPSTREAM_REVIEW_WORKFLOW,
+        ]
 
     @classmethod
     def progress_of(cls, branch: str) -> Path:
@@ -194,6 +223,14 @@ class WorkflowTemplate(PathEnumeration):
     )
     """
     The mutation commenting on a discussion.
+    """
+
+    UPSTREAM_REVIEW_WORKFLOW = (
+        Path(__file__).parent / "templates" / "read_upstream_reviews.yml"
+    )
+    """
+    The Actions workflow reading the reviews of pull requests opened upstream for the
+    requests queued on the notes branch.
     """
 
     SESSION_LOG_INTRODUCTION = (

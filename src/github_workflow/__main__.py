@@ -51,6 +51,7 @@ from github_workflow.locations import PluginDataDirectory
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.own_pull_request import (
     PullRequestLabelling,
+    ReviewAddressing,
     ReviewReply,
     ReviewResolution,
     ReviewThreadListing,
@@ -96,6 +97,11 @@ from github_workflow.upstream import (
     ForkMainSync,
     UpstreamProposal,
     UpstreamSuggestion,
+)
+from github_workflow.upstream_reviews import (
+    DirectUpstreamReviews,
+    ForwardedUpstreamReviews,
+    UpstreamReviews,
 )
 from github_workflow.work import (
     BaseMerge,
@@ -484,7 +490,18 @@ class WorkflowSession(RepositoryDetails):
                 )
             case WorkflowCommand.REVIEW, ReviewSubcommand.LIST:
                 return ReviewThreadListing(
-                    WorkBranchPullRequest(self.policy, self.github), self.thread_source
+                    WorkBranchPullRequest(self.policy, self.github),
+                    self.thread_source,
+                    self.github,
+                    self.upstream_reviews,
+                )
+            case WorkflowCommand.REVIEW, ReviewSubcommand.ADDRESSED:
+                return ReviewAddressing(
+                    WorkBranchPullRequest(self.policy, self.github),
+                    self.github,
+                    self.github,
+                    arguments.address,
+                    arguments.body_file.read_text(),
                 )
             case WorkflowCommand.REVIEW, ReviewSubcommand.REPLY:
                 return ReviewReply(
@@ -518,6 +535,20 @@ class WorkflowSession(RepositoryDetails):
                     self.settings,
                     ClaudeCodeVariable.COMMAND_MARKER.read() is not None,
                 )
+
+    @property
+    def upstream_reviews(self) -> UpstreamReviews:
+        """
+        Reads the pull requests opened upstream from the owner's fork: directly where
+        GitHub's GraphQL is reached, else through the fork's Actions.
+        """
+        if ReadSource.detect() is ReadSource.GRAPHQL:
+            return DirectUpstreamReviews(self.github.api)
+        return ForwardedUpstreamReviews(
+            NotesBranch.on(self.checkout.git, self.remote, self.settings),
+            self.remote.repository,
+            self.github,
+        )
 
     @property
     def thread_source(self) -> PullRequestSource:
@@ -839,6 +870,17 @@ class WorkflowSession(RepositoryDetails):
             help="resolve a thread once its fix is pushed, without asking",
         )
         resolve.add_argument("comment", type=int, help="the thread's identifier")
+        addressed = review_actions.add_parser(
+            ReviewSubcommand.ADDRESSED,
+            help="say on the pull request what was changed for a review comment "
+            "upstream, without asking; nothing is written upstream",
+        )
+        addressed.add_argument(
+            "address", help="the upstream comment's address, as `review list` shows it"
+        )
+        addressed.add_argument(
+            "--body-file", type=Path, required=True, help="what was changed for it"
+        )
         upstream = commands.add_parser(
             WorkflowCommand.UPSTREAM,
             help="open a fork's pull request on its upstream; the person's alone",
