@@ -28,6 +28,7 @@ from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection
 from github_workflow.push_hook import PushHook
+from github_workflow.workspace import ProjectTooling
 from github_workflow.command_line import NotesSubcommand, WorkflowCommand
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.report import SectionName
@@ -70,6 +71,7 @@ class SessionStart:
         lines = [ReportLine(installed, Tone.NEWS)] if installed else []
         lines.append(notes.result())
         lines += PushHook(self.checkout, Path(sys.executable)).install()
+        lines += ProjectTooling(self.checkout.root).lines()
         for section in computed:
             lines += section.result()
         return lines
