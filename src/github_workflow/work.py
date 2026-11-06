@@ -422,10 +422,10 @@ class ClosingLines:
 @dataclass(frozen=True)
 class DescriptionRewrite(WorkflowStep):
     """
-    A new description, title or both for an open pull request on the owner's
-    repository, a draft or ready for review, so it follows the pushed commits; a closed
-    or merged one keeps its own. A new description keeps the lines of the old one that
-    close an issue, and one onto the default branch ends as a draft's does.
+    A new description, title or both for an open pull request on the owner's repository,
+    a draft or ready for review, so it follows the pushed commits; a closed or merged
+    one keeps its own. A new description keeps the lines of the old one that close an
+    issue, and one onto the default branch ends as a draft's does.
 
     :raises NothingToDescribeError: If neither is given.
     :raises PullRequestNotOpenError: If the pull request is not open.
@@ -984,7 +984,16 @@ class RepositoryCloning(WorkflowStep):
     """
 
     def run(self) -> str:
+        """
+        Unlike :meth:`WorkflowStep.run`, writes nothing when the repository was cloned
+        there before: that clone is reused as it is.
+        """
         destination = self.directory / self.repository.name
+        if destination.exists():
+            return (
+                f"{self.repository} is already cloned into {destination}; fetch there "
+                f"for what changed since"
+            )
         GitCommandRunner.clone(
             self.repository.clone_url_under(self.hosting_root), destination
         )

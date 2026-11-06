@@ -865,7 +865,7 @@ class GitWrite(StrEnum):
             case GitWrite.CLONE:
                 return (
                     WorkflowCommand.command_line(
-                        WorkflowCommand.CLONE, "<owner>/<name> --directory <directory>"
+                        WorkflowCommand.CLONE, "<owner>/<name>"
                     )
                     + "`; to review a pull request, then run in the clone `git fetch "
                     "origin +refs/pull/<number>/head:refs/remotes/pull/<number>"

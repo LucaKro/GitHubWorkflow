@@ -52,9 +52,12 @@ report() {
   say "$1"
 }
 
-# Tells the session's later commands where the plugin is.
+# Tells the session's later commands where the plugin and its data are.
 if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
   printf 'export GITHUB_WORKFLOW_PLUGIN_ROOT=%q\n' "${PLUGIN_ROOT}" >>"${CLAUDE_ENV_FILE}"
+  if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
+    printf 'export GITHUB_WORKFLOW_PLUGIN_DATA=%q\n' "${CLAUDE_PLUGIN_DATA}" >>"${CLAUDE_ENV_FILE}"
+  fi
 fi
 
 ERRORS="$(mktemp)"

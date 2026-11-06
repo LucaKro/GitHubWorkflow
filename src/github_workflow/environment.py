@@ -30,6 +30,12 @@ class WorkflowVariable(EnvironmentVariable):
     Where the plugin is, set for the session's commands, such as the cloud check.
     """
 
+    PLUGIN_DATA = "GITHUB_WORKFLOW_PLUGIN_DATA"
+    """
+    The directory Claude Code keeps the plugin's data in, set for the session's
+    commands.
+    """
+
 
 # %% Python
 

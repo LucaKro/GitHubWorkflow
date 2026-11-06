@@ -30,6 +30,7 @@ from basstler_domain_model.repository import Repository
 from github_workflow.__main__ import WorkflowSession
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.command_line import WorkflowCommand
+from github_workflow.environment import WorkflowVariable
 from github_workflow.exceptions import (
     AssistantCreditError,
     BranchDeletedFromGitHubError,
@@ -47,8 +48,10 @@ from github_workflow.exceptions import (
     UnbuildablePullRequestError,
     UnreplaceablePullRequestError,
     UnpushedCommitsError,
+    UnknownPluginDataError,
     UnresolvedConflictError,
 )
+from github_workflow.locations import PluginDataDirectory
 from github_workflow.policy import Attribution, WritePolicy
 from github_workflow.push_hook import PushHook
 from github_workflow.remotes import OwnedRemotes
@@ -1213,24 +1216,69 @@ def test_a_clone_from_inside_a_checkout_goes_next_to_it(
     assert step == RepositoryCloning(repository, checkout.root.parent, settings)
 
 
-def test_a_clone_of_the_upstream_goes_into_the_directory_the_session_names(
+def test_somebody_else_s_repository_is_cloned_into_the_plugin_s_data(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ):
+    data = tmp_path / "plugin-data"
+    monkeypatch.setenv(WorkflowVariable.PLUGIN_DATA, str(data))
     checkout = repositories.clone(owned_url, RepositoriesByOwner.repository_name)
     upstream = Repository(
         RepositoriesByOwner.foreign_owner, RepositoriesByOwner.repository_name
     )
-    directory = tmp_path / upstream.owner
     arguments = WorkflowSession.parser().parse_args(
-        [WorkflowCommand.CLONE, upstream.full_name, "--directory", str(directory)]
+        [WorkflowCommand.CLONE, upstream.full_name]
     )
 
     step = WorkflowSession(checkout.root, settings).step(arguments)
 
-    assert step == RepositoryCloning(upstream, directory, settings)
+    assert step == RepositoryCloning(
+        upstream, data / PluginDataDirectory.CLONES / upstream.owner, settings
+    )
+
+
+def test_somebody_else_s_repository_is_not_cloned_without_the_plugin_s_data(
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.delenv(WorkflowVariable.PLUGIN_DATA, raising=False)
+    checkout = repositories.clone(owned_url, RepositoriesByOwner.repository_name)
+    upstream = Repository(
+        RepositoriesByOwner.foreign_owner, RepositoriesByOwner.repository_name
+    )
+    arguments = WorkflowSession.parser().parse_args(
+        [WorkflowCommand.CLONE, upstream.full_name]
+    )
+
+    with pytest.raises(UnknownPluginDataError):
+        WorkflowSession(checkout.root, settings).step(arguments)
+
+
+def test_a_repository_cloned_before_is_reused(
+    repositories: RepositoriesByOwner, foreign_url: str, settings: WorkflowSettings
+):
+    repository = Repository(
+        RepositoriesByOwner.foreign_owner, RepositoriesByOwner.repository_name
+    )
+    cloning = RepositoryCloning(
+        repository,
+        repositories.root / "session",
+        settings,
+        f"file://{repositories.root}",
+    )
+    cloning.run()
+    clone = GitCommandRunner(cloning.directory / repository.name)
+    clone.run("commit", "--quiet", "--allow-empty", "--message", "Read along")
+    reviewed = clone.commit_at("HEAD")
+
+    cloning.run()
+
+    assert clone.commit_at("HEAD") == reviewed
 
 
 def test_a_clone_from_outside_a_checkout_goes_into_the_directory(

@@ -1074,3 +1074,28 @@ class ProofNoLongerHoldsError(DataclassException, RuntimeError):
 
     def suggest_correction(self) -> str:
         return "Stop, and ask the person running the tool whether the finding is fixed."
+
+
+@dataclass
+class UnknownPluginDataError(DataclassException, LookupError):
+    """
+    Raised when somebody else's repository is to be cloned and the plugin's data
+    directory, where such clones go, is not known.
+    """
+
+    repository: Repository
+    """
+    The repository to clone.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"cannot clone {self.repository}: the plugin's data directory, where "
+            f"somebody else's repositories are cloned, is not known; nothing was cloned"
+        )
+
+    def suggest_correction(self) -> str:
+        return (
+            "Run it in a Claude Code session the plugin started, or ask the person "
+            "running the tool where to clone it."
+        )

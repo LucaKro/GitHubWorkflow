@@ -33,7 +33,9 @@ from github_workflow.command_line import (
     ToolRepository,
     WorkflowCommand,
 )
-from github_workflow.exceptions import ForeignRepositoryError
+from github_workflow.environment import WorkflowVariable
+from github_workflow.exceptions import ForeignRepositoryError, UnknownPluginDataError
+from github_workflow.locations import PluginDataDirectory
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.own_pull_request import (
     PullRequestLabelling,
@@ -161,6 +163,23 @@ class WorkflowSession(RepositoryDetails):
     def session_closing(self) -> SessionPullRequestClosing:
         """:return: Closes a pull request a session no longer needs, marked so."""
         return SessionPullRequestClosing(self.github, self.github, self.github)
+
+    def clone_directory(self, repository: Repository) -> Path:
+        """
+        :param repository: The repository to clone.
+        :return: The directory it is cloned in, under its name: next to the checkout,
+            or the current directory outside one, for the owner's; the plugin's data
+            for somebody else's.
+        :raises UnknownPluginDataError: When it is somebody else's and the plugin's
+            data directory is not known.
+        """
+        if not self.settings.owns(repository):
+            data = WorkflowVariable.PLUGIN_DATA.read()
+            if not data:
+                raise UnknownPluginDataError(repository)
+            return Path(data) / PluginDataDirectory.CLONES / repository.owner
+        around = ProjectCheckout.around(self.directory)
+        return self.directory if around is None else around.root.parent
 
     def proof_runner(self, python: str, branch: str) -> BranchProofRunner:
         """
@@ -360,17 +379,10 @@ class WorkflowSession(RepositoryDetails):
                     arguments.title,
                     UpstreamSuggestion(self.github, self.remote.repository),
                 )
-            case WorkflowCommand.CLONE, _ if arguments.directory:
-                return RepositoryCloning(
-                    Repository.parse(arguments.repository),
-                    arguments.directory,
-                    self.settings,
-                )
             case WorkflowCommand.CLONE, _:
-                around = ProjectCheckout.around(self.directory)
-                directory = self.directory if around is None else around.root.parent
+                repository = Repository.parse(arguments.repository)
                 return RepositoryCloning(
-                    Repository.parse(arguments.repository), directory, self.settings
+                    repository, self.clone_directory(repository), self.settings
                 )
             case WorkflowCommand.LABEL, _:
                 return PullRequestLabelling(
@@ -679,12 +691,6 @@ class WorkflowSession(RepositoryDetails):
             help="clone a repository: the owner's to work in, anyone's to read",
         )
         clone.add_argument("repository", help="the repository, as owner/name")
-        clone.add_argument(
-            "--directory",
-            type=Path,
-            help="the directory to clone it into, under its name; next to the "
-            "checkout, or into the current directory outside one, when left out",
-        )
         label = commands.add_parser(
             WorkflowCommand.LABEL,
             help="label the work branch's own pull request, without asking",

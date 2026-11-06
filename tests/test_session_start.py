@@ -16,6 +16,7 @@ import pytest
 
 from basstler_domain_model.locations import PathEnumeration
 
+from github_workflow.environment import WorkflowVariable
 from github_workflow.hooks import Tone
 from github_workflow.report import SectionName
 from github_workflow.session_start import SessionStart
@@ -65,7 +66,10 @@ def test_a_section_running_out_of_time_costs_one_red_line(
 
 
 def run_hook(
-    tmp_path: Path, session: str, event: str = "SessionStart"
+    tmp_path: Path,
+    session: str,
+    event: str = "SessionStart",
+    variables: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """
     Run the hook with a plugin lacking the installer, so it reports the failed install
@@ -74,6 +78,7 @@ def run_hook(
     :param tmp_path: The scratch directory, taken as the temporary directory.
     :param session: The session's identifier.
     :param event: The hook event.
+    :param variables: What Claude Code sets for the hook besides the plugin's root.
     :return: The finished hook.
     """
     return subprocess.run(
@@ -86,6 +91,7 @@ def run_hook(
             "HOME": str(tmp_path / "home"),
             "TMPDIR": str(tmp_path),
             "CLAUDE_PLUGIN_ROOT": str(tmp_path / "plugin"),
+            **(variables or {}),
         },
     )
 
@@ -96,6 +102,29 @@ def markers(tmp_path: Path) -> list[Path]:
     :return: The marker of every session reported.
     """
     return sorted(tmp_path.glob("*/*"))
+
+
+def test_the_session_s_commands_are_told_where_the_plugin_s_data_is(tmp_path: Path):
+    commands_environment = tmp_path / "environment.sh"
+    data = tmp_path / "plugin data"
+
+    run_hook(
+        tmp_path,
+        "session",
+        variables={
+            "CLAUDE_ENV_FILE": str(commands_environment),
+            "CLAUDE_PLUGIN_DATA": str(data),
+        },
+    )
+
+    command = subprocess.run(
+        ["bash", "-c", 'source "$1" && printenv "$2"', "bash"]
+        + [str(commands_environment), WorkflowVariable.PLUGIN_DATA],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert command.stdout.rstrip("\n") == str(data)
 
 
 def test_a_session_s_marker_is_named_after_its_identifier(tmp_path: Path):
