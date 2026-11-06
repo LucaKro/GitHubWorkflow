@@ -771,10 +771,8 @@ class Denial:
             else "No workflow command does this: ask the person running the tool."
         )
         return (
-            f"github-workflow: {self.reason}. {instead} Read git directly, but write to "
-            f"git and GitHub only through `{WorkflowCommand.command_line()}` "
-            f"({', '.join(WorkflowCommand)}; --help for each). "
-            f"{ToolRepository.refusal_hint()}"
+            f"github-workflow: {self.reason}. {instead} "
+            f"{ToolRepository.refusal_pointer()}"
         )
 
 

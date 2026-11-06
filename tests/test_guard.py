@@ -247,7 +247,13 @@ def test_every_denial_says_how_to_report_an_unnecessary_one():
     """
     command = GuardDataset.DENIED.lines()[0]
 
-    assert ToolRepository.refusal_hint() in CommandGuard().denial(command).message()
+    assert ToolRepository.refusal_pointer() in CommandGuard().denial(command).message()
+
+
+def test_a_refusal_leaves_the_filing_hint_to_the_notes():
+    message = CommandGuard().denial("git push").message()
+
+    assert ToolRepository.refusal_hint() not in message
 
 
 def test_every_denial_says_never_to_get_around_it():

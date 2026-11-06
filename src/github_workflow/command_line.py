@@ -5,11 +5,13 @@ writes to git and GitHub.
 
 from __future__ import annotations
 
+import shutil
 import sys
 from enum import StrEnum
+from pathlib import Path
 
 import github_workflow
-from github_workflow.install import DomainModelSource
+from github_workflow.install import DomainModelSource, Launcher, LauncherInstallation
 
 # %% the commands
 
@@ -110,8 +112,18 @@ class WorkflowCommand(StrEnum):
     def command_line(cls, *arguments: str) -> str:
         """
         :param arguments: A command and its arguments, none for the bare entry point.
-        :return: The command line running it with the interpreter the package runs in.
+        :return: The command line running it with the interpreter the package runs in:
+            the launcher's name when the launcher found on the path runs that
+            interpreter, the interpreter's full path otherwise.
         """
+        launcher = shutil.which(Launcher.COMMAND)
+        runtime = Path(sys.executable).parents[1]
+        if (
+            launcher is not None
+            and Path(launcher).read_text()
+            == LauncherInstallation(Path(launcher).parent, runtime).script
+        ):
+            return " ".join([Launcher.COMMAND, *arguments])
         return " ".join([sys.executable, "-m", github_workflow.__name__, *arguments])
 
 
@@ -294,14 +306,25 @@ class ToolRepository(StrEnum):
         """
         return (
             "Never get around a refusal, with a script or in any other way: ask the "
-            "person, or report it as follows."
+            "person, or report it."
+        )
+
+    @classmethod
+    def refusal_pointer(cls) -> str:
+        """
+        :return: What ends every refusal: never to get around it, and where the notes
+            say how to report one that was unnecessary.
+        """
+        return (
+            f"{cls.workaround_ban()} How to report an unnecessary refusal is in the "
+            f"notes."
         )
 
     @classmethod
     def refusal_hint(cls) -> str:
         """
-        :return: What a session does about a refusal, never getting around it, ending
-            every refusal and the notes header.
+        :return: What a session does about a refusal, never getting around it, for the
+            notes header.
         """
         listing = WorkflowCommand.command_line(
             WorkflowCommand.FINDING,

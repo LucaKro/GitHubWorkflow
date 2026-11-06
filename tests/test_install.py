@@ -15,6 +15,7 @@ import pytest
 from basstler_domain_model.locations import PathEnumeration
 
 import github_workflow.install
+from github_workflow.command_line import WorkflowCommand
 from github_workflow.install import (
     DirectoryLock,
     DomainModelSource,
@@ -334,3 +335,26 @@ def test_a_switch_where_no_runtime_was_creates_the_link(tmp_path: Path):
     RuntimeSwitch(tmp_path / "runtime").to(build)
 
     assert (tmp_path / "runtime").resolve() == build.resolve()
+
+
+# %% command lines naming the launcher
+
+
+def test_a_command_line_names_the_launcher_running_this_interpreter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    LauncherInstallation(tmp_path / "bin", Path(sys.executable).parents[1]).install()
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+
+    assert WorkflowCommand.command_line(WorkflowCommand.PUSH) == (
+        f"{Launcher.COMMAND} {WorkflowCommand.PUSH}"
+    )
+
+
+def test_a_launcher_running_another_interpreter_is_not_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    LauncherInstallation(tmp_path / "bin", tmp_path / "another-runtime").install()
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+
+    assert WorkflowCommand.command_line(WorkflowCommand.PUSH).startswith(sys.executable)

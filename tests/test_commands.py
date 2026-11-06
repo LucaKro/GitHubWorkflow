@@ -1149,7 +1149,7 @@ def test_a_refusal_is_reported_as_its_reason_without_a_traceback(
     refusal = PersonOnlyCommandError(WorkflowCommand.UPSTREAM)
     assert (finished.returncode, finished.stderr) == (
         1,
-        f"github-workflow: {refusal}\n{ToolRepository.refusal_hint()}\n",
+        f"github-workflow: {refusal}\n",
     )
 
 
