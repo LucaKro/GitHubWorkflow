@@ -441,6 +441,32 @@ class UnreplaceablePullRequestError(DataclassException, ValueError):
 
 
 @dataclass
+class DraftUnfinishedError(DataclassException, RuntimeError):
+    """
+    Raised when a step after opening a draft fails, leaving the draft open.
+    """
+
+    number: int
+    """
+    The draft that was opened.
+    """
+
+    failure: str
+    """
+    What failed after it was opened.
+    """
+
+    def error_message(self) -> str:
+        return f"opened draft #{self.number}, but then: {self.failure}"
+
+    def suggest_correction(self) -> str:
+        return (
+            f"Do not open it again: #{self.number} stays open. Tell the person what "
+            "failed."
+        )
+
+
+@dataclass
 class StackedBranchMergeError(DataclassException, ValueError):
     """
     Raised when the default branch is to be merged into a branch whose pull request sits
