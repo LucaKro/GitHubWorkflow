@@ -1099,3 +1099,25 @@ class UnknownPluginDataError(DataclassException, LookupError):
             "Run it in a Claude Code session the plugin started, or ask the person "
             "running the tool where to clone it."
         )
+
+
+@dataclass
+class DiscussionsDisabledError(DataclassException, LookupError):
+    """
+    Raised when something is to be posted to the Discussions of a repository that has
+    them turned off.
+    """
+
+    repository: Repository
+    """
+    The repository.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.repository} has Discussions turned off; nothing was queued"
+
+    def suggest_correction(self) -> str:
+        return (
+            "Ask the person running the tool to turn Discussions on in the repository's "
+            "settings, or to say where else the idea should go."
+        )

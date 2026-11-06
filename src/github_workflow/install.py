@@ -111,7 +111,7 @@ class DomainModelSource(StrEnum):
     The repository it is fetched from.
     """
 
-    COMMIT = "cc5b79e651d789d5b31b6bd3f9365ad016ad06eb"
+    COMMIT = "4ff43f7bb77e550ea5c8b512da002be711209a9a"
     """
     The commit it is pinned to.
     """

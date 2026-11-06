@@ -128,6 +128,20 @@ them:
   session asks me whether the finding is fixed. A test that did not run, run again, is
   broken, never "no longer fails", and says what pytest reported.
 
+## Ideas
+
+- An idea is not a finding: `idea file` posts it to the repository's Discussions, in
+  the Ideas category unless another is named, with no finding status and no priority.
+  A session posts one only when I ask for it.
+- A cloud session cannot write Discussions itself (GitHub's only API for writing them
+  is GraphQL, which its proxy refuses), so the post goes through the repository's
+  Actions: `idea file` queues it on the notes branch, together with the Actions
+  workflow that posts it as `github-actions[bot]` and removes it from the queue. A post
+  whose category the repository lacks, or that GitHub does not create, stays queued and
+  the run fails.
+- Where the repository has Discussions turned off, `idea file` refuses and queues
+  nothing.
+
 ## Notes and progress
 
 - On a notes branch on each repository - the fork, or the repository itself - readable

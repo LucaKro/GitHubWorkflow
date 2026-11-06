@@ -61,10 +61,16 @@ class WorkflowCommand(StrEnum):
     GitHub complete the finding labels picked there.
     """
 
+    IDEA = "idea"
+    """
+    Post an idea, not a finding, to the repository's Discussions.
+    """
+
     CLEANUP = "cleanup"
     """
     Delete the branches GitHub kept although their pull request is closed, and the
-    branches discarded.
+    branches discarded; remove the clones of somebody else's repositories no session
+    uses.
     """
 
     DETAILS = "details"
@@ -223,6 +229,17 @@ class ReviewSubcommand(StrEnum):
     RESOLVE = "resolve"
     """
     Resolve a thread, once its fix is pushed.
+    """
+
+
+class IdeaSubcommand(StrEnum):
+    """
+    What ``idea`` does.
+    """
+
+    FILE = "file"
+    """
+    Queue an idea to be posted to the repository's Discussions.
     """
 
 

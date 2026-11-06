@@ -47,6 +47,31 @@ class NotesFile(PathEnumeration):
     The script the deletion workflow runs.
     """
 
+    DISCUSSION_POSTS = Path("discussion-posts")
+    """
+    The discussions waiting to be posted, one file each, removed once posted.
+    """
+
+    POSTING_WORKFLOW = Path(".github/workflows/post-discussions.yml")
+    """
+    The Actions workflow posting those discussions whenever they change.
+    """
+
+    POSTING_SCRIPT = Path(".github/scripts/post-discussions.sh")
+    """
+    The script the posting workflow runs.
+    """
+
+    CATEGORIES_QUERY = Path(".github/scripts/discussion-categories.graphql")
+    """
+    The query the posting script reads the repository's discussion categories with.
+    """
+
+    CREATE_QUERY = Path(".github/scripts/create-discussion.graphql")
+    """
+    The mutation the posting script creates a discussion with.
+    """
+
     @classmethod
     def progress_of(cls, branch: str) -> Path:
         """
@@ -120,6 +145,28 @@ class WorkflowTemplate(PathEnumeration):
     DELETION_SCRIPT = Path(__file__).parent / "templates" / "delete_ready_branches.sh"
     """
     The script the deletion workflow runs.
+    """
+
+    POSTING_WORKFLOW = Path(__file__).parent / "templates" / "post_discussions.yml"
+    """
+    The Actions workflow posting the discussions queued on the notes branch.
+    """
+
+    POSTING_SCRIPT = Path(__file__).parent / "templates" / "post_discussions.sh"
+    """
+    The script the posting workflow runs.
+    """
+
+    CATEGORIES_QUERY = (
+        Path(__file__).parent / "templates" / "discussion_categories.graphql"
+    )
+    """
+    The query reading a repository's discussion categories.
+    """
+
+    CREATE_QUERY = Path(__file__).parent / "templates" / "create_discussion.graphql"
+    """
+    The mutation creating a discussion.
     """
 
     LABEL_COMPLETION_WORKFLOW = (

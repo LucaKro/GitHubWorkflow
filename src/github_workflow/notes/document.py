@@ -11,8 +11,11 @@ import re
 from dataclasses import dataclass
 from enum import StrEnum
 
+from basstler_domain_model.github.discussions import DefaultDiscussionCategory
+
 from github_workflow.command_line import (
     FindingSubcommand,
+    IdeaSubcommand,
     ToolRepository,
     WorkflowCommand,
 )
@@ -159,6 +162,11 @@ class NotesBlock:
             f"uncommitted, with `--test`. Accept, shelve or reject a finding only when "
             f"the person says so; add to one with `{finding} {FindingSubcommand.COMMENT}` "
             f"or correct it with `{finding} {FindingSubcommand.EDIT}`.",
+            f"Post an idea, not a finding, with `{self.workflow_command} "
+            f"{WorkflowCommand.IDEA} {IdeaSubcommand.FILE} --title <title> --body-file "
+            f"<file>` (`--category <name>` for another category than "
+            f"{DefaultDiscussionCategory.IDEAS}) only when the person asks for one; the "
+            f"repository's Actions post it to its Discussions.",
             f"Work on a finding only when the person asks you to. Prove it first with "
             f"`{finding} {FindingSubcommand.PROVE}`, or, when no failing test can be "
             f"written, `{finding} {FindingSubcommand.MARK_UNPROVEN}` with the reason; "
