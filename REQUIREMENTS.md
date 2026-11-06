@@ -239,7 +239,8 @@ them:
   (`label`), rewrite its description and title (`describe` without a number), and
   reply to or resolve its review threads (`review`), resolving only once the branch's
   commits are pushed; unresolving a thread stays mine
-- add a comment to a finding (`finding comment`)
+- add a comment to a finding (`finding comment`), a closed one too, such as a correction
+  after the fix landed, and on another of my repositories with `--repository`
 - delete branches that are merged or marked discarded, still at the commit they were
   marked at (`cleanup`)
 - in a cloud session, attach `LucaKro/GitHubWorkflow` or `LucaKro/basstler_domain_model`
