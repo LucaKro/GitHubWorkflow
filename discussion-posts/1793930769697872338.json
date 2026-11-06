@@ -1,0 +1,5 @@
+{
+  "category": "Ideas",
+  "title": "Read Discussions through the undocumented REST route, pinned by tests",
+  "body": "GitHub answers `GET /repos/{owner}/{repo}/discussions` over REST, with the `discussions=read` permission, although the route is not in its published API description. Others report that `GET \u2026/discussions/{number}` and `\u2026/comments` work too. Writing through it does not work: `POST` answers `404` (see #160).\n\nA cloud session can therefore *read* Discussions, while writing goes through the notes branch and Actions. The domain model could read them: models for a discussion, a comment and a category, the routes, and a reader. Tests would pin the undocumented shape with recorded answers, and a live check, skipped in CI, would notice when GitHub changes it.\n\nWhat would use it: #170's session log (finding the pinned log discussion), an `idea list`, and a session checking for an existing idea before posting another.\n\nThis is also the first idea posted through `idea file`, as the live check of #160.\n\nMade with AI assistance\n"
+}
