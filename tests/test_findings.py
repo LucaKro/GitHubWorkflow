@@ -861,6 +861,20 @@ def test_a_draft_for_an_accepted_proven_finding_closes_it_when_merged(
     assert github.descriptions == {1: f"A body\n\n{ClosingKeyword.FIXES.reference(7)}"}
 
 
+def test_a_description_closing_the_finding_already_keeps_one_closing_line(
+    work: WritePolicy, settings: WorkflowSettings
+):
+    board = labelled_board(proven(finding(7, FindingStage.ACCEPTED, Priority.HIGH)))
+    with_proof_posted(board, 7, settings.owner)
+    github = DescribedDraftsInMemory({})
+    body = f"A body\n\n{ClosingKeyword.FIXES.reference(7)}"
+    opening = draft_for_finding(work, github, board, ProofOutcome.FAILS, settings)
+
+    replace(opening, draft=replace(opening.draft, body=body)).run()
+
+    assert github.descriptions == {1: body}
+
+
 def test_a_draft_for_a_finding_accepted_on_github_is_opened(
     work: WritePolicy, settings: WorkflowSettings
 ):
