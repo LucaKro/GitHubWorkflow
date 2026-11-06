@@ -9,6 +9,9 @@ git branch --show-current
 git remote -v
 git remote get-url origin
 git config --get user.name
+git config user.name
+git config --global user.email
+git config user.name; git config user.email
 git stash list
 git fetch origin
 git fetch --quiet origin main

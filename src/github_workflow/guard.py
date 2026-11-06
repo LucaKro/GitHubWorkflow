@@ -436,7 +436,7 @@ class GitListing(StrEnum):
 
     CONFIG = "config"
     """
-    Reads when it gets or lists values.
+    Reads when it gets or lists values, or names a single key without a value.
     """
 
     STASH = "stash"
@@ -494,7 +494,8 @@ class GitListing(StrEnum):
                 setting = {"--add", "--unset", "--unset-all", "--replace-all", "--edit"}
                 setting |= {"-e", "--rename-section", "--remove-section"}
                 gets = bool(options & getting) or positional[:1] in (["get"], ["list"])
-                return gets and not options & setting
+                names_one_key = len(positional) == 1 and "." in positional[0]
+                return (gets or names_one_key) and not options & setting
             case GitListing.STASH:
                 return positional[:1] in (["list"], ["show"])
             case GitListing.WORKTREE:
