@@ -16,7 +16,6 @@ from basstler_domain_model.github.repository_client import GitHubRepository
 
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.cleanup import CleanupReminder, KeptBranches
-from github_workflow.discussions import DiscussionSessionLog
 from github_workflow.findings import FindingsSummary
 from github_workflow.freshness import BranchFreshening, FreshnessReport
 from github_workflow.label_events import LabelsCompletedReport, PickedLabelCompletion
@@ -82,16 +81,7 @@ class SectionName(StrEnum):
                 )
             case SectionName.FINDINGS:
                 completion = PickedLabelCompletion(
-                    context.github,
-                    context.github,
-                    context.github,
-                    context.remote.repository,
-                    DiscussionSessionLog.in_checkout(
-                        context.github,
-                        context.checkout.git,
-                        context.remote,
-                        context.settings,
-                    ),
+                    context.github, context.github, context.github
                 )
                 return LabelsCompletedReport(
                     completion, FindingsSummary(context.github)

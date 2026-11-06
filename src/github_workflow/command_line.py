@@ -287,10 +287,21 @@ class ToolRepository(StrEnum):
     """
 
     @classmethod
+    def workaround_ban(cls) -> str:
+        """
+        :return: That a session never gets around a refusal, opening what it does
+            about one.
+        """
+        return (
+            "Never get around a refusal, with a script or in any other way: ask the "
+            "person, or report it as follows."
+        )
+
+    @classmethod
     def refusal_hint(cls) -> str:
         """
-        :return: What a session does about a refusal it thinks unnecessary, ending every
-            refusal and the notes header.
+        :return: What a session does about a refusal, never getting around it, ending
+            every refusal and the notes header.
         """
         listing = WorkflowCommand.command_line(
             WorkflowCommand.FINDING,
@@ -306,6 +317,7 @@ class ToolRepository(StrEnum):
         )
         attachable = " and ".join(cls)
         return (
+            f"{cls.workaround_ban()} "
             f"When the workflow refuses something unnecessarily or lacks it, check "
             f"`{listing}` and file it there without asking first: `{filing} "
             f"--priority <level> --title "

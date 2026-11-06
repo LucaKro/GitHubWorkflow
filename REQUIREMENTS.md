@@ -95,6 +95,8 @@ them:
   `--repository`, no checkout needed: unproven, with what was run, what happened and
   what should have. Every refusal, the guard's and the commands', and the notes header
   end with how; `finding list --repository` shows first whether it is filed already.
+  They also say never to get around a refusal, with a script or in any other way: a
+  session asks me, or files it.
 - A session files a finding on its own, never asking me whether to; I review them on
   GitHub.
 - Only I move a finding out of *unreviewed*; a session accepts, shelves or rejects one
@@ -114,7 +116,7 @@ them:
   at session start and in `finding list`, of each kind of finding label an open
   finding carries several of, the one I added last stays, as the issue's events show,
   and an open finding labelled *incorrect* is closed as not planned. What was tidied
-  is said, and entered in the session log.
+  is said.
 - Apart from its stage, a finding may be *proven*: a test fails on the default branch
   as GitHub has it, and is posted on the issue - with the commit it failed on - but
   never committed. A finding stays *unreviewed* when proven; being proven never

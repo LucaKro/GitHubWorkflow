@@ -32,7 +32,6 @@ from github_workflow.locations import ProjectFile
 from github_workflow.report_section import ReportSection
 
 from .issues_in_memory import IssuesInMemory, finding, labelled_board
-from .test_work import EntriesInMemory
 
 # %% the dataset
 
@@ -200,13 +199,7 @@ def completion(
     :param added: The labels added to each issue, oldest first.
     :return: Completes the labels picked on the board.
     """
-    return PickedLabelCompletion(
-        board,
-        board,
-        LabelsAddedInMemory(added),
-        Repository("an-owner", "a-repository"),
-        EntriesInMemory(),
-    )
+    return PickedLabelCompletion(board, board, LabelsAddedInMemory(added))
 
 
 def with_labels(*labels: str) -> Issue:
@@ -254,26 +247,6 @@ def test_a_finding_with_one_label_of_each_kind_is_left_as_it_is():
 
     assert completion(board, {}).complete() == []
     assert board.writes == []
-
-
-def test_what_was_completed_is_entered_in_the_session_log():
-    board = labelled_board(with_labels(FindingStage.INCORRECT, Priority.LOW))
-    step = completion(board, {})
-
-    done = step.complete()
-
-    [entry] = step.log.entries
-    assert done[0] in entry
-
-
-def test_nothing_completed_enters_nothing():
-    step = completion(
-        labelled_board(finding(1, FindingStage.ACCEPTED, Priority.LOW)), {}
-    )
-
-    step.complete()
-
-    assert step.log.entries == []
 
 
 def test_the_session_start_says_what_was_completed_first():

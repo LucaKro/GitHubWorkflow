@@ -86,6 +86,10 @@ def test_the_header_says_how_to_report_an_unnecessary_refusal():
     assert ToolRepository.refusal_hint() in block().render()
 
 
+def test_the_header_says_never_to_get_around_a_refusal():
+    assert ToolRepository.workaround_ban() in block().render()
+
+
 def test_the_header_names_exactly_the_owner_s_repositories_a_session_may_attach():
     hint = ToolRepository.refusal_hint()
 

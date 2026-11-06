@@ -45,7 +45,7 @@ from github_workflow.hooks import ReportLine, Tone
 from github_workflow.install import DomainModelSource
 from github_workflow.locations import ProjectFile, WorkflowTemplate
 from github_workflow.report_section import ReportSection
-from github_workflow.work import SessionLog, WorkflowStep
+from github_workflow.work import WorkflowStep
 
 # %% the event
 
@@ -157,7 +157,7 @@ class PickedLabelCompletion:
     The finding labels the person picked on GitHub, completed from a session as
     :class:`FindingLabelCompletion` completes one: on each open finding carrying several
     labels of one kind, the one added last stays, and an open finding labelled incorrect
-    is closed. What is completed is entered in the session log.
+    is closed.
     """
 
     board: IssueBoard
@@ -175,16 +175,6 @@ class PickedLabelCompletion:
     Reads in which order an issue's labels were added.
     """
 
-    repository: Repository
-    """
-    The repository the findings are on, named in the session log.
-    """
-
-    log: SessionLog
-    """
-    Where what was completed is entered.
-    """
-
     def complete(self) -> list[str]:
         """
         :return: What was completed, one entry per label.
@@ -194,17 +184,11 @@ class PickedLabelCompletion:
             for stage in FindingStage
             for issue in self.board.issues([stage], IssueState.OPEN)
         }
-        done = [
+        return [
             FindingLabelCompletion(self.board, self.labels, number, label).run()
             for number, issue in found.items()
             for label in self.picks(issue)
         ]
-        if done:
-            self.log.enter(
-                f"completed the finding labels picked on GitHub in {self.repository}: "
-                f"{'; '.join(done)}"
-            )
-        return done
 
     def picks(self, issue: Issue) -> list[str]:
         """
