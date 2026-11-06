@@ -16,6 +16,10 @@ from types import TracebackType
 
 from basstler_domain_model.environment import ClaudeCodeVariable
 from basstler_domain_model.exceptions import DataclassException
+from basstler_domain_model.github.discussions import (
+    DefaultDiscussionCategory,
+    DiscussionCategory,
+)
 from basstler_domain_model.github.readers import PullRequestSource, ReadSource
 from basstler_domain_model.github.repository_client import (
     GitHubRepository,
@@ -27,12 +31,14 @@ from github_workflow.checkout import ProjectCheckout
 from github_workflow.command_line import (
     BranchSubcommand,
     FindingSubcommand,
+    IdeaSubcommand,
     NotesSubcommand,
     ReviewSubcommand,
     StackSubcommand,
     ToolRepository,
     WorkflowCommand,
 )
+from github_workflow.discussions import DiscussionPost, DiscussionPosting, IdeaFiling
 from github_workflow.environment import WorkflowVariable
 from github_workflow.exceptions import ForeignRepositoryError, UnknownPluginDataError
 from github_workflow.locations import PluginDataDirectory
@@ -364,6 +370,18 @@ class WorkflowSession(RepositoryDetails):
                 )
             case WorkflowCommand.FINDING, FindingSubcommand.AUTOMATE:
                 return FindingAutomation(self.checkout.root)
+            case WorkflowCommand.IDEA, IdeaSubcommand.FILE:
+                notes = NotesBranch.on(self.checkout.git, self.remote, self.settings)
+                return IdeaFiling(
+                    self.github,
+                    DiscussionPosting(notes),
+                    self.remote.repository,
+                    DiscussionPost(
+                        DiscussionCategory(arguments.category),
+                        arguments.title,
+                        arguments.body_file.read_text(),
+                    ),
+                )
             case WorkflowCommand.CLEANUP, _:
                 git = self.checkout.git
                 notes = NotesBranch.on(git, self.remote, self.settings)
@@ -685,6 +703,22 @@ class WorkflowSession(RepositoryDetails):
         finding_actions.add_parser(
             FindingSubcommand.AUTOMATE,
             help="write the Actions workflow completing finding labels picked on GitHub",
+        )
+        idea = commands.add_parser(
+            WorkflowCommand.IDEA,
+            help="post an idea, not a finding, to the repository's Discussions",
+        )
+        idea_actions = idea.add_subparsers(dest="action", required=True)
+        idea_filing = idea_actions.add_parser(
+            IdeaSubcommand.FILE,
+            help="queue an idea; the repository's Actions post it",
+        )
+        idea_filing.add_argument("--title", required=True)
+        idea_filing.add_argument("--body-file", required=True, type=Path)
+        idea_filing.add_argument(
+            "--category",
+            default=DefaultDiscussionCategory.IDEAS,
+            help="the discussion category, by name",
         )
         commands.add_parser(
             WorkflowCommand.CLEANUP,

@@ -189,6 +189,7 @@ def setting(status: HTTPStatus, deletes: bool) -> RecordedAnswer:
             {
                 RestJSONKey.DELETE_BRANCH_ON_MERGE: deletes,
                 RestJSONKey.HAS_ISSUES: True,
+                RestJSONKey.HAS_DISCUSSIONS: True,
                 RestJSONKey.DEFAULT_BRANCH: RepositoriesByOwner.default_branch,
             }
         ),
