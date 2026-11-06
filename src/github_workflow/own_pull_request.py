@@ -5,11 +5,14 @@ replying to and resolving its review threads.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 from basstler_domain_model.git.commands import RemoteBranch
 from basstler_domain_model.github.readers import PullRequestSource
 from basstler_domain_model.github.repository_client import (
+    Commenter,
+    ForkDetails,
     IssueBoard,
     PullRequestsFromForks,
     RepositoryLabels,
@@ -18,8 +21,10 @@ from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.review_models import ReviewThread
 from basstler_domain_model.github.review_writers import ReviewThreadWriter
 from basstler_domain_model.github.vocabulary import PullRequestState
+from basstler_domain_model.repository import GitHubAddress
 
 from github_workflow.exceptions import (
+    ForeignReviewAddressError,
     NoOpenPullRequestError,
     NothingToLabelError,
     PersonOnlyLabelError,
@@ -29,6 +34,8 @@ from github_workflow.exceptions import (
 )
 from github_workflow.policy import WritePolicy
 from github_workflow.pull_request_overview import PullRequestLabel
+from github_workflow.upstream import UpstreamLabel
+from github_workflow.upstream_reviews import UpstreamReviewRequest, UpstreamReviews
 from github_workflow.work import WorkflowStep
 
 # %% the work branch's pull request
@@ -174,7 +181,9 @@ class ReviewThreads:
 class ReviewThreadListing(WorkflowStep):
     """
     The review threads of the work branch's pull request, unresolved first, one per
-    line, each starting with the identifier the other review commands take.
+    line, each starting with the identifier the other review commands take; and, when
+    the pull request was opened upstream, the reviews and threads of the one upstream,
+    each comment with its address.
     """
 
     pull_request: WorkBranchPullRequest
@@ -187,23 +196,65 @@ class ReviewThreadListing(WorkflowStep):
     Reads the threads.
     """
 
+    fork: ForkDetails
+    """
+    Reads which repository the owner's was forked from.
+    """
+
+    upstream_reviews: UpstreamReviews
+    """
+    Reads the pull request opened upstream.
+    """
+
     def run(self) -> str:
         """
         :return: One thread per line; overrides :meth:`WorkflowStep.run`, which
             reports in one line.
         """
         found, read = ReviewThreads(self.pull_request, self.source).read()
-        lines = []
-        for thread in read:
-            first = thread.comments[0]
-            state = "resolved" if thread.is_resolved else "unresolved"
-            state += ", outdated" if thread.is_outdated else ""
-            said = first.body.splitlines()[0] if first.body else ""
-            lines.append(
-                f"{first.database_identifier} ({state}) {thread.location}: "
-                f"{first.author.login}: {said}"
+        lines = [self.described(thread) for thread in read]
+        lines = lines or [f"#{found.number} has no review threads"]
+        if UpstreamLabel.OPENED_UPSTREAM not in found.labels:
+            return "\n".join(lines)
+        upstream = self.fork.upstream()
+        if upstream is None:
+            return "\n".join(lines)
+        policy = self.pull_request.policy
+        snapshot = self.upstream_reviews.snapshot(
+            UpstreamReviewRequest(
+                upstream,
+                policy.remote.repository.owner,
+                policy.work_branch(),
+                f"{time.time_ns()}.json",
             )
-        return "\n".join(lines) or f"#{found.number} has no review threads"
+        )
+        lines.append(f"upstream {upstream}#{snapshot.number} {snapshot.url}:")
+        lines += [
+            f"review by {review.author.login} ({review.state}): "
+            f"{''.join(review.body.splitlines()[:1])}"
+            for review in snapshot.reviews
+        ]
+        lines += [
+            f"{self.described(thread)} {thread.comments[0].url}"
+            for thread in sorted(snapshot.threads, key=lambda each: each.is_resolved)
+        ]
+        return "\n".join(lines)
+
+    @staticmethod
+    def described(thread: ReviewThread) -> str:
+        """
+        :param thread: A review thread.
+        :return: It in one line: its first comment's identifier, whether it is
+            resolved, where it is, and who said what first.
+        """
+        first = thread.comments[0]
+        state = "resolved" if thread.is_resolved else "unresolved"
+        state += ", outdated" if thread.is_outdated else ""
+        said = first.body.splitlines()[0] if first.body else ""
+        return (
+            f"{first.database_identifier} ({state}) {thread.location}: "
+            f"{first.author.login}: {said}"
+        )
 
 
 @dataclass(frozen=True)
@@ -292,3 +343,51 @@ class ReviewResolution(WorkflowStep):
             return f"the thread at {thread.location} on #{found.number} is resolved"
         self.writer.resolve(found.number, thread)
         return f"resolved the thread at {thread.location} on #{found.number}"
+
+
+@dataclass(frozen=True)
+class ReviewAddressing(WorkflowStep):
+    """
+    A comment on the work branch's pull request saying what was changed for a review
+    comment on the pull request opened upstream, linking it; nothing is written
+    upstream.
+
+    :raises ForeignReviewAddressError: If the address is not on a pull request of the
+        repository the owner's was forked from.
+    """
+
+    pull_request: WorkBranchPullRequest
+    """
+    The work branch's pull request.
+    """
+
+    fork: ForkDetails
+    """
+    Reads which repository the owner's was forked from.
+    """
+
+    commenter: Commenter
+    """
+    Writes the comment.
+    """
+
+    address: str
+    """
+    The address of the review comment upstream.
+    """
+
+    body: str
+    """
+    What was changed for it.
+    """
+
+    def run(self) -> str:
+        upstream = self.fork.upstream()
+        pulls = f"{GitHubAddress.WEB}/{upstream}/pull/"
+        if upstream is None or not self.address.startswith(pulls):
+            raise ForeignReviewAddressError(self.address, upstream)
+        found = self.pull_request.find()
+        url = self.commenter.add_comment(
+            found.number, f"Addressed upstream: {self.address}\n\n{self.body}"
+        )
+        return f"commented on #{found.number}: {url}"

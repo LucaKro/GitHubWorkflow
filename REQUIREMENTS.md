@@ -270,6 +270,13 @@ them:
   and title (`describe` without a number), and reply to or resolve its review threads
   (`review`), resolving only once the branch's commits are pushed; unresolving a
   thread stays mine
+- read the reviews and threads of the pull request it has open upstream, which `review
+  list` shows after the own pull request's, each comment with its address: directly
+  with my login, or, from a cloud session, through the fork's Actions, which read them
+  for a request on the notes branch and save GitHub's answers there. Nothing is ever
+  written upstream: having changed something for an upstream comment, the session says
+  so on the own pull request with `review addressed <address> --body-file <what
+  changed>`, which links the comment
 - add a comment to a finding (`finding comment`), a closed one too, such as a correction
   after the fix landed, and on another of my repositories with `--repository`
 - delete branches that are merged or marked discarded, still at the commit they were
