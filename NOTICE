@@ -1,7 +1,12 @@
-This project contains code adapted, and changed, from basstler
+GitHubWorkflow
+Copyright 2026 LucaKro
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+It contains code adapted, and changed, from basstler
 (https://github.com/AbdelrhmanBassiouny/basstler) at commit
 5b6e1b699d8ba69880e5ce15ad0b32c4764b0e60,
-which is licensed under the Apache License, Version 2.0 (see LICENSE-basstler).
+which is licensed under the Apache License, Version 2.0 (see LICENSE).
 basstler's NOTICE reads:
 
     basstler
