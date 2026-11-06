@@ -7,5 +7,6 @@ github-workflow finding file --repository LucaKro/GitHubWorkflow --priority low 
 github-workflow finding prove 7 --test tests/test_proof.py
 github-workflow describe --body-file body.md
 github-workflow review reply 123 --body-file reply.md
+github-workflow review addressed https://github.com/an-upstream-owner/project/pull/9#discussion_r77 --body-file changed.md
 github-workflow push 2>&1 | tail -1
 cd /some/checkout && github-workflow sync
