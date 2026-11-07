@@ -1,0 +1,29 @@
+{
+  "number": 10,
+  "title": "A pull request",
+  "body": null,
+  "html_url": "https://github.com/an-owner/a-repository/pull/10",
+  "state": "open",
+  "merged_at": null,
+  "draft": true,
+  "mergeable_state": "dirty",
+  "head": {
+    "ref": "a-branch",
+    "sha": "a1b2c3",
+    "repo": null,
+    "user": {
+      "login": "a-fork-owner"
+    }
+  },
+  "base": {
+    "ref": "main"
+  },
+  "labels": [
+    {
+      "name": "ready"
+    },
+    {
+      "name": "type/bug"
+    }
+  ]
+}

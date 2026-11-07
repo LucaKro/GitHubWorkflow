@@ -1390,14 +1390,12 @@ class RefusalAdvice:
             CommandOption.BODY_FILE,
             values={CommandOption.REPOSITORY: ToolRepository.WORKFLOW},
         )
-        attachable = " and ".join(ToolRepository)
         return (
             f"{cls.workaround_ban()} "
             f"When the workflow refuses something unnecessarily or lacks it, check "
             f"`{listing}` and file it there without asking first: `{filing}`, with "
-            f"what you ran, what happened and what should have; for git and GitHub "
-            f"themselves, {CommandOption.REPOSITORY} {ToolRepository.DOMAIN_MODEL}. A "
-            f"cloud session reaches only the repositories attached to it: attach "
-            f"{attachable} with push access without asking, never another account's "
-            f"copy of either."
+            f"what you ran, what happened and what should have, for git and GitHub "
+            f"themselves too. A cloud session reaches only the repositories attached to "
+            f"it: attach {ToolRepository.WORKFLOW} with push access without asking, "
+            f"never another account's copy of it."
         )

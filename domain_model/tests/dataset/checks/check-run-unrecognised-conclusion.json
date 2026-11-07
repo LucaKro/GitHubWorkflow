@@ -1,0 +1,6 @@
+{
+  "__typename": "CheckRun",
+  "name": "build",
+  "conclusion": "A_CONCLUSION_GITHUB_ADDED_LATER",
+  "detailsUrl": "https://github.com/an-owner/a-repository/actions/runs/1"
+}

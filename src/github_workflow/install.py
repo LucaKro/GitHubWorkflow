@@ -1,8 +1,8 @@
 """
-Install the runtime the plugin's hooks run: a virtual environment holding this plugin's
-copy of the workflow's source and the domain model's source at its pinned commit, switched
-over to once its guard denies a push and its commands load; one install at a time, a
-runtime built from this plugin as it is now left alone. Runs on the standard library.
+Install the runtime the plugin's hooks run: a virtual environment holding a copy of this
+plugin's workflow and domain model source, switched over to once its guard denies a push
+and its commands load; one install at a time, a runtime built from this plugin as it is
+now left alone. Runs on the standard library, and downloads nothing.
 
 Usage: ``python3 install.py [--background] <plugin directory> <runtime path>``; prints
 one line when it installed, or started installing in a process of its own, nothing when
@@ -21,7 +21,7 @@ import sys
 import sysconfig
 import tempfile
 from dataclasses import dataclass, field
-from enum import StrEnum
+from enum import Enum, StrEnum
 from pathlib import Path
 
 # %% vocabulary
@@ -61,21 +61,29 @@ class Distribution(StrEnum):
     """
 
 
-class RuntimeSource(StrEnum):
+class PluginSource(Enum):
     """
-    The directories inside a runtime holding the source it runs, each named after its
-    distribution.
-    """
-
-    WORKFLOW = Distribution.WORKFLOW.value
-    """
-    The plugin's own copy of the workflow's source.
+    The source directories in the plugin a runtime runs, each copied into the runtime
+    under its distribution's name.
     """
 
-    DOMAIN_MODEL = Distribution.DOMAIN_MODEL.value
+    WORKFLOW = ("src", Distribution.WORKFLOW)
     """
-    A checkout of the domain model at its pinned commit.
+    The workflow's own source.
     """
+
+    DOMAIN_MODEL = ("domain_model/src", Distribution.DOMAIN_MODEL)
+    """
+    The domain model's source, shipped with the plugin.
+    """
+
+    def __init__(self, path: str, distribution: Distribution) -> None:
+        """
+        :param path: The directory, relative to the plugin's.
+        :param distribution: The distribution it holds, which names its copy.
+        """
+        self.path = path
+        self.distribution = distribution
 
 
 class RuntimeDirectory(StrEnum):
@@ -85,7 +93,7 @@ class RuntimeDirectory(StrEnum):
 
     SOURCES = "sources"
     """
-    Holds every :class:`RuntimeSource`.
+    Holds the copy of every :class:`PluginSource`.
     """
 
 
@@ -108,17 +116,13 @@ class UnstampedDirectory(StrEnum):
 
 class ToolRepository(StrEnum):
     """
-    The repositories the workflow is built from, as ``owner/name``.
+    The repositories the workflow is built from, as ``owner/name``; the domain model is
+    shipped in the workflow's.
     """
 
     WORKFLOW = "LucaKro/GitHubWorkflow"
     """
     The workflow itself: the guard, the hooks and the commands.
-    """
-
-    DOMAIN_MODEL = "LucaKro/basstler_domain_model"
-    """
-    The model of git and GitHub the workflow is built on.
     """
 
     @property
@@ -130,17 +134,6 @@ class ToolRepository(StrEnum):
     def url(self) -> str:
         """:return: The repository's page on GitHub, which git also fetches from."""
         return f"https://github.com/{self}"
-
-
-class DomainModelSource(StrEnum):
-    """
-    The commit the runtime and the Actions workflows take the domain model's source at.
-    """
-
-    COMMIT = "4dd8c9af90e51d07167e30e7c98e6d933736caa4"
-    """
-    The commit it is pinned to.
-    """
 
 
 class InstallOption(StrEnum):
@@ -396,28 +389,13 @@ class RuntimeInstallation:
                 build,
             )
         sources = build / RuntimeDirectory.SOURCES
-        workflow = sources / RuntimeSource.WORKFLOW
-        shutil.copytree(
-            self.plugin / "src",
-            workflow,
-            ignore=shutil.ignore_patterns(UnstampedDirectory.BYTECODE),
-        )
-        domain_model = sources / RuntimeSource.DOMAIN_MODEL
-        domain_model.mkdir(parents=True)
-        git = ["git", "-C", str(domain_model)]
-        self._run([*git, "init", "--quiet"], build)
-        self._run(
-            [
-                *git,
-                "fetch",
-                "--quiet",
-                "--depth=1",
-                ToolRepository.DOMAIN_MODEL.url,
-                DomainModelSource.COMMIT,
-            ],
-            build,
-        )
-        self._run([*git, "checkout", "--quiet", "FETCH_HEAD"], build)
+        copies = [sources / source.distribution for source in PluginSource]
+        for source, copy in zip(PluginSource, copies):
+            shutil.copytree(
+                self.plugin / source.path,
+                copy,
+                ignore=shutil.ignore_patterns(UnstampedDirectory.BYTECODE),
+            )
         site_packages = Path(
             sysconfig.get_path(
                 "purelib", "venv", {"base": str(build), "platbase": str(build)}
@@ -425,7 +403,7 @@ class RuntimeInstallation:
         )
         site_packages.mkdir(parents=True, exist_ok=True)
         (site_packages / RuntimeFile.SOURCE_PATHS).write_text(
-            f"{workflow}\n{domain_model / 'src'}\n"
+            "".join(f"{copy}\n" for copy in copies)
         )
         checked = subprocess.run(
             [str(python), "-I", "-m", "github_workflow.runtime_check"],

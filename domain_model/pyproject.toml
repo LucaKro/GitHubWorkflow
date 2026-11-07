@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling>=1.24", "hatch-vcs>=0.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "basstler-domain-model"
+description = "A deterministic, Python-native domain model of GitHub pull requests, checks, reviews and labels."
+requires-python = ">=3.12"
+authors = [
+    {name = "LucaKro", email = "luc_kro@uni-bremen.de"}
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+dependencies = []
+dynamic = ["version"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+# The version comes from the latest git tag; a commit past it builds as the next development
+# version, and a source without git history as 0.0.0.
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "0.0.0"
+raw-options = { root = ".." }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/basstler_domain_model"]

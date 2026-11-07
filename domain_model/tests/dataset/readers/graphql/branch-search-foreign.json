@@ -1,0 +1,3 @@
+{"repository": {"pullRequests": {"nodes": [
+  {"number": 11, "state": "OPEN", "headRepositoryOwner": {"login": "someone-else"}}
+]}}}

@@ -1,0 +1,27 @@
+basstler-domain-model
+Copyright 2026 Luca Krohm
+
+Licensed under the Apache License, Version 2.0 (see LICENSE), except for the code
+adapted from krrood named below.
+
+It contains code adapted, and changed, from basstler
+(https://github.com/AbdelrhmanBassiouny/basstler) at commit
+5b6e1b699d8ba69880e5ce15ad0b32c4764b0e60,
+which is licensed under the Apache License, Version 2.0 (see LICENSE).
+basstler's NOTICE reads:
+
+    basstler
+    Copyright 2026 Abdelrhman Bassiouny <bido.bassuny@gmail.com>
+
+    basstler is a personal project of Abdelrhman Bassiouny, developed independently
+    of any employer or institution, and is licensed under the Apache License,
+    Version 2.0 (see LICENSE).
+
+    src/basstler/exceptions.py and src/basstler/class_property.py contain code
+    adapted from krrood (https://github.com/cram2/krrood), which remains under its
+    own licence.
+
+In this project, src/basstler_domain_model/exceptions.py and
+src/basstler_domain_model/class_property.py contain code adapted from krrood
+(https://github.com/cram2/krrood), which remains under its own licence, the GNU
+Lesser General Public License, Version 3.

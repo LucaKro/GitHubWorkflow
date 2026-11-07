@@ -5,7 +5,6 @@ one in use came from another, and a build that fails leaves the runtime in use a
 
 from __future__ import annotations
 
-import re
 import subprocess
 import sys
 import threading
@@ -20,7 +19,6 @@ from github_workflow import runtime_check
 from github_workflow.command_line import WorkflowCommand
 from github_workflow.install import (
     DirectoryLock,
-    DomainModelSource,
     Launcher,
     LauncherInstallation,
     RuntimeFile,
@@ -68,14 +66,6 @@ def test_a_change_outside_what_the_runtime_is_built_from_keeps_it_current(
     (plugin / directory / "written").write_text("since\n")
 
     assert RuntimeInstallation(plugin, runtime).current
-
-
-def test_the_domain_model_is_pinned_to_one_commit():
-    """
-    A push to the domain model's default branch must not change what a new runtime
-    runs, the guard included, without a change here.
-    """
-    assert re.fullmatch(r"[0-9a-f]{40}", DomainModelSource.COMMIT)
 
 
 def built_from(location: Path, plugin: Path) -> Path:
@@ -180,6 +170,34 @@ def test_a_runtime_is_built_without_pip(
     ).install()
 
     assert [command for command in started if "pip" in command] == []
+
+
+def test_a_runtime_is_built_without_downloading_the_domain_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """
+    The domain model is shipped with the plugin, so a build runs no git command, which
+    a session's network or a commit gone from GitHub would make fail.
+    """
+    started: list[list[str]] = []
+
+    def run(command: list[str], **options: object) -> subprocess.CompletedProcess[str]:
+        started.append([str(word) for word in command])
+        if command[1:3] == ["-m", "venv"]:
+            interpreter = Path(command[-1]) / "bin" / "python"
+            interpreter.parent.mkdir(parents=True, exist_ok=True)
+            interpreter.symlink_to(sys.executable)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(github_workflow.install.subprocess, "run", run)
+
+    RuntimeInstallation(
+        Path(github_workflow.install.__file__).parents[2],
+        tmp_path / "runtime",
+        tmp_path / "bin",
+    ).install()
+
+    assert [command for command in started if command[0] == "git"] == []
 
 
 def builds_commands_check_fails(

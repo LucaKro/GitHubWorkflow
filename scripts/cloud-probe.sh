@@ -4,7 +4,7 @@
 # read elsewhere and the branch deleted afterwards. The checked-out branch is never
 # committed to.
 #
-# Installs this package and basstler-domain-model into a fresh environment of its own,
+# Installs this package and the domain model it ships into a fresh environment of its own,
 # runs `python -m github_workflow.probe`, which publishes the report and the results under
 # <UTC stamp>/ on that branch. The checks create a label, an
 # issue, a draft pull request and a few branches on the repository, write two settings
@@ -15,7 +15,6 @@
 # Usage: bash scripts/cloud-probe.sh
 set -uo pipefail
 
-DOMAIN_MODEL="basstler-domain-model @ git+https://github.com/LucaKro/basstler_domain_model@main"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 RESULTS="$(mktemp -d)/${STAMP}"
@@ -45,7 +44,7 @@ export GIT_AUTHOR_EMAIL="${AUTHOR[1]}" GIT_COMMITTER_EMAIL="${AUTHOR[1]}"
 
 if {
   python3 -m venv "${ENVIRONMENT}" &&
-    "${ENVIRONMENT}/bin/python" -m pip install --quiet "${DOMAIN_MODEL}" &&
+    "${ENVIRONMENT}/bin/python" -m pip install --quiet --editable "${ROOT}/domain_model" &&
     "${ENVIRONMENT}/bin/python" -m pip install --quiet --editable "${ROOT}"
 } >"${RESULTS}/install.log" 2>&1; then
   "${ENVIRONMENT}/bin/python" -m github_workflow.probe "${RESULTS}"

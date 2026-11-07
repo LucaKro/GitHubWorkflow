@@ -10,11 +10,11 @@ import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum, StrEnum, auto
-from pathlib import Path
+from pathlib import Path, PurePath
 
 from basstler_domain_model.repository import Repository
 
-from github_workflow.install import Distribution, DomainModelSource, ToolRepository
+from github_workflow.install import Distribution, PluginSource, ToolRepository
 from github_workflow.locations import NotesFile, WorkflowTemplate
 
 # %% filling a template in
@@ -234,12 +234,14 @@ class ActionRequirement(StrEnum):
     What an Actions workflow installs to run the workflow's code.
     """
 
-    DOMAIN_MODEL = Repository.parse(ToolRepository.DOMAIN_MODEL).git_requirement(
-        Distribution.DOMAIN_MODEL, DomainModelSource.COMMIT
+    DOMAIN_MODEL = Repository.parse(ToolRepository.WORKFLOW).git_requirement(
+        Distribution.DOMAIN_MODEL,
+        "main",
+        str(PurePath(PluginSource.DOMAIN_MODEL.path).parent),
     )
     """
-    The shared GitHub and git model, which no index serves, at the runtime's pinned
-    commit.
+    The model of git and GitHub, which no index serves, from the workflow's default
+    branch.
     """
 
     WORKFLOW = Repository.parse(ToolRepository.WORKFLOW).git_requirement(

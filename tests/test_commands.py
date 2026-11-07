@@ -1335,20 +1335,20 @@ def test_a_finding_is_filed_on_the_workflow_from_outside_any_checkout(tmp_path: 
     )
 
 
-def test_findings_are_listed_on_the_domain_model_from_outside_any_checkout(
+def test_findings_are_listed_on_the_workflow_from_outside_any_checkout(
     tmp_path: Path,
 ):
     arguments = RunnableCommand.parser().parse_args(
         [
             WorkflowCommand.FINDING,
             FindingSubcommand.LIST,
-            f"--repository={ToolRepository.DOMAIN_MODEL}",
+            f"--repository={ToolRepository.WORKFLOW}",
         ]
     )
 
     step = WorkflowSession(tmp_path, WorkflowSettings()).step(arguments)
 
-    repository = Repository.parse(ToolRepository.DOMAIN_MODEL)
+    repository = Repository.parse(ToolRepository.WORKFLOW)
     board = GitHubRepository.from_environment(repository)
     assert step == FindingListing(board, repository)
 
