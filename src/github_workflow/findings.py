@@ -42,7 +42,7 @@ from github_workflow.exceptions import (
     ProofNoLongerHoldsError,
     UnprovenFindingCloseError,
 )
-from github_workflow.hooks import NumberLink, ReportLine, Tone
+from github_workflow.hooks import Emphasis, Highlight, NumberLink, ReportLine, Tone
 from github_workflow.labels import DescribedLabel
 from github_workflow.proofs import FindingTest, Proof, ProofOutcome, ProofRunner
 from github_workflow.report_section import ReportGroup, ReportSection
@@ -201,6 +201,18 @@ class Priority(FindingLabel):
         level = priority.level if priority else "no priority"
         link = NumberLink(issue.number, repository.issue_url(issue.number))
         return f"{link.markdown()} [{level}] {issue.title}"
+
+    @classmethod
+    def emphases(cls, issue: Issue) -> tuple[Emphasis, ...]:
+        """
+        :param issue: A finding.
+        :return: Its priority tag, as :meth:`named` writes it, in the priority's own
+            style; nothing for a finding without a priority.
+        """
+        priority = cls.of(issue)
+        if priority is None:
+            return ()
+        return (Emphasis(f"[{priority.level}]", Highlight[priority._name_]),)
 
     @classmethod
     def guide(cls) -> str:
@@ -943,7 +955,11 @@ class FindingsSummary(ReportSection):
         for group, issues in grouped.items():
             tone = Tone.ACTION if group is FindingGroup.UNREVIEWED else Tone.NEWS
             items = [
-                ReportLine(Priority.named(issue, self.repository), tone)
+                ReportLine(
+                    Priority.named(issue, self.repository),
+                    tone,
+                    emphases=Priority.emphases(issue),
+                )
                 for issue in Priority.most_urgent_first(issues)
             ]
             lines += ReportGroup(group, items).lines()

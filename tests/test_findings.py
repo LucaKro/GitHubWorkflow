@@ -63,7 +63,7 @@ from github_workflow.findings import (
     ProvenFindingFiling,
     SessionPullRequestClosing,
 )
-from github_workflow.hooks import NumberLink, ReportLine, Tone
+from github_workflow.hooks import Emphasis, Highlight, NumberLink, ReportLine, Tone
 from github_workflow.policy import WritePolicy
 from github_workflow.report_section import ReportGroup
 from github_workflow.proofs import BranchTip, FindingTest, ProofAttempt, ProofOutcome
@@ -1032,7 +1032,12 @@ def grouped(group: FindingGroup, issues: list[Issue], tone: Tone) -> list[Report
     :return: The group's lines.
     """
     items = [
-        ReportLine(Priority.named(issue, FINDINGS_REPOSITORY), tone) for issue in issues
+        ReportLine(
+            Priority.named(issue, FINDINGS_REPOSITORY),
+            tone,
+            emphases=Priority.emphases(issue),
+        )
+        for issue in issues
     ]
     return ReportGroup(group, items).lines()
 
@@ -1054,6 +1059,17 @@ def test_the_summary_names_each_finding_in_its_group_most_urgent_first():
         *grouped(FindingGroup.TO_PROVE, [issues[4]], Tone.NEWS),
         *grouped(FindingGroup.UNPROVABLE, [issues[5]], Tone.NEWS),
     ]
+
+
+@pytest.mark.parametrize("priority", list(Priority))
+def test_a_finding_s_priority_tag_is_shown_in_its_priority_s_style(
+    priority: Priority,
+):
+    issue = finding(1, FindingStage.UNREVIEWED, priority)
+
+    assert Priority.emphases(issue) == (
+        Emphasis(f"[{priority.level}]", Highlight[priority._name_]),
+    )
 
 
 def test_the_summary_leaves_shelved_findings_out():

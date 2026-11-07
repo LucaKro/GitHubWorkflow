@@ -63,6 +63,9 @@ agent:
 
 - my standing notes
 - this branch's progress
+- in my terminal, each section's heading is bold bright blue, a pull request's status
+  tags green, and a finding's priority tag graded in magenta, critical white on
+  magenta down to low dimmed: colours no tone of a line uses
 - every pull request and issue the workflow names is a Markdown link to its page,
   `[#62](https://github.com/<owner>/<name>/pull/62)`, and the model names them the
   same way in chat

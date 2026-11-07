@@ -6,12 +6,12 @@ GitHub.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from basstler_domain_model.github.repository_client import GitHubRepository
 
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.hooks import ReportLine, Tone
+from github_workflow.hooks import Emphasis, Highlight, ReportLine, Tone
 from github_workflow.remotes import OwnedRemote
 from github_workflow.settings import WorkflowSettings
 
@@ -81,15 +81,16 @@ class ReportGroup:
 
     def lines(self) -> list[ReportLine]:
         """
-        :return: The heading, standing out as much as the most pressing item, followed
-            by the items indented; nothing when there are no items.
+        :return: The heading, in the heading's style and the tone of the most pressing
+            item, followed by the items indented; nothing when there are no items.
         """
         if not self.items:
             return []
         pressing = any(item.tone is Tone.ACTION for item in self.items)
+        text = f"github-workflow: {self.heading}:"
         heading = ReportLine(
-            f"github-workflow: {self.heading}:", Tone.ACTION if pressing else Tone.NEWS
+            text,
+            Tone.ACTION if pressing else Tone.NEWS,
+            emphases=(Emphasis(text, Highlight.HEADING),),
         )
-        return [heading] + [
-            ReportLine(f"  {item.text}", item.tone) for item in self.items
-        ]
+        return [heading] + [replace(item, text=f"  {item.text}") for item in self.items]
