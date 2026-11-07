@@ -78,7 +78,9 @@ agent:
   `uv.lock` or a `[tool.uv]` table): to set the environment up with that tool, its
   development extras named (`uv sync --extra dev`), whenever tests need it, and never
   to install the project's packages by hand. The workflow never runs the tool itself.
-  When the tool is not installed, that is left for me to decide.
+  When the tool is not installed, that is left for me to decide. The instruction
+  itself goes to the model alone, never to my terminal: it is not for me to read on
+  every prompt.
 
 ## Signals
 
