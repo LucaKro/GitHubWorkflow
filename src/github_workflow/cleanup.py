@@ -314,9 +314,10 @@ class DeletionPlaceholder(StrEnum):
 @dataclass(frozen=True)
 class BranchCleanup(WorkflowStep):
     """
-    The branches ready for deletion deleted, and entered in the session log; those this
-    session may not delete are listed on the notes branch with the workflow that
-    deletes them when it is pushed.
+    The branches ready for deletion deleted in one push, each only while still at the
+    commit it was found at, and entered in the session log; those this session may not
+    delete are listed on the notes branch with the workflow that deletes them when it
+    is pushed.
     """
 
     git: GitCommandRunner
@@ -348,13 +349,9 @@ class BranchCleanup(WorkflowStep):
         ready = self.kept.ready()
         if not ready:
             return "no branch is ready for deletion"
-        refused = [
-            branch
-            for branch in ready
-            if not self.git.delete_remote_branch(
-                RemoteBranch(self.remote.name, branch)
-            ).succeeded
-        ]
+        refused = self.git.delete_remote_branches(
+            self.remote.name, {branch: self.kept.tips[branch] for branch in ready}
+        )
         deleted = len(ready) - len(refused)
         removed = {
             "deleted": [branch for branch in ready if branch not in refused],

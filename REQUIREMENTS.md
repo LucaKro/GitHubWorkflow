@@ -201,7 +201,8 @@ them:
   `branch discard`, which lists it on the notes branch with the commit it is at.
 - `cleanup` deletes the branches ready for deletion: those whose pull request is closed,
   or that were discarded, and that are still at the commit they were closed or
-  discarded at. Where the session may not delete
+  discarded at, all in one push, each under a lease on that commit, so a branch that
+  moved meanwhile is kept. Where the session may not delete
   branches (a cloud session), it lists them on the notes branch, each with the commit
   it is at, with a GitHub Actions workflow that deletes them when the notes branch is
   pushed - each only while still at that commit - and then empties the list.
