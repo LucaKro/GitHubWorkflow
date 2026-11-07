@@ -89,3 +89,8 @@ git branch 2 > out.txt
 git branch "2">out.txt
 > out.txt git push
 git push 2>&1
+gh api graphql -f query='mutation{addComment(input:{subjectId:"x",body:"y"}){clientMutationId}}'
+gh api graphql -f query='{viewer{login}} mutation{deleteIssue(input:{issueId:"x"}){clientMutationId}}'
+gh api graphql -F query=@mutation.graphql
+gh api graphql -X POST -f query='{viewer{login}}'
+gh api graphql --input body.json

@@ -586,13 +586,123 @@ class GitHubCliSubcommand(StrEnum):
 
     API = "api"
     """
-    A raw API call, which reads unless given a method, a field or an input.
+    A raw API call, which reads unless given a method, a field or an input, or, to
+    GraphQL, a document holding anything but queries.
     """
 
     SEARCH = "search"
     """
     A search, which only reads.
     """
+
+
+class GraphQLOperation(StrEnum):
+    """
+    The kinds of operation a GraphQL document holds.
+    """
+
+    QUERY = "query"
+    """
+    Reads.
+    """
+
+    MUTATION = "mutation"
+    """
+    Writes.
+    """
+
+    SUBSCRIPTION = "subscription"
+    """
+    Waits for changes; not a read the guard lets through.
+    """
+
+
+@dataclass(frozen=True)
+class GraphQLCall:
+    """
+    A ``gh api graphql`` call, which sends its document as the field ``query``.
+    """
+
+    options: Sequence[str]
+    """
+    What follows ``graphql``.
+    """
+
+    @classmethod
+    def endpoint(cls) -> str:
+        """
+        The endpoint ``gh api`` sends GraphQL documents to.
+        """
+        return "graphql"
+
+    @classmethod
+    def field_options(cls) -> tuple[str, ...]:
+        """
+        The options each naming one field as ``name=value``.
+        """
+        return ("-f", "-F", "--field", "--raw-field")
+
+    @classmethod
+    def shaping_options(cls) -> tuple[str, ...]:
+        """
+        The options taking a value that only shape what is printed or how it is asked
+        for, never what is sent.
+        """
+        return ("--jq", "-q", "--template", "-t", "--cache", "--header", "-H")
+
+    @classmethod
+    def shaping_flags(cls) -> tuple[str, ...]:
+        """
+        The options without a value that only shape what is printed.
+        """
+        return ("--paginate", "--slurp", "--silent", "--include", "-i", "--verbose")
+
+    def fields(self) -> dict[str, str] | None:
+        """
+        :return: Every field sent, by name; ``None`` when an option is neither a field
+            nor one only shaping the output.
+        """
+        fields: dict[str, str] = {}
+        options = list(self.options)
+        while options:
+            option = options.pop(0)
+            if option in self.shaping_flags():
+                continue
+            if option in self.shaping_options() and options:
+                options.pop(0)
+                continue
+            if option.startswith(
+                tuple(f"{shaping}=" for shaping in self.shaping_options())
+            ):
+                continue
+            if option in self.field_options() and options:
+                given = options.pop(0)
+            elif option.startswith(("-f", "-F")) and len(option) > 2:
+                given = option[2:]
+            elif option.startswith(("--field=", "--raw-field=")):
+                given = option.partition("=")[2]
+            else:
+                return None
+            name, _, value = given.partition("=")
+            fields[name] = value
+        return fields
+
+    def reads(self) -> bool:
+        """
+        :return: Whether every option is a field and the document, given in place
+            rather than read from a file, holds queries alone.
+        """
+        fields = self.fields()
+        if fields is None:
+            return False
+        document = fields.get(GraphQLOperation.QUERY, "")
+        if not document or document.startswith("@"):
+            return False
+        words = set(re.findall(r"[A-Za-z_]+", document))
+        written = {GraphQLOperation.MUTATION, GraphQLOperation.SUBSCRIPTION}
+        return not words & written and document.lstrip().startswith(
+            ("{", GraphQLOperation.QUERY)
+        )
 
 
 class GitHubHost(StrEnum):
@@ -1061,6 +1171,12 @@ class GitHubCliCheck(ProgramCheck):
         words = [argument for argument in arguments if not argument.startswith("-")]
         if words[:1] == [GitHubCliSubcommand.API]:
             options = arguments[1:]
+            if options[:1] == [GraphQLCall.endpoint()]:
+                if GraphQLCall(options[1:]).reads():
+                    return None
+                return Denial(
+                    "gh api graphql with a mutation, or a document the guard cannot read, writes"
+                )
             queries = self.api_sending().named_method(
                 options
             ) == HTTPMethod.GET and not any(

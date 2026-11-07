@@ -127,6 +127,24 @@ class ReportLineKey(StrEnum):
 
     TEXT = "text"
     TONE = "tone"
+    AUDIENCE = "audience"
+
+
+class Audience(StrEnum):
+    """
+    Who a line the session starts with is for.
+    """
+
+    EVERYONE = "everyone"
+    """
+    The person, who sees it in the terminal, and the model.
+    """
+
+    MODEL = "model"
+    """
+    The model alone, such as an instruction on how to work, which the person need
+    not read on every prompt.
+    """
 
 
 @dataclass(frozen=True)
@@ -166,6 +184,11 @@ class ReportLine:
     How it stands out.
     """
 
+    audience: Audience = Audience.EVERYONE
+    """
+    Who it is for.
+    """
+
     @property
     def shown(self) -> str:
         """:return: The line in bold, in its tone's colour, as the person sees it."""
@@ -174,7 +197,11 @@ class ReportLine:
     def json(self) -> str:
         """:return: The line, for a process that reports to the session start."""
         return json.dumps(
-            {ReportLineKey.TEXT: self.text, ReportLineKey.TONE: self.tone.name}
+            {
+                ReportLineKey.TEXT: self.text,
+                ReportLineKey.TONE: self.tone.name,
+                ReportLineKey.AUDIENCE: self.audience,
+            }
         )
 
     @classmethod
@@ -184,13 +211,18 @@ class ReportLine:
         :return: The line.
         """
         data = json.loads(line)
-        return cls(data[ReportLineKey.TEXT], Tone[data[ReportLineKey.TONE]])
+        return cls(
+            data[ReportLineKey.TEXT],
+            Tone[data[ReportLineKey.TONE]],
+            Audience(data[ReportLineKey.AUDIENCE]),
+        )
 
 
 @dataclass(frozen=True)
 class SessionStartReport:
     """
-    What a session starts with: coloured for the person, plain for the model.
+    What a session starts with: coloured for the person, the lines for everyone only,
+    and plain for the model, every line.
     """
 
     lines: list[ReportLine]
@@ -207,7 +239,11 @@ class SessionStartReport:
         """:return: The hook's output."""
         return json.dumps(
             {
-                HookKey.SYSTEM_MESSAGE: "\n".join(line.shown for line in self.lines),
+                HookKey.SYSTEM_MESSAGE: "\n".join(
+                    line.shown
+                    for line in self.lines
+                    if line.audience is Audience.EVERYONE
+                ),
                 HookKey.HOOK_SPECIFIC_OUTPUT: {
                     HookKey.HOOK_EVENT_NAME: self.event,
                     HookKey.ADDITIONAL_CONTEXT: "\n".join(

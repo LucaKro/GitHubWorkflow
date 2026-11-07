@@ -64,3 +64,6 @@ git merge-tree --write-tree origin/main origin/feature
 git merge-tree --write-tree --name-only origin/main origin/feature
 git merge-tree --write-tree --merge-base=abc123 main feature
 git merge-tree abc123 main feature
+gh api graphql -f query='{repository(owner:"cram2",name:"project"){pullRequest(number:877){reviewThreads(first:50){nodes{isResolved}}}}}'
+gh api graphql -f query='query($number:Int!){repository(owner:"a",name:"b"){pullRequest(number:$number){title}}}' -F number=877 --jq '.data'
+gh api graphql --paginate -f query='{viewer{login}}'

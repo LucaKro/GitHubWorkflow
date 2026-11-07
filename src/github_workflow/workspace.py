@@ -13,7 +13,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from github_workflow.hooks import ReportLine, Tone
+from github_workflow.hooks import Audience, ReportLine, Tone
 from github_workflow.locations import ProjectFile
 
 # %% the project's settings
@@ -256,5 +256,6 @@ class ProjectTooling:
                 f"interpreter with `--python`; never install the project's packages by "
                 f"hand",
                 Tone.NEWS,
+                Audience.MODEL,
             )
         ]
