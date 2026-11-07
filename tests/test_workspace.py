@@ -5,10 +5,11 @@ with, which a session is told to set it up with.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
-from github_workflow.hooks import Tone
+from github_workflow.hooks import HookKey, SessionStartReport, Tone
 from github_workflow.locations import ProjectFile
 from github_workflow.session_start import SessionStart
 from github_workflow.settings import WorkflowSettings
@@ -77,6 +78,16 @@ def test_a_session_is_told_to_set_up_with_the_tool(tmp_path: Path):
 
     assert f"`{tool.setup_command(root)}`" in line.text
     assert line.tone is Tone.NEWS
+
+
+def test_the_set_up_instruction_reaches_the_model_alone(tmp_path: Path):
+    tool = UvTool(executable=sys.executable)
+    lines = ProjectTooling(uv_project(tmp_path), (tool,)).lines()
+
+    report = json.loads(SessionStartReport(lines).json())
+
+    given = report[HookKey.HOOK_SPECIFIC_OUTPUT][HookKey.ADDITIONAL_CONTEXT]
+    assert (report[HookKey.SYSTEM_MESSAGE], given) == ("", lines[0].text)
 
 
 def test_a_missing_tool_is_left_for_the_person(tmp_path: Path):
