@@ -128,6 +128,7 @@ class ReportLineKey(StrEnum):
     TEXT = "text"
     TONE = "tone"
     AUDIENCE = "audience"
+    EMPHASES = "emphases"
 
 
 class Audience(StrEnum):
@@ -144,6 +145,60 @@ class Audience(StrEnum):
     """
     The model alone, such as an instruction on how to work, which the person need
     not read on every prompt.
+    """
+
+
+class Highlight(StrEnum):
+    """
+    How a part of a line stands out from the rest, valued as its terminal style; none
+    is a colour a :class:`Tone` uses, and each reads on dark and light terminals.
+    """
+
+    HEADING = "1;94"
+    """
+    A section's heading: bold bright blue.
+    """
+
+    STATUS = "32"
+    """
+    A pull request's status tags: green.
+    """
+
+    CRITICAL = "1;97;45"
+    """
+    A critical finding's priority tag: bold white on magenta.
+    """
+
+    HIGH = "1;95"
+    """
+    A high finding's priority tag: bold bright magenta.
+    """
+
+    MEDIUM = "95"
+    """
+    A medium finding's priority tag: bright magenta.
+    """
+
+    LOW = "2;95"
+    """
+    A low finding's priority tag: dim bright magenta.
+    """
+
+
+@dataclass(frozen=True)
+class Emphasis:
+    """
+    A part of a line shown in a style of its own.
+    """
+
+    part: str
+    """
+    The part, as it stands in the line's text; its first occurrence is styled.
+    """
+
+    highlight: Highlight
+    """
+    How it stands out.
     """
 
 
@@ -189,10 +244,25 @@ class ReportLine:
     Who it is for.
     """
 
+    emphases: tuple[Emphasis, ...] = ()
+    """
+    The parts of it shown in styles of their own.
+    """
+
     @property
     def shown(self) -> str:
-        """:return: The line in bold, in its tone's colour, as the person sees it."""
-        return f"\033[1;{self.tone}m{self.text}\033[0m"
+        """
+        :return: The line in bold, in its tone's colour, its emphasised parts in their
+            own styles, as the person sees it.
+        """
+        line = f"\033[1;{self.tone}m"
+        text = self.text
+        for emphasis in self.emphases:
+            before, found, text = text.partition(emphasis.part)
+            line += before
+            if found:
+                line += f"\033[0;{emphasis.highlight}m{found}\033[0;1;{self.tone}m"
+        return f"{line}{text}\033[0m"
 
     def json(self) -> str:
         """:return: The line, for a process that reports to the session start."""
@@ -201,6 +271,9 @@ class ReportLine:
                 ReportLineKey.TEXT: self.text,
                 ReportLineKey.TONE: self.tone.name,
                 ReportLineKey.AUDIENCE: self.audience,
+                ReportLineKey.EMPHASES: [
+                    [emphasis.part, emphasis.highlight] for emphasis in self.emphases
+                ],
             }
         )
 
@@ -215,6 +288,10 @@ class ReportLine:
             data[ReportLineKey.TEXT],
             Tone[data[ReportLineKey.TONE]],
             Audience(data[ReportLineKey.AUDIENCE]),
+            tuple(
+                Emphasis(part, Highlight(highlight))
+                for part, highlight in data[ReportLineKey.EMPHASES]
+            ),
         )
 
 

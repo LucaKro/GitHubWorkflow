@@ -29,7 +29,7 @@ from basstler_domain_model.github.review_models import (
 )
 from basstler_domain_model.github.vocabulary import CheckOutcome, MergeableState
 
-from github_workflow.hooks import NumberLink, Tone
+from github_workflow.hooks import Emphasis, Highlight, NumberLink, Tone
 from github_workflow.pull_request_overview import (
     PullRequestDetails,
     PullRequestGroup,
@@ -221,6 +221,14 @@ def test_the_pull_request_of_the_session_s_branch_is_marked():
     [_, line] = github.overview(checked_out="branch-1").lines()
 
     assert line.text.endswith("Change 1 - this branch · ok")
+
+
+def test_a_pull_request_s_status_tags_are_shown_in_their_own_style():
+    github = PullRequestsWithSignals(mergeable={1: MergeableState.CLEAN})
+
+    [_, line] = github.overview().lines()
+
+    assert line.emphases == (Emphasis("- ok", Highlight.STATUS),)
 
 
 def test_a_pull_request_is_named_with_its_page():
