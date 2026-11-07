@@ -21,6 +21,7 @@ from basstler_domain_model.git.commands import (
 )
 from basstler_domain_model.github.repository_client import (
     IssueBoard,
+    RepositoryLabels,
     PullRequestOpener,
     PullRequestReader,
     PullRequestsFromForks,
@@ -51,6 +52,7 @@ from github_workflow.exceptions import (
     UnreplaceablePullRequestError,
     UnpushedCommitsError,
 )
+from github_workflow.labels import DescribedLabel
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
 from github_workflow.push_hook import PushHook
@@ -325,6 +327,11 @@ class DraftOpening(WorkflowStep):
     Stacks it on another pull request, when asked to.
     """
 
+    issue_labels: PullRequestOpenedLabelling
+    """
+    Labels the issues its description closes.
+    """
+
     title: str
     """
     The pull request's title.
@@ -357,8 +364,8 @@ class DraftOpening(WorkflowStep):
             open, is on another repository, or is the work branch's own.
         :raises StackContinuesAboveError: If other open pull requests already sit on
             the one to stack on; nothing is opened then.
-        :raises DraftUnfinishedError: If closing the replaced pull request or stacking
-            the draft fails once it is opened.
+        :raises DraftUnfinishedError: If closing the replaced pull request, labelling
+            the issues or stacking the draft fails once it is opened.
         """
         branch = RemoteBranch(self.policy.remote.name, self.policy.work_branch())
         if not self.policy.checkout.git.has_remote_branch(branch):
@@ -379,18 +386,19 @@ class DraftOpening(WorkflowStep):
         )
         number = self.opener.open_draft(branch.name, base, self.title, body)
         try:
-            return self.finish(number, branch.name, base)
+            return self.finish(number, branch.name, base, body)
         except Exception as raised:
             raise DraftUnfinishedError(number, str(raised)) from raised
 
-    def finish(self, number: int, branch: str, base: str) -> str:
+    def finish(self, number: int, branch: str, base: str, body: str) -> str:
         """
-        Close the pull request the opened draft replaces, and stack the draft, where
-        asked to.
+        Close the pull request the opened draft replaces, label the issues the draft
+        closes, and stack it, where asked to.
 
         :param number: The opened draft.
         :param branch: The work branch it was opened from.
         :param base: The branch it targets.
+        :param body: Its description.
         :return: What was done.
         """
         opened = f"opened draft #{number}: {branch} onto {base}"
@@ -398,6 +406,10 @@ class DraftOpening(WorkflowStep):
             replaced = self.replacement.number
             self.replacement.retirement.retire(replaced, f"Replaced by #{number}.")
             opened += f"; closed #{replaced}, which it replaces: tell the person"
+        labelled = self.issue_labels.label(body)
+        if labelled:
+            named = ", ".join(f"#{issue}" for issue in labelled)
+            opened += f"; labelled {named} {IssueLabel.PULL_REQUEST_OPENED}"
         if self.below is None:
             return opened
         stack = self.placement.place(self.below, number)
@@ -424,6 +436,67 @@ class DraftOpening(WorkflowStep):
             )
 
 
+class IssueLabel(DescribedLabel):
+    """
+    The labels the workflow puts on an issue about the pull requests working on it.
+    """
+
+    PULL_REQUEST_OPENED = (
+        "pull request opened",
+        "An open pull request of this repository closes it once merged",
+        "5319e7",
+    )
+    """
+    A draft whose description closes the issue is open.
+    """
+
+
+@dataclass(frozen=True)
+class PullRequestOpenedLabelling:
+    """
+    :attr:`IssueLabel.PULL_REQUEST_OPENED` on the issues a pull request's description
+    closes, put on when it opens and taken off when it is closed unmerged.
+    """
+
+    board: IssueBoard
+    """
+    Labels the issues.
+    """
+
+    labels: RepositoryLabels
+    """
+    Creates the label where the repository lacks it.
+    """
+
+    def label(self, description: str) -> list[int]:
+        """
+        :param description: The opened pull request's description.
+        :return: The issues it closes, now labelled.
+        """
+        issues = ClosingLines(description).issues()
+        if not issues:
+            return []
+        if IssueLabel.PULL_REQUEST_OPENED not in self.labels.labels():
+            self.labels.create_label(IssueLabel.PULL_REQUEST_OPENED)
+        for issue in issues:
+            self.board.add_labels(issue, [IssueLabel.PULL_REQUEST_OPENED])
+        return issues
+
+    def unlabel(self, description: str) -> list[int]:
+        """
+        :param description: The description of a pull request closed unmerged.
+        :return: The issues it closes that carried the label, no longer labelled.
+        """
+        carrying = [
+            issue
+            for issue in ClosingLines(description).issues()
+            if IssueLabel.PULL_REQUEST_OPENED in self.board.issue(issue).labels
+        ]
+        for issue in carrying:
+            self.board.remove_label(issue, IssueLabel.PULL_REQUEST_OPENED)
+        return carrying
+
+
 @dataclass(frozen=True)
 class ClosingLines:
     """
@@ -444,6 +517,13 @@ class ClosingLines:
         closing = re.compile(rf"(?:{keyword}) #\d+")
         stripped = (line.strip() for line in self.description.splitlines())
         return [line for line in stripped if closing.fullmatch(line)]
+
+    def issues(self) -> list[int]:
+        """
+        :return: The issues of the description's repository that the closing lines
+            close, in order.
+        """
+        return [int(line.rpartition("#")[2]) for line in self.lines()]
 
     def kept_in(self, rewritten: str) -> str:
         """

@@ -6,7 +6,7 @@ workflow writes to them, and a stand-in for running a finding's test.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from basstler_domain_model.github.issue_models import Issue, IssueComment
 from basstler_domain_model.github.labels import GitHubLabel
@@ -82,9 +82,17 @@ class IssuesInMemory(IssueBoard, RepositoryLabels):
 
     def add_labels(self, number: int, labels: Sequence[str]) -> None:
         self.writes.append(f"add_labels {number} {list(labels)}")
+        if number in self.open_issues:
+            issue = self.open_issues[number]
+            added = tuple(label for label in labels if label not in issue.labels)
+            self.open_issues[number] = replace(issue, labels=issue.labels + added)
 
     def remove_label(self, number: int, label: str) -> None:
         self.writes.append(f"remove_label {number} {label}")
+        if number in self.open_issues:
+            issue = self.open_issues[number]
+            kept = tuple(carried for carried in issue.labels if carried != label)
+            self.open_issues[number] = replace(issue, labels=kept)
 
     def add_comment(self, number: int, body: str) -> str:
         self.writes.append(f"add_comment {number} {body}")

@@ -81,6 +81,7 @@ from github_workflow.work import (
     Replacement,
     RepositoryCloning,
     SessionLog,
+    PullRequestOpenedLabelling,
 )
 
 from .repositories_by_owner import RepositoriesByOwner
@@ -476,6 +477,7 @@ def draft(
         policy,
         github,
         StackPlacement(github, github, github, github),
+        PullRequestOpenedLabelling(IssuesInMemory(), IssuesInMemory()),
         "A title",
         "A body",
         below,

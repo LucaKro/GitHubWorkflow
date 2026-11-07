@@ -68,7 +68,7 @@ from github_workflow.report_section import ReportGroup
 from github_workflow.proofs import BranchTip, FindingTest, ProofAttempt, ProofOutcome
 from github_workflow.settings import WorkflowSettings
 from github_workflow.stacks import StackPlacement
-from github_workflow.work import DraftOpening
+from github_workflow.work import DraftOpening, IssueLabel, PullRequestOpenedLabelling
 
 from .issues_in_memory import (
     IssuesInMemory,
@@ -581,14 +581,55 @@ class ClosedInMemory(PullRequestCloser):
         self.closed.append(number)
 
 
+@dataclass(frozen=True)
+class DescribedPullRequests(PullRequestReader):
+    """
+    Pull requests, each with the description given.
+    """
+
+    descriptions: dict[int, str]
+    """
+    Each pull request's description, by number.
+    """
+
+    def open_pull_requests(self) -> list[RestPullRequest]:
+        return [self.pull_request(number) for number in self.descriptions]
+
+    def pull_request(self, number: int) -> RestPullRequest:
+        return replace(
+            pull_request(number, f"branch-{number}"), body=self.descriptions[number]
+        )
+
+
+def session_closing(
+    board: IssuesInMemory,
+    closer: ClosedInMemory,
+    log: EntriesInMemory,
+    description: str = "A body",
+) -> SessionPullRequestClosing:
+    """
+    :param board: The issues and labels.
+    :param closer: Closes the pull request.
+    :param log: The session log.
+    :param description: The description of pull request #3.
+    :return: Closes pull request #3 as a session's.
+    """
+    return SessionPullRequestClosing(
+        board,
+        board,
+        closer,
+        log,
+        DescribedPullRequests({3: description}),
+        PullRequestOpenedLabelling(board, board),
+    )
+
+
 @pytest.mark.parametrize("labelled", [True, False], ids=["label there", "label made"])
 def test_a_session_s_pull_request_is_closed_marked_and_explained(labelled: bool):
     board = labelled_board() if labelled else IssuesInMemory({})
     closer = ClosedInMemory()
 
-    SessionPullRequestClosing(board, board, closer, EntriesInMemory()).retire(
-        3, "Replaced by #5."
-    )
+    session_closing(board, closer, EntriesInMemory()).retire(3, "Replaced by #5.")
 
     made = [] if labelled else [f"create_label {ClosedBy.SESSION}"]
     assert board.writes == [
@@ -603,13 +644,27 @@ def test_a_session_s_pull_request_close_is_entered_in_the_session_log():
     board = labelled_board()
     log = EntriesInMemory()
 
-    SessionPullRequestClosing(board, board, ClosedInMemory(), log).retire(
-        3, "Replaced by #5."
-    )
+    session_closing(board, ClosedInMemory(), log).retire(3, "Replaced by #5.")
 
     [entry] = log.entries
     assert "#3" in entry
     assert "Replaced by #5." in entry
+
+
+def test_the_issues_a_closed_pull_request_closes_lose_the_open_pull_request_label():
+    fixed = finding(7, FindingStage.ACCEPTED, Priority.HIGH)
+    board = IssuesInMemory(
+        {7: replace(fixed, labels=(*fixed.labels, IssueLabel.PULL_REQUEST_OPENED))}
+    )
+
+    session_closing(
+        board,
+        ClosedInMemory(),
+        EntriesInMemory(),
+        f"A body\n\n{ClosingKeyword.FIXES.reference(7)}",
+    ).retire(3, "Discarded.")
+
+    assert IssueLabel.PULL_REQUEST_OPENED not in board.issue(7).labels
 
 
 # %% commenting and editing
@@ -844,6 +899,7 @@ def draft_for_finding(
             work,
             github,
             StackPlacement(github, github, github, github),
+            PullRequestOpenedLabelling(board, board),
             "A title",
             "A body",
         ),
@@ -874,6 +930,19 @@ def test_a_description_closing_the_finding_already_keeps_one_closing_line(
     replace(opening, draft=replace(opening.draft, body=body)).run()
 
     assert github.descriptions == {1: body}
+
+
+def test_the_finding_a_draft_closes_is_labelled_as_having_a_pull_request(
+    work: WritePolicy, settings: WorkflowSettings
+):
+    board = labelled_board(proven(finding(7, FindingStage.ACCEPTED, Priority.HIGH)))
+    with_proof_posted(board, 7, settings.owner)
+
+    draft_for_finding(
+        work, DescribedDraftsInMemory({}), board, ProofOutcome.FAILS, settings
+    ).run()
+
+    assert IssueLabel.PULL_REQUEST_OPENED in board.issue(7).labels
 
 
 def test_a_draft_for_a_finding_accepted_on_github_is_opened(
