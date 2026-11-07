@@ -281,8 +281,9 @@ them:
   list` shows after the own pull request's, each comment with its address: directly
   with my login, or, from a cloud session, through the fork's Actions, which read them
   for a request on the notes branch and save GitHub's answers there; when they start no
-  run for it within a minute and a half, or the run fails, `review list` says so at
-  once, with the link to turn them on or to the run's log. The workflow lives only on
+  run for it within a minute and a half, it asks once more, and when they start none
+  then either, or the run fails, `review list` says so below the own pull request's
+  threads, which it always lists, with the link to turn them on or to the run's log. The workflow lives only on
   the notes branch, never on the default branch or upstream. Nothing is ever
   written upstream: having changed something for an upstream comment, the session says
   so on the own pull request with `review addressed <address> --body-file <what

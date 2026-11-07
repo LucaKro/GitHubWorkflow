@@ -23,17 +23,15 @@ from basstler_domain_model.github.vocabulary import (
 from basstler_domain_model.locations import PathEnumeration
 from basstler_domain_model.repository import Repository
 
-from github_workflow.exceptions import (
-    UpstreamReviewsFailedError,
-    UpstreamReviewsNotStartedError,
-    UpstreamReviewsUnansweredError,
-)
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.settings import WorkflowSettings
 from github_workflow.upstream_reviews import (
     DirectUpstreamReviews,
     ForwardedUpstreamReviews,
+    UpstreamReadFailed,
+    UpstreamReadNotStarted,
+    UpstreamReadUnanswered,
     UpstreamReviewAnswering,
     UpstreamReviewKey,
     UpstreamReviewPlaceholder,
@@ -269,13 +267,29 @@ def test_a_forwarded_request_reads_the_saved_answer(
     )
 
 
-def test_a_request_no_run_started_for_is_given_up_on(
+def queued_requests(notes: NotesBranch) -> list[str]:
+    """:param notes: The notes branch.
+    :return: The names of the requests waiting on it."""
+    notes.fetch()
+    listed = notes.git.run(
+        "ls-tree",
+        "--name-only",
+        f"{notes.branch.tracking_reference}:{NotesFile.UPSTREAM_REVIEW_REQUESTS.value}",
+    )
+    return listed.split()
+
+
+def test_a_request_no_run_started_for_is_asked_again_then_given_up_on(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ):
     notes = notes_in(repositories, owned_url, settings)
 
-    with pytest.raises(UpstreamReviewsNotStartedError):
-        forwarded(notes).snapshot(request())
+    unavailable = forwarded(notes).snapshot(request())
+
+    assert (unavailable, len(queued_requests(notes))) == (
+        UpstreamReadNotStarted(FORK, 0),
+        2,
+    )
 
 
 def test_a_request_whose_run_failed_is_given_up_on(
@@ -286,8 +300,11 @@ def test_a_request_whose_run_failed_is_given_up_on(
         notes, WorkflowRunStatus.COMPLETED, WorkflowRunConclusion.FAILURE
     )
 
-    with pytest.raises(UpstreamReviewsFailedError):
-        forwarded(notes, failed).snapshot(request())
+    unavailable = forwarded(notes, failed).snapshot(request())
+
+    assert unavailable == UpstreamReadFailed(
+        f"{FORK.url}/actions/runs/1", WorkflowRunConclusion.FAILURE
+    )
 
 
 def test_a_request_whose_run_is_still_going_is_left_unanswered_in_time(
@@ -296,5 +313,6 @@ def test_a_request_whose_run_is_still_going_is_left_unanswered_in_time(
     notes = notes_in(repositories, owned_url, settings)
     going = RunsOfTheQueuedRequest(notes, WorkflowRunStatus.IN_PROGRESS)
 
-    with pytest.raises(UpstreamReviewsUnansweredError):
-        forwarded(notes, going).snapshot(request())
+    unavailable = forwarded(notes, going).snapshot(request())
+
+    assert unavailable == UpstreamReadUnanswered(request().upstream, 0)

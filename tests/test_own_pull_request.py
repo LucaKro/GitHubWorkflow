@@ -44,7 +44,12 @@ from github_workflow.own_pull_request import (
 from github_workflow.policy import WritePolicy
 from github_workflow.pull_request_overview import PullRequestLabel
 from github_workflow.upstream import UpstreamLabel
-from github_workflow.upstream_reviews import UpstreamReviewRequest, UpstreamReviews
+from github_workflow.upstream_reviews import (
+    UpstreamReadNotStarted,
+    UpstreamReviewRequest,
+    UpstreamReviews,
+    UpstreamReviewsUnavailable,
+)
 
 from .issues_in_memory import IssuesInMemory
 from .pull_requests import REPOSITORY, pull_request
@@ -329,6 +334,39 @@ def test_the_upstream_pull_request_s_reviews_and_threads_follow_with_addresses(
     assert [(request.upstream, request.branch) for request in upstream.requests] == [
         (UPSTREAM, "feature")
     ]
+
+
+@dataclass(frozen=True)
+class UpstreamUnreadable(UpstreamReviews):
+    """
+    Can never read the pull request opened upstream, for the reason given.
+    """
+
+    unavailable: UpstreamReviewsUnavailable
+    """
+    Why.
+    """
+
+    def snapshot(
+        self, request: UpstreamReviewRequest
+    ) -> UpstreamPullRequestSnapshot | UpstreamReviewsUnavailable:
+        return self.unavailable
+
+
+def test_the_own_threads_are_listed_with_why_upstream_was_not_read(
+    work: WritePolicy,  # noqa: F811
+):
+    unavailable = UpstreamReadNotStarted(UPSTREAM, 90.0)
+    listing = ReviewThreadListing(
+        own(work, opened_upstream(3)),
+        threads(thread(8)),
+        ForkOf(UPSTREAM),
+        UpstreamUnreadable(unavailable),
+    )
+
+    listed = listing.run().splitlines()
+
+    assert listed == [ReviewThreadListing.described(thread(8)), unavailable.line()]
 
 
 def test_a_pull_request_not_opened_upstream_reads_nothing_upstream(
