@@ -88,7 +88,8 @@ class SectionName(StrEnum):
                     context.github, context.github, context.github
                 )
                 return LabelsCompletedReport(
-                    completion, FindingsSummary(context.github)
+                    completion,
+                    FindingsSummary(context.github, context.remote.repository),
                 )
             case SectionName.CLEANUP:
                 return CleanupReminder(

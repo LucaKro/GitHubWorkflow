@@ -63,6 +63,9 @@ agent:
 
 - my standing notes
 - this branch's progress
+- every pull request and issue the workflow names is a Markdown link to its page,
+  `[#62](https://github.com/<owner>/<name>/pull/62)`, and the model names them the
+  same way in chat
 - one line per open pull request on the repository, grouped under headings: open
   upstream, drafts, ready for review. Those I labelled `pull request: shelved`
   (created for me to pick) are left out, and a session leaves them alone unless I name

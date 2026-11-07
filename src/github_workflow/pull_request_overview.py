@@ -25,7 +25,7 @@ from basstler_domain_model.github.repository_client import (
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import MergeableState
 
-from github_workflow.hooks import ReportLine, Tone
+from github_workflow.hooks import NumberLink, ReportLine, Tone
 from github_workflow.labels import DescribedLabel
 from github_workflow.report_section import ReportGroup, ReportSection
 from github_workflow.upstream import UpstreamLabel
@@ -71,6 +71,11 @@ class PullRequestSignals:
     branch: str
     """
     The branch it merges.
+    """
+
+    url: str
+    """
+    Its page on GitHub.
     """
 
     draft: bool
@@ -119,7 +124,8 @@ class PullRequestSignals:
         marks = ["this branch"] if self.branch == checked_out else []
         marks += self.problems or ["ok"]
         return ReportLine(
-            f"#{self.number} {self.title} - {' · '.join(marks)}",
+            f"{NumberLink(self.number, self.url).markdown()} {self.title} - "
+            f"{' · '.join(marks)}",
             Tone.ACTION if self.problems else Tone.NEWS,
         )
 
@@ -209,6 +215,7 @@ class PullRequestSignalReader:
             pull_request.number,
             pull_request.title,
             pull_request.head.branch,
+            pull_request.url,
             pull_request.draft,
             UpstreamLabel.OPENED_UPSTREAM in pull_request.labels,
             pull_request.mergeable_state,

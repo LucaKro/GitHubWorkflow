@@ -1349,7 +1349,8 @@ def test_findings_are_listed_on_the_domain_model_from_outside_any_checkout(
     step = WorkflowSession(tmp_path, WorkflowSettings()).step(arguments)
 
     repository = Repository.parse(ToolRepository.DOMAIN_MODEL)
-    assert step == FindingListing(GitHubRepository.from_environment(repository))
+    board = GitHubRepository.from_environment(repository)
+    assert step == FindingListing(board, repository)
 
 
 def test_a_finding_on_somebody_else_s_repository_is_refused(tmp_path: Path):
