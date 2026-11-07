@@ -94,3 +94,6 @@ gh api graphql -f query='{viewer{login}} mutation{deleteIssue(input:{issueId:"x"
 gh api graphql -F query=@mutation.graphql
 gh api graphql -X POST -f query='{viewer{login}}'
 gh api graphql --input body.json
+echo \\`git push`
+echo `echo \`git push\``
+echo "a \` b" && git push

@@ -1487,6 +1487,21 @@ class CommandLine:
             r"(^|[;&|(]\s*|\s)(bash|sh|zsh)(\s+-[A-Za-z]+)*\s*($|[<|;&)])"
         )
 
+    @classmethod
+    def substitution(cls) -> re.Pattern[str]:
+        """
+        A command or process substitution, ``$(...)``, ``<(...)`` or a backtick pair,
+        whose command is its one group that matched; a ``$`` or a backtick escaped by a
+        backslash starts none, and a backtick escaped inside one does not end it but,
+        unescaped as the shell does, starts one nested in its command.
+        """
+        unescaped = r"(?<!\\)(?:\\\\)*"
+        return re.compile(
+            rf"{unescaped}\$\(([^()]*)\)"
+            r"|<\(([^()]*)\)"
+            rf"|{unescaped}`((?:[^`\\]|\\.)*)`"
+        )
+
     def simple_commands(self) -> list[list[str]]:
         """
         :return: The words of every simple command the line runs, those in command
@@ -1495,12 +1510,16 @@ class CommandLine:
         :raises ValueError: If its quotes do not balance.
         """
         text = self._without_here_documents()
-        nested = re.findall(r"\$\(([^()]*)\)|<\(([^()]*)\)|`([^`]*)`", text)
+        nested = re.findall(self.substitution(), text)
+        inner_lines = [
+            inner
+            for dollar, process, backtick in nested
+            for inner in (dollar, process, re.sub(r"\\([`\\$])", r"\1", backtick))
+            if inner
+        ]
         commands = [
             command
-            for groups in nested
-            for inner in groups
-            if inner
+            for inner in inner_lines
             for command in CommandLine(inner).simple_commands()
         ]
         read = ShellInput(text.replace("\n", " ; "))

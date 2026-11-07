@@ -67,3 +67,4 @@ git merge-tree abc123 main feature
 gh api graphql -f query='{repository(owner:"cram2",name:"project"){pullRequest(number:877){reviewThreads(first:50){nodes{isResolved}}}}}'
 gh api graphql -f query='query($number:Int!){repository(owner:"a",name:"b"){pullRequest(number:$number){title}}}' -F number=877 --jq '.data'
 gh api graphql --paginate -f query='{viewer{login}}'
+grep -n -i "read-only\|gh \`api\`\|gh api" REQUIREMENTS.md
