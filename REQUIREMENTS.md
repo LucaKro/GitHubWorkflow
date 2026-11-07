@@ -226,6 +226,9 @@ them:
 ## How the agent reaches git and GitHub
 
 - It reads git directly: status, diffs, history, and fetching.
+- It reads GitHub directly too, GraphQL included: `gh api graphql` with a document of
+  queries alone, given in place, is a read; a mutation, a subscription, a document read
+  from a file, or any option that sends more is a write.
 - Every write - a branch, a commit, a push, a pull request, a stack, the notes - goes
   through the workflow's own commands, which check the rules above before writing. A
   plugin hook denies every direct write, so the rules cannot be skipped by accident.
