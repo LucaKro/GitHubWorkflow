@@ -52,6 +52,7 @@ from github_workflow.exceptions import (
     UnreplaceablePullRequestError,
     UnpushedCommitsError,
 )
+from github_workflow.hooks import NumberLink
 from github_workflow.labels import DescribedLabel
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
@@ -401,8 +402,8 @@ class DraftOpening(WorkflowStep):
         :param body: Its description.
         :return: What was done.
         """
-        page = self.policy.remote.repository.issue_url(number)
-        opened = f"opened draft #{number} {page}: {branch} onto {base}"
+        link = NumberLink(number, self.policy.remote.repository.issue_url(number))
+        opened = f"opened draft {link.markdown()}: {branch} onto {base}"
         if self.replacement is not None:
             replaced = self.replacement.number
             self.replacement.retirement.retire(replaced, f"Replaced by #{number}.")

@@ -63,7 +63,7 @@ from github_workflow.findings import (
     ProvenFindingFiling,
     SessionPullRequestClosing,
 )
-from github_workflow.hooks import ReportLine, Tone
+from github_workflow.hooks import NumberLink, ReportLine, Tone
 from github_workflow.policy import WritePolicy
 from github_workflow.report_section import ReportGroup
 from github_workflow.proofs import BranchTip, FindingTest, ProofAttempt, ProofOutcome
@@ -305,7 +305,10 @@ def test_findings_are_listed_unreviewed_first_and_most_urgent_first():
 
     listed = FindingListing(board, FINDINGS_REPOSITORY).run().splitlines()
 
-    assert [line.split()[0] for line in listed] == ["#3", "#2", "#1"]
+    assert [line.split()[0] for line in listed] == [
+        NumberLink(number, FINDINGS_REPOSITORY.issue_url(number)).markdown()
+        for number in (3, 2, 1)
+    ]
 
 
 def test_shelved_findings_are_listed_after_the_accepted():
@@ -318,7 +321,10 @@ def test_shelved_findings_are_listed_after_the_accepted():
 
     listed = FindingListing(board, FINDINGS_REPOSITORY).run().splitlines()
 
-    assert [line.split()[0] for line in listed] == ["#2", "#1"]
+    assert [line.split()[0] for line in listed] == [
+        NumberLink(number, FINDINGS_REPOSITORY.issue_url(number)).markdown()
+        for number in (2, 1)
+    ]
 
 
 def test_a_listed_finding_shows_its_evidence():

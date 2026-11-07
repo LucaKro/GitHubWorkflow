@@ -29,7 +29,7 @@ from basstler_domain_model.github.review_models import (
 )
 from basstler_domain_model.github.vocabulary import CheckOutcome, MergeableState
 
-from github_workflow.hooks import Tone
+from github_workflow.hooks import NumberLink, Tone
 from github_workflow.pull_request_overview import (
     PullRequestDetails,
     PullRequestGroup,
@@ -228,7 +228,7 @@ def test_a_pull_request_is_named_with_its_page():
 
     [_, line] = github.overview().lines()
 
-    assert line.text.split()[:2] == ["#1", github.pull_request(1).url]
+    assert line.text.split()[0] == NumberLink(1, github.pull_request(1).url).markdown()
 
 
 def test_pull_requests_are_grouped_open_upstream_then_drafts_then_ready():
@@ -244,7 +244,10 @@ def test_pull_requests_are_grouped_open_upstream_then_drafts_then_ready():
     named = [line.text.split()[0] for line in lines if line.text.startswith(" ")]
     assert (headings, named) == (
         [f"github-workflow: {group}:" for group in PullRequestGroup],
-        ["#3", "#4", "#2", "#1"],
+        [
+            NumberLink(number, github.pull_request(number).url).markdown()
+            for number in (3, 4, 2, 1)
+        ],
     )
 
 

@@ -198,8 +198,8 @@ class NotesBlock:
             f"for one, say so on the own pull request with `{review} "
             f"{ReviewSubcommand.ADDRESSED} <its address> --body-file <what changed>`.",
             "In chat, name every pull request and issue with a Markdown link to its "
-            "page, `[#62](https://github.com/<owner>/<name>/pull/62)`; the workflow's "
-            "own output gives each one's page.",
+            "page, `[#62](https://github.com/<owner>/<name>/pull/62)`, as the "
+            "workflow's own output does.",
             ToolRepository.refusal_hint(),
             f"Mark a branch you pushed but no longer need with "
             f"`{self.workflow_command} branch discard`, which closes its open pull "

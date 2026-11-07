@@ -42,7 +42,7 @@ from github_workflow.exceptions import (
     ProofNoLongerHoldsError,
     UnprovenFindingCloseError,
 )
-from github_workflow.hooks import ReportLine, Tone
+from github_workflow.hooks import NumberLink, ReportLine, Tone
 from github_workflow.labels import DescribedLabel
 from github_workflow.proofs import FindingTest, Proof, ProofOutcome, ProofRunner
 from github_workflow.report_section import ReportGroup, ReportSection
@@ -194,12 +194,13 @@ class Priority(FindingLabel):
         """
         :param issue: A finding.
         :param repository: The repository it is filed on.
-        :return: Its number, page, priority level and title, as one line names it.
+        :return: Its number linked to its page, priority level and title, as one line
+            names it.
         """
         priority = cls.of(issue)
         level = priority.level if priority else "no priority"
-        page = repository.issue_url(issue.number)
-        return f"#{issue.number} {page} [{level}] {issue.title}"
+        link = NumberLink(issue.number, repository.issue_url(issue.number))
+        return f"{link.markdown()} [{level}] {issue.title}"
 
     @classmethod
     def guide(cls) -> str:
