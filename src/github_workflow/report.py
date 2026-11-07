@@ -16,7 +16,8 @@ from basstler_domain_model.github.repository_client import GitHubRepository
 
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.cleanup import CleanupReminder, KeptBranches
-from github_workflow.findings import FindingsSummary
+from github_workflow.discussions import DiscussionSessionLog
+from github_workflow.findings import FindingsSummary, SessionPullRequestClosing
 from github_workflow.freshness import BranchFreshening, FreshnessReport
 from github_workflow.label_events import LabelsCompletedReport, PickedLabelCompletion
 from github_workflow.notes.branch import NotesBranch
@@ -29,6 +30,9 @@ from github_workflow.remotes import OwnedRemotes
 from github_workflow.report_section import ReportSection, SectionContext
 from github_workflow.repository_setup import RepositorySetup
 from github_workflow.settings import WorkflowSettings
+from github_workflow.stacks import StackPlacement
+from github_workflow.upstream import UpstreamMergeFollowing
+from github_workflow.work import PullRequestOpenedLabelling
 
 # %% the sections
 
@@ -61,6 +65,11 @@ class SectionName(StrEnum):
     FRESHNESS = "freshness"
     """
     The fork's default branch and the work branch brought up to date.
+    """
+
+    UPSTREAM_MERGES = "upstream-merges"
+    """
+    The fork's pull requests merged upstream, closed, and their stacks moved on.
     """
 
     def section(self, context: SectionContext) -> ReportSection:
@@ -101,6 +110,27 @@ class SectionName(StrEnum):
                             context.checkout.git, context.remote, context.settings
                         ),
                     )
+                )
+            case SectionName.UPSTREAM_MERGES:
+                github = context.github
+                log = DiscussionSessionLog.in_checkout(
+                    github, context.checkout.git, context.remote, context.settings
+                )
+                return UpstreamMergeFollowing(
+                    context.remote.repository,
+                    github,
+                    github,
+                    github,
+                    GitHubRepository.from_environment,
+                    SessionPullRequestClosing(
+                        github,
+                        github,
+                        github,
+                        log,
+                        github,
+                        PullRequestOpenedLabelling(github, github),
+                    ),
+                    StackPlacement(github, github, github, github),
                 )
             case SectionName.FRESHNESS:
                 return FreshnessReport(
