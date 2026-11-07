@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from basstler_domain_model.class_property import classproperty
 from basstler_domain_model.locations import PathEnumeration
 
 # %% the notes branch
@@ -100,19 +99,13 @@ class NotesFile(PathEnumeration):
     The Actions workflow answering the requests.
     """
 
-    @classproperty
-    def workflows(cls) -> list[NotesFile]:
-        """
-        The Actions workflows the notes branch carries.
-        """
-        return [
-            cls.DELETION_WORKFLOW,
-            cls.POSTING_WORKFLOW,
-            cls.UPSTREAM_REVIEW_WORKFLOW,
-        ]
+    COMMIT_SCRIPT = Path(".github/scripts/commit-notes-branch.sh")
+    """
+    The script every workflow on the notes branch commits and pushes its changes with.
+    """
 
     @classmethod
-    def progress_of(cls, branch: str) -> Path:
+    def progress_file(cls, branch: str) -> Path:
         """
         :param branch: A work branch.
         :return: Where its progress is kept.
@@ -179,82 +172,85 @@ class WorkflowTemplate(PathEnumeration):
     package.
     """
 
-    DELETION_WORKFLOW = (
-        Path(__file__).parent / "templates" / "delete_ready_branches.yml"
-    )
+    DIRECTORY = Path(__file__).parent / "templates"
+    """
+    Where they are shipped.
+    """
+
+    DELETION_WORKFLOW = DIRECTORY / "delete_ready_branches.yml"
     """
     The Actions workflow deleting the branches listed on the notes branch.
     """
 
-    DELETION_SCRIPT = Path(__file__).parent / "templates" / "delete_ready_branches.sh"
+    DELETION_SCRIPT = DIRECTORY / "delete_ready_branches.sh"
     """
     The script the deletion workflow runs.
     """
 
-    POSTING_WORKFLOW = Path(__file__).parent / "templates" / "post_discussions.yml"
+    POSTING_WORKFLOW = DIRECTORY / "post_discussions.yml"
     """
     The Actions workflow posting the discussions queued on the notes branch.
     """
 
-    POSTING_SCRIPT = Path(__file__).parent / "templates" / "post_discussions.sh"
+    POSTING_SCRIPT = DIRECTORY / "post_discussions.sh"
     """
     The script the posting workflow runs.
     """
 
-    CATEGORIES_QUERY = (
-        Path(__file__).parent / "templates" / "discussion_categories.graphql"
-    )
+    CATEGORIES_QUERY = DIRECTORY / "discussion_categories.graphql"
     """
     The query reading a repository's discussion categories.
     """
 
-    CREATE_QUERY = Path(__file__).parent / "templates" / "create_discussion.graphql"
+    CREATE_QUERY = DIRECTORY / "create_discussion.graphql"
     """
     The mutation creating a discussion.
     """
 
-    FIND_QUERY = Path(__file__).parent / "templates" / "find_discussions.graphql"
+    FIND_QUERY = DIRECTORY / "find_discussions.graphql"
     """
     The query listing a category's discussions, the oldest first.
     """
 
-    COMMENT_QUERY = (
-        Path(__file__).parent / "templates" / "add_discussion_comment.graphql"
-    )
+    COMMENT_QUERY = DIRECTORY / "add_discussion_comment.graphql"
     """
     The mutation commenting on a discussion.
     """
 
-    UPSTREAM_REVIEW_WORKFLOW = (
-        Path(__file__).parent / "templates" / "read_upstream_reviews.yml"
-    )
+    UPSTREAM_REVIEW_WORKFLOW = DIRECTORY / "read_upstream_reviews.yml"
     """
     The Actions workflow reading the reviews of pull requests opened upstream for the
     requests queued on the notes branch.
     """
 
-    SESSION_LOG_INTRODUCTION = (
-        Path(__file__).parent / "templates" / "session_log_introduction.md"
-    )
+    COMMIT_SCRIPT = DIRECTORY / "commit_notes_branch.sh"
+    """
+    The script the notes branch's workflows commit and push their changes with.
+    """
+
+    SESSION_LOG_INTRODUCTION = DIRECTORY / "session_log_introduction.md"
     """
     The text the session log discussion is started with.
     """
 
-    LABEL_COMPLETION_WORKFLOW = (
-        Path(__file__).parent / "templates" / "complete_finding_labels.yml"
-    )
+    LABEL_COMPLETION_WORKFLOW = DIRECTORY / "complete_finding_labels.yml"
     """
     The Actions workflow completing finding labels picked on GitHub.
     """
 
-    PROOF_COMMENT = Path(__file__).parent / "templates" / "proof_comment.md"
+    PROOF_COMMENT = DIRECTORY / "proof_comment.md"
     """
     The comment posting a finding's proof on its issue.
     """
 
-    PRE_PUSH_HOOK = Path(__file__).parent / "templates" / "pre_push.sh"
+    PRE_PUSH_HOOK = DIRECTORY / "pre_push.sh"
     """
     The ``pre-push`` hook checking every push from a Claude Code session.
+    """
+
+    NOTES_HEADER = DIRECTORY / "notes_header.md"
+    """
+    The instructions the notes block opens with.
     """
 
 

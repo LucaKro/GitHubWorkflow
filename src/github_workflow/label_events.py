@@ -1,9 +1,7 @@
 """
-Finding labels picked on GitHub, completed by an Actions workflow, or by a session where
-the workflow is not installed.
-
-A stage, priority or evidence label replaces the others of its kind, so changing a
-finding by hand takes one pick.
+Finding labels picked on GitHub completed, by an Actions workflow or by a session where
+the workflow is not installed: a stage, priority or evidence label replaces the others of
+its kind.
 
 Usage: ``python -m github_workflow.label_events <event file>``, with the ``issues``
 event GitHub hands the workflow.
@@ -13,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import shlex
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -41,11 +38,11 @@ from github_workflow.findings import (
     FindingStage,
     Priority,
 )
-from github_workflow.hooks import ReportLine, Tone
-from github_workflow.install import DomainModelSource
+from github_workflow.hooks import ReportLine, Speaker, Tone
 from github_workflow.locations import ProjectFile, WorkflowTemplate
 from github_workflow.report_section import ReportSection
 from github_workflow.work import WorkflowStep
+from github_workflow.workflow_templates import ActionRequirement, TemplatePlaceholder
 
 # %% the event
 
@@ -202,7 +199,7 @@ class PickedLabelCompletion:
             kind for kind in kinds if sum(label in kind for label in issue.labels) > 1
         ]
         if not contested:
-            incorrect = FindingStage.of(issue) is FindingStage.INCORRECT
+            incorrect = FindingStage.from_issue(issue) is FindingStage.INCORRECT
             return [FindingStage.INCORRECT] if incorrect else []
         events = self.history.label_events(issue.number)
         return [
@@ -276,48 +273,12 @@ class LabelsCompletedReport(ReportSection):
     def lines(self) -> list[ReportLine]:
         done = self.completion.complete()
         completed = [
-            ReportLine(f"github-workflow: completed {'; '.join(done)}", Tone.NEWS)
+            ReportLine(Speaker.WORKFLOW.says(f"completed {'; '.join(done)}"), Tone.NEWS)
         ]
         return [*(completed if done else []), *self.section.lines()]
 
 
 # %% the Actions workflow
-
-
-class ActionRequirement(StrEnum):
-    """
-    What the Actions workflow installs to run the completion.
-    """
-
-    DOMAIN_MODEL = (
-        f"basstler-domain-model @ git+{DomainModelSource.REPOSITORY.value}"
-        f"@{DomainModelSource.COMMIT.value}"
-    )
-    """
-    The shared GitHub and git model, which no index serves, at the runtime's pinned
-    commit.
-    """
-
-    WORKFLOW = "github-workflow @ git+https://github.com/LucaKro/GitHubWorkflow@main"
-    """
-    This package, from its default branch.
-    """
-
-
-class LabelCompletionPlaceholder(StrEnum):
-    """
-    The names the label completion workflow template leaves to be filled in.
-    """
-
-    REQUIREMENTS = "__REQUIREMENTS__"
-    """
-    What ``pip`` installs.
-    """
-
-    ENTRY_POINT = "__ENTRY_POINT__"
-    """
-    The command completing the label, before the event file.
-    """
 
 
 @dataclass(frozen=True)
@@ -333,13 +294,9 @@ class FindingAutomation(WorkflowStep):
     """
 
     def run(self) -> str:
-        workflow = (
-            WorkflowTemplate.LABEL_COMPLETION_WORKFLOW.value.read_text()
-            .replace(
-                LabelCompletionPlaceholder.REQUIREMENTS,
-                shlex.join(list(ActionRequirement)),
-            )
-            .replace(LabelCompletionPlaceholder.ENTRY_POINT, f"python -m {__name__}")
+        workflow = TemplatePlaceholder.fill(
+            WorkflowTemplate.LABEL_COMPLETION_WORKFLOW.read_text(),
+            ActionRequirement.placeholder_values(__name__),
         )
         path = self.root / ProjectFile.LABEL_COMPLETION_WORKFLOW.value
         path.parent.mkdir(parents=True, exist_ok=True)

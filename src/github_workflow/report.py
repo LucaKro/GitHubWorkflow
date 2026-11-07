@@ -1,6 +1,5 @@
 """
-Compute one section of the session start, in a process of its own so a failure or a slow
-answer costs only that section.
+Compute one section of the session start, run in a process of its own.
 
 Usage: ``python -m github_workflow.report <section>``; prints one report line as JSON
 per line, or nothing when there is nothing to say.
@@ -14,25 +13,19 @@ from pathlib import Path
 
 from basstler_domain_model.github.repository_client import GitHubRepository
 
-from github_workflow.checkout import ProjectCheckout
-from github_workflow.cleanup import CleanupReminder, KeptBranches
-from github_workflow.discussions import DiscussionSessionLog
-from github_workflow.findings import FindingsSummary, SessionPullRequestClosing
-from github_workflow.freshness import BranchFreshening, FreshnessReport
-from github_workflow.label_events import LabelsCompletedReport, PickedLabelCompletion
-from github_workflow.notes.branch import NotesBranch
-from github_workflow.policy import WritePolicy
+from github_workflow.cleanup import CleanupReminder
+from github_workflow.findings import FindingsSummary
+from github_workflow.freshness import FreshnessReport
+from github_workflow.label_events import LabelsCompletedReport
 from github_workflow.pull_request_overview import (
     PullRequestOverview,
     PullRequestSignalReader,
 )
-from github_workflow.remotes import OwnedRemotes
-from github_workflow.report_section import ReportSection, SectionContext
+from github_workflow.report_section import ReportSection
 from github_workflow.repository_setup import RepositorySetup
+from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
-from github_workflow.stacks import StackPlacement
 from github_workflow.upstream import UpstreamMergeFollowing
-from github_workflow.work import PullRequestOpenedLabelling
 
 # %% the sections
 
@@ -72,74 +65,43 @@ class SectionName(StrEnum):
     The fork's pull requests merged upstream, closed, and their stacks moved on.
     """
 
-    def section(self, context: SectionContext) -> ReportSection:
+    def section(self, session: WorkflowSession) -> ReportSection:
         """
-        :param context: Where the section looks.
+        :param session: The checkout the session starts in.
         :return: The section.
         """
+        github = session.github
         match self:
             case SectionName.SETUP:
                 return RepositorySetup(
-                    context.remote.repository,
-                    context.github,
-                    context.github,
-                    context.github,
+                    session.remote.repository, github, github, github
                 )
             case SectionName.PULL_REQUESTS:
                 return PullRequestOverview(
-                    PullRequestSignalReader.of(context.github),
-                    context.github,
-                    context.github,
-                    context.checkout.git.checked_out_branch(),
+                    PullRequestSignalReader.from_repository(github),
+                    github,
+                    github,
+                    session.checkout.git.checked_out_branch(),
                 )
             case SectionName.FINDINGS:
-                completion = PickedLabelCompletion(
-                    context.github, context.github, context.github
-                )
                 return LabelsCompletedReport(
-                    completion,
-                    FindingsSummary(context.github, context.remote.repository),
+                    session.label_completion,
+                    FindingsSummary(github, session.remote.repository),
                 )
             case SectionName.CLEANUP:
-                return CleanupReminder(
-                    KeptBranches.read(
-                        context.checkout.git,
-                        context.remote,
-                        context.github,
-                        NotesBranch.on(
-                            context.checkout.git, context.remote, context.settings
-                        ),
-                    )
-                )
+                return CleanupReminder(session.kept_branches)
             case SectionName.UPSTREAM_MERGES:
-                github = context.github
-                log = DiscussionSessionLog.in_checkout(
-                    github, context.checkout.git, context.remote, context.settings
-                )
                 return UpstreamMergeFollowing(
-                    context.remote.repository,
+                    session.remote.repository,
                     github,
                     github,
                     github,
                     GitHubRepository.from_environment,
-                    SessionPullRequestClosing(
-                        github,
-                        github,
-                        github,
-                        log,
-                        github,
-                        PullRequestOpenedLabelling(github, github),
-                    ),
-                    StackPlacement(github, github, github, github),
+                    session.session_closing,
+                    session.placement,
                 )
             case SectionName.FRESHNESS:
-                return FreshnessReport(
-                    BranchFreshening(
-                        WritePolicy(context.checkout, context.remote, context.github),
-                        context.github,
-                        context.github,
-                    )
-                )
+                return FreshnessReport(session.freshening)
 
 
 # %% entry point
@@ -149,14 +111,9 @@ def main() -> None:
     """
     Compute the section the command line names, and print its lines.
     """
-    checkout = ProjectCheckout.containing(Path.cwd())
-    settings = WorkflowSettings()
-    remote = OwnedRemotes.read(checkout.git, settings).chosen
-    context = SectionContext(
-        checkout, remote, GitHubRepository.from_environment(remote.repository), settings
-    )
-    for line in SectionName(sys.argv[1]).section(context).lines():
-        print(line.json())
+    session = WorkflowSession(Path.cwd(), WorkflowSettings())
+    for line in SectionName(sys.argv[1]).section(session).lines():
+        print(line.to_json())
 
 
 if __name__ == "__main__":

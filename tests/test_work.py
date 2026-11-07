@@ -28,7 +28,8 @@ from basstler_domain_model.github.stack_models import Stack
 from basstler_domain_model.github.vocabulary import ClosingKeyword, PullRequestState
 from basstler_domain_model.repository import Repository
 
-from github_workflow.__main__ import WorkflowSession
+from github_workflow.command_line import RunnableCommand
+from github_workflow.session import WorkflowSession
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.command_line import WorkflowCommand
 from github_workflow.environment import WorkflowVariable
@@ -73,7 +74,6 @@ from github_workflow.work import (
     LocalBranchFollowing,
     MergeAbort,
     MergeCompletion,
-    MergeInProgress,
     PullRequestBranches,
     PullRequestMerge,
     PullRequestRetirement,
@@ -885,7 +885,7 @@ def test_a_conflicting_merge_is_left_in_progress_naming_its_files(
         base_merge(work).run()
 
     assert raised.value.files == ("a.txt",)
-    assert MergeInProgress(git).exists()
+    assert git.merge_in_progress()
 
 
 # %% finishing or undoing a conflicting merge
@@ -921,7 +921,7 @@ def test_a_resolved_merge_is_committed_as_the_person(
     parents = git.run("log", "--max-count=1", "--format=%P").split()
     assert (len(parents), git.contains(other.commit_at("HEAD"), "HEAD")) == (2, True)
     assert Attribution.ACKNOWLEDGEMENT in last_message(git)
-    assert not MergeInProgress(git).exists()
+    assert not git.merge_in_progress()
 
 
 def test_a_file_still_marking_a_conflict_is_refused(
@@ -932,7 +932,7 @@ def test_a_file_still_marking_a_conflict_is_refused(
     with pytest.raises(ConflictMarkersLeftError):
         MergeCompletion(work, [Path("a.txt")]).run()
 
-    assert MergeInProgress(work.checkout.git).exists()
+    assert work.checkout.git.merge_in_progress()
 
 
 def test_a_conflicting_file_left_out_is_refused(
@@ -944,7 +944,7 @@ def test_a_conflicting_file_left_out_is_refused(
     with pytest.raises(UnresolvedConflictError):
         MergeCompletion(work, [Path("b.txt")]).run()
 
-    assert MergeInProgress(work.checkout.git).exists()
+    assert work.checkout.git.merge_in_progress()
 
 
 def test_an_undone_merge_leaves_the_branch_as_it_was(
@@ -1312,7 +1312,7 @@ def test_a_clone_from_inside_a_checkout_goes_next_to_it(
 ):
     checkout = repositories.clone(owned_url, "mine")
     repository = Repository(settings.owner, "another")
-    arguments = WorkflowSession.parser().parse_args(
+    arguments = RunnableCommand.parser().parse_args(
         [WorkflowCommand.CLONE, repository.full_name]
     )
 
@@ -1334,7 +1334,7 @@ def test_somebody_else_s_repository_is_cloned_into_the_plugin_s_data(
     upstream = Repository(
         RepositoriesByOwner.foreign_owner, RepositoriesByOwner.repository_name
     )
-    arguments = WorkflowSession.parser().parse_args(
+    arguments = RunnableCommand.parser().parse_args(
         [WorkflowCommand.CLONE, upstream.full_name]
     )
 
@@ -1356,7 +1356,7 @@ def test_somebody_else_s_repository_is_not_cloned_without_the_plugin_s_data(
     upstream = Repository(
         RepositoriesByOwner.foreign_owner, RepositoriesByOwner.repository_name
     )
-    arguments = WorkflowSession.parser().parse_args(
+    arguments = RunnableCommand.parser().parse_args(
         [WorkflowCommand.CLONE, upstream.full_name]
     )
 
@@ -1390,7 +1390,7 @@ def test_a_clone_from_outside_a_checkout_goes_into_the_directory(
     tmp_path: Path, settings: WorkflowSettings
 ):
     repository = Repository(settings.owner, "another")
-    arguments = WorkflowSession.parser().parse_args(
+    arguments = RunnableCommand.parser().parse_args(
         [WorkflowCommand.CLONE, repository.full_name]
     )
 

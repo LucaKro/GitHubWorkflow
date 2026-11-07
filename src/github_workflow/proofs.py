@@ -21,6 +21,7 @@ from basstler_domain_model.commands import CommandRunner
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
 from basstler_domain_model.github.issue_models import IssueComment
 
+from github_workflow.branch_tips import BranchTip
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.environment import PythonVariable
 from github_workflow.exceptions import (
@@ -29,6 +30,7 @@ from github_workflow.exceptions import (
     PassingTestError,
 )
 from github_workflow.locations import ProofFile, WorkflowTemplate
+from github_workflow.workflow_templates import TemplatePlaceholder
 from github_workflow.workspace import PackageDirectories
 
 # %% the test and where it ran
@@ -78,27 +80,6 @@ class FindingTest:
         return cls(located.relative_to(root), located.read_text())
 
 
-@dataclass(frozen=True)
-class BranchTip:
-    """
-    The commit a branch was at when it was read.
-    """
-
-    branch: str
-    """
-    The branch.
-    """
-
-    commit: str
-    """
-    The commit it was at.
-    """
-
-    def __str__(self) -> str:
-        """:return: The branch and its commit, abbreviated."""
-        return f"{self.branch} at {self.commit[:7]}"
-
-
 # %% how a test fared
 
 
@@ -108,6 +89,9 @@ class MissingFileException(StrEnum):
     """
 
     FILE_NOT_FOUND_ERROR = "FileNotFoundError"
+    """
+    Python's exception for a file that is not there.
+    """
 
 
 class BrokenTestException(StrEnum):
@@ -467,47 +451,6 @@ class ProofMarker(StrEnum):
     """
 
 
-class ProofPlaceholder(StrEnum):
-    """
-    The names the proof comment template leaves to be filled in.
-    """
-
-    RECORD = "__RECORD__"
-    """
-    The record, between its markers.
-    """
-
-    BRANCH = "__BRANCH__"
-    """
-    The default branch the test failed on.
-    """
-
-    COMMIT = "__COMMIT__"
-    """
-    The commit it failed on.
-    """
-
-    FAILURE = "__FAILURE__"
-    """
-    pytest's message on the failure.
-    """
-
-    PATH = "__PATH__"
-    """
-    The test's path in the repository.
-    """
-
-    FENCE = "__FENCE__"
-    """
-    The backticks fencing the test's text, more than any run of them inside it.
-    """
-
-    SOURCE = "__SOURCE__"
-    """
-    The test's text.
-    """
-
-
 @dataclass(frozen=True)
 class Proof:
     """
@@ -529,7 +472,7 @@ class Proof:
     The first line of pytest's message on the first failed test.
     """
 
-    def json(self) -> dict[str, str]:
+    def to_json(self) -> dict[str, str]:
         """:return: The proof as the record its comment carries."""
         return {
             ProofKey.PATH: str(self.test.path),
@@ -556,22 +499,22 @@ class Proof:
         :return: The comment posting the proof on the finding's issue, for a person to
             read and :meth:`posted_in` to read back.
         """
-        record = json.dumps(self.json()).replace(">", "\\u003e")
+        record = json.dumps(self.to_json()).replace(">", "\\u003e")
         backtick_runs = re.findall("`+", self.test.source)
         fence = "`" * max([3, *(len(run) + 1 for run in backtick_runs)])
-        values = {
-            ProofPlaceholder.RECORD: f"{ProofMarker.START}{record}{ProofMarker.END}",
-            ProofPlaceholder.BRANCH: self.tip.branch,
-            ProofPlaceholder.COMMIT: self.tip.commit,
-            ProofPlaceholder.FAILURE: self.failure,
-            ProofPlaceholder.PATH: str(self.test.path),
-            ProofPlaceholder.FENCE: fence,
-            ProofPlaceholder.SOURCE: self.test.source.rstrip("\n"),
-        }
-        return re.sub(
-            "|".join(map(re.escape, ProofPlaceholder)),
-            lambda placeholder: values[ProofPlaceholder(placeholder.group())],
+        return TemplatePlaceholder.fill(
             WorkflowTemplate.PROOF_COMMENT.read_text(),
+            {
+                TemplatePlaceholder.RECORD: (
+                    f"{ProofMarker.START}{record}{ProofMarker.END}"
+                ),
+                TemplatePlaceholder.BRANCH: self.tip.branch,
+                TemplatePlaceholder.COMMIT: self.tip.commit,
+                TemplatePlaceholder.FAILURE: self.failure,
+                TemplatePlaceholder.PATH: str(self.test.path),
+                TemplatePlaceholder.FENCE: fence,
+                TemplatePlaceholder.SOURCE: self.test.source.rstrip("\n"),
+            },
         )
 
     @classmethod

@@ -30,7 +30,7 @@ def test_a_line_is_shown_in_its_tone_s_colour(tone: Tone):
 def test_a_line_handed_between_processes_arrives_unchanged(tone: Tone):
     line = ReportLine("github-workflow: something", tone)
 
-    assert ReportLine.from_json(line.json()) == line
+    assert ReportLine.from_json(line.to_json()) == line
 
 
 # %% the whole report
@@ -39,7 +39,7 @@ def test_a_line_handed_between_processes_arrives_unchanged(tone: Tone):
 def test_the_model_gets_the_lines_without_colour():
     lines = [ReportLine("first", Tone.NEWS), ReportLine("second", Tone.ACTION)]
 
-    answer = json.loads(SessionStartReport(lines).json())
+    answer = json.loads(SessionStartReport(lines).to_json())
 
     assert answer[HookKey.SYSTEM_MESSAGE] == "\n".join(line.shown for line in lines)
     context = answer[HookKey.HOOK_SPECIFIC_OUTPUT][HookKey.ADDITIONAL_CONTEXT]

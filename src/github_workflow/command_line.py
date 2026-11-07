@@ -1,29 +1,37 @@
 """
-The commands ``python -m github_workflow`` takes: the only way the workflow's agent
-writes to git and GitHub.
+The commands ``python -m github_workflow`` takes, the only way the workflow's agent
+writes to git and GitHub: each command's words, who may run it, and the arguments it
+takes, from which its parser and every line naming it are built.
+
+Runs on the standard library alone, like :mod:`github_workflow.guard`, which reads it.
 """
 
 from __future__ import annotations
 
+import argparse
 import shutil
 import sys
-from enum import StrEnum
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from enum import Enum, StrEnum, auto
 from pathlib import Path
+from typing import Any
 
 import github_workflow
-from github_workflow.install import DomainModelSource, Launcher, LauncherInstallation
+from github_workflow.install import Launcher, LauncherInstallation, ToolRepository
 
-# %% the commands
+# %% the words
 
 
 class WorkflowCommand(StrEnum):
     """
-    The commands ``python -m github_workflow`` takes.
+    The commands ``python -m github_workflow`` takes, each with its subcommands, if any,
+    in :class:`RunnableCommand`.
     """
 
     BRANCH = "branch"
     """
-    Start a work branch, or switch to one.
+    Start a work branch, switch to one, or discard one.
     """
 
     COMMIT = "commit"
@@ -282,25 +290,1065 @@ class NotesSubcommand(StrEnum):
     """
 
 
-# %% where to report the workflow itself
-
-
-class ToolRepository(StrEnum):
+class CommandOption(StrEnum):
     """
-    The repositories the workflow is built from, where a session files what the
-    workflow refused unnecessarily or lacks.
+    The options the commands take, each spelled once.
     """
 
-    WORKFLOW = "LucaKro/GitHubWorkflow"
+    ON = "--on"
     """
-    The workflow itself: the guard, the hooks and the commands.
+    The pull request or branch a command builds on or runs on.
     """
 
-    DOMAIN_MODEL = DomainModelSource.REPOSITORY.value.removeprefix(
-        "https://github.com/"
+    TITLE = "--title"
+    """
+    A pull request's, finding's or idea's title.
+    """
+
+    BODY_FILE = "--body-file"
+    """
+    The file holding a description, a comment or a reply.
+    """
+
+    REPLACES = "--replaces"
+    """
+    The pull request a draft replaces.
+    """
+
+    FINDING = "--finding"
+    """
+    The finding a draft works on.
+    """
+
+    PYTHON = "--python"
+    """
+    The interpreter the project's tests run with.
+    """
+
+    UPSTREAM = "--upstream"
+    """
+    Sync the fork's default branch with its upstream's instead.
+    """
+
+    BASE = "--base"
+    """
+    Sync by merging the default branch into the work branch instead.
+    """
+
+    CONTINUE = "--continue"
+    """
+    Commit the merge in progress instead, once its conflicts are resolved.
+    """
+
+    ABORT = "--abort"
+    """
+    Undo the merge in progress instead.
+    """
+
+    PRIORITY = "--priority"
+    """
+    How urgent a finding is.
+    """
+
+    TEST = "--test"
+    """
+    The uncommitted test file proving a finding.
+    """
+
+    REPOSITORY = "--repository"
+    """
+    Another of the owner's repositories a finding is on.
+    """
+
+    REASON = "--reason"
+    """
+    Why a finding is rejected, or unproven.
+    """
+
+    FIXED_BY = "--fixed-by"
+    """
+    The merged pull request fixing a finding.
+    """
+
+    CATEGORY = "--category"
+    """
+    The discussion category an idea is posted in.
+    """
+
+    ADD = "--add"
+    """
+    A label to add.
+    """
+
+    REMOVE = "--remove"
+    """
+    A label to remove.
+    """
+
+    MESSAGE = "--message"
+    """
+    A commit's message.
+    """
+
+
+class PriorityLevel(StrEnum):
+    """
+    How urgent a finding is, as the command line names it, each with what it means.
+    """
+
+    meaning: str
+    """
+    What the level means, in a few words.
+    """
+
+    def __new__(cls, level: str, meaning: str) -> PriorityLevel:
+        """
+        :param level: The level, as the command line takes it.
+        :param meaning: What it means.
+        :return: The member.
+        """
+        member = str.__new__(cls, level)
+        member._value_ = level
+        member.meaning = meaning
+        return member
+
+    CRITICAL = ("critical", "Breaks the default branch, security, or data")
+    """
+    Worked on before anything else.
+    """
+
+    HIGH = ("high", "Wrong behaviour in normal use")
+    """
+    Worked on next.
+    """
+
+    MEDIUM = ("medium", "Wrong in edge cases, or a maintainability risk")
+    """
+    Worked on when nothing more urgent waits.
+    """
+
+    LOW = ("low", "Cosmetic, or cleanup")
+    """
+    Worked on last.
+    """
+
+    @classmethod
+    def guide(cls) -> str:
+        """:return: What each level means, in one line."""
+        return "; ".join(f"{level}: {level.meaning}" for level in cls)
+
+
+# %% who runs a command
+
+
+class CommandAuthority(Enum):
+    """
+    Whose decision runs a command.
+    """
+
+    SESSION = auto()
+    """
+    A session runs it on its own, without asking.
+    """
+
+    OWN_PULL_REQUEST = auto()
+    """
+    A session runs it on its own on the work branch's own pull request, naming no
+    number; naming another's is the person's word.
+    """
+
+    PERSONS_WORD = auto()
+    """
+    A session runs it only on the person's word.
+    """
+
+    PERSON = auto()
+    """
+    Only the person runs it, never a session, even with the person's go-ahead.
+    """
+
+
+# %% the arguments
+
+
+class ArgumentCount(Enum):
+    """
+    How many values an argument takes.
+    """
+
+    ONE = auto()
+    """
+    Exactly one.
+    """
+
+    OPTIONAL = auto()
+    """
+    One, or none for a positional argument that may be left out.
+    """
+
+    SEVERAL = auto()
+    """
+    One or more.
+    """
+
+    REPEATED = auto()
+    """
+    One each time the option is given; the option may be given several times.
+    """
+
+    NONE = auto()
+    """
+    None: the option is a flag, true when given.
+    """
+
+
+@dataclass(frozen=True)
+class CommandArgument:
+    """
+    One argument a command takes: an option, or a positional argument.
+    """
+
+    name: str
+    """
+    The option, or the positional argument's name, which the parsed command line holds
+    its value under.
+    """
+
+    placeholder: str = ""
+    """
+    What a line naming the command shows in place of the value, empty for a flag.
+    """
+
+    description: str | None = None
+    """
+    What the argument is, as ``--help`` shows it.
+    """
+
+    value_type: Callable[[str], Any] | None = None
+    """
+    What the value is converted to, ``None`` to keep it text.
+    """
+
+    required: bool = False
+    """
+    Whether an option has to be given.
+    """
+
+    count: ArgumentCount = ArgumentCount.ONE
+    """
+    How many values it takes.
+    """
+
+    default: str | None = None
+    """
+    The value when it is left out.
+    """
+
+    choices: tuple[str, ...] = ()
+    """
+    The values it takes, any when empty.
+    """
+
+    destination: str | None = None
+    """
+    The name the parsed command line holds an option's value under, when it is not the
+    option's own.
+    """
+
+    alternative: bool = False
+    """
+    Whether it excludes the command's other alternative arguments.
+    """
+
+    short_name: str | None = None
+    """
+    The option's one-letter form, if any.
+    """
+
+    @classmethod
+    def interpreter(cls) -> CommandArgument:
+        """
+        The interpreter a command running a test runs it with.
+        """
+        return cls(
+            CommandOption.PYTHON,
+            "interpreter",
+            "the interpreter the project's tests run with (default: %(default)s)",
+            default="python",
+        )
+
+    @classmethod
+    def priority(cls) -> CommandArgument:
+        """
+        How urgent a finding is.
+        """
+        return cls(
+            CommandOption.PRIORITY,
+            "level",
+            PriorityLevel.guide(),
+            required=True,
+            choices=tuple(PriorityLevel),
+        )
+
+    @classmethod
+    def other_repository(cls, alternative: bool = False) -> CommandArgument:
+        """
+        :param alternative: Whether it excludes the command's other alternative
+            arguments.
+        :return: Another of the owner's repositories a finding is on.
+        """
+        return cls(
+            CommandOption.REPOSITORY,
+            "owner/name",
+            "another of the owner's repositories, as owner/name, no checkout needed; "
+            "the checkout's when left out",
+            alternative=alternative,
+        )
+
+    @classmethod
+    def branch_to_run_on(cls) -> CommandArgument:
+        """
+        The branch a finding's test runs on.
+        """
+        return cls(
+            CommandOption.ON,
+            "pull request or branch",
+            "an open pull request's number, or a branch, of the owner's repository to "
+            "run the test on; the default branch when left out",
+        )
+
+    @classmethod
+    def body_file(
+        cls, description: str | None = None, required: bool = True
+    ) -> CommandArgument:
+        """
+        :param description: What the file holds, as ``--help`` shows it.
+        :param required: Whether it has to be given.
+        :return: The file holding a text the command writes.
+        """
+        return cls(CommandOption.BODY_FILE, "file", description, Path, required)
+
+    @classmethod
+    def number(cls, description: str | None = None) -> CommandArgument:
+        """
+        :param description: What it is the number of, as ``--help`` shows it.
+        :return: The number of an issue or pull request.
+        """
+        return cls("number", "number", description, int)
+
+    @property
+    def is_option(self) -> bool:
+        """:return: Whether it is an option rather than a positional argument."""
+        return self.name.startswith("-")
+
+    def shown(self, value: str | None = None) -> str:
+        """
+        :param value: The value shown, ``None`` for the placeholder.
+        :return: The argument as a line naming the command shows it.
+        """
+        shown = f"<{self.placeholder}>" if value is None else value
+        if self.count is ArgumentCount.SEVERAL and value is None:
+            shown += "..."
+        if not self.is_option:
+            return shown
+        if self.count is ArgumentCount.NONE:
+            return self.name
+        return f"{self.name} {shown}"
+
+    def add_to(self, parser: argparse._ActionsContainer) -> None:
+        """
+        :param parser: The parser, or a group of its arguments, to add the argument to.
+        """
+        names = [self.short_name, self.name] if self.short_name else [self.name]
+        keywords: dict[str, Any] = {"help": self.description}
+        if self.count is ArgumentCount.NONE:
+            parser.add_argument(*names, action="store_true", **keywords)
+            return
+        if self.value_type is not None:
+            keywords["type"] = self.value_type
+        if self.default is not None:
+            keywords["default"] = self.default
+        if self.choices:
+            keywords["choices"] = self.choices
+        if self.destination is not None:
+            keywords["dest"] = self.destination
+        match self.count:
+            case ArgumentCount.OPTIONAL:
+                keywords["nargs"] = "?"
+            case ArgumentCount.SEVERAL:
+                keywords["nargs"] = "+"
+            case ArgumentCount.REPEATED:
+                keywords["action"] = "append"
+        if self.is_option:
+            keywords["required"] = self.required
+            keywords["metavar"] = self.placeholder.upper().replace(" ", "_")
+        parser.add_argument(*names, **keywords)
+
+
+# %% the commands
+
+
+@dataclass(eq=False)
+class CommandSpecification:
+    """
+    One command line the workflow runs: its words, who runs it, and what it takes.
+    """
+
+    words: tuple[str, ...]
+    """
+    The command and its subcommand, if any.
+    """
+
+    summary: str
+    """
+    What it does, as ``--help`` lists it.
+    """
+
+    authority: CommandAuthority
+    """
+    Whose decision runs it.
+    """
+
+    arguments: tuple[CommandArgument, ...] = ()
+    """
+    What it takes.
+    """
+
+    def argument(self, name: str) -> CommandArgument:
+        """
+        :param name: An option, or a positional argument's name.
+        :return: The argument of this command of that name.
+        :raises KeyError: If the command takes none.
+        """
+        return {argument.name: argument for argument in self.arguments}[name]
+
+    def words_naming(
+        self,
+        *shown: str,
+        optional: Sequence[str] = (),
+        values: Mapping[str, str] | None = None,
+    ) -> list[str]:
+        """
+        :param shown: The arguments shown, by name, in order.
+        :param optional: Further arguments shown, by name, marked as optional.
+        :param values: The value shown for an argument, by name, in place of its
+            placeholder.
+        :return: The command's words followed by the arguments.
+        :raises KeyError: If the command takes no argument of a name.
+        """
+        given = values or {}
+        named = [self.argument(name).shown(given.get(name)) for name in shown]
+        named += [
+            f"[{self.argument(name).shown(given.get(name))}]" for name in optional
+        ]
+        return [*self.words, *named]
+
+    def usage(
+        self,
+        *shown: str,
+        optional: Sequence[str] = (),
+        values: Mapping[str, str] | None = None,
+    ) -> str:
+        """
+        :param shown: The arguments shown, by name, in order.
+        :param optional: Further arguments shown, by name, marked as optional.
+        :param values: The value shown for an argument, by name, in place of its
+            placeholder.
+        :return: The command line running the command with the interpreter the package
+            runs in, as :meth:`WorkflowCommand.command_line` names it.
+        :raises KeyError: If the command takes no argument of a name.
+        """
+        return WorkflowCommand.command_line(
+            *self.words_naming(*shown, optional=optional, values=values)
+        )
+
+    def runs_unasked(self, words: Sequence[str]) -> bool:
+        """
+        :param words: The words of a command line running this command, options left
+            out.
+        :return: Whether a session runs that line on its own.
+        """
+        match self.authority:
+            case CommandAuthority.SESSION:
+                return True
+            case CommandAuthority.OWN_PULL_REQUEST:
+                return not any(word.isdigit() for word in words[len(self.words) :])
+        return False
+
+
+class RunnableCommand(CommandSpecification, Enum):
+    """
+    Every command line the workflow runs.
+    """
+
+    BRANCH_START = (
+        (WorkflowCommand.BRANCH, BranchSubcommand.START),
+        "start a work branch",
+        CommandAuthority.SESSION,
+        (
+            CommandArgument("name", "name"),
+            CommandArgument(CommandOption.ON, "branch", "the branch to start from"),
+        ),
     )
     """
-    The model of git and GitHub the workflow is built on.
+    ``branch start``.
+    """
+
+    BRANCH_SWITCH = (
+        (WorkflowCommand.BRANCH, BranchSubcommand.SWITCH),
+        "switch to a branch",
+        CommandAuthority.SESSION,
+        (CommandArgument("name", "branch"),),
+    )
+    """
+    ``branch switch``.
+    """
+
+    BRANCH_DISCARD = (
+        (WorkflowCommand.BRANCH, BranchSubcommand.DISCARD),
+        "mark a pushed branch as thrown away, for the cleanup to delete",
+        CommandAuthority.SESSION,
+        (
+            CommandArgument(
+                "name",
+                "branch",
+                "the branch, the checked-out one when left out",
+                count=ArgumentCount.OPTIONAL,
+            ),
+        ),
+    )
+    """
+    ``branch discard``.
+    """
+
+    COMMIT = (
+        (WorkflowCommand.COMMIT,),
+        "commit files",
+        CommandAuthority.SESSION,
+        (
+            CommandArgument(
+                CommandOption.MESSAGE, "message", required=True, short_name="-m"
+            ),
+            CommandArgument(
+                "paths", "paths", value_type=Path, count=ArgumentCount.SEVERAL
+            ),
+        ),
+    )
+    """
+    ``commit``.
+    """
+
+    PUSH = ((WorkflowCommand.PUSH,), "push the work branch", CommandAuthority.SESSION)
+    """
+    ``push``.
+    """
+
+    DRAFT = (
+        (WorkflowCommand.DRAFT,),
+        "open a draft",
+        CommandAuthority.SESSION,
+        (
+            CommandArgument(CommandOption.TITLE, "title", required=True),
+            CommandArgument.body_file(),
+            CommandArgument(
+                CommandOption.ON, "pull request", "the pull request to stack it on", int
+            ),
+            CommandArgument(
+                CommandOption.REPLACES,
+                "old",
+                "the pull request it replaces, closed once it is open",
+                int,
+            ),
+            CommandArgument(
+                CommandOption.FINDING,
+                "number",
+                "the accepted, proven finding it works on, rechecked first",
+                int,
+            ),
+            CommandArgument.interpreter(),
+        ),
+    )
+    """
+    ``draft``.
+    """
+
+    SYNC = (
+        (WorkflowCommand.SYNC,),
+        "bring the branch up to date",
+        CommandAuthority.SESSION,
+        (
+            CommandArgument(
+                CommandOption.UPSTREAM,
+                description="instead, fast-forward a fork's default branch to its upstream's",
+                count=ArgumentCount.NONE,
+                alternative=True,
+            ),
+            CommandArgument(
+                CommandOption.BASE,
+                description="instead, merge GitHub's default branch into the work branch",
+                count=ArgumentCount.NONE,
+                alternative=True,
+            ),
+            CommandArgument(
+                CommandOption.ON,
+                "number",
+                "instead, merge the branch of this open pull request into the work "
+                "branch, to build on it",
+                int,
+                alternative=True,
+            ),
+            CommandArgument(
+                CommandOption.CONTINUE,
+                "file",
+                "instead, commit the merge in progress, once these files it left "
+                "conflicting are resolved",
+                Path,
+                count=ArgumentCount.SEVERAL,
+                destination="resolved",
+                alternative=True,
+            ),
+            CommandArgument(
+                CommandOption.ABORT,
+                description="instead, undo the merge in progress",
+                count=ArgumentCount.NONE,
+                alternative=True,
+            ),
+        ),
+    )
+    """
+    ``sync``.
+    """
+
+    STACK_ON = (
+        (WorkflowCommand.STACK, StackSubcommand.ON),
+        "put above on below",
+        CommandAuthority.PERSONS_WORD,
+        (
+            CommandArgument("below", "below", value_type=int),
+            CommandArgument("above", "above", value_type=int),
+        ),
+    )
+    """
+    ``stack on``.
+    """
+
+    NOTES_SAVE = (
+        (WorkflowCommand.NOTES, NotesSubcommand.SAVE),
+        "save the notes block",
+        CommandAuthority.SESSION,
+    )
+    """
+    ``notes save``.
+    """
+
+    FINDING_FILE = (
+        (WorkflowCommand.FINDING, FindingSubcommand.FILE),
+        "file something noticed outside the current work",
+        CommandAuthority.SESSION,
+        (
+            CommandArgument.priority(),
+            CommandArgument(CommandOption.TITLE, "title", required=True),
+            CommandArgument.body_file(),
+            CommandArgument(
+                CommandOption.TEST,
+                "file",
+                "an uncommitted test file failing on the default branch, proving it",
+                Path,
+                alternative=True,
+            ),
+            CommandArgument.other_repository(alternative=True),
+            CommandArgument.interpreter(),
+        ),
+    )
+    """
+    ``finding file``.
+    """
+
+    FINDING_PRIORITIZE = (
+        (WorkflowCommand.FINDING, FindingSubcommand.PRIORITIZE),
+        "give an existing issue a priority, as a finding",
+        CommandAuthority.PERSONS_WORD,
+        (CommandArgument.number("the issue"), CommandArgument.priority()),
+    )
+    """
+    ``finding prioritize``.
+    """
+
+    FINDING_LIST = (
+        (WorkflowCommand.FINDING, FindingSubcommand.LIST),
+        "list open findings",
+        CommandAuthority.SESSION,
+        (CommandArgument.other_repository(),),
+    )
+    """
+    ``finding list``.
+    """
+
+    FINDING_ACCEPT = (
+        (WorkflowCommand.FINDING, FindingSubcommand.ACCEPT),
+        "accept a finding, on the person's word",
+        CommandAuthority.PERSONS_WORD,
+        (CommandArgument.number(),),
+    )
+    """
+    ``finding accept``.
+    """
+
+    FINDING_SHELVE = (
+        (WorkflowCommand.FINDING, FindingSubcommand.SHELVE),
+        "set a finding aside, on the person's word",
+        CommandAuthority.PERSONS_WORD,
+        (CommandArgument.number(),),
+    )
+    """
+    ``finding shelve``.
+    """
+
+    FINDING_REJECT = (
+        (WorkflowCommand.FINDING, FindingSubcommand.REJECT),
+        "reject a finding as incorrect, on the person's word",
+        CommandAuthority.PERSONS_WORD,
+        (
+            CommandArgument.number(),
+            CommandArgument(CommandOption.REASON, "reason", required=True),
+        ),
+    )
+    """
+    ``finding reject``.
+    """
+
+    FINDING_COMMENT = (
+        (WorkflowCommand.FINDING, FindingSubcommand.COMMENT),
+        "comment on a finding, open or closed",
+        CommandAuthority.SESSION,
+        (
+            CommandArgument.number(),
+            CommandArgument.body_file(),
+            CommandArgument.other_repository(),
+        ),
+    )
+    """
+    ``finding comment``.
+    """
+
+    FINDING_EDIT = (
+        (WorkflowCommand.FINDING, FindingSubcommand.EDIT),
+        "rewrite an open finding's title or text",
+        CommandAuthority.PERSONS_WORD,
+        (
+            CommandArgument.number(),
+            CommandArgument(CommandOption.TITLE, "title"),
+            CommandArgument.body_file(required=False),
+            CommandArgument.other_repository(),
+        ),
+    )
+    """
+    ``finding edit``.
+    """
+
+    FINDING_PROVE = (
+        (WorkflowCommand.FINDING, FindingSubcommand.PROVE),
+        "prove an open finding with a test failing on the default branch, or on the "
+        "branch --on names",
+        CommandAuthority.SESSION,
+        (
+            CommandArgument.number(),
+            CommandArgument(
+                CommandOption.TEST,
+                "file",
+                "the uncommitted test file",
+                Path,
+                required=True,
+            ),
+            CommandArgument.branch_to_run_on(),
+            CommandArgument.interpreter(),
+        ),
+    )
+    """
+    ``finding prove``.
+    """
+
+    FINDING_MARK_UNPROVEN = (
+        (WorkflowCommand.FINDING, FindingSubcommand.MARK_UNPROVEN),
+        "mark an open finding no failing test could be written for",
+        CommandAuthority.SESSION,
+        (
+            CommandArgument.number(),
+            CommandArgument(CommandOption.REASON, "reason", required=True),
+        ),
+    )
+    """
+    ``finding mark-unproven``.
+    """
+
+    FINDING_RECHECK = (
+        (WorkflowCommand.FINDING, FindingSubcommand.RECHECK),
+        "run a finding's proof again on the default branch, or on the branch --on "
+        "names",
+        CommandAuthority.SESSION,
+        (
+            CommandArgument.number(),
+            CommandArgument.branch_to_run_on(),
+            CommandArgument.interpreter(),
+        ),
+    )
+    """
+    ``finding recheck``.
+    """
+
+    FINDING_CLOSE = (
+        (WorkflowCommand.FINDING, FindingSubcommand.CLOSE),
+        "close an accepted, proven finding once its fix is merged and its proof passes "
+        "on the default branch",
+        CommandAuthority.SESSION,
+        (
+            CommandArgument.number(),
+            CommandArgument(
+                CommandOption.FIXED_BY,
+                "pull request",
+                "the merged pull request",
+                int,
+                required=True,
+            ),
+            CommandArgument.interpreter(),
+        ),
+    )
+    """
+    ``finding close``.
+    """
+
+    FINDING_AUTOMATE = (
+        (WorkflowCommand.FINDING, FindingSubcommand.AUTOMATE),
+        "write the Actions workflow completing finding labels picked on GitHub",
+        CommandAuthority.PERSONS_WORD,
+    )
+    """
+    ``finding automate``.
+    """
+
+    IDEA_FILE = (
+        (WorkflowCommand.IDEA, IdeaSubcommand.FILE),
+        "queue an idea; the repository's Actions post it",
+        CommandAuthority.SESSION,
+        (
+            CommandArgument(CommandOption.TITLE, "title", required=True),
+            CommandArgument.body_file(),
+            CommandArgument(
+                CommandOption.CATEGORY,
+                "name",
+                "the discussion category, by name; the ideas category when left out",
+            ),
+        ),
+    )
+    """
+    ``idea file``.
+    """
+
+    CLEANUP = (
+        (WorkflowCommand.CLEANUP,),
+        "delete branches of closed pull requests, and clones of somebody else's "
+        "repositories no session uses",
+        CommandAuthority.SESSION,
+    )
+    """
+    ``cleanup``.
+    """
+
+    DETAILS = (
+        (WorkflowCommand.DETAILS,),
+        "what a pull request's signals are about",
+        CommandAuthority.SESSION,
+        (CommandArgument.number("the pull request"),),
+    )
+    """
+    ``details``.
+    """
+
+    DESCRIBE = (
+        (WorkflowCommand.DESCRIBE,),
+        "rewrite an open pull request's description or title",
+        CommandAuthority.OWN_PULL_REQUEST,
+        (
+            CommandArgument(
+                "number",
+                "number",
+                "the open pull request, the work branch's own when left out",
+                int,
+                count=ArgumentCount.OPTIONAL,
+            ),
+            CommandArgument.body_file("the new description", required=False),
+            CommandArgument(CommandOption.TITLE, "title", "the new title"),
+        ),
+    )
+    """
+    ``describe``.
+    """
+
+    CLONE = (
+        (WorkflowCommand.CLONE,),
+        "clone a repository: the owner's to work in, anyone's to read",
+        CommandAuthority.SESSION,
+        (CommandArgument("repository", "owner/name", "the repository, as owner/name"),),
+    )
+    """
+    ``clone``.
+    """
+
+    LABEL = (
+        (WorkflowCommand.LABEL,),
+        "label the work branch's own pull request, without asking",
+        CommandAuthority.SESSION,
+        (
+            CommandArgument(
+                CommandOption.ADD,
+                "label",
+                "a label to add, repeatable",
+                count=ArgumentCount.REPEATED,
+            ),
+            CommandArgument(
+                CommandOption.REMOVE,
+                "label",
+                "a label to remove, repeatable",
+                count=ArgumentCount.REPEATED,
+            ),
+        ),
+    )
+    """
+    ``label``.
+    """
+
+    REVIEW_LIST = (
+        (WorkflowCommand.REVIEW, ReviewSubcommand.LIST),
+        "list the threads, each with its identifier",
+        CommandAuthority.SESSION,
+    )
+    """
+    ``review list``.
+    """
+
+    REVIEW_REPLY = (
+        (WorkflowCommand.REVIEW, ReviewSubcommand.REPLY),
+        "reply in a thread, without asking",
+        CommandAuthority.SESSION,
+        (
+            CommandArgument("comment", "comment", "the thread's identifier", int),
+            CommandArgument.body_file(),
+        ),
+    )
+    """
+    ``review reply``.
+    """
+
+    REVIEW_RESOLVE = (
+        (WorkflowCommand.REVIEW, ReviewSubcommand.RESOLVE),
+        "resolve a thread once its fix is pushed, without asking",
+        CommandAuthority.SESSION,
+        (CommandArgument("comment", "comment", "the thread's identifier", int),),
+    )
+    """
+    ``review resolve``.
+    """
+
+    REVIEW_ADDRESSED = (
+        (WorkflowCommand.REVIEW, ReviewSubcommand.ADDRESSED),
+        "say on the pull request what was changed for a review comment upstream, "
+        "without asking; nothing is written upstream",
+        CommandAuthority.SESSION,
+        (
+            CommandArgument(
+                "address",
+                "its address",
+                "the upstream comment's address, as `review list` shows it",
+            ),
+            CommandArgument.body_file("what was changed for it"),
+        ),
+    )
+    """
+    ``review addressed``.
+    """
+
+    UPSTREAM = (
+        (WorkflowCommand.UPSTREAM,),
+        "open a fork's pull request on its upstream; the person's alone",
+        CommandAuthority.PERSON,
+        (
+            CommandArgument(
+                "repository", "owner/name", "the owner's fork, as owner/name"
+            ),
+            CommandArgument(
+                "branch", "branch", "the fork's branch with the pull request"
+            ),
+        ),
+    )
+    """
+    ``upstream``.
+    """
+
+    @classmethod
+    def run_by(cls, words: Sequence[str]) -> RunnableCommand | None:
+        """
+        :param words: A workflow command line's words, options left out.
+        :return: The command they run, ``None`` when they run none.
+        """
+        return next(
+            (
+                command
+                for command in cls
+                if tuple(words[: len(command.words)]) == command.words
+            ),
+            None,
+        )
+
+    @classmethod
+    def parser(cls) -> argparse.ArgumentParser:
+        """
+        :return: The parser of every command's line, each command's words under
+            ``command`` and ``action``.
+        """
+        parser = argparse.ArgumentParser(
+            prog=WorkflowCommand.command_line(),
+            description=__doc__.strip().splitlines()[0],
+        )
+        parser.set_defaults(action=None)
+        commands = parser.add_subparsers(dest="command", required=True)
+        subcommands: dict[str, argparse._SubParsersAction] = {}
+        for command in cls:
+            first = command.words[0]
+            if len(command.words) == 1:
+                command.add_arguments_to(
+                    commands.add_parser(first, help=command.summary)
+                )
+                continue
+            if first not in subcommands:
+                actions = ", ".join(
+                    other.words[1] for other in cls if other.words[0] == first
+                )
+                group = commands.add_parser(first, help=actions)
+                subcommands[first] = group.add_subparsers(dest="action", required=True)
+            command.add_arguments_to(
+                subcommands[first].add_parser(command.words[1], help=command.summary)
+            )
+        return parser
+
+    def add_arguments_to(self, parser: argparse.ArgumentParser) -> None:
+        """
+        :param parser: The command's own parser, given each of its arguments.
+        """
+        alternatives = (
+            parser.add_mutually_exclusive_group()
+            if any(argument.alternative for argument in self.arguments)
+            else None
+        )
+        for argument in self.arguments:
+            argument.add_to(alternatives if argument.alternative else parser)
+
+
+# %% what a session does about a refusal
+
+
+class RefusalAdvice:
+    """
+    What a session is told about the workflow's refusals.
     """
 
     @classmethod
@@ -315,7 +1363,7 @@ class ToolRepository(StrEnum):
         )
 
     @classmethod
-    def refusal_pointer(cls) -> str:
+    def pointer(cls) -> str:
         """
         :return: What ends every refusal: never to get around it, and where the notes
             say how to report one that was unnecessary.
@@ -326,32 +1374,30 @@ class ToolRepository(StrEnum):
         )
 
     @classmethod
-    def refusal_hint(cls) -> str:
+    def hint(cls) -> str:
         """
         :return: What a session does about a refusal, never getting around it, for the
             notes header.
         """
-        listing = WorkflowCommand.command_line(
-            WorkflowCommand.FINDING,
-            FindingSubcommand.LIST,
-            "--repository",
-            cls.WORKFLOW,
+        listing = RunnableCommand.FINDING_LIST.usage(
+            CommandOption.REPOSITORY,
+            values={CommandOption.REPOSITORY: ToolRepository.WORKFLOW},
         )
-        filing = WorkflowCommand.command_line(
-            WorkflowCommand.FINDING,
-            FindingSubcommand.FILE,
-            "--repository",
-            cls.WORKFLOW,
+        filing = RunnableCommand.FINDING_FILE.usage(
+            CommandOption.REPOSITORY,
+            CommandOption.PRIORITY,
+            CommandOption.TITLE,
+            CommandOption.BODY_FILE,
+            values={CommandOption.REPOSITORY: ToolRepository.WORKFLOW},
         )
-        attachable = " and ".join(cls)
+        attachable = " and ".join(ToolRepository)
         return (
             f"{cls.workaround_ban()} "
             f"When the workflow refuses something unnecessarily or lacks it, check "
-            f"`{listing}` and file it there without asking first: `{filing} "
-            f"--priority <level> --title "
-            f"<title> --body-file <file>`, with what you ran, what happened and what "
-            f"should have; for git and GitHub themselves, --repository "
-            f"{cls.DOMAIN_MODEL}. A cloud session reaches only the repositories "
-            f"attached to it: attach {attachable} with push access without asking, "
-            f"never another account's copy of either."
+            f"`{listing}` and file it there without asking first: `{filing}`, with "
+            f"what you ran, what happened and what should have; for git and GitHub "
+            f"themselves, {CommandOption.REPOSITORY} {ToolRepository.DOMAIN_MODEL}. A "
+            f"cloud session reaches only the repositories attached to it: attach "
+            f"{attachable} with push access without asking, never another account's "
+            f"copy of either."
         )

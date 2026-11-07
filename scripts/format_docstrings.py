@@ -1,170 +1,153 @@
 """
-Pre-commit entry point that formats Python files with black, then applies docformatter
-only where its output stays stable under a second black pass.
+Pre-commit entry point that formats Python files with black, then keeps docformatter's
+changes only where a second black pass leaves them as they are.
 
-docformatter can miscount the blank lines it leaves after an attribute docstring that
-immediately precedes a decorated top-level class or function definition (it forgets to
-special-case the decorator), so it sometimes undoes exactly what black then re-adds. Re-
-running both tools forever would never converge for those files, so this script keeps
-the plain black-formatted content for a file whenever docformatter's result does not
-survive a subsequent black pass unchanged.
+Usage: ``python scripts/format_docstrings.py <file>...``; exits with
+:attr:`HookStatus.CHANGED` when it rewrote a file.
 """
 
 from __future__ import annotations
 
-import logging
 import subprocess
 import sys
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import IntEnum
 from pathlib import Path
 
-from tqdm import tqdm
-from typing_extensions import Sequence
-
-REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
-DOCFORMATTER_CONFIG_PATH = REPOSITORY_ROOT / "pyproject.toml"
-
-logger = logging.getLogger(__name__)
+# %% the tools' exit statuses
 
 
-@dataclass
-class FileFormattingOutcome:
+class DocformatterStatus(IntEnum):
     """
-    The result of formatting a single file.
+    The statuses docformatter exits with when it ran.
+    """
+
+    UNCHANGED = 0
+    """
+    It left the file as it was.
+    """
+
+    CHANGED = 3
+    """
+    It rewrote the file.
+    """
+
+
+class HookStatus(IntEnum):
+    """
+    The statuses this hook exits with, as pre-commit reads a formatter's.
+    """
+
+    UNCHANGED = 0
+    """
+    No file was rewritten.
+    """
+
+    CHANGED = 1
+    """
+    A file was rewritten, so the commit is stopped for it to be staged.
+    """
+
+
+# %% formatting one file
+
+
+@dataclass(frozen=True)
+class FileFormatting:
+    """
+    One file formatted with black and docformatter in a scratch copy.
     """
 
     path: Path
     """
-    The file that was formatted.
+    The file to format.
     """
 
-    original_content: str
+    configuration: Path
     """
-    The file's content before this hook ran.
-    """
-
-    final_content: str
-    """
-    The file's content to write back.
+    The ``pyproject.toml`` holding docformatter's settings.
     """
 
-    docstrings_reformatted: bool
-    """
-    Whether docformatter's changes were kept.
+    def formatted(self) -> str:
+        """
+        :return: The file's text formatted by black, then by docformatter where a
+            second black pass keeps docformatter's result; the text as it is when black
+            refuses it.
+        """
+        original = self.path.read_text()
+        with tempfile.TemporaryDirectory() as scratch_directory:
+            scratch = Path(scratch_directory) / self.path.name
+            scratch.write_text(original)
+            if not self.black(scratch):
+                return original
+            black_only = scratch.read_text()
+            if not self.docformatter(scratch):
+                return black_only
+            documented = scratch.read_text()
+            if not self.black(scratch) or scratch.read_text() != documented:
+                return black_only
+            return documented
 
-    False means they were discarded because they conflicted with black.
-    """
+    @staticmethod
+    def black(file: Path) -> bool:
+        """
+        :param file: A file, formatted in place.
+        :return: Whether black formatted it.
+        """
+        result = subprocess.run(["black", "--quiet", str(file)], capture_output=True)
+        return result.returncode == 0
 
-
-def _run_black(file_path: Path) -> bool:
-    """
-    Format ``file_path`` with black, in place.
-
-    :param file_path: The file to format.
-    :return: Whether black accepted and formatted the file.
-    """
-    result = subprocess.run(
-        ["black", "--quiet", str(file_path)],
-        capture_output=True,
-        text=True,
-    )
-    return result.returncode == 0
-
-
-def _run_docformatter(file_path: Path) -> bool:
-    """
-    Format ``file_path``'s docstrings with docformatter, in place.
-
-    :param file_path: The file to format.
-    :return: Whether docformatter ran successfully.
-    """
-    result = subprocess.run(
-        [
-            "docformatter",
-            "--in-place",
-            "--config",
-            str(DOCFORMATTER_CONFIG_PATH),
-            str(file_path),
-        ],
-        capture_output=True,
-        text=True,
-    )
-    # docformatter exits 3 when it changed the file and 0 when it left it alone.
-    return result.returncode in (0, 3)
-
-
-def _format_file(path: Path) -> FileFormattingOutcome:
-    """
-    Format one file, falling back to a black-only result if docformatter conflicts with
-    black.
-
-    :param path: The file to format.
-    :return: The formatting outcome for ``path``.
-    """
-    original_content = path.read_text()
-
-    with tempfile.TemporaryDirectory() as scratch_directory:
-        scratch_path = Path(scratch_directory) / path.name
-        scratch_path.write_text(original_content)
-
-        if not _run_black(scratch_path):
-            return FileFormattingOutcome(
-                path, original_content, original_content, False
-            )
-        black_only_content = scratch_path.read_text()
-
-        docformatter_succeeded = _run_docformatter(scratch_path)
-        after_docformatter_content = (
-            scratch_path.read_text() if docformatter_succeeded else None
+    def docformatter(self, file: Path) -> bool:
+        """
+        :param file: A file whose docstrings are formatted in place.
+        :return: Whether docformatter ran.
+        """
+        result = subprocess.run(
+            [
+                "docformatter",
+                "--in-place",
+                "--config",
+                str(self.configuration),
+                str(file),
+            ],
+            capture_output=True,
         )
-
-        black_succeeded_again = docformatter_succeeded and _run_black(scratch_path)
-        reconverged_content = (
-            scratch_path.read_text() if black_succeeded_again else None
-        )
-
-    docstrings_are_stable = (
-        black_succeeded_again and reconverged_content == after_docformatter_content
-    )
-    final_content = reconverged_content if docstrings_are_stable else black_only_content
-
-    return FileFormattingOutcome(
-        path=path,
-        original_content=original_content,
-        final_content=final_content,
-        docstrings_reformatted=docstrings_are_stable,
-    )
+        return result.returncode in list(DocformatterStatus)
 
 
-def main(file_arguments: Sequence[str]) -> int:
+# %% the hook
+
+
+@dataclass(frozen=True)
+class FormattingHook:
     """
-    Format each given file, writing back changes and reporting skipped docstrings.
-
-    :param file_arguments: File paths to format, as passed by pre-commit.
-    :return: 1 if any file was modified (matching pre-commit's convention for
-        autoformatting hooks), 0 otherwise.
+    The files pre-commit hands the hook, each rewritten where formatting changes it.
     """
-    any_file_changed = False
 
-    for file_argument in tqdm(file_arguments, desc="Formatting"):
-        outcome = _format_file(Path(file_argument))
-        if outcome.final_content == outcome.original_content:
-            continue
+    files: Sequence[Path]
+    """
+    The files to format.
+    """
 
-        outcome.path.write_text(outcome.final_content)
-        any_file_changed = True
+    configuration: Path = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    """
+    The ``pyproject.toml`` holding docformatter's settings.
+    """
 
-        if not outcome.docstrings_reformatted:
-            logger.info(
-                "%s: formatted with black; docformatter's changes conflicted with "
-                "black and were left as-is",
-                outcome.path,
-            )
-
-    return 1 if any_file_changed else 0
+    def run(self) -> HookStatus:
+        """
+        :return: Whether a file was rewritten.
+        """
+        status = HookStatus.UNCHANGED
+        for file in self.files:
+            formatted = FileFormatting(file, self.configuration).formatted()
+            if formatted != file.read_text():
+                file.write_text(formatted)
+                status = HookStatus.CHANGED
+        return status
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(FormattingHook([Path(argument) for argument in sys.argv[1:]]).run())

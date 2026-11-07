@@ -44,8 +44,8 @@ class ProjectCheckout:
         :param directory: A directory.
         :return: The checkout it is inside, ``None`` when it is inside none.
         """
-        root = GitCommandRunner(directory).attempt("rev-parse", "--show-toplevel")
-        return cls(GitCommandRunner(Path(root.output))) if root.succeeded else None
+        git = GitCommandRunner.enclosing(directory)
+        return None if git is None else cls(git)
 
     @property
     def root(self) -> Path:
@@ -57,14 +57,18 @@ class ProjectCheckout:
         """:return: Where ``CLAUDE.local.md`` lives in this checkout."""
         return self.root / ProjectFile.CLAUDE_LOCAL
 
+    @property
+    def claude_local_text(self) -> str:
+        """:return: ``CLAUDE.local.md``'s text, empty when it does not exist."""
+        local = self.claude_local
+        return local.read_text() if local.exists() else ""
+
     def exclude_claude_local(self) -> None:
         """
         Add ``CLAUDE.local.md`` to the repository's own ignore list, once, so it is
         never committed and no file of the project changes.
         """
-        exclude = self.root / self.git.run(
-            "rev-parse", "--git-path", str(GitFile.EXCLUDE)
-        )
+        exclude = self.git.git_path(GitFile.EXCLUDE)
         lines = exclude.read_text().splitlines() if exclude.exists() else []
         if str(ProjectFile.CLAUDE_LOCAL) in lines:
             return

@@ -1,17 +1,8 @@
 """
-Install the runtime the plugin's hooks run: a virtual environment with this plugin's own
-copy of the workflow's source and the pinned domain model's source on its path, built
-beside the one in use and switched over to only once its guard works and its commands
-load. Both are pure Python without dependencies, so nothing is built or installed, and
-no package index is reached: the only download is the domain model's source, from
-GitHub. A runtime built from this plugin, as its content is now, is left alone.
-
-Runs on the standard library alone, before any runtime exists, so it is run as a file
-rather than imported from the package. A step that fails ends it with the step and what
-the step said; the runtime in use is left as it was.
-
-Installs one at a time: an install started while another runs waits for it, and finds
-the runtime current when that one built it.
+Install the runtime the plugin's hooks run: a virtual environment holding this plugin's
+copy of the workflow's source and the domain model's source at its pinned commit, switched
+over to once its guard denies a push and its commands load; one install at a time, a
+runtime built from this plugin as it is now left alone. Runs on the standard library.
 
 Usage: ``python3 install.py [--background] <plugin directory> <runtime path>``; prints
 one line when it installed, or started installing in a process of its own, nothing when
@@ -23,7 +14,6 @@ from __future__ import annotations
 import argparse
 import fcntl
 import hashlib
-import json
 import os
 import shutil
 import subprocess
@@ -55,17 +45,34 @@ class RuntimeFile(StrEnum):
     """
 
 
-class RuntimeSource(StrEnum):
+class Distribution(StrEnum):
     """
-    The directories inside a runtime holding the source it runs.
+    The distributions the workflow runs, by the names ``pip`` installs them under.
     """
 
     WORKFLOW = "github-workflow"
     """
-    The plugin's own copy of the workflow's source.
+    The workflow itself.
     """
 
     DOMAIN_MODEL = "basstler-domain-model"
+    """
+    The model of git and GitHub the workflow is built on.
+    """
+
+
+class RuntimeSource(StrEnum):
+    """
+    The directories inside a runtime holding the source it runs, each named after its
+    distribution.
+    """
+
+    WORKFLOW = Distribution.WORKFLOW.value
+    """
+    The plugin's own copy of the workflow's source.
+    """
+
+    DOMAIN_MODEL = Distribution.DOMAIN_MODEL.value
     """
     A checkout of the domain model at its pinned commit.
     """
@@ -99,19 +106,38 @@ class UnstampedDirectory(StrEnum):
     """
 
 
+class ToolRepository(StrEnum):
+    """
+    The repositories the workflow is built from, as ``owner/name``.
+    """
+
+    WORKFLOW = "LucaKro/GitHubWorkflow"
+    """
+    The workflow itself: the guard, the hooks and the commands.
+    """
+
+    DOMAIN_MODEL = "LucaKro/basstler_domain_model"
+    """
+    The model of git and GitHub the workflow is built on.
+    """
+
+    @property
+    def owner(self) -> str:
+        """:return: The account the repository belongs to."""
+        return self.partition("/")[0]
+
+    @property
+    def url(self) -> str:
+        """:return: The repository's page on GitHub, which git also fetches from."""
+        return f"https://github.com/{self}"
+
+
 class DomainModelSource(StrEnum):
     """
-    Where the runtime takes the domain model's source from: the shared GitHub and git
-    model, public, pinned to one commit so that only a change here changes what a
-    runtime runs.
+    The commit the runtime and the Actions workflows take the domain model's source at.
     """
 
-    REPOSITORY = "https://github.com/LucaKro/basstler_domain_model"
-    """
-    The repository it is fetched from.
-    """
-
-    COMMIT = "d49c137202e9f1d5672aaad7bdb9ab82be9af72a"
+    COMMIT = "4dd8c9af90e51d07167e30e7c98e6d933736caa4"
     """
     The commit it is pinned to.
     """
@@ -299,9 +325,7 @@ class RuntimeInstallation:
         files = []
         for directory, subdirectories, names in os.walk(self.plugin):
             subdirectories[:] = [
-                name
-                for name in subdirectories
-                if name not in UnstampedDirectory._value2member_map_
+                name for name in subdirectories if name not in UnstampedDirectory
             ]
             files += [Path(directory) / name for name in names]
         digest = hashlib.sha256()
@@ -388,7 +412,7 @@ class RuntimeInstallation:
                 "fetch",
                 "--quiet",
                 "--depth=1",
-                DomainModelSource.REPOSITORY,
+                ToolRepository.DOMAIN_MODEL.url,
                 DomainModelSource.COMMIT,
             ],
             build,
@@ -403,22 +427,13 @@ class RuntimeInstallation:
         (site_packages / RuntimeFile.SOURCE_PATHS).write_text(
             f"{workflow}\n{domain_model / 'src'}\n"
         )
-        push = {"tool_name": "Bash", "tool_input": {"command": "git push"}}
         checked = subprocess.run(
-            [str(python), "-I", "-m", "github_workflow.guard"],
-            input=json.dumps(push),
+            [str(python), "-I", "-m", "github_workflow.runtime_check"],
             capture_output=True,
             text=True,
         )
-        if '"deny"' not in checked.stdout:
-            self._fail("checking the new runtime's guard", checked, build)
-        commands = subprocess.run(
-            [str(python), "-I", "-m", "github_workflow", "--help"],
-            capture_output=True,
-            text=True,
-        )
-        if commands.returncode != 0:
-            self._fail("checking the new runtime's commands", commands, build)
+        if checked.returncode != 0:
+            self._fail("checking the new runtime", checked, build)
         (build / RuntimeFile.PLUGIN).write_text(stamp)
         RuntimeSwitch(self.location).to(build)
         installed = (

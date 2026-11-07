@@ -16,6 +16,7 @@ from basstler_domain_model.environment import GitHubActionsVariable
 from basstler_domain_model.locations import PathEnumeration
 
 import github_workflow.install
+from github_workflow import runtime_check
 from github_workflow.command_line import WorkflowCommand
 from github_workflow.install import (
     DirectoryLock,
@@ -185,9 +186,9 @@ def builds_commands_check_fails(
     command: list[str], **options: object
 ) -> subprocess.CompletedProcess[str]:
     """
-    Stands in for every command a build starts: each succeeds, the new guard denies a
-    push, and creating a virtual environment leaves an interpreter in it, except that
-    loading the workflow's commands fails, as with a domain model too old for them.
+    Stands in for every command a build starts: each succeeds, and creating a virtual
+    environment leaves an interpreter in it, except that checking the new runtime fails,
+    as with a domain model too old for the workflow's commands.
 
     :param command: The command started.
     :param options: How it is started.
@@ -198,9 +199,9 @@ def builds_commands_check_fails(
         interpreter = Path(words[-1]) / "bin" / "python"
         interpreter.parent.mkdir(parents=True, exist_ok=True)
         interpreter.symlink_to(sys.executable)
-    if github_workflow.__name__ in words:
+    if runtime_check.__name__ in words:
         return subprocess.CompletedProcess(command, 1, "", "ImportError: too old")
-    return subprocess.CompletedProcess(command, 0, '{"decision": "deny"}', "")
+    return subprocess.CompletedProcess(command, 0, "", "")
 
 
 def test_a_runtime_whose_commands_do_not_load_is_not_switched_to(

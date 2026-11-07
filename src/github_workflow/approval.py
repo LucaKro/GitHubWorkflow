@@ -1,11 +1,9 @@
 """
-Which Bash command lines are a workflow command a Claude Code session runs on its own,
-which the plugin's mod approves so auto mode's classifier does not judge them: the
-launcher running one such command, with nothing around it but changing directory and
-printing part of its output.
+Which Bash command lines the plugin's mod approves, so auto mode's classifier does not
+judge them: the launcher running one workflow command a session runs on its own, with
+nothing around it but changing directory and printing part of its output.
 
-Runs on the standard library alone, like :mod:`github_workflow.guard`, so the mod can run
-it from the plugin's source.
+Runs on the standard library alone, like :mod:`github_workflow.guard`.
 
 Usage: ``python -m github_workflow.approval < command-line``; exits with
 :attr:`ApprovalStatus.APPROVED` when a session may run the line on its own, and with
@@ -19,77 +17,11 @@ import sys
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum
 
-from github_workflow.command_line import (
-    BranchSubcommand,
-    FindingSubcommand,
-    IdeaSubcommand,
-    NotesSubcommand,
-    ReviewSubcommand,
-    WorkflowCommand,
-)
+from github_workflow.command_line import RunnableCommand
 from github_workflow.guard import CommandGuard, CommandLine, SimpleCommand
 from github_workflow.install import Launcher
 
-# %% the commands
-
-
-class SessionCommand(StrEnum):
-    """
-    The workflow commands a session runs on its own, never on the person's word, by
-    their leading words.
-    """
-
-    BRANCH_START = f"{WorkflowCommand.BRANCH} {BranchSubcommand.START}"
-    BRANCH_SWITCH = f"{WorkflowCommand.BRANCH} {BranchSubcommand.SWITCH}"
-    BRANCH_DISCARD = f"{WorkflowCommand.BRANCH} {BranchSubcommand.DISCARD}"
-    COMMIT = WorkflowCommand.COMMIT.value
-    PUSH = WorkflowCommand.PUSH.value
-    DRAFT = WorkflowCommand.DRAFT.value
-    SYNC = WorkflowCommand.SYNC.value
-    NOTES_SAVE = f"{WorkflowCommand.NOTES} {NotesSubcommand.SAVE}"
-    FINDING_FILE = f"{WorkflowCommand.FINDING} {FindingSubcommand.FILE}"
-    FINDING_LIST = f"{WorkflowCommand.FINDING} {FindingSubcommand.LIST}"
-    FINDING_CLOSE = f"{WorkflowCommand.FINDING} {FindingSubcommand.CLOSE}"
-    FINDING_COMMENT = f"{WorkflowCommand.FINDING} {FindingSubcommand.COMMENT}"
-    FINDING_PROVE = f"{WorkflowCommand.FINDING} {FindingSubcommand.PROVE}"
-    FINDING_MARK_UNPROVEN = (
-        f"{WorkflowCommand.FINDING} {FindingSubcommand.MARK_UNPROVEN}"
-    )
-    FINDING_RECHECK = f"{WorkflowCommand.FINDING} {FindingSubcommand.RECHECK}"
-    IDEA_FILE = f"{WorkflowCommand.IDEA} {IdeaSubcommand.FILE}"
-    CLEANUP = WorkflowCommand.CLEANUP.value
-    DETAILS = WorkflowCommand.DETAILS.value
-    CLONE = WorkflowCommand.CLONE.value
-    LABEL = WorkflowCommand.LABEL.value
-    REVIEW_LIST = f"{WorkflowCommand.REVIEW} {ReviewSubcommand.LIST}"
-    REVIEW_REPLY = f"{WorkflowCommand.REVIEW} {ReviewSubcommand.REPLY}"
-    REVIEW_RESOLVE = f"{WorkflowCommand.REVIEW} {ReviewSubcommand.RESOLVE}"
-    REVIEW_ADDRESSED = f"{WorkflowCommand.REVIEW} {ReviewSubcommand.ADDRESSED}"
-    DESCRIBE = WorkflowCommand.DESCRIBE.value
-    """
-    Only of the work branch's own pull request: ``describe`` naming another's number is
-    the person's word.
-    """
-
-    @classmethod
-    def run_by(cls, words: list[str]) -> SessionCommand | None:
-        """
-        :param words: A workflow command's words, options left out.
-        :return: The command a session runs on its own that they run, ``None`` when
-            they run another.
-        """
-        command = next(
-            (
-                member
-                for member in cls
-                if words[: len(member.split())] == member.split()
-            ),
-            None,
-        )
-        names_a_number = any(word.isdigit() for word in words[1:])
-        if command is cls.DESCRIBE and names_a_number:
-            return None
-        return command
+# %% what a line may run besides
 
 
 class HarmlessProgram(StrEnum):
@@ -99,8 +31,19 @@ class HarmlessProgram(StrEnum):
     """
 
     CD = "cd"
+    """
+    Changes directory.
+    """
+
     HEAD = "head"
+    """
+    Prints the start of what it reads.
+    """
+
     TAIL = "tail"
+    """
+    Prints the end of what it reads.
+    """
 
 
 class ApprovalStatus(IntEnum):
@@ -154,7 +97,9 @@ class SessionCommandApproval:
         others = [command for command in commands if command not in workflow]
         if not all(self.is_harmless(command) for command in others):
             return False
-        return SessionCommand.run_by(workflow[0].workflow_words() or []) is not None
+        words = workflow[0].workflow_words() or []
+        command = RunnableCommand.run_by(words)
+        return command is not None and command.runs_unasked(words)
 
     @staticmethod
     def is_workflow(command: SimpleCommand) -> bool:
@@ -172,7 +117,7 @@ class SessionCommandApproval:
         :return: Whether it only changes directory or prints part of its input, with
             nothing assigned.
         """
-        harmless = command.program in HarmlessProgram._value2member_map_
+        harmless = command.program in HarmlessProgram
         return harmless and not command.assignments
 
 

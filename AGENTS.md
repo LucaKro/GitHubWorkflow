@@ -32,6 +32,7 @@
 
 ### Running Tests
 - Run tests with pytest
+- Make sure a test run can never exhaust the machine's working memory: check the free memory before starting, cap the run's memory so the run is killed rather than the machine, and account for other test runs already going on the same machine
 
 ## Code Style
 - Always use dataclasses
@@ -44,7 +45,10 @@
 
 ### Naming
 - Names are technically correct, simple and descriptive, in that order. An inaccurate name is worse than a vague one, because a reader who trusts it stops reading
-- A name stays correct and understandable when read on its own, without its class or a keyword argument next to it - after `value = instance.attribute`, in a log line, in a traceback, or when passed on positionally. A `Pipe` field `size` says nothing once it leaves the class; `inner_diameter` does. A generic word that would fit anything never passes this test
+- The name of a field, method or function stays correct and understandable when read on its own, without its class or a keyword argument next to it - after `value = instance.attribute`, in a log line, in a traceback, or when passed on positionally. A `Pipe` field `size` says nothing once it leaves the class; `inner_diameter` does. A `Pipe` method `check` says nothing in a traceback, which never shows `Pipe.check`; `check_for_leaks` does. A generic word that would fit anything never passes this test
+- Never begin a function or method name with one of the prepositions `as_`, `for_`, `with_`, `of_`, and never name one with a bare preposition such as `of` or `on`: the phrase it starts is only finished by the class name in front of it
+- Never end a function or method name with a preposition that only its first argument finishes, such as `bottom_of(body)`: name what it returns or does, such as `bottom_height(body)`. A preposition that belongs to the verb, as in `look_for` or `is_contained_in`, is part of the name
+- Begin a function or method name with `from_` or `to_` only for an alternative constructor or a conversion, such as `from_json` or `to_json`
 - Use the plain word every reader already knows. Use a specialist, metaphorical or in-house term only where it is genuinely the precise word, never as shorthand between the people who were in the discussion
 - Where the domain or file format already has a word for something, use that word
 - Never abbreviate an identifier
@@ -83,7 +87,7 @@
 - Reduce nesting and complexity with guard clauses: handle alternative outputs first by inverting conditions and returning early, so the main branch holds the main output and the biggest compute. A single level of abstraction never justifies deep nesting; split the method instead
 
 ### Errors
-- Never use try-except; a program in an illegal state raises an appropriate exception
+- A program in an illegal state raises an appropriate exception. Never use try-except as a workaround for a missing interface, such as catching a lookup that should have been a check; catch only where the handling is the behaviour itself, such as re-raising a failure with what the caller needs to know, and catch the narrowest exception that does
 - Create meaningful custom exceptions as dataclasses
 - Put each exception in the `exceptions.py` closest to the code that raises it:
   - An exception raised only within one subpackage goes in that subpackage's `exceptions.py`; create the file if the subpackage has none
@@ -116,7 +120,7 @@
 - When each class in a family declares the type it handles, carry that type as a bound generic parameter, not a `ClassVar`, so it is part of the signature and cannot disagree with a separate attribute: bind it in each member (`class MemberOfFamily(Family[ConcreteType])`)
 
 ## Documentation
-- Every class and method has meaningful, non-trivial documentation in reStructuredText. Every field has its own docstring directly below it, not a description in the class docstring
+- Every module, class, function and field has meaningful, non-trivial documentation in reStructuredText; an enumeration's members count as fields. Every field has its own docstring directly below it, not a description in the class docstring
 - An override that keeps its base contract has no docstring and inherits the base one. One that changes the contract documents only the difference and references the overridden method with `:meth:`
 - A docstring states what the code does and its contract, short and to the point. It never contains:
   - how the code does it
@@ -124,7 +128,7 @@
   - the current callers or consumers ("used by X and Y") - that goes stale and reads as exhaustive
   - justification of design decisions, comparison with rejected or hypothetical designs, or review and implementation history
   - type information - the type hints carry it
-- Keep docstrings and comments short and never write walls of text. Comments are meaningful and DRY; remove comments that restate the code
+- A docstring holds at most 4 lines of prose, field lists, literal blocks and a module's usage line aside, and a comment block at most 3 lines. Comments are meaningful and DRY; remove comments that restate the code
 - Reference code with Sphinx roles (`:func:`, `:class:`, `:attr:`, `:meth:`), never with plain backticks, and use directives such as `.. note::` and `.. warning::` for notes and warnings
 - Never use all-caps words for emphasis in docstrings or comments; use RST emphasis (`*word*`). Genuine identifiers, acronyms and enum/constant names (`UUID`, `WHERE`, `Definiteness.DEFINITE`) are exempt
 - Always format modified Python files with black followed by docformatter, through the repository's pre-commit hook (`scripts/format_docstrings.py`)

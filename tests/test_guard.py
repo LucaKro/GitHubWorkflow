@@ -24,14 +24,13 @@ from github_workflow.guard import (
     SessionVariable,
     CommandGuard,
     CommandLine,
-    DescriptionRewriting,
     OwnPullRequestTool,
     GitWrite,
-    PullRequestOpening,
+    PullRequestWrite,
     ToolGuard,
 )
-from github_workflow.command_line import ToolRepository
-from github_workflow.hooks import FileWritingTool, HookKey, HookValue
+from github_workflow.command_line import RefusalAdvice
+from github_workflow.hooks import FileWritingTool, HookInput, HookKey, HookValue
 
 from .test_coarse_guard import CoarseGuardDataset
 
@@ -176,28 +175,24 @@ def test_a_write_around_a_here_document_is_denied(location: GuardDataset):
 def test_a_git_write_names_the_workflow_command_doing_its_job(write: GitWrite):
     denial = CommandGuard().denial(f"git {write} feature")
 
-    assert denial is not None
     assert denial.instead == write.instead
 
 
 def test_opening_a_pull_request_names_the_workflow_s_draft():
     denial = CommandGuard().denial("gh pr create --title Change")
 
-    assert denial is not None
-    assert denial.instead == PullRequestOpening.instead()
+    assert denial.instead == PullRequestWrite.OPENING.instead
 
 
 def test_editing_a_pull_request_names_the_workflow_s_describe():
     denial = CommandGuard().denial("gh pr edit 9 --body-file description.md")
 
-    assert denial is not None
-    assert denial.instead == DescriptionRewriting.instead()
+    assert denial.instead == PullRequestWrite.REWRITING.instead
 
 
 def test_a_write_no_workflow_command_does_names_none():
     denial = CommandGuard().denial("gh pr merge 9")
 
-    assert denial is not None
     assert denial.instead is None
 
 
@@ -206,39 +201,60 @@ def test_a_write_no_workflow_command_does_names_none():
 
 @pytest.mark.parametrize(
     "tool",
-    ["mcp__github__get_file_contents", "mcp__github__list_pull_requests"]
-    + ["mcp__github__search_code", "mcp__github__pull_request_read", "Read"]
-    + ["mcp__github__actions_list", "mcp__github__actions_get"],
+    [
+        f"{HookValue.MCP_TOOL_PREFIX}github__get_file_contents",
+        f"{HookValue.MCP_TOOL_PREFIX}github__list_pull_requests",
+    ]
+    + [
+        f"{HookValue.MCP_TOOL_PREFIX}github__search_code",
+        f"{HookValue.MCP_TOOL_PREFIX}github__pull_request_read",
+        "Read",
+    ]
+    + [
+        f"{HookValue.MCP_TOOL_PREFIX}github__actions_list",
+        f"{HookValue.MCP_TOOL_PREFIX}github__actions_get",
+    ],
 )
 def test_a_reading_tool_is_let_through(tool: str):
-    assert ToolGuard({HookKey.TOOL_NAME: tool}).denial() is None
+    assert ToolGuard(HookInput.from_json({HookKey.TOOL_NAME: tool})).denial() is None
 
 
 @pytest.mark.parametrize(
     "tool",
-    ["mcp__github__create_pull_request", "mcp__github__merge_pull_request"]
-    + ["mcp__github__issue_write", "mcp__github__actions_run_trigger"],
+    [
+        f"{HookValue.MCP_TOOL_PREFIX}github__create_pull_request",
+        f"{HookValue.MCP_TOOL_PREFIX}github__merge_pull_request",
+    ]
+    + [
+        f"{HookValue.MCP_TOOL_PREFIX}github__issue_write",
+        f"{HookValue.MCP_TOOL_PREFIX}github__actions_run_trigger",
+    ],
 )
 def test_a_github_tool_that_writes_is_denied(tool: str):
-    assert ToolGuard({HookKey.TOOL_NAME: tool}).denial() is not None
+    assert (
+        ToolGuard(HookInput.from_json({HookKey.TOOL_NAME: tool})).denial() is not None
+    )
 
 
 @pytest.mark.parametrize("tool", list(OwnPullRequestTool))
 def test_a_github_tool_labelling_or_answering_reviews_names_the_workflow_s_command(
     tool: OwnPullRequestTool,
 ):
-    denial = ToolGuard({HookKey.TOOL_NAME: f"mcp__github__{tool}"}).denial()
+    denial = ToolGuard(
+        HookInput.from_json(
+            {HookKey.TOOL_NAME: f"{HookValue.MCP_TOOL_PREFIX}github__{tool}"}
+        )
+    ).denial()
 
     assert denial.instead == tool.instead()
 
 
 def test_the_github_tool_opening_a_pull_request_names_the_workflow_s_draft():
-    tool = f"mcp__github__{PullRequestOpening.TOOL}"
+    tool = f"{HookValue.MCP_TOOL_PREFIX}github__{PullRequestWrite.OPENING.tool}"
 
-    denial = ToolGuard({HookKey.TOOL_NAME: tool}).denial()
+    denial = ToolGuard(HookInput.from_json({HookKey.TOOL_NAME: tool})).denial()
 
-    assert denial is not None
-    assert denial.instead == PullRequestOpening.instead()
+    assert denial.instead == PullRequestWrite.OPENING.instead
 
 
 def test_every_denial_says_how_to_report_an_unnecessary_one():
@@ -247,19 +263,19 @@ def test_every_denial_says_how_to_report_an_unnecessary_one():
     """
     command = GuardDataset.DENIED.lines()[0]
 
-    assert ToolRepository.refusal_pointer() in CommandGuard().denial(command).message()
+    assert RefusalAdvice.pointer() in CommandGuard().denial(command).message()
 
 
 def test_a_refusal_leaves_the_filing_hint_to_the_notes():
     message = CommandGuard().denial("git push").message()
 
-    assert ToolRepository.refusal_hint() not in message
+    assert RefusalAdvice.hint() not in message
 
 
 def test_every_denial_says_never_to_get_around_it():
     command = GuardDataset.DENIED.lines()[0]
 
-    assert ToolRepository.workaround_ban() in CommandGuard().denial(command).message()
+    assert RefusalAdvice.workaround_ban() in CommandGuard().denial(command).message()
 
 
 # %% the person's commands, and the workflow's
@@ -270,20 +286,24 @@ def test_a_command_only_the_person_runs_is_denied_not_asked(command: str):
     """
     Not even the person's go-ahead lets a session run it.
     """
-    output = ToolGuard(hook_input(command)).output()[HookKey.HOOK_SPECIFIC_OUTPUT]
+    output = ToolGuard(HookInput.from_json(hook_input(command))).output()[
+        HookKey.HOOK_SPECIFIC_OUTPUT
+    ]
 
     assert output[HookKey.PERMISSION_DECISION] == HookValue.DENY
 
 
 @pytest.mark.parametrize("command", GuardDataset.WITHOUT_GO_AHEAD.lines())
 def test_a_workflow_command_runs_without_the_person_being_asked(command: str):
-    assert ToolGuard(hook_input(command)).output() is None
+    assert ToolGuard(HookInput.from_json(hook_input(command))).output() is None
 
 
 def test_a_write_chained_to_a_workflow_command_is_still_denied():
     command = f"{GuardDataset.WITHOUT_GO_AHEAD.lines()[0]} && git push"
 
-    output = ToolGuard(hook_input(command)).output()[HookKey.HOOK_SPECIFIC_OUTPUT]
+    output = ToolGuard(HookInput.from_json(hook_input(command))).output()[
+        HookKey.HOOK_SPECIFIC_OUTPUT
+    ]
 
     assert output[HookKey.PERMISSION_DECISION] == HookValue.DENY
 
@@ -303,7 +323,7 @@ def test_writing_a_file_git_runs_programs_from_is_denied(
         HookKey.TOOL_INPUT: {HookKey.FILE_PATH: path},
     }
 
-    assert ToolGuard(hook_input).denial() is not None
+    assert ToolGuard(HookInput.from_json(hook_input)).denial() is not None
 
 
 @pytest.mark.parametrize("path", ["/checkout/src/module.py", "/checkout/.gitignore"])
@@ -313,7 +333,7 @@ def test_writing_another_file_is_let_through(path: str):
         HookKey.TOOL_INPUT: {HookKey.FILE_PATH: path},
     }
 
-    assert ToolGuard(hook_input).denial() is None
+    assert ToolGuard(HookInput.from_json(hook_input)).denial() is None
 
 
 @pytest.mark.parametrize("tool", list(FileWritingTool))
@@ -333,7 +353,7 @@ def test_a_command_denied_unseen_is_shown_to_the_person(command: str):
     The person judges how often the guard denies what it cannot see into, and so whether
     that rule is worth its cost.
     """
-    output = ToolGuard(hook_input(command)).output()
+    output = ToolGuard(HookInput.from_json(hook_input(command))).output()
 
     assert output[HookKey.HOOK_SPECIFIC_OUTPUT][HookKey.PERMISSION_DECISION] == (
         HookValue.DENY
@@ -343,7 +363,7 @@ def test_a_command_denied_unseen_is_shown_to_the_person(command: str):
 
 @pytest.mark.parametrize("command", GuardDataset.DENIED.lines())
 def test_a_write_the_guard_saw_is_not_shown_to_the_person(command: str):
-    output = ToolGuard(hook_input(command)).output()
+    output = ToolGuard(HookInput.from_json(hook_input(command))).output()
 
     assert HookKey.SYSTEM_MESSAGE not in output
 

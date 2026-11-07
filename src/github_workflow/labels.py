@@ -1,6 +1,7 @@
 """
-The labels the workflow puts on issues and pull requests, each enumerated with what it
-means and its colour.
+The base every enumeration of the workflow's labels extends, and the labels it puts on
+issues and pull requests outside the findings, whose labels are in
+:mod:`github_workflow.findings`.
 """
 
 from __future__ import annotations
@@ -30,3 +31,54 @@ class DescribedLabel(GitHubLabel, ReprEnum):
         member.description = description
         member.color = color
         return member
+
+
+# %% issues
+
+
+class IssueLabel(DescribedLabel):
+    """
+    The labels the workflow puts on an issue about the pull requests working on it.
+    """
+
+    PULL_REQUEST_OPENED = (
+        "pull request opened",
+        "An open pull request of this repository closes it once merged",
+        "5319e7",
+    )
+    """
+    A draft whose description closes the issue is open.
+    """
+
+
+# %% pull requests
+
+
+class PullRequestLabel(DescribedLabel):
+    """
+    The labels the person puts on a pull request to say how sessions treat it.
+    """
+
+    SHELVED = (
+        "pull request: shelved",
+        "Set aside by the person; sessions leave it alone unless it is named",
+        "d4c5f9",
+    )
+    """
+    Set aside by the person: left out of the pull requests a session works on.
+    """
+
+
+class UpstreamLabel(DescribedLabel):
+    """
+    The labels a fork's pull request carries about its upstream.
+    """
+
+    OPENED_UPSTREAM = (
+        "opened upstream",
+        "This pull request is open on the upstream repository",
+        "1d76db",
+    )
+    """
+    Opened on the repository the fork was forked from, by ``upstream``.
+    """

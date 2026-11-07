@@ -6,6 +6,7 @@ replying to and resolving its review threads.
 from __future__ import annotations
 
 import time
+from abc import ABC
 from dataclasses import dataclass
 
 from basstler_domain_model.git.commands import RemoteBranch
@@ -21,10 +22,10 @@ from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.review_models import ReviewThread
 from basstler_domain_model.github.review_writers import ReviewThreadWriter
 from basstler_domain_model.github.vocabulary import PullRequestState
-from basstler_domain_model.repository import GitHubAddress
 
 from github_workflow.exceptions import (
     ForeignReviewAddressError,
+    UpstreamReviewsUnavailable,
     NoOpenPullRequestError,
     NothingToLabelError,
     PersonOnlyLabelError,
@@ -32,14 +33,9 @@ from github_workflow.exceptions import (
     UnknownLabelError,
     UnpushedWorkError,
 )
+from github_workflow.labels import PullRequestLabel, UpstreamLabel
 from github_workflow.policy import WritePolicy
-from github_workflow.pull_request_overview import PullRequestLabel
-from github_workflow.upstream import UpstreamLabel
-from github_workflow.upstream_reviews import (
-    UpstreamReviewRequest,
-    UpstreamReviews,
-    UpstreamReviewsUnavailable,
-)
+from github_workflow.upstream_reviews import UpstreamReviewRequest, UpstreamReviews
 from github_workflow.work import WorkflowStep
 
 # %% the work branch's pull request
@@ -265,9 +261,9 @@ class ReviewThreadListing(WorkflowStep):
 
 
 @dataclass(frozen=True)
-class ReviewReply(WorkflowStep):
+class ReviewThreadWrite(WorkflowStep, ABC):
     """
-    A reply in a review thread of the work branch's pull request.
+    A write to one review thread of the work branch's pull request.
 
     :raises ReviewThreadNotFoundError: If the pull request has no such thread.
     """
@@ -284,12 +280,26 @@ class ReviewReply(WorkflowStep):
 
     writer: ReviewThreadWriter
     """
-    Writes the reply.
+    Writes to the thread.
     """
 
     comment: int
     """
     The identifier of a comment in the thread.
+    """
+
+    def thread(self) -> tuple[RestPullRequest, ReviewThread]:
+        """
+        :return: The work branch's pull request, and the thread holding the comment.
+        :raises ReviewThreadNotFoundError: If the pull request has no such thread.
+        """
+        return ReviewThreads(self.pull_request, self.source).thread(self.comment)
+
+
+@dataclass(frozen=True)
+class ReviewReply(ReviewThreadWrite):
+    """
+    A reply in a review thread of the work branch's pull request.
     """
 
     body: str
@@ -298,41 +308,18 @@ class ReviewReply(WorkflowStep):
     """
 
     def run(self) -> str:
-        found, thread = ReviewThreads(self.pull_request, self.source).thread(
-            self.comment
-        )
+        found, thread = self.thread()
         url = self.writer.reply(found.number, thread, self.body)
         return f"replied in the thread at {thread.location} on #{found.number}: {url}"
 
 
 @dataclass(frozen=True)
-class ReviewResolution(WorkflowStep):
+class ReviewResolution(ReviewThreadWrite):
     """
     A review thread of the work branch's pull request resolved, once every commit of the
     branch is pushed, so the fix it answers is on GitHub.
 
     :raises UnpushedWorkError: If the branch has commits GitHub's copy lacks.
-    :raises ReviewThreadNotFoundError: If the pull request has no such thread.
-    """
-
-    pull_request: WorkBranchPullRequest
-    """
-    The work branch's pull request.
-    """
-
-    source: PullRequestSource
-    """
-    Reads the threads.
-    """
-
-    writer: ReviewThreadWriter
-    """
-    Resolves the thread.
-    """
-
-    comment: int
-    """
-    The identifier of a comment in the thread.
     """
 
     def run(self) -> str:
@@ -343,9 +330,7 @@ class ReviewResolution(WorkflowStep):
         pushed = fetched.succeeded and git.contains("HEAD", branch.tracking_reference)
         if not pushed:
             raise UnpushedWorkError(branch.name)
-        found, thread = ReviewThreads(self.pull_request, self.source).thread(
-            self.comment
-        )
+        found, thread = self.thread()
         if thread.is_resolved:
             return f"the thread at {thread.location} on #{found.number} is resolved"
         self.writer.resolve(found.number, thread)
@@ -390,8 +375,7 @@ class ReviewAddressing(WorkflowStep):
 
     def run(self) -> str:
         upstream = self.fork.upstream()
-        pulls = f"{GitHubAddress.WEB}/{upstream}/pull/"
-        if upstream is None or not self.address.startswith(pulls):
+        if upstream is None or not self.address.startswith(f"{upstream.url}/pull/"):
             raise ForeignReviewAddressError(self.address, upstream)
         found = self.pull_request.find()
         url = self.commenter.add_comment(

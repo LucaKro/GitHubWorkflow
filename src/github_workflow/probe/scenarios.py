@@ -19,6 +19,7 @@ from basstler_domain_model.environment import (
 from basstler_domain_model.commands import CommandResult, CommandRunner
 from basstler_domain_model.git.commands import (
     GitCommandRunner,
+    GitIdentity,
     ProposedPush,
     RemoteBranch,
 )
@@ -33,42 +34,15 @@ from basstler_domain_model.github.vocabulary import (
     WorkflowRunStatus,
 )
 
+import github_workflow
 from github_workflow.locations import ProbeTemplate, RepositoryFile
 from github_workflow.probe.library_check import LibraryCheck
-from github_workflow.command_line import StackSubcommand, WorkflowCommand
+from github_workflow.command_line import RunnableCommand
 from github_workflow.probe.results import CheckGroup, ProbeReport
 from github_workflow.remotes import OwnedRemote
+from github_workflow.workflow_templates import TemplatePlaceholder
 
 # %% vocabulary
-
-
-class WorkflowPlaceholder(StrEnum):
-    """
-    The names the branch deletion workflow template leaves for the probe to fill in.
-    """
-
-    WORKFLOW_BRANCH = "__WORKFLOW_BRANCH__"
-    """
-    The branch carrying the workflow, which triggers it and is deleted last.
-    """
-
-    DELETED_BRANCH = "__DELETED_BRANCH__"
-    """
-    The other branch the workflow deletes.
-    """
-
-    @classmethod
-    def filled_workflow(cls, workflow: str, deleted: str) -> str:
-        """
-        :param workflow: The branch the workflow is pushed on.
-        :param deleted: The other branch it deletes.
-        :return: The branch deletion workflow, naming both.
-        """
-        return (
-            ProbeTemplate.BRANCH_DELETION_WORKFLOW.read_text()
-            .replace(cls.WORKFLOW_BRANCH, workflow)
-            .replace(cls.DELETED_BRANCH, deleted)
-        )
 
 
 class ProbeText(StrEnum):
@@ -77,19 +51,66 @@ class ProbeText(StrEnum):
     """
 
     LABEL = "probe-triage"
+    """
+    The label the probe creates.
+    """
+
     LABEL_COLOR = "ededed"
+    """
+    Its colour.
+    """
+
     LABEL_DESCRIPTION = "Temporary, created by the cloud probe"
+    """
+    Its description.
+    """
+
     ISSUE_TITLE = "Probe: finding board lifecycle"
+    """
+    The title of the issue the probe files.
+    """
+
     ISSUE_BODY = (
         "Created by the cloud probe to test the finding boards; closed by it again."
     )
+    """
+    Its text.
+    """
+
     REJECTION = "Rejected by the probe: this finding only tests the board."
+    """
+    The comment the probe rejects its issue with.
+    """
+
     PULL_REQUEST_TITLE = "Probe: draft pull request"
+    """
+    The title of the draft pull request the probe opens.
+    """
+
     PULL_REQUEST_BODY = "Created by the cloud probe; closed by it again."
+    """
+    Its description.
+    """
+
     COMMIT_MESSAGE = "Probe commit, never merged"
+    """
+    The message of the commits the probe pushes.
+    """
+
     WORKFLOW_COMMIT_MESSAGE = "Probe workflow deleting the probe's branches"
+    """
+    The message of the commit pushing the probe's workflow.
+    """
+
     STACK_LOWER_TITLE = "Probe: lower layer of a stack"
+    """
+    The title of the lower pull request of the stack the probe builds.
+    """
+
     STACK_UPPER_TITLE = "Probe: upper layer of a stack"
+    """
+    The title of the upper one.
+    """
 
 
 class BranchName(StrEnum):
@@ -226,7 +247,7 @@ class Probe:
                 GitHubCredentialVariable.first_token() is not None
             ),
             "checked-out branch": git.checked_out_branch(),
-            "git author": git.run("var", "GIT_AUTHOR_IDENT").rsplit(" ", 2)[0],
+            "git author": git.identity(GitIdentity.AUTHOR).rsplit(" ", 2)[0],
             "git": git.run("--version"),
             "gh": CommandRunner(git.working_directory)
             .run("gh", "--version")
@@ -653,11 +674,10 @@ class Probe:
         command = self.runner.run(
             sys.executable,
             "-m",
-            "github_workflow",
-            WorkflowCommand.STACK,
-            StackSubcommand.ON,
-            str(lower),
-            str(upper),
+            github_workflow.__name__,
+            *RunnableCommand.STACK_ON.words_naming(
+                "below", "above", values={"below": str(lower), "above": str(upper)}
+            ),
         )
         self.record_command(
             CheckGroup.STACKS, f"stacks on {lower} {upper}", command, "stacked"
@@ -787,7 +807,13 @@ class Probe:
         :param deleted: The other branch it deletes.
         :return: The commit.
         """
-        text = WorkflowPlaceholder.filled_workflow(workflow, deleted)
+        text = TemplatePlaceholder.fill(
+            ProbeTemplate.BRANCH_DELETION_WORKFLOW.read_text(),
+            {
+                TemplatePlaceholder.WORKFLOW_BRANCH: workflow,
+                TemplatePlaceholder.DELETED_BRANCH: deleted,
+            },
+        )
         commit = self.git.commit_files(
             "HEAD",
             {RepositoryFile.BRANCH_DELETION_WORKFLOW: text},

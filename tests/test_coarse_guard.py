@@ -12,7 +12,7 @@ import pytest
 from basstler_domain_model.locations import PathEnumeration
 
 from github_workflow.coarse_guard import CoarseGuard
-from github_workflow.hooks import FileWritingTool, HookKey, HookValue
+from github_workflow.hooks import FileWritingTool, HookInput, HookKey, HookValue
 
 # %% the dataset
 
@@ -48,7 +48,7 @@ def guard(tool: str, tool_input: dict[str, str]) -> CoarseGuard:
     :return: The coarse guard over the call, the guard having failed to start.
     """
     return CoarseGuard(
-        {HookKey.TOOL_NAME: tool, HookKey.TOOL_INPUT: tool_input},
+        HookInput.from_json({HookKey.TOOL_NAME: tool, HookKey.TOOL_INPUT: tool_input}),
         "the runtime could not be installed",
     )
 
@@ -96,7 +96,7 @@ def test_git_s_configuration_may_not_be_written(path: str):
 
 
 def test_a_github_tool_is_denied_even_when_it_reads():
-    output = guard("mcp__github__get_issue", {}).output()
+    output = guard(f"{HookValue.MCP_TOOL_PREFIX}github__get_issue", {}).output()
 
     assert output[HookKey.HOOK_SPECIFIC_OUTPUT][HookKey.PERMISSION_DECISION] == (
         HookValue.DENY

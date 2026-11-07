@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from basstler_domain_model.git.commands import RemoteBranch
+from basstler_domain_model.git.commands import ProposedPush, RemoteBranch
 from basstler_domain_model.github.labels import LabelWrite
 from basstler_domain_model.github.repository_client import (
     Commenter,
@@ -24,7 +24,9 @@ from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import PullRequestState
 from basstler_domain_model.repository import Repository
 
-from github_workflow.command_line import WorkflowCommand
+from github_workflow.branch_tips import BranchTip
+from github_workflow.command_line import RunnableCommand
+from github_workflow.counted_noun import CountedNoun
 from github_workflow.exceptions import (
     ForeignRepositoryError,
     ForkBranchDivergedError,
@@ -32,9 +34,9 @@ from github_workflow.exceptions import (
     PersonOnlyCommandError,
     PullRequestNotProposableError,
 )
-from github_workflow.hooks import NumberLink, ReportLine, Tone
+from github_workflow.hooks import NumberLink, ReportLine, Speaker, Tone
 from github_workflow.install import Launcher
-from github_workflow.labels import DescribedLabel
+from github_workflow.labels import UpstreamLabel
 from github_workflow.settings import WorkflowSettings
 from github_workflow.policy import WritePolicy
 from github_workflow.report_section import ReportSection
@@ -47,21 +49,6 @@ from github_workflow.work import (
 )
 
 # %% proposing
-
-
-class UpstreamLabel(DescribedLabel):
-    """
-    The labels a fork's pull request carries about its upstream.
-    """
-
-    OPENED_UPSTREAM = (
-        "opened upstream",
-        "This pull request is open on the upstream repository",
-        "1d76db",
-    )
-    """
-    Opened on the repository the fork was forked from, by ``upstream``.
-    """
 
 
 @dataclass(frozen=True)
@@ -141,7 +128,7 @@ class UpstreamProposal(WorkflowStep):
 
     def run(self) -> str:
         if self.run_by_a_session:
-            raise PersonOnlyCommandError(WorkflowCommand.UPSTREAM)
+            raise PersonOnlyCommandError(" ".join(RunnableCommand.UPSTREAM.words))
         if not self.settings.owns(self.repository):
             raise ForeignRepositoryError(self.repository, self.settings.owner)
         upstream = self.fork_details.upstream()
@@ -170,8 +157,7 @@ class UpstreamProposal(WorkflowStep):
             self.body_linking(local.url),
         )
         self.commenter.add_comment(local.number, self.comment_linking(opened.url))
-        if UpstreamLabel.OPENED_UPSTREAM not in self.fork_labels.labels():
-            self.fork_labels.create_label(UpstreamLabel.OPENED_UPSTREAM)
+        self.fork_labels.create_missing_labels([UpstreamLabel.OPENED_UPSTREAM])
         self.labeller.replace_labels(
             local.number,
             LabelWrite.replacing(local.labels, [UpstreamLabel.OPENED_UPSTREAM]).labels,
@@ -240,10 +226,9 @@ class UpstreamProposal(WorkflowStep):
 class ForkMainSync(WorkflowStep):
     """
     The fork's default branch fast-forwarded to the same branch of the repository it was
-    forked from, as GitHub's *Sync fork* does, and the local copy after it; only ever
-    fast-forwarded, never merged or forced. Everything goes through git, the upstream's
-    branch fetched over HTTPS and the fork's pushed to without force, since a cloud
-    session's proxy refuses GitHub's cross-fork compares and its merge-upstream.
+    forked from, as GitHub's *Sync fork* does, and the local copy after it, through git
+    alone: the upstream's branch fetched over HTTPS and pushed to the fork, never merged
+    or forced.
 
     .. note:: The push skips the checkout's ``pre-push`` hook, which refuses every
        change to the default branch: this fast-forward to the upstream's commit is the
@@ -290,20 +275,14 @@ class ForkMainSync(WorkflowStep):
         fork = RemoteBranch(self.policy.remote.name, self.policy.default_branch)
         theirs = RemoteBranch(self.upstream_name, self.policy.default_branch)
         git.fetch_branch(fork).raise_if_failed()
-        git.run(
-            "fetch",
-            "--quiet",
-            "--no-write-fetch-head",
-            upstream.clone_url_under(),
-            f"+{theirs.reference}:{theirs.tracking_reference}",
-        )
-        fork_tip = git.commit_at(fork.tracking_reference)
-        upstream_tip = git.commit_at(theirs.tracking_reference)
+        git.fetch_branch(theirs, upstream.clone_url_under()).raise_if_failed()
+        fork_tip = BranchTip(fork.name, git.commit_at(fork.tracking_reference))
+        upstream_tip = BranchTip(theirs.name, git.commit_at(theirs.tracking_reference))
         return ForkTips(
             fork_tip,
             upstream_tip,
-            int(git.run("rev-list", "--count", f"{upstream_tip}..{fork_tip}")),
-            int(git.run("rev-list", "--count", f"{fork_tip}..{upstream_tip}")),
+            git.commits_between(upstream_tip.commit, fork_tip.commit),
+            git.commits_between(fork_tip.commit, upstream_tip.commit),
         )
 
     def fast_forward(self, upstream: Repository, tips: ForkTips) -> str:
@@ -315,19 +294,17 @@ class ForkMainSync(WorkflowStep):
         """
         git = self.policy.checkout.git
         fork = RemoteBranch(self.policy.remote.name, self.policy.default_branch)
-        git.attempt(
-            "push",
-            "--quiet",
-            "--no-verify",
-            fork.remote,
-            f"{tips.upstream}:{fork.reference}",
+        git.push(
+            ProposedPush(
+                fork.remote,
+                f"{tips.upstream.commit}:{fork.reference}",
+                runs_push_hook=False,
+            )
         ).raise_if_failed()
         git.fetch_branch(fork).raise_if_failed()
         local = LocalBranchFollowing(git).follow(fork)
-        return (
-            f"{fork.name} fast-forwarded by {tips.behind} commit(s) to {upstream}'s"
-            f"{local}"
-        )
+        behind = CountedNoun(tips.behind, "commit", "commits")
+        return f"{fork.name} fast-forwarded by {behind} to {upstream}'s{local}"
 
 
 @dataclass(frozen=True)
@@ -336,12 +313,12 @@ class ForkTips:
     A fork's default branch and the same branch of the repository it was forked from.
     """
 
-    fork: str
+    fork: BranchTip
     """
     The fork's tip.
     """
 
-    upstream: str
+    upstream: BranchTip
     """
     The upstream's tip.
     """
@@ -385,21 +362,24 @@ class UpstreamSuggestion(DescriptionEnding):
             f"---\n\n"
             f"To open this pull request on {upstream}, run this yourself (a Claude "
             f"Code session may not):\n\n"
-            f"```bash\n{self.command_for(self.repository, branch)}\n```"
+            f"```bash\n{self.opening_command(self.repository, branch)}\n```"
         )
         return f"{body.replace(ending, '').rstrip()}\n\n{ending}\n"
 
     @staticmethod
-    def command_for(repository: Repository, branch: str) -> str:
+    def opening_command(repository: Repository, branch: str) -> str:
         """
         :param repository: The owner's fork.
         :param branch: Its branch.
         :return: The command line opening the branch's pull request upstream, as the
             person runs it on their own machine.
         """
-        return " ".join(
-            [Launcher.COMMAND, WorkflowCommand.UPSTREAM, repository.full_name, branch]
+        words = RunnableCommand.UPSTREAM.words_naming(
+            "repository",
+            "branch",
+            values={"repository": repository.full_name, "branch": branch},
         )
+        return " ".join([Launcher.COMMAND, *words])
 
 
 # %% following merges upstream
@@ -409,6 +389,7 @@ class UpstreamSuggestion(DescriptionEnding):
 class UpstreamMergeFollowing(ReportSection):
     """
     The fork's open pull requests opened upstream whose pull request there was merged:
+
     each closed on the fork as merged upstream, and what was stacked on it moved onto
     the default branch.
     """
@@ -480,8 +461,10 @@ class UpstreamMergeFollowing(ReportSection):
             onto = "" if moved is None else f", and moved #{moved} onto {base}"
             lines.append(
                 ReportLine(
-                    f"github-workflow: {link} was merged upstream as {merged[0].url}: "
-                    f"closed it{onto}; tell the person",
+                    Speaker.WORKFLOW.says(
+                        f"{link} was merged upstream as {merged[0].url}: closed "
+                        f"it{onto}; tell the person"
+                    ),
                     Tone.ACTION,
                 )
             )

@@ -1,10 +1,7 @@
 """
-The reviews of a fork's pull request opened upstream, read where the upstream can be
-reached: directly, with the person's own GitHub login, or, from a cloud session whose
-proxy refuses the upstream, by the fork's Actions, which read them for a request queued
-on the notes branch and save GitHub's answers there for the session to read them from.
-
-Nothing is ever written upstream.
+The reviews of a fork's pull request opened upstream, read directly where the upstream
+is reached, and otherwise by the fork's Actions, which answer a request queued on the
+notes branch with GitHub's answers saved there. Nothing is ever written upstream.
 
 Usage on the runner: ``python -m github_workflow.upstream_reviews <requests directory>
 <answers directory>``; answers every waiting request and removes it.
@@ -14,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import shlex
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
@@ -36,9 +32,19 @@ from basstler_domain_model.github.repository_client import RepositoryWorkflows
 from basstler_domain_model.github.vocabulary import WorkflowRunConclusion
 from basstler_domain_model.repository import Repository
 
-from github_workflow.label_events import ActionRequirement
-from github_workflow.locations import NotesFile, WorkflowTemplate
+from github_workflow.exceptions import (
+    UpstreamReadFailed,
+    UpstreamReadNotStarted,
+    UpstreamReadUnanswered,
+    UpstreamReviewsUnavailable,
+)
+from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
+from github_workflow.workflow_templates import (
+    ActionRequirement,
+    NotesBranchWorkflow,
+    TemplatePlaceholder,
+)
 
 # %% requests
 
@@ -49,39 +55,23 @@ class UpstreamReviewKey(StrEnum):
     """
 
     UPSTREAM = "upstream"
+    """
+    The repository the fork was forked from, as ``owner/name``.
+    """
+
     FORK_OWNER = "fork_owner"
+    """
+    The owner of the fork.
+    """
+
     BRANCH = "branch"
+    """
+    The fork's branch.
+    """
+
     ANSWERS = "answers"
-
-
-class UpstreamReviewPlaceholder(StrEnum):
     """
-    The names the reading workflow template leaves to be filled in.
-    """
-
-    NOTES_BRANCH = "__NOTES_BRANCH__"
-    """
-    The notes branch, whose pushes run the workflow.
-    """
-
-    REQUESTS_DIRECTORY = "__REQUESTS_DIRECTORY__"
-    """
-    The directory holding the requests.
-    """
-
-    ANSWERS_DIRECTORY = "__ANSWERS_DIRECTORY__"
-    """
-    The directory the answers are saved in.
-    """
-
-    REQUIREMENTS = "__REQUIREMENTS__"
-    """
-    What ``pip`` installs.
-    """
-
-    ENTRY_POINT = "__ENTRY_POINT__"
-    """
-    The command answering the requests, before the two directories.
+    GitHub's answers to the reads, in an answer.
     """
 
 
@@ -146,106 +136,6 @@ class UpstreamReviewRequest:
         return reader.read_current_state(
             reader.resolve_pull_request_number(self.branch)
         )
-
-
-# %% why they could not be read
-
-
-class UpstreamReviewsUnavailable(ABC):
-    """
-    Why the pull request opened upstream could not be read.
-    """
-
-    @abstractmethod
-    def reason(self) -> str:
-        """:return: What kept it from being read."""
-
-    @abstractmethod
-    def correction(self) -> str:
-        """:return: What to do about it."""
-
-    def line(self) -> str:
-        """:return: Both, in one line."""
-        return f"upstream reviews not read: {self.reason()}. {self.correction()}"
-
-
-@dataclass(frozen=True)
-class UpstreamReadNotStarted(UpstreamReviewsUnavailable):
-    """
-    The fork's Actions started no run answering the request: Actions are off on the
-    fork, or its workflows are, or GitHub dropped the push.
-    """
-
-    fork: Repository
-    """
-    The fork.
-    """
-
-    start_seconds: float
-    """
-    How long each request's run was waited for.
-    """
-
-    def reason(self) -> str:
-        return (
-            f"{self.fork}'s Actions started no run reading them within "
-            f"{self.start_seconds:.0f} seconds of each request"
-        )
-
-    def correction(self) -> str:
-        return (
-            f"Ask the person to check that Actions and the fork's workflows are on at "
-            f"{self.fork.url}/actions, then list the reviews again"
-        )
-
-
-@dataclass(frozen=True)
-class UpstreamReadFailed(UpstreamReviewsUnavailable):
-    """
-    The fork's Actions run answering the request failed.
-    """
-
-    run: str
-    """
-    The run's page, with its log.
-    """
-
-    conclusion: WorkflowRunConclusion
-    """
-    How it ended.
-    """
-
-    def reason(self) -> str:
-        return f"the run reading them ended in {self.conclusion}: {self.run}"
-
-    def correction(self) -> str:
-        return "Read its log, and file what went wrong as a finding of the workflow"
-
-
-@dataclass(frozen=True)
-class UpstreamReadUnanswered(UpstreamReviewsUnavailable):
-    """
-    The fork's Actions did not answer the request in time.
-    """
-
-    upstream: Repository
-    """
-    The repository the pull request is open on.
-    """
-
-    timeout_seconds: float
-    """
-    How long the answer was waited for.
-    """
-
-    def reason(self) -> str:
-        return (
-            f"the fork's Actions did not read them on {self.upstream} within "
-            f"{self.timeout_seconds:.0f} seconds"
-        )
-
-    def correction(self) -> str:
-        return "List the reviews again; the run reading them may still be going"
 
 
 # %% reading them
@@ -399,25 +289,24 @@ class ForwardedUpstreamReviews(UpstreamReviews):
         :param request: The request to write, with the workflow answering it.
         :return: The notes branch's commit queuing it.
         """
-        workflow = WorkflowTemplate.UPSTREAM_REVIEW_WORKFLOW.value.read_text()
-        for placeholder, value in {
-            UpstreamReviewPlaceholder.NOTES_BRANCH: self.notes.branch.name,
-            UpstreamReviewPlaceholder.REQUESTS_DIRECTORY: str(
-                NotesFile.UPSTREAM_REVIEW_REQUESTS.value
-            ),
-            UpstreamReviewPlaceholder.ANSWERS_DIRECTORY: str(
-                NotesFile.UPSTREAM_REVIEW_ANSWERS.value
-            ),
-            UpstreamReviewPlaceholder.REQUIREMENTS: shlex.join(list(ActionRequirement)),
-            UpstreamReviewPlaceholder.ENTRY_POINT: f"python -m {__name__}",
-        }.items():
-            workflow = workflow.replace(placeholder, value)
+        workflow = NotesBranchWorkflow.UPSTREAM_REVIEWS.files(
+            self.notes.branch.name,
+            {
+                TemplatePlaceholder.REQUESTS_DIRECTORY: str(
+                    NotesFile.UPSTREAM_REVIEW_REQUESTS
+                ),
+                TemplatePlaceholder.ANSWERS_DIRECTORY: str(
+                    NotesFile.UPSTREAM_REVIEW_ANSWERS
+                ),
+                **ActionRequirement.placeholder_values(__name__),
+            },
+        )
         self.notes.fetch()
         self.notes.write(
             {
                 NotesFile.UPSTREAM_REVIEW_REQUESTS.value
-                / request.name: (request.to_json()),
-                NotesFile.UPSTREAM_REVIEW_WORKFLOW.value: workflow,
+                / request.name: request.to_json(),
+                **workflow,
             },
             f"Ask for the upstream reviews of {request.branch}",
         )

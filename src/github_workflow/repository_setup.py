@@ -16,9 +16,9 @@ from basstler_domain_model.github.repository_client import (
 from basstler_domain_model.github.vocabulary import WorkflowState
 from basstler_domain_model.repository import Repository
 
-from github_workflow.hooks import ReportLine, Tone
-from github_workflow.locations import NotesFile
+from github_workflow.hooks import ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportSection
+from github_workflow.workflow_templates import NotesBranchWorkflow
 
 # %% the features
 
@@ -81,7 +81,9 @@ class RepositorySetup(ReportSection):
                     f"{self.repository.settings_url}/actions",
                 )
             )
-        notes_workflows = {str(file.value) for file in NotesFile.workflows}
+        notes_workflows = {
+            str(workflow.destination) for workflow in NotesBranchWorkflow
+        }
         off = [
             workflow
             for workflow in self.workflows.workflows()
@@ -121,7 +123,9 @@ class RepositorySetup(ReportSection):
         :return: That it is off, and where the person turns it on.
         """
         return ReportLine(
-            f"github-workflow: {self.repository} has {feature} turned off; {purpose}. "
-            f"Ask the person whether to turn on {setting} at {page}",
+            Speaker.WORKFLOW.says(
+                f"{self.repository} has {feature} turned off; {purpose}. Ask the "
+                f"person whether to turn on {setting} at {page}"
+            ),
             Tone.ACTION,
         )

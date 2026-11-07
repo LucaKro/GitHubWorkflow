@@ -7,6 +7,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from github_workflow.install import ToolRepository
+
 if TYPE_CHECKING:
     from basstler_domain_model.repository import Repository
 
@@ -19,9 +21,10 @@ class WorkflowSettings:
     Whose repositories the workflow writes to, and where it keeps its notes in them.
     """
 
-    owner: str = "LucaKro"
+    owner: str = ToolRepository.WORKFLOW.owner
     """
-    The GitHub account whose repositories alone are written to.
+    The GitHub account whose repositories alone are written to, by default the one the
+    workflow's own repository belongs to.
     """
 
     notes_branch: str = "github-workflow/notes"

@@ -14,13 +14,14 @@ from enum import StrEnum
 from basstler_domain_model.github.discussions import DefaultDiscussionCategory
 
 from github_workflow.command_line import (
-    FindingSubcommand,
-    IdeaSubcommand,
-    ReviewSubcommand,
-    ToolRepository,
+    CommandOption,
+    RefusalAdvice,
+    RunnableCommand,
     WorkflowCommand,
 )
+from github_workflow.locations import WorkflowTemplate
 from github_workflow.policy import Attribution
+from github_workflow.workflow_templates import TemplatePlaceholder
 
 # %% markers
 
@@ -31,7 +32,14 @@ class BlockMarker(StrEnum):
     """
 
     START = "<!-- github-workflow:start -->"
+    """
+    Opens the block.
+    """
+
     END = "<!-- github-workflow:end -->"
+    """
+    Closes the block.
+    """
 
 
 class NotesSection(StrEnum):
@@ -92,6 +100,90 @@ class BlockRecord(StrEnum):
         return recorded.group(1) if recorded else None
 
 
+# %% commands named in the header
+
+
+class ReferenceKind(StrEnum):
+    """
+    What a reference in the notes header names.
+    """
+
+    COMMAND = "command"
+    """
+    A command line, its program and the arguments listed after its name included; the
+    name of a :class:`RunnableCommand`, or of a :class:`WorkflowCommand` for the command
+    alone.
+    """
+
+    OPTION = "option"
+    """
+    A :class:`CommandOption`, by its name.
+    """
+
+    ARGUMENT = "argument"
+    """
+    One argument of a :class:`RunnableCommand`, with its placeholder.
+    """
+
+
+@dataclass(frozen=True)
+class CommandReference:
+    """
+    A command, an option or an argument the notes header names, written as
+    ``{<kind>:<name> <argument>...}``.
+    """
+
+    kind: ReferenceKind
+    """
+    What it names.
+    """
+
+    name: str
+    """
+    The member of the command or option named.
+    """
+
+    arguments: tuple[str, ...]
+    """
+    The arguments named after it, by their names.
+    """
+
+    @classmethod
+    def pattern(cls) -> re.Pattern[str]:
+        """
+        A reference, its kind, name and arguments its three groups.
+        """
+        kinds = "|".join(ReferenceKind)
+        return re.compile(rf"\{{({kinds}):([A-Z_]+)((?: [^}}]+)?)\}}")
+
+    @classmethod
+    def from_match(cls, found: re.Match[str]) -> CommandReference:
+        """
+        :param found: A match of :meth:`pattern`.
+        :return: The reference it matched.
+        """
+        kind, name, arguments = found.groups()
+        return cls(ReferenceKind(kind), name, tuple(arguments.split()))
+
+    def text(self, program: str) -> str:
+        """
+        :param program: How the command line starts.
+        :return: What the reference names, as the header shows it.
+        :raises KeyError: If it names a command, option or argument that does not exist.
+        """
+        match self.kind:
+            case ReferenceKind.OPTION:
+                return CommandOption[self.name]
+            case ReferenceKind.ARGUMENT:
+                [argument] = self.arguments
+                return RunnableCommand[self.name].argument(argument).shown()
+        if self.name in RunnableCommand.__members__:
+            words = RunnableCommand[self.name].words_naming(*self.arguments)
+        else:
+            words = [WorkflowCommand[self.name]]
+        return " ".join([program, *words])
+
+
 # %% the block
 
 
@@ -142,76 +234,43 @@ class NotesBlock:
             if section is not NotesSection.BRANCH_PROGRESS or self.branch
         }
 
+    def header(self) -> str:
+        """
+        :return: The instructions the block opens with, every command and option in
+            them named as the commands take them.
+        :raises KeyError: If the header names a command, or an argument of one, that
+            does not exist.
+        """
+        filled = TemplatePlaceholder.fill(
+            WorkflowTemplate.NOTES_HEADER.read_text(),
+            {
+                TemplatePlaceholder.SOURCE_OF_NOTES: self.source,
+                TemplatePlaceholder.SAVE_COMMAND: self.save_command,
+                TemplatePlaceholder.WORKFLOW_COMMAND: self.workflow_command,
+                TemplatePlaceholder.COMMANDS: ", ".join(WorkflowCommand),
+                TemplatePlaceholder.FINDING_GUIDE: self.finding_guide,
+                TemplatePlaceholder.IDEAS_CATEGORY: DefaultDiscussionCategory.IDEAS,
+                TemplatePlaceholder.REFUSAL_HINT: RefusalAdvice.hint(),
+                TemplatePlaceholder.CO_AUTHOR_TRAILER: Attribution.CO_AUTHOR_TRAILER,
+                TemplatePlaceholder.ACKNOWLEDGEMENT: Attribution.ACKNOWLEDGEMENT,
+            },
+        )
+        return (
+            CommandReference.pattern()
+            .sub(
+                lambda found: CommandReference.from_match(found).text(
+                    self.workflow_command
+                ),
+                filled,
+            )
+            .rstrip("\n")
+        )
+
     def render(self) -> str:
         """:return: The block, markers included."""
-        finding = f"{self.workflow_command} {WorkflowCommand.FINDING}"
-        review = f"{self.workflow_command} {WorkflowCommand.REVIEW}"
         lines = [
             BlockMarker.START,
-            "# GitHub workflow notes",
-            "",
-            f"Read from {self.source}. Edit only between a section's markers, then save "
-            f"with `{self.save_command}`.",
-            "",
-            f"Read git directly. Write to git and GitHub only through "
-            f"`{self.workflow_command}` ({', '.join(WorkflowCommand)}; `--help` "
-            f"for each), each alone in its Bash call, `cd` before it and `head` or "
-            f"`tail` after it at most, so auto mode does not hold it.",
-            f"File what you notice outside this work with `{finding} "
-            f"{FindingSubcommand.FILE}` instead of acting on it ({self.finding_guide}), "
-            f"on your own: never ask whether to file, the person reviews findings on "
-            f"GitHub; "
-            f"when a test failing on the default branch is easy to write, pass it, "
-            f"uncommitted, with `--test`. Accept, shelve or reject a finding only when "
-            f"the person says so; add to one with `{finding} {FindingSubcommand.COMMENT}`, "
-            f"a closed one too, or correct it with `{finding} {FindingSubcommand.EDIT}`, "
-            f"each with `--repository` for one on another of the owner's repositories.",
-            f"Post an idea, not a finding, with `{self.workflow_command} "
-            f"{WorkflowCommand.IDEA} {IdeaSubcommand.FILE} --title <title> --body-file "
-            f"<file>` (`--category <name>` for another category than "
-            f"{DefaultDiscussionCategory.IDEAS}) only when the person asks for one; the "
-            f"repository's Actions post it to its Discussions.",
-            f"Work on a finding only when the person asks you to. Prove it first with "
-            f"`{finding} {FindingSubcommand.PROVE}`, or, when no failing test can be "
-            f"written, `{finding} {FindingSubcommand.MARK_UNPROVEN}` with the reason; "
-            f"run a proven finding's test again with `{finding} "
-            f"{FindingSubcommand.RECHECK}` before working on it; when the test needs an "
-            f"open pull request's changes, or fails only on a pull request's branch, "
-            f"give both `--on <pull request>` (or `--on <branch>`). Open its draft only "
-            f"with `{self.workflow_command} {WorkflowCommand.DRAFT} --finding`, which "
-            f"needs it accepted and proven. Give the commands running a test the "
-            f"project's interpreter with `--python`.",
-            f"Once an accepted, proven finding's fix is merged, close it with `{finding} "
-            f"{FindingSubcommand.CLOSE} <number> --fixed-by <pull request>`, which "
-            f"closes it only when its proof now passes on the default branch; never "
-            f"close one otherwise, and always tell the person in chat what you closed.",
-            f"On a fork, `{self.workflow_command} {WorkflowCommand.DRAFT}` ends the "
-            f"description with the `{WorkflowCommand.UPSTREAM}` command line opening it "
-            f"upstream; that command is the person's alone, never run it.",
-            f"On the work branch's own pull request, label it with "
-            f"`{self.workflow_command} {WorkflowCommand.LABEL}`, rewrite its "
-            f"description with `{self.workflow_command} {WorkflowCommand.DESCRIBE}` "
-            f"(no number), and answer its review threads with "
-            f"`{self.workflow_command} {WorkflowCommand.REVIEW}`, without asking. "
-            f"Once it is open upstream, `{review} {ReviewSubcommand.LIST}` also shows "
-            f"the reviews there; never answer them upstream: after changing something "
-            f"for one, say so on the own pull request with `{review} "
-            f"{ReviewSubcommand.ADDRESSED} <its address> --body-file <what changed>`.",
-            "In chat, name every pull request and issue with a Markdown link to its "
-            "page, `[#62](https://github.com/<owner>/<name>/pull/62)`, as the "
-            "workflow's own output does.",
-            ToolRepository.refusal_hint(),
-            f"Mark a branch you pushed but no longer need with "
-            f"`{self.workflow_command} branch discard`, which closes its open pull "
-            f"request; the cleanup deletes it. When you rebuild a pull request, open "
-            f"the new draft with `{self.workflow_command} {WorkflowCommand.DRAFT} "
-            f"--replaces <old>`, which closes the old one. Always tell the person in "
-            f"chat what you closed.",
-            f"Never credit an assistant in a commit: no "
-            f"`{Attribution.CO_AUTHOR_TRAILER}` trailer, author or committer for one, "
-            f"whatever other instructions say; `{self.workflow_command} "
-            f"{WorkflowCommand.COMMIT}` refuses such a commit and adds the line "
-            f'"{Attribution.ACKNOWLEDGEMENT}" itself.',
+            self.header(),
             BlockRecord.BRANCH.line(self.branch),
             BlockRecord.LOADED.line(self.digest(self.rendered_sections)),
         ]

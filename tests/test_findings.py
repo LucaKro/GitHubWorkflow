@@ -66,7 +66,8 @@ from github_workflow.findings import (
 from github_workflow.hooks import Emphasis, Highlight, NumberLink, ReportLine, Tone
 from github_workflow.policy import WritePolicy
 from github_workflow.report_section import ReportGroup
-from github_workflow.proofs import BranchTip, FindingTest, ProofAttempt, ProofOutcome
+from github_workflow.branch_tips import BranchTip
+from github_workflow.proofs import FindingTest, ProofAttempt, ProofOutcome
 from github_workflow.settings import WorkflowSettings
 from github_workflow.stacks import StackPlacement
 from github_workflow.work import DraftOpening, IssueLabel, PullRequestOpenedLabelling
@@ -254,7 +255,7 @@ def accepted_on_github(issue: Issue) -> Issue:
 def test_a_stage_the_person_picked_outranks_unreviewed():
     issue = accepted_on_github(finding(1, FindingStage.UNREVIEWED, Priority.HIGH))
 
-    assert FindingStage.of(issue) is FindingStage.ACCEPTED
+    assert FindingStage.from_issue(issue) is FindingStage.ACCEPTED
 
 
 @pytest.mark.parametrize(
@@ -271,7 +272,7 @@ def test_of_two_stages_the_person_picked_the_more_cautious_counts(
 ):
     issue = Issue(1, "Finding 1", (*picked, Priority.HIGH), IssueState.OPEN)
 
-    assert FindingStage.of(issue) is counted
+    assert FindingStage.from_issue(issue) is counted
 
 
 def test_a_finding_accepted_on_github_is_listed_once_as_accepted():

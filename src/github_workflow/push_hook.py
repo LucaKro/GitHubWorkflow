@@ -13,7 +13,6 @@ import stat
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
-from enum import StrEnum
 from pathlib import Path
 
 from basstler_domain_model.class_property import classproperty
@@ -31,9 +30,10 @@ from github_workflow.exceptions import (
     ForeignPushError,
     UnknownDefaultBranchError,
 )
-from github_workflow.hooks import ReportLine, Tone
+from github_workflow.hooks import ReportLine, Speaker, Tone
 from github_workflow.locations import GitFile, WorkflowTemplate
 from github_workflow.settings import WorkflowSettings
+from github_workflow.workflow_templates import TemplatePlaceholder
 
 # %% the check
 
@@ -90,27 +90,6 @@ class PushCheck:
 # %% the hook
 
 
-class PushHookPlaceholder(StrEnum):
-    """
-    The names the hook's template leaves to be filled in.
-    """
-
-    MARKER_VARIABLE = "__MARKER_VARIABLE__"
-    """
-    The variable set only in commands a Claude Code session runs.
-    """
-
-    PYTHON = "__PYTHON__"
-    """
-    The interpreter the package is installed in.
-    """
-
-    MODULE = "__MODULE__"
-    """
-    The module running the check.
-    """
-
-
 @dataclass(frozen=True)
 class PushHook:
     """
@@ -143,28 +122,26 @@ class PushHook:
         """
         Where git runs the checkout's ``pre-push`` hook from.
         """
-        return self.checkout.root / self.checkout.git.run(
-            "rev-parse", "--git-path", str(GitFile.PRE_PUSH_HOOK)
-        )
+        return self.checkout.git.git_path(GitFile.PRE_PUSH_HOOK)
 
     @property
     def script(self) -> str:
         """
         The hook, as written into the checkout.
         """
-        return (
-            WorkflowTemplate.PRE_PUSH_HOOK.value.read_text()
-            .replace(
-                PushHookPlaceholder.MARKER_VARIABLE, ClaudeCodeVariable.COMMAND_MARKER
-            )
-            .replace(PushHookPlaceholder.PYTHON, str(self.python))
-            .replace(PushHookPlaceholder.MODULE, PushCheck.__module__)
+        return TemplatePlaceholder.fill(
+            WorkflowTemplate.PRE_PUSH_HOOK.read_text(),
+            {
+                TemplatePlaceholder.MARKER_VARIABLE: ClaudeCodeVariable.COMMAND_MARKER,
+                TemplatePlaceholder.PYTHON: str(self.python),
+                TemplatePlaceholder.MODULE: PushCheck.__module__,
+            },
         )
 
     def install(self) -> list[ReportLine]:
         """
-        Write the hook, replacing an earlier one of the workflow's, but never a
-        ``pre-push`` hook of the checkout's own.
+        Write the hook, replacing an earlier one of the workflow's, but never a ``pre-
+        push`` hook of the checkout's own.
 
         :return: Nothing when the hook was written; one line saying why it was not
             otherwise.
@@ -173,10 +150,12 @@ class PushHook:
         if path.exists() and PushCheck.__module__ not in path.read_text():
             return [
                 ReportLine(
-                    f"github-workflow: {path} is a pre-push hook of the checkout's own, "
-                    f"so pushes run outside the workflow's commands go unchecked; ask "
-                    f"the person whether to merge in the workflow's from "
-                    f"{WorkflowTemplate.PRE_PUSH_HOOK.value}",
+                    Speaker.WORKFLOW.says(
+                        f"{path} is a pre-push hook of the checkout's own, so pushes "
+                        f"run outside the workflow's commands go unchecked; ask the "
+                        f"person whether to merge in the workflow's from "
+                        f"{WorkflowTemplate.PRE_PUSH_HOOK.value}"
+                    ),
                     Tone.ACTION,
                 )
             ]

@@ -27,7 +27,9 @@ from basstler_domain_model.github.vocabulary import RestJSONKey
 from basstler_domain_model.locations import PathEnumeration
 from basstler_domain_model.repository import Repository
 
-from github_workflow.__main__ import WorkflowSession
+from github_workflow.workflow_templates import TemplatePlaceholder
+from github_workflow.command_line import RunnableCommand
+from github_workflow.session import WorkflowSession
 from github_workflow.command_line import IdeaSubcommand, WorkflowCommand
 from github_workflow.discussions import (
     DiscussionPost,
@@ -37,7 +39,6 @@ from github_workflow.discussions import (
     DiscussionSessionLog,
     DiscussionTitle,
     IdeaFiling,
-    PostingPlaceholder,
 )
 from github_workflow.exceptions import DiscussionsDisabledError
 from github_workflow.locations import NotesFile, WorkflowTemplate
@@ -114,7 +115,9 @@ def notes_in(
     :return: The notes branch of a fresh clone.
     """
     git = repositories.clone(url, "session").git
-    return NotesBranch.on(git, OwnedRemotes.read(git, settings).chosen, settings)
+    return NotesBranch.from_settings(
+        git, OwnedRemotes.read(git, settings).chosen, settings
+    )
 
 
 def queued_posts(notes: NotesBranch) -> list[dict[str, str]]:
@@ -188,6 +191,7 @@ def run_posting_workflow(
             str(NotesFile.COMMENT_QUERY.value),
             Repository(settings.owner, RepositoriesByOwner.repository_name).full_name,
             settings.notes_branch,
+            str(NotesFile.COMMIT_SCRIPT.value),
         ],
         cwd=runner.working_directory,
         capture_output=True,
@@ -230,7 +234,7 @@ def test_an_idea_is_queued_for_the_repository_s_ideas_discussions(
         str(body),
     )
 
-    notes = NotesBranch.on(
+    notes = NotesBranch.from_settings(
         checkout.git, OwnedRemotes.read(checkout.git, settings).chosen, settings
     )
     assert queued_posts(notes) == [
@@ -246,7 +250,7 @@ def test_an_idea_goes_into_the_category_named(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ):
     checkout = repositories.clone(owned_url, "session")
-    arguments = WorkflowSession.parser().parse_args(
+    arguments = RunnableCommand.parser().parse_args(
         [
             WorkflowCommand.IDEA,
             IdeaSubcommand.FILE,
@@ -291,7 +295,7 @@ def test_the_queued_workflow_has_every_placeholder_filled(
     notes.fetch()
     workflow = notes.read(NotesFile.POSTING_WORKFLOW.value)
     assert [
-        placeholder for placeholder in PostingPlaceholder if placeholder in workflow
+        placeholder for placeholder in TemplatePlaceholder if placeholder in workflow
     ] == []
 
 
@@ -460,7 +464,9 @@ def test_a_branch_the_cleanup_deletes_is_entered_in_the_session_log(
 
     run(github_workflow.__name__, checkout, WorkflowCommand.CLEANUP)
 
-    notes = NotesBranch.on(git, OwnedRemotes.read(git, settings).chosen, settings)
+    notes = NotesBranch.from_settings(
+        git, OwnedRemotes.read(git, settings).chosen, settings
+    )
     [entry] = queued_posts(notes)
     assert entry[DiscussionPostKey.TITLE] == DiscussionTitle.SESSION_LOG
     assert "`closed-work`" in entry[DiscussionPostKey.BODY]

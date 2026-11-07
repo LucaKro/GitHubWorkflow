@@ -23,6 +23,7 @@ from basstler_domain_model.github.vocabulary import (
 from basstler_domain_model.locations import PathEnumeration
 from basstler_domain_model.repository import Repository
 
+from github_workflow.workflow_templates import TemplatePlaceholder
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.settings import WorkflowSettings
@@ -34,7 +35,6 @@ from github_workflow.upstream_reviews import (
     UpstreamReadUnanswered,
     UpstreamReviewAnswering,
     UpstreamReviewKey,
-    UpstreamReviewPlaceholder,
     UpstreamReviewRequest,
 )
 
@@ -243,11 +243,7 @@ def test_a_forwarded_request_is_queued_with_its_workflow(
     workflow = notes.read(NotesFile.UPSTREAM_REVIEW_WORKFLOW.value)
     assert (
         queued,
-        [
-            placeholder
-            for placeholder in UpstreamReviewPlaceholder
-            if placeholder in workflow
-        ],
+        [placeholder for placeholder in TemplatePlaceholder if placeholder in workflow],
     ) == (
         request().to_json(),
         [],

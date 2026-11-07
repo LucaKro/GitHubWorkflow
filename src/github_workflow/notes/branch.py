@@ -24,7 +24,7 @@ class NotesBranch(StorageBranch):
     """
 
     @classmethod
-    def on(
+    def from_settings(
         cls, git: GitCommandRunner, remote: OwnedRemote, settings: WorkflowSettings
     ) -> NotesBranch:
         """

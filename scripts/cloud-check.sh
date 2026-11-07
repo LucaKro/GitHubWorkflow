@@ -14,7 +14,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PYTHON="${GITHUB_WORKFLOW_PYTHON:-${HOME}/.virtualenvs/githubworkflow-runtime/bin/python}"
+source "${ROOT}/hooks/runtime.sh"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 RESULTS="$(mktemp -d)/cloud-check-${STAMP}"
 REPORT="${RESULTS}/report.md"

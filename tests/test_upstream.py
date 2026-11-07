@@ -312,7 +312,7 @@ def test_a_draft_on_a_fork_suggests_the_command_to_the_person():
     described = suggestion.appended_to("What the change does.", "feature")
 
     assert described.startswith("What the change does.")
-    assert UpstreamSuggestion.command_for(FORK, "feature") in described
+    assert UpstreamSuggestion.opening_command(FORK, "feature") in described
 
 
 def test_a_description_ending_with_the_suggestion_keeps_it_once():
@@ -328,7 +328,7 @@ def test_a_suggestion_amid_a_description_moves_to_its_end():
 
     rewritten = suggestion.appended_to(f"{described}\nAfter the review.", "feature")
 
-    command = UpstreamSuggestion.command_for(FORK, "feature")
+    command = UpstreamSuggestion.opening_command(FORK, "feature")
     assert rewritten.count(command) == 1
     assert rewritten.index("After the review.") < rewritten.index(command)
 

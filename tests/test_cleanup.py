@@ -20,7 +20,8 @@ from basstler_domain_model.github.replayed_api import ReplayedApi
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import PullRequestState
 
-from github_workflow.__main__ import WorkflowSession
+from github_workflow.command_line import RunnableCommand
+from github_workflow.session import WorkflowSession
 from github_workflow.cleanup import (
     BranchCleanup,
     BranchDiscard,
@@ -205,7 +206,7 @@ def cleanup_in(
         remote.repository.full_name,
         frozenset({RepositoriesByOwner.default_branch, settings.notes_branch}),
     )
-    notes = NotesBranch.on(git, remote, settings)
+    notes = NotesBranch.from_settings(git, remote, settings)
     return BranchCleanup(git, remote, branches, notes, EntriesInMemory()), git
 
 
@@ -287,6 +288,7 @@ def run_deletion_workflow(
             str(NotesFile.READY_FOR_DELETION.value),
             RepositoriesByOwner.default_branch,
             settings.notes_branch,
+            str(NotesFile.COMMIT_SCRIPT.value),
         ],
         cwd=runner.working_directory,
         check=True,
@@ -344,7 +346,9 @@ def pushed_work(
     BranchStart(policy, "tried").run()
     CommitWork(policy, "Try", [write(policy.checkout, "tried.txt")]).run()
     PushWork(policy).run()
-    return policy, NotesBranch.on(policy.checkout.git, policy.remote, settings)
+    return policy, NotesBranch.from_settings(
+        policy.checkout.git, policy.remote, settings
+    )
 
 
 def discard(
@@ -507,7 +511,7 @@ def test_without_the_plugin_s_data_no_clone_is_looked_at(
 ):
     monkeypatch.delenv(WorkflowVariable.PLUGIN_DATA, raising=False)
     checkout = repositories.clone(owned_url, "session")
-    arguments = WorkflowSession.parser().parse_args([WorkflowCommand.CLEANUP])
+    arguments = RunnableCommand.parser().parse_args([WorkflowCommand.CLEANUP])
 
     step = WorkflowSession(checkout.root, settings).step(arguments)
 

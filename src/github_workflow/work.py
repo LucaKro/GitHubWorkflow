@@ -32,12 +32,12 @@ from basstler_domain_model.github.repository_client import (
 from basstler_domain_model.github.vocabulary import ClosingKeyword, PullRequestState
 from basstler_domain_model.repository import GitHubAddress, Repository
 
+from github_workflow.branch_tips import BranchTip
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.command_line import WorkflowCommand
+from github_workflow.command_line import RunnableCommand
 from github_workflow.exceptions import (
     ConflictMarkersLeftError,
     MergeConflictError,
-    MergeInProgressError,
     NoMergeInProgressError,
     UnresolvedConflictError,
     StackedBranchMergeError,
@@ -53,7 +53,7 @@ from github_workflow.exceptions import (
     UnpushedCommitsError,
 )
 from github_workflow.hooks import NumberLink
-from github_workflow.labels import DescribedLabel
+from github_workflow.labels import IssueLabel
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
 from github_workflow.push_hook import PushHook
@@ -208,11 +208,11 @@ class CommitWork(WorkflowStep):
         :raises MergeInProgressError: If a merge is in progress.
         """
         branch = self.policy.work_branch()
-        MergeInProgress(self.policy.checkout.git).refuse_while_in_progress(branch)
+        self.policy.refuse_while_merging(branch)
         commit = self.policy.checkout.git.commit(
             self.policy.commit_message(self.message), self.paths
         )
-        return f"committed {commit[:7]} on {branch}"
+        return f"committed {BranchTip.abbreviated(commit)} on {branch}"
 
 
 @dataclass(frozen=True)
@@ -232,7 +232,7 @@ class PushWork(WorkflowStep):
         :raises MergeInProgressError: If a merge is in progress.
         """
         branch = RemoteBranch(self.policy.remote.name, self.policy.work_branch())
-        MergeInProgress(self.policy.checkout.git).refuse_while_in_progress(branch.name)
+        self.policy.refuse_while_merging(branch.name)
         pushed = self.policy.checkout.git.push(
             ProposedPush(
                 branch.remote, f"{branch.name}:{branch.reference}", sets_upstream=True
@@ -438,21 +438,6 @@ class DraftOpening(WorkflowStep):
             )
 
 
-class IssueLabel(DescribedLabel):
-    """
-    The labels the workflow puts on an issue about the pull requests working on it.
-    """
-
-    PULL_REQUEST_OPENED = (
-        "pull request opened",
-        "An open pull request of this repository closes it once merged",
-        "5319e7",
-    )
-    """
-    A draft whose description closes the issue is open.
-    """
-
-
 @dataclass(frozen=True)
 class PullRequestOpenedLabelling:
     """
@@ -478,8 +463,7 @@ class PullRequestOpenedLabelling:
         issues = ClosingLines(description).issues()
         if not issues:
             return []
-        if IssueLabel.PULL_REQUEST_OPENED not in self.labels.labels():
-            self.labels.create_label(IssueLabel.PULL_REQUEST_OPENED)
+        self.labels.create_missing_labels([IssueLabel.PULL_REQUEST_OPENED])
         for issue in issues:
             self.board.add_labels(issue, [IssueLabel.PULL_REQUEST_OPENED])
         return issues
@@ -738,10 +722,7 @@ class BranchSync(WorkflowStep):
         :return: Whether GitHub had it: a fetch or a push wrote its remote-tracking
             reference, or a pull request was opened from it.
         """
-        reflog = self.policy.checkout.git.attempt(
-            "reflog", "show", "--format=%gs", branch.tracking_reference
-        )
-        entries = reflog.output.splitlines() if reflog.succeeded else []
+        entries = self.policy.checkout.git.reflog_entries(branch.tracking_reference)
         writes = tuple(TrackingReferenceWrite)
         if any(entry.startswith(writes) for entry in entries):
             return True
@@ -777,46 +758,6 @@ class ConflictMarker(StrEnum):
 
 
 @dataclass(frozen=True)
-class MergeInProgress:
-    """
-    The merge a checkout is in the middle of, if any: started, conflicting, and neither
-    committed nor undone yet.
-    """
-
-    git: GitCommandRunner
-    """
-    The checkout.
-    """
-
-    def exists(self) -> bool:
-        """
-        :return: Whether a merge is in progress.
-        """
-        return self.git.attempt(
-            "rev-parse", "--quiet", "--verify", "MERGE_HEAD"
-        ).succeeded
-
-    def message(self) -> str:
-        """
-        :return: The commit message the merge was started with, without the lines git
-            adds as comments.
-        """
-        path = self.git.working_directory / self.git.run(
-            "rev-parse", "--git-path", "MERGE_MSG"
-        )
-        lines = path.read_text().splitlines()
-        return "\n".join(line for line in lines if not line.startswith("#")).strip()
-
-    def refuse_while_in_progress(self, branch: str) -> None:
-        """
-        :param branch: The checked-out branch.
-        :raises MergeInProgressError: If a merge is in progress.
-        """
-        if self.exists():
-            raise MergeInProgressError(branch)
-
-
-@dataclass(frozen=True)
 class WorkBranchMerge:
     """
     A branch as GitHub has it merged into the checked-out work branch, committed as the
@@ -840,7 +781,7 @@ class WorkBranchMerge:
         """
         branch = self.policy.work_branch()
         git = self.policy.checkout.git
-        MergeInProgress(git).refuse_while_in_progress(branch)
+        self.policy.refuse_while_merging(branch)
         git.fetch_branch(merged).raise_if_failed()
         if git.contains(merged.tracking_reference, "HEAD"):
             return f"{branch} has {described}'s commits already"
@@ -853,7 +794,7 @@ class WorkBranchMerge:
             if not conflicted:
                 result.raise_if_failed()
             raise MergeConflictError(branch, described, tuple(conflicted))
-        push = WorkflowCommand.command_line(WorkflowCommand.PUSH)
+        push = RunnableCommand.PUSH.usage()
         return f"merged {described} into {branch}; push it with `{push}`"
 
 
@@ -883,8 +824,7 @@ class MergeCompletion(WorkflowStep):
     def run(self) -> str:
         branch = self.policy.work_branch()
         git = self.policy.checkout.git
-        merge = MergeInProgress(git)
-        if not merge.exists():
+        if not git.merge_in_progress():
             raise NoMergeInProgressError(branch)
         marked = [
             str(path)
@@ -893,15 +833,16 @@ class MergeCompletion(WorkflowStep):
         ]
         if marked:
             raise ConflictMarkersLeftError(tuple(marked))
-        git.run("add", "--", *map(str, self.resolved))
+        git.stage(self.resolved)
         unresolved = git.conflicted_files()
         if unresolved:
             raise UnresolvedConflictError(tuple(unresolved))
-        message = self.policy.commit_message(merge.message())
-        git.run("commit", "--quiet", "--message", message)
-        push = WorkflowCommand.command_line(WorkflowCommand.PUSH)
-        commit = git.commit_at("HEAD")
-        return f"committed the merge {commit[:7]} on {branch}; push it with `{push}`"
+        commit = git.commit_staged(self.policy.commit_message(git.merge_message()))
+        push = RunnableCommand.PUSH.usage()
+        return (
+            f"committed the merge {BranchTip.abbreviated(commit)} on {branch}; push it "
+            f"with `{push}`"
+        )
 
 
 @dataclass(frozen=True)
@@ -921,7 +862,7 @@ class MergeAbort(WorkflowStep):
     def run(self) -> str:
         branch = self.policy.work_branch()
         git = self.policy.checkout.git
-        if not MergeInProgress(git).exists():
+        if not git.merge_in_progress():
             raise NoMergeInProgressError(branch)
         git.abort_merge()
         return f"undid the merge on {branch}; it is as it was before"
@@ -983,7 +924,7 @@ class OpenPullRequestBranch:
     The owner's repository, which the branch has to be on.
     """
 
-    def of(self, number: int) -> str:
+    def branch(self, number: int) -> str:
         """
         :param number: The pull request.
         :return: Its branch.
@@ -1034,7 +975,7 @@ class PullRequestMerge(WorkflowStep):
         self.policy.work_branch()
         branch = OpenPullRequestBranch(
             self.pull_requests, self.policy.remote.repository
-        ).of(self.number)
+        ).branch(self.number)
         merged = RemoteBranch(self.policy.remote.name, branch)
         described = f"#{self.number}'s branch {branch}"
         return WorkBranchMerge(self.policy).merge(merged, described)

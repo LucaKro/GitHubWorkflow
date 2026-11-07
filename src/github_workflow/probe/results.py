@@ -17,13 +17,44 @@ class CheckGroup(StrEnum):
     """
 
     LIBRARY = "domain model, used live"
+    """
+    The domain model's own calls to GitHub.
+    """
+
     GIT = "git: a notes branch on the repository"
+    """
+    Git reaching the repository, on a notes branch of the probe's own.
+    """
+
     ISSUE_BOARD = "issues: the finding boards"
+    """
+    Filing, labelling and closing issues.
+    """
+
     PULL_REQUEST = "pull requests: draft, review threads, base"
+    """
+    Opening, rewriting and closing pull requests.
+    """
+
     STACKS = "stacks: retargeting and native stacks, through the stacks command"
+    """
+    Retargeting pull requests and GitHub's native stacks, through ``stack on``.
+    """
+
     SETTINGS = "settings: issues, merged-branch deletion, Actions"
+    """
+    Reading and writing the repository settings the workflow relies on.
+    """
+
     ACTIONS = "Actions: deleting branches from a workflow"
+    """
+    An Actions workflow deleting branches, as the notes branch's workflows do.
+    """
+
     SIGNALS = "signals beside the repository"
+    """
+    What the session can read beside the repository itself.
+    """
 
 
 @dataclass(frozen=True)

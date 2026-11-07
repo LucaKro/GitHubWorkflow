@@ -1,10 +1,7 @@
 """
-The guard every tool call passes before it runs: it denies writing to git or GitHub
-directly, so every write goes through the workflow's commands. Reading stays allowed.
-
-Run as a Claude Code ``PreToolUse`` hook: reads the hook's JSON on stdin and prints a
-denial, or nothing to leave the decision to the usual permissions; the workflow's own
-commands run without the person being asked.
+The guard every tool call passes before it runs, as a Claude Code ``PreToolUse`` hook:
+it denies writing to git or GitHub directly, so every write goes through the workflow's
+commands, and prints nothing for a call it leaves to the usual permissions.
 
 Usage: ``python -m github_workflow.guard < hook-input.json``
 """
@@ -18,25 +15,20 @@ import sys
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from enum import StrEnum
+from enum import Enum, StrEnum
 from http import HTTPMethod
 from pathlib import PurePath
 from typing import Any
 
-
 import github_workflow
-from github_workflow.coarse_guard import (
-    GitConfigurationLocation,
-    GitHubTool,
-    Program,
-)
+from github_workflow.coarse_guard import GitConfigurationLocation, Program
 from github_workflow.command_line import (
-    BranchSubcommand,
-    ReviewSubcommand,
-    ToolRepository,
-    WorkflowCommand,
+    CommandAuthority,
+    CommandOption,
+    RefusalAdvice,
+    RunnableCommand,
 )
-from github_workflow.hooks import FileWritingTool, HookKey, HookValue
+from github_workflow.hooks import HookInput, Speaker, ToolCallDenial, ToolKind
 from github_workflow.install import Launcher
 
 # %% the session
@@ -44,9 +36,7 @@ from github_workflow.install import Launcher
 
 class SessionVariable(StrEnum):
     """
-    The variable Claude Code sets for every command it runs, named here rather than
-    taken from :mod:`basstler_domain_model.environment`, so the guard runs on the
-    standard library alone.
+    The variable Claude Code sets for every command it runs.
     """
 
     COMMAND_MARKER = "CLAUDECODE"
@@ -147,8 +137,19 @@ class VariableExport(StrEnum):
     """
 
     EXPORT = "export"
+    """
+    Exports a variable.
+    """
+
     DECLARE = "declare"
+    """
+    Declares a variable, exported with ``-x``.
+    """
+
     TYPESET = "typeset"
+    """
+    Declares a variable, the Korn shell's spelling of ``declare``.
+    """
 
 
 class VariableRemoval(StrEnum):
@@ -158,6 +159,9 @@ class VariableRemoval(StrEnum):
     """
 
     UNSET = "unset"
+    """
+    Removes a variable.
+    """
 
 
 class EnvironmentOption(StrEnum):
@@ -226,17 +230,64 @@ class ShellKeyword(StrEnum):
     """
 
     IF = "if"
+    """
+    Opens a conditional, whose condition runs as a command.
+    """
+
     THEN = "then"
+    """
+    Opens what a condition that held runs.
+    """
+
     ELIF = "elif"
+    """
+    Opens a further condition.
+    """
+
     ELSE = "else"
+    """
+    Opens what runs when no condition held.
+    """
+
     FI = "fi"
+    """
+    Closes a conditional.
+    """
+
     WHILE = "while"
+    """
+    Opens a loop running while its condition holds.
+    """
+
     UNTIL = "until"
+    """
+    Opens a loop running until its condition holds.
+    """
+
     DO = "do"
+    """
+    Opens a loop's body.
+    """
+
     DONE = "done"
+    """
+    Closes a loop.
+    """
+
     OPENING_BRACE = "{"
+    """
+    Opens a group of commands run in the current shell.
+    """
+
     CLOSING_BRACE = "}"
+    """
+    Closes a group of commands.
+    """
+
     NEGATION = "!"
+    """
+    Negates the status of the command after it.
+    """
 
     FUNCTION = "function"
     """
@@ -346,7 +397,7 @@ class GitProgramOption(StrEnum):
         """
         remote = (GitReading.LS_REMOTE, GitListing.FETCH)
         for argument in arguments:
-            if argument.partition("=")[0] in cls._value2member_map_:
+            if argument.partition("=")[0] in cls:
                 return True
             short = argument.startswith("-") and not argument.startswith("--")
             if short and subcommand in remote and cls.short_letter() in argument:
@@ -362,28 +413,119 @@ class GitReading(StrEnum):
     """
 
     STATUS = "status"
+    """
+    Shows the working tree's state.
+    """
+
     DIFF = "diff"
+    """
+    Shows changes.
+    """
+
     LOG = "log"
+    """
+    Shows commits.
+    """
+
     SHOW = "show"
+    """
+    Shows objects.
+    """
+
     BLAME = "blame"
+    """
+    Shows who last changed each line.
+    """
+
     GREP = "grep"
+    """
+    Searches tracked files.
+    """
+
     REV_PARSE = "rev-parse"
+    """
+    Resolves references and git's paths.
+    """
+
     REV_LIST = "rev-list"
+    """
+    Lists commits.
+    """
+
     LS_FILES = "ls-files"
+    """
+    Lists the index's files.
+    """
+
     LS_TREE = "ls-tree"
+    """
+    Lists a tree's files.
+    """
+
     LS_REMOTE = "ls-remote"
+    """
+    Lists a remote's references.
+    """
+
     CAT_FILE = "cat-file"
+    """
+    Prints objects.
+    """
+
     MERGE_BASE = "merge-base"
+    """
+    Finds common ancestors.
+    """
+
     MERGE_TREE = "merge-tree"
+    """
+    Merges without touching a branch, the index or the working tree.
+    """
+
     DESCRIBE = "describe"
+    """
+    Names a commit after the nearest tag.
+    """
+
     SHORTLOG = "shortlog"
+    """
+    Summarizes commits by author.
+    """
+
     FOR_EACH_REF = "for-each-ref"
+    """
+    Lists references.
+    """
+
     SHOW_REF = "show-ref"
+    """
+    Lists references and their commits.
+    """
+
     NAME_REV = "name-rev"
+    """
+    Names a commit after the references reaching it.
+    """
+
     CHECK_IGNORE = "check-ignore"
+    """
+    Says why a path is ignored.
+    """
+
     VAR = "var"
+    """
+    Prints git's logical variables, such as the author's identity.
+    """
+
     VERSION = "version"
+    """
+    Prints git's version.
+    """
+
     HELP = "help"
+    """
+    Prints git's help.
+    """
 
 
 class ReadingFetch(StrEnum):
@@ -561,22 +703,89 @@ class GitHubCliReading(StrEnum):
     """
 
     PULL_REQUEST_VIEW = "pr view"
+    """
+    Shows a pull request.
+    """
+
     PULL_REQUEST_LIST = "pr list"
+    """
+    Lists pull requests.
+    """
+
     PULL_REQUEST_DIFF = "pr diff"
+    """
+    Shows a pull request's changes.
+    """
+
     PULL_REQUEST_CHECKS = "pr checks"
+    """
+    Shows a pull request's checks.
+    """
+
     PULL_REQUEST_STATUS = "pr status"
+    """
+    Shows the pull requests relevant to the signed-in account.
+    """
+
     ISSUE_VIEW = "issue view"
+    """
+    Shows an issue.
+    """
+
     ISSUE_LIST = "issue list"
+    """
+    Lists issues.
+    """
+
     ISSUE_STATUS = "issue status"
+    """
+    Shows the issues relevant to the signed-in account.
+    """
+
     RUN_VIEW = "run view"
+    """
+    Shows an Actions run.
+    """
+
     RUN_LIST = "run list"
+    """
+    Lists Actions runs.
+    """
+
     RUN_WATCH = "run watch"
+    """
+    Follows an Actions run until it ends.
+    """
+
     REPOSITORY_VIEW = "repo view"
+    """
+    Shows a repository.
+    """
+
     RELEASE_VIEW = "release view"
+    """
+    Shows a release.
+    """
+
     RELEASE_LIST = "release list"
+    """
+    Lists releases.
+    """
+
     WORKFLOW_VIEW = "workflow view"
+    """
+    Shows an Actions workflow.
+    """
+
     WORKFLOW_LIST = "workflow list"
+    """
+    Lists Actions workflows.
+    """
+
     AUTHENTICATION_STATUS = "auth status"
+    """
+    Shows which account gh is signed in as.
+    """
 
 
 class GitHubCliSubcommand(StrEnum):
@@ -881,9 +1090,8 @@ class Denial:
             if self.instead
             else "No workflow command does this: ask the person running the tool."
         )
-        return (
-            f"github-workflow: {self.reason}. {instead} "
-            f"{ToolRepository.refusal_pointer()}"
+        return Speaker.WORKFLOW.says(
+            f"{self.reason}. {instead} {RefusalAdvice.pointer()}"
         )
 
 
@@ -942,96 +1150,79 @@ class GitWrite(StrEnum):
         """:return: The workflow command line doing the same job."""
         match self:
             case GitWrite.PUSH:
-                return WorkflowCommand.command_line(WorkflowCommand.PUSH)
+                return RunnableCommand.PUSH.usage()
             case GitWrite.COMMIT | GitWrite.ADD:
-                return WorkflowCommand.command_line(
-                    WorkflowCommand.COMMIT, "-m", "<message>", "<paths>..."
-                )
+                return RunnableCommand.COMMIT.usage(CommandOption.MESSAGE, "paths")
             case GitWrite.SWITCH | GitWrite.CHECKOUT:
-                return (
-                    WorkflowCommand.command_line(
-                        WorkflowCommand.BRANCH, BranchSubcommand.SWITCH, "<branch>"
-                    )
-                    + " (or `branch start <name>` for a new one)"
-                )
+                start = RunnableCommand.BRANCH_START.usage("name")
+                switch = RunnableCommand.BRANCH_SWITCH.usage("name")
+                return f"{switch}`, or for a new one `{start}"
             case GitWrite.BRANCH:
-                return WorkflowCommand.command_line(
-                    WorkflowCommand.BRANCH, BranchSubcommand.START, "<name>"
-                )
+                return RunnableCommand.BRANCH_START.usage("name")
             case GitWrite.PULL:
-                return WorkflowCommand.command_line(WorkflowCommand.SYNC)
+                return RunnableCommand.SYNC.usage()
             case GitWrite.MERGE:
-                return (
-                    WorkflowCommand.command_line(WorkflowCommand.SYNC, "--base")
-                    + " (or `"
-                    + WorkflowCommand.command_line(
-                        WorkflowCommand.SYNC, "--on <number>"
-                    )
-                    + "` for another open pull request's branch)"
-                )
+                base = RunnableCommand.SYNC.usage(CommandOption.BASE)
+                stacked = RunnableCommand.SYNC.usage(CommandOption.ON)
+                return f"{base}`, or for another open pull request's branch `{stacked}"
             case GitWrite.CLONE:
+                clone = RunnableCommand.CLONE.usage("repository")
                 return (
-                    WorkflowCommand.command_line(
-                        WorkflowCommand.CLONE, "<owner>/<name>"
-                    )
-                    + "`; to review a pull request, then run in the clone `git fetch "
-                    "origin +refs/pull/<number>/head:refs/remotes/pull/<number>"
+                    f"{clone}`; to review a pull request, then run in the clone `git "
+                    f"fetch origin +refs/pull/<number>/head:refs/remotes/pull/<number>"
                 )
 
 
-class PullRequestOpening(StrEnum):
+class PullRequestWrite(Enum):
     """
-    The ways of opening a pull request directly, all done by the workflow's ``draft``.
-    """
-
-    CLI = "pr create"
-    """
-    ``gh pr create``.
+    The jobs of writing a pull request directly, each done by a workflow command, with
+    the ``gh`` command and the GitHub MCP tool doing it.
     """
 
-    TOOL = "create_pull_request"
+    OPENING = ("pr create", "create_pull_request")
     """
-    The GitHub MCP tool.
+    Opening one, which the workflow's ``draft`` does.
     """
+
+    REWRITING = ("pr edit", "update_pull_request")
+    """
+    Rewriting one, whose description and title the workflow's ``describe`` rewrites
+    on an open pull request.
+    """
+
+    def __init__(self, cli: str, tool: str) -> None:
+        """
+        :param cli: The ``gh`` command doing it, by its first two words.
+        :param tool: The GitHub MCP tool doing it.
+        """
+        self.cli = cli
+        self.tool = tool
+
+    @property
+    def instead(self) -> str:
+        """:return: The workflow command line doing the job."""
+        match self:
+            case PullRequestWrite.OPENING:
+                return RunnableCommand.DRAFT.usage(
+                    CommandOption.TITLE, CommandOption.BODY_FILE
+                )
+            case PullRequestWrite.REWRITING:
+                return RunnableCommand.DESCRIBE.usage(
+                    "number", optional=(CommandOption.BODY_FILE, CommandOption.TITLE)
+                )
 
     @classmethod
-    def instead(cls) -> str:
+    def denial(cls, reason: str, cli: str = "", tool: str = "") -> Denial:
         """
-        The workflow command line opening a draft pull request.
+        :param reason: Why a call is denied.
+        :param cli: The ``gh`` command it runs, by its first two words, if any.
+        :param tool: The GitHub MCP tool it calls, if any.
+        :return: The denial, naming the workflow command doing the job when one does.
         """
-        return WorkflowCommand.command_line(
-            WorkflowCommand.DRAFT, "--title", "<title>", "--body-file", "<file>"
+        job = next(
+            (job for job in cls if (cli and job.cli == cli) or job.tool == tool), None
         )
-
-
-class DescriptionRewriting(StrEnum):
-    """
-    The ways of rewriting a pull request directly, whose description and title the
-    workflow's ``describe`` rewrites on an open pull request.
-    """
-
-    CLI = "pr edit"
-    """
-    ``gh pr edit``.
-    """
-
-    TOOL = "update_pull_request"
-    """
-    The GitHub MCP tool.
-    """
-
-    @classmethod
-    def instead(cls) -> str:
-        """
-        The workflow command line rewriting an open pull request's description or
-        title.
-        """
-        return WorkflowCommand.command_line(
-            WorkflowCommand.DESCRIBE,
-            "<number>",
-            "[--body-file <file>]",
-            "[--title <title>]",
-        )
+        return Denial(reason, None if job is None else job.instead)
 
 
 class OwnPullRequestTool(StrEnum):
@@ -1062,37 +1253,15 @@ class OwnPullRequestTool(StrEnum):
         """
         match self:
             case OwnPullRequestTool.LABELS:
-                arguments = ["--add <label>", "--remove <label>"]
-                return WorkflowCommand.command_line(WorkflowCommand.LABEL, *arguments)
+                return RunnableCommand.LABEL.usage(
+                    CommandOption.ADD, CommandOption.REMOVE
+                )
             case OwnPullRequestTool.REPLY:
-                return WorkflowCommand.command_line(
-                    WorkflowCommand.REVIEW,
-                    ReviewSubcommand.REPLY,
-                    "<comment>",
-                    "--body-file <file>",
+                return RunnableCommand.REVIEW_REPLY.usage(
+                    "comment", CommandOption.BODY_FILE
                 )
             case OwnPullRequestTool.RESOLVE:
-                return WorkflowCommand.command_line(
-                    WorkflowCommand.REVIEW, ReviewSubcommand.RESOLVE, "<comment>"
-                )
-
-
-class PersonOnlyCommand(StrEnum):
-    """
-    The workflow commands only the person runs, never a Claude Code session, even with
-    the person's go-ahead, by their leading words.
-    """
-
-    UPSTREAM = WorkflowCommand.UPSTREAM.value
-
-    @classmethod
-    def run_by(cls, command: SimpleCommand) -> PersonOnlyCommand | None:
-        """
-        :param command: One simple command.
-        :return: The command only the person runs that it runs, ``None`` when it runs
-            none.
-        """
-        return next((member for member in cls if command.runs_workflow(member)), None)
+                return RunnableCommand.REVIEW_RESOLVE.usage("comment")
 
 
 # %% judging one program
@@ -1121,7 +1290,7 @@ class GitCheck(ProgramCheck):
         index = 0
         while index < len(arguments) and arguments[index].startswith("-"):
             option = arguments[index]
-            if option not in GitGlobalOption._value2member_map_:
+            if option not in GitGlobalOption:
                 return Denial(f"git {option} is not an option the guard lets through")
             index += 2 if option == GitGlobalOption.DIRECTORY else 1
         if index >= len(arguments):
@@ -1133,13 +1302,13 @@ class GitCheck(ProgramCheck):
             argument.startswith(("-O", "--open-files-in-pager")) for argument in rest
         ):
             return Denial("git grep opening files runs a program")
-        if subcommand in GitReading._value2member_map_:
+        if subcommand in GitReading:
             return None
-        if subcommand in GitListing._value2member_map_:
+        if subcommand in GitListing:
             if GitListing(subcommand).reads(rest):
                 return None
         reason = f"git {subcommand} writes, or is not a form the guard knows reads"
-        if subcommand in GitWrite._value2member_map_:
+        if subcommand in GitWrite:
             return Denial(reason, GitWrite(subcommand).instead)
         return Denial(reason)
 
@@ -1187,15 +1356,11 @@ class GitHubCliCheck(ProgramCheck):
             return None
         if words[:1] == [GitHubCliSubcommand.SEARCH]:
             return None
-        if " ".join(words[:2]) in GitHubCliReading._value2member_map_:
+        if " ".join(words[:2]) in GitHubCliReading:
             return None
         command = " ".join(words[:2])
         reason = f"gh {command} writes, or is not a command the guard knows reads"
-        if command == PullRequestOpening.CLI:
-            return Denial(reason, PullRequestOpening.instead())
-        if command == DescriptionRewriting.CLI:
-            return Denial(reason, DescriptionRewriting.instead())
-        return Denial(reason)
+        return PullRequestWrite.denial(reason, cli=command)
 
 
 @dataclass(frozen=True)
@@ -1275,7 +1440,7 @@ class SimpleCommand:
             if word == ShellKeyword.FUNCTION:
                 index += 2
                 continue
-            syntax = word in ShellKeyword._value2member_map_
+            syntax = word in ShellKeyword
             if not syntax and not CommandLine.assignment().fullmatch(word):
                 return index
             index += 1
@@ -1325,14 +1490,14 @@ class SimpleCommand:
             return None
         return [word for word in given if not word.startswith("-")]
 
-    def runs_workflow(self, leading: str) -> bool:
+    def runs_workflow(self, command: RunnableCommand) -> bool:
         """
-        :param leading: A workflow command's leading words, such as ``finding accept``.
-        :return: Whether this runs ``python -m github_workflow``, or the launcher, with
-            them.
+        :param command: A workflow command.
+        :return: Whether this runs it with ``python -m github_workflow``, or the
+            launcher.
         """
         words = self.workflow_words()
-        return words is not None and words[: len(leading.split())] == leading.split()
+        return words is not None and RunnableCommand.run_by(words) is command
 
 
 class Redirection(StrEnum):
@@ -1614,24 +1779,32 @@ class CommandGuard:
             )
         judge = replace(self, enclosing_line_names_git=mentions_git)
         for words in line.simple_commands():
-            person_only = PersonOnlyCommand.run_by(SimpleCommand(words))
+            person_only = next(
+                (
+                    command
+                    for command in RunnableCommand
+                    if command.authority is CommandAuthority.PERSON
+                    and SimpleCommand(words).runs_workflow(command)
+                ),
+                None,
+            )
             if person_only is not None:
                 return Denial(
-                    f"only the person runs `{person_only}`, never a Claude Code "
-                    f"session: put its command line in the pull request's description "
-                    f"for them to copy"
+                    f"only the person runs `{' '.join(person_only.words)}`, never a "
+                    f"Claude Code session: put its command line in the pull request's "
+                    f"description for them to copy"
                 )
             if mentions_git and "$" in SimpleCommand(words).program:
                 return Denial(
                     "a program named by an expansion could be git or gh",
                     saw_write=False,
                 )
-            reason = judge.denial_of(words)
+            reason = judge.command_denial(words)
             if reason is not None:
                 return reason
         return None
 
-    def denial_of(self, words: Sequence[str]) -> Denial | None:
+    def command_denial(self, words: Sequence[str]) -> Denial | None:
         """
         :param words: One simple command's words.
         :return: Why it is denied, ``None`` when it may run.
@@ -1647,22 +1820,19 @@ class CommandGuard:
             return self.marker_change()
         if not program:
             return None
-        if program in VariableExport._value2member_map_ and any(
+        if program in VariableExport and any(
             argument.startswith("GIT_") for argument in arguments
         ):
             return Denial("exporting git's environment can make it run a program")
-        changes_variables = (
-            program in VariableExport._value2member_map_
-            or program in VariableRemoval._value2member_map_
-        )
+        changes_variables = program in VariableExport or program in VariableRemoval
         if changes_variables and any(
             argument.partition("=")[0] == marker for argument in arguments
         ):
             return self.marker_change()
-        if program in Wrapper._value2member_map_:
-            return self._denial_of_wrapped(Wrapper(program), arguments)
-        if program in Shell._value2member_map_:
-            return self._denial_of_shell(Shell(program), arguments)
+        if program in Wrapper:
+            return self._wrapped_denial(Wrapper(program), arguments)
+        if program in Shell:
+            return self._shell_denial(Shell(program), arguments)
         match program:
             case Program.GIT:
                 return GitCheck().denial(arguments)
@@ -1674,9 +1844,7 @@ class CommandGuard:
                 return HttpClientCheck.wget().denial(arguments)
         return None
 
-    def _denial_of_wrapped(
-        self, wrapper: Wrapper, arguments: list[str]
-    ) -> Denial | None:
+    def _wrapped_denial(self, wrapper: Wrapper, arguments: list[str]) -> Denial | None:
         """
         :param wrapper: The wrapper.
         :param arguments: Its arguments, its options and the command it runs.
@@ -1704,13 +1872,13 @@ class CommandGuard:
                     saw_write=False,
                 )
             program = PurePath(argument).name
-            if wrapper is Wrapper.XARGS and program in Program._value2member_map_:
+            if wrapper is Wrapper.XARGS and program in Program:
                 return Denial(
                     f"xargs gives {program} arguments the guard cannot see",
                     saw_write=False,
                 )
             if program in judged:
-                return self.denial_of(arguments[index:])
+                return self.command_denial(arguments[index:])
         return None
 
     @staticmethod
@@ -1720,7 +1888,7 @@ class CommandGuard:
         :return: Whether ``env`` runs its command without the variable marking a Claude
             Code session's commands, or with it changed.
         """
-        options = EnvironmentOption._value2member_map_
+        options = EnvironmentOption
         for index, argument in enumerate(arguments):
             if argument in options and EnvironmentOption(argument).drops_every_variable:
                 return True
@@ -1735,7 +1903,7 @@ class CommandGuard:
                 return False
         return False
 
-    def _denial_of_shell(self, shell: Shell, arguments: list[str]) -> Denial | None:
+    def _shell_denial(self, shell: Shell, arguments: list[str]) -> Denial | None:
         """
         :param shell: The shell.
         :param arguments: Its arguments.
@@ -1758,36 +1926,31 @@ class ToolGuard:
     The hook's decision over one tool call.
     """
 
-    hook_input: dict[str, Any]
+    call: HookInput
     """
-    The hook's input, as Claude Code sends it.
+    The tool call.
     """
 
     def denial(self) -> Denial | None:
         """
         :return: Why the call is denied, ``None`` when it may run.
         """
-        tool = self.hook_input.get(HookKey.TOOL_NAME, "")
-        if tool in FileWritingTool._value2member_map_:
-            path = PurePath(self.hook_input[HookKey.TOOL_INPUT][HookKey.FILE_PATH])
-            if GitConfigurationLocation.holds(path):
-                return Denial(f"git runs programs that {path} names")
-            return None
-        if tool == HookValue.BASH_TOOL:
-            command = self.hook_input[HookKey.TOOL_INPUT][HookKey.COMMAND]
-            return CommandGuard().denial(command)
-        if GitHubTool.names(tool):
-            name = tool.rsplit("__", 1)[-1]
-            if GitHubToolReading.names_a_read(name):
+        match self.call.kind:
+            case ToolKind.FILE_WRITE:
+                path = PurePath(self.call.file_path)
+                if GitConfigurationLocation.holds(path):
+                    return Denial(f"git runs programs that {path} names")
                 return None
-            reason = f"the GitHub tool {name} writes"
-            if name == PullRequestOpening.TOOL:
-                return Denial(reason, PullRequestOpening.instead())
-            if name == DescriptionRewriting.TOOL:
-                return Denial(reason, DescriptionRewriting.instead())
-            if name in OwnPullRequestTool._value2member_map_:
-                return Denial(reason, OwnPullRequestTool(name).instead())
-            return Denial(reason)
+            case ToolKind.BASH:
+                return CommandGuard().denial(self.call.command)
+            case ToolKind.GITHUB:
+                name = self.call.tool_without_server
+                if GitHubToolReading.names_a_read(name):
+                    return None
+                reason = f"the GitHub tool {name} writes"
+                if name in OwnPullRequestTool:
+                    return Denial(reason, OwnPullRequestTool(name).instead())
+                return PullRequestWrite.denial(reason, tool=name)
         return None
 
     def output(self) -> dict[str, Any] | None:
@@ -1796,31 +1959,17 @@ class ToolGuard:
             permissions.
         """
         denial = self.denial()
-        if denial is not None:
-            decision = self._decision(HookValue.DENY, denial.message())
-            if not denial.saw_write:
-                command = self.hook_input[HookKey.TOOL_INPUT][HookKey.COMMAND]
-                decision[HookKey.SYSTEM_MESSAGE] = (
-                    f"github-workflow: denied a command it cannot see into "
-                    f"({denial.reason}): {command}"
-                )
-            return decision
-        return None
-
-    @staticmethod
-    def _decision(decision: HookValue, reason: str) -> dict[str, Any]:
-        """
-        :param decision: What is decided about the call.
-        :param reason: Why.
-        :return: The hook's output.
-        """
-        return {
-            HookKey.HOOK_SPECIFIC_OUTPUT: {
-                HookKey.HOOK_EVENT_NAME: HookValue.PRE_TOOL_USE,
-                HookKey.PERMISSION_DECISION: decision,
-                HookKey.PERMISSION_DECISION_REASON: reason,
-            }
-        }
+        if denial is None:
+            return None
+        shown = (
+            None
+            if denial.saw_write
+            else Speaker.WORKFLOW.says(
+                f"denied a command it cannot see into ({denial.reason}): "
+                f"{self.call.command}"
+            )
+        )
+        return ToolCallDenial(denial.message(), shown).answer()
 
 
 # %% entry point
@@ -1830,7 +1979,7 @@ def main() -> None:
     """
     Read the hook's input and print its decision.
     """
-    output = ToolGuard(json.load(sys.stdin)).output()
+    output = ToolGuard(HookInput.from_json(json.load(sys.stdin))).output()
     if output is not None:
         print(json.dumps(output))
 

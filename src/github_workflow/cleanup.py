@@ -1,9 +1,8 @@
 """
-Branches GitHub kept although their pull request is closed - closed without merging, or
-merged before GitHub deleted merged branches - and branches discarded as thrown away.
-Listed at session start, deleted by the cleanup command - or, where the session may not
-delete branches, handed to an Actions workflow on the notes branch. The cleanup command
-also removes the clones of somebody else's repositories no session uses any more.
+Branches GitHub kept although their pull request is closed, and branches discarded as
+thrown away: listed at session start, and deleted by the cleanup command or, where the
+session may not delete branches, by an Actions workflow on the notes branch; and the
+clones of somebody else's repositories no session uses any more, removed.
 """
 
 from __future__ import annotations
@@ -14,9 +13,7 @@ from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import timedelta
-from enum import StrEnum
 from pathlib import Path
-from typing import Self
 
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
 from basstler_domain_model.github.repository_client import (
@@ -26,49 +23,22 @@ from basstler_domain_model.github.repository_client import (
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import PullRequestState
 
-from github_workflow.command_line import WorkflowCommand
+from github_workflow.branch_tips import BranchTip, BranchTips
+from github_workflow.command_line import RunnableCommand
+from github_workflow.counted_noun import CountedNoun
 from github_workflow.exceptions import (
     DetachedHeadError,
     NothingToDiscardError,
     UndiscardableBranchError,
 )
-from github_workflow.hooks import ReportLine, Tone
-from github_workflow.locations import GitStateFile, NotesFile, WorkflowTemplate
+from github_workflow.hooks import ReportLine, Speaker, Tone
+from github_workflow.locations import GitStateFile, NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.policy import WritePolicy
 from github_workflow.remotes import OwnedRemote
 from github_workflow.report_section import ReportSection
 from github_workflow.work import PullRequestRetirement, SessionLog, WorkflowStep
-
-# %% branches listed with their commits
-
-
-@dataclass(frozen=True)
-class BranchTips:
-    """
-    Branches, each with the commit it may be deleted at, as the notes branch lists them.
-    """
-
-    commits: Mapping[str, str] = field(default_factory=dict)
-    """
-    Each branch, and the commit it may be deleted at.
-    """
-
-    @classmethod
-    def from_text(cls, text: str | None) -> Self:
-        """
-        :param text: The list as the notes branch keeps it, ``None`` when it has none.
-        :return: The branches it names.
-        """
-        pairs = (line.split() for line in (text or "").splitlines() if line.strip())
-        return cls({branch: commit for branch, commit in pairs})
-
-    def to_text(self) -> str:
-        """:return: The list as the notes branch keeps it."""
-        return "".join(
-            f"{branch} {commit}\n" for branch, commit in sorted(self.commits.items())
-        )
-
+from github_workflow.workflow_templates import NotesBranchWorkflow, TemplatePlaceholder
 
 # %% discarded branches
 
@@ -79,14 +49,6 @@ class DiscardedBranches(BranchTips):
     The branches discarded as thrown away, each with the commit it was at when
     discarded.
     """
-
-    def with_branch(self, branch: str, commit: str) -> DiscardedBranches:
-        """
-        :param branch: A branch to discard.
-        :param commit: The commit it is at.
-        :return: These branches and that one.
-        """
-        return DiscardedBranches({**self.commits, branch: commit})
 
 
 @dataclass(frozen=True)
@@ -134,7 +96,7 @@ class BranchDiscard(WorkflowStep):
             raise NothingToDiscardError(branch)
         self.notes.fetch()
         listed = self.notes.read(NotesFile.DISCARDED_BRANCHES.value)
-        discarded = DiscardedBranches.from_text(listed).with_branch(branch, tip)
+        discarded = DiscardedBranches.from_text(listed).extended(BranchTip(branch, tip))
         self.notes.write(
             {NotesFile.DISCARDED_BRANCHES.value: discarded.to_text()},
             f"Discard {branch}",
@@ -149,7 +111,7 @@ class BranchDiscard(WorkflowStep):
             self.retirement.retire(
                 number, f"Discarded: its branch {branch} is marked for deletion."
             )
-        command = WorkflowCommand.command_line(WorkflowCommand.CLEANUP)
+        command = RunnableCommand.CLEANUP.usage()
         marked = f"{branch} marked for deletion; `{command}` deletes it"
         if not closed:
             return marked
@@ -179,8 +141,8 @@ class KeptBranches:
 
     repository: str
     """
-    The repository's full name, which a pull request's head names when it is from
-    this repository.
+    The repository's full name, which a pull request's head names when it is from this
+    repository.
     """
 
     protected: frozenset[str]
@@ -240,17 +202,11 @@ class KeptBranches:
             branches the notes branch lists as discarded.
         """
         with ThreadPoolExecutor() as pool:
-            listed = pool.submit(git.run, "ls-remote", "--heads", remote.name)
+            tips = pool.submit(git.remote_branch_tips, remote.name)
             pull_requests = pool.submit(github.all_pull_requests)
             default_branch = pool.submit(github.default_branch)
-        tips = {}
-        for line in listed.result().splitlines():
-            commit, reference = line.split()
-            tips[reference.removeprefix(RemoteBranch(remote.name, "").reference)] = (
-                commit
-            )
         return cls(
-            tips,
+            tips.result(),
             pull_requests.result(),
             remote.repository.full_name,
             frozenset({default_branch.result(), notes.branch.name}),
@@ -276,12 +232,13 @@ class CleanupReminder(ReportSection):
         ready = self.kept.ready()
         if not ready:
             return []
-        plural = "es" if len(ready) > 1 else ""
-        command = WorkflowCommand.command_line(WorkflowCommand.CLEANUP)
+        branches = CountedNoun(len(ready), "branch", "branches")
+        command = RunnableCommand.CLEANUP.usage()
         return [
             ReportLine(
-                f"github-workflow: {len(ready)} branch{plural} ready for deletion: "
-                f"run `{command}`",
+                Speaker.WORKFLOW.says(
+                    f"{branches} ready for deletion: run `{command}`"
+                ),
                 Tone.ACTION,
             )
         ]
@@ -290,34 +247,13 @@ class CleanupReminder(ReportSection):
 # %% deleting them
 
 
-class DeletionPlaceholder(StrEnum):
-    """
-    The names the deletion workflow template leaves to be filled in.
-    """
-
-    NOTES_BRANCH = "__NOTES_BRANCH__"
-    """
-    The notes branch, whose pushes run the workflow.
-    """
-
-    LIST_FILE = "__LIST_FILE__"
-    """
-    The file listing the branches to delete.
-    """
-
-    SCRIPT_FILE = "__SCRIPT_FILE__"
-    """
-    The script deleting them.
-    """
-
-
 @dataclass(frozen=True)
 class BranchCleanup(WorkflowStep):
     """
     The branches ready for deletion deleted in one push, each only while still at the
     commit it was found at, and entered in the session log; those this session may not
-    delete are listed on the notes branch with the workflow that deletes them when it
-    is pushed.
+    delete are listed on the notes branch with the workflow that deletes them when it is
+    pushed.
     """
 
     git: GitCommandRunner
@@ -366,24 +302,16 @@ class BranchCleanup(WorkflowStep):
             )
         )
         if not refused:
-            return f"deleted {deleted} branch{'es' if deleted > 1 else ''}"
-        workflow = (
-            WorkflowTemplate.DELETION_WORKFLOW.value.read_text()
-            .replace(DeletionPlaceholder.NOTES_BRANCH, self.notes.branch.name)
-            .replace(DeletionPlaceholder.LIST_FILE, str(NotesFile.READY_FOR_DELETION))
-            .replace(DeletionPlaceholder.SCRIPT_FILE, str(NotesFile.DELETION_SCRIPT))
-        )
+            return f"deleted {CountedNoun(deleted, 'branch', 'branches')}"
         listed = BranchTips({branch: self.kept.tips[branch] for branch in refused})
+        workflow = NotesBranchWorkflow.DELETION.files(
+            self.notes.branch.name,
+            {TemplatePlaceholder.LIST_FILE: str(NotesFile.READY_FOR_DELETION)},
+        )
         self.notes.fetch()
         self.notes.write(
-            {
-                NotesFile.READY_FOR_DELETION.value: listed.to_text(),
-                NotesFile.DELETION_WORKFLOW.value: workflow,
-                NotesFile.DELETION_SCRIPT.value: (
-                    WorkflowTemplate.DELETION_SCRIPT.value.read_text()
-                ),
-            },
-            f"List {len(refused)} branches for deletion",
+            {NotesFile.READY_FOR_DELETION.value: listed.to_text(), **workflow},
+            f"List {CountedNoun(len(refused), 'branch', 'branches')} for deletion",
         )
         return (
             f"deleted {deleted}; this session may not delete the other {len(refused)}, "
@@ -398,8 +326,8 @@ class BranchCleanup(WorkflowStep):
 @dataclass(frozen=True)
 class UnusedCloneRemoval(WorkflowStep):
     """
-    The clones of somebody else's repositories that no session has made or fetched
-    into for a while, removed, together with an owner's directory they leave empty.
+    The clones of somebody else's repositories that no session has made or fetched into
+    for a while, removed, together with an owner's directory they leave empty.
     """
 
     clones: Path
@@ -425,10 +353,10 @@ class UnusedCloneRemoval(WorkflowStep):
                 clone.parent.rmdir()
         if not unused:
             return "no clone of somebody else's repository is unused"
-        plural = "s" if len(unused) > 1 else ""
+        clones = CountedNoun(len(unused), "clone", "clones")
         return (
-            f"removed {len(unused)} clone{plural} of somebody else's repositories "
-            f"unused for {self.unused_for.days} days"
+            f"removed {clones} of somebody else's repositories unused for "
+            f"{self.unused_for.days} days"
         )
 
     @staticmethod

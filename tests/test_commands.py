@@ -42,13 +42,11 @@ from basstler_domain_model.repository import GitHubAddress, Repository
 
 import github_workflow
 import github_workflow.session_start
-from github_workflow.__main__ import WorkflowSession
+from github_workflow.command_line import RunnableCommand
+from github_workflow.session import WorkflowSession
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.command_line import (
-    BranchSubcommand,
-    FindingSubcommand,
-    ToolRepository,
-)
+from github_workflow.command_line import BranchSubcommand, FindingSubcommand
+from github_workflow.install import ToolRepository
 from github_workflow.discussions import DiscussionPosting, DiscussionSessionLog
 from github_workflow.environment import WorkflowVariable
 from github_workflow.exceptions import (
@@ -249,7 +247,7 @@ def saved_notes(
     :return: Its notes branch as a fresh clone sees it, fetched.
     """
     checkout = repositories.clone(url, "inspector")
-    notes = NotesBranch.on(
+    notes = NotesBranch.from_settings(
         checkout.git, OwnedRemotes.read(checkout.git, settings).chosen, settings
     )
     notes.fetch()
@@ -263,12 +261,12 @@ def test_a_session_starts_with_the_notes_and_this_branch_s_progress(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ):
     writer = repositories.clone(owned_url, "writer")
-    NotesBranch.on(
+    NotesBranch.from_settings(
         writer.git, OwnedRemotes.read(writer.git, settings).chosen, settings
     ).write(
         {
             Path(NotesFile.STANDING_NOTES): "a standing note\n",
-            NotesFile.progress_of("feature"): "halfway there\n",
+            NotesFile.progress_file("feature"): "halfway there\n",
         },
         "Save",
     )
@@ -287,7 +285,7 @@ def test_a_loaded_note_sits_between_its_markers_as_written(
 ):
     note = "a standing note"
     writer = repositories.clone(owned_url, "writer")
-    NotesBranch.on(
+    NotesBranch.from_settings(
         writer.git, OwnedRemotes.read(writer.git, settings).chosen, settings
     ).write({Path(NotesFile.STANDING_NOTES): f"{note}\n"}, "Save")
     checkout = repositories.clone(owned_url, "session")
@@ -626,7 +624,7 @@ def step_for(checkout: ProjectCheckout, *arguments: str) -> object:
     """:param checkout: The checkout the command runs in.
     :param arguments: The command line.
     :return: The step it asks for."""
-    parsed = WorkflowSession.parser().parse_args(list(arguments))
+    parsed = RunnableCommand.parser().parse_args(list(arguments))
     return WorkflowSession(checkout.root, WorkflowSettings()).step(parsed)
 
 
@@ -864,7 +862,9 @@ def test_a_fixed_finding_is_closed_through_the_command_line(
 
     github = owner_s_github(settings)
     git = finding_checkout.git
-    notes = NotesBranch.on(git, OwnedRemotes.read(git, settings).chosen, settings)
+    notes = NotesBranch.from_settings(
+        git, OwnedRemotes.read(git, settings).chosen, settings
+    )
     assert step == FindingClosing(
         github,
         github,
@@ -1308,7 +1308,7 @@ def filing_elsewhere(directory: Path, repository: str, *more: str) -> object:
     """
     body = directory / "finding.md"
     body.write_text("What was refused, and why it should not have been.\n")
-    arguments = WorkflowSession.parser().parse_args(
+    arguments = RunnableCommand.parser().parse_args(
         [
             WorkflowCommand.FINDING,
             FindingSubcommand.FILE,
@@ -1338,7 +1338,7 @@ def test_a_finding_is_filed_on_the_workflow_from_outside_any_checkout(tmp_path: 
 def test_findings_are_listed_on_the_domain_model_from_outside_any_checkout(
     tmp_path: Path,
 ):
-    arguments = WorkflowSession.parser().parse_args(
+    arguments = RunnableCommand.parser().parse_args(
         [
             WorkflowCommand.FINDING,
             FindingSubcommand.LIST,

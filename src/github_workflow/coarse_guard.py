@@ -1,14 +1,11 @@
 """
-The guard's stand-in for when the guard itself cannot run - its runtime missing, or the
-guard failing: it denies every call that could reach git or GitHub, and lets every other
-call run, so a broken runtime does not stop work that never touches either.
-
-Runs on the standard library and :mod:`github_workflow.hooks` alone, from the plugin's
-source, before or without any runtime.
+The guard's stand-in while the guard itself cannot run: it denies every call that could
+reach git or GitHub and lets every other call run. Runs on the standard library and
+:mod:`github_workflow.hooks` alone, from the plugin's source.
 
 Usage: ``python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); from
-github_workflow.coarse_guard import main; main(sys.argv[2])' <source> <guard failure>
-< hook-input.json``
+github_workflow.coarse_guard import main; main(sys.argv[2])' <source> <guard failure> <
+hook-input.json``
 """
 
 from __future__ import annotations
@@ -21,7 +18,7 @@ from enum import StrEnum
 from pathlib import PurePath
 from typing import Any
 
-from github_workflow.hooks import FileWritingTool, HookKey, HookValue
+from github_workflow.hooks import HookInput, Speaker, ToolCallDenial, ToolKind
 
 # %% what reaches git and GitHub
 
@@ -52,7 +49,7 @@ class Program(StrEnum):
     """
 
     @classmethod
-    def named_in(cls, command_line: str) -> bool:
+    def any_named(cls, command_line: str) -> bool:
         """
         :param command_line: A Bash command line.
         :return: Whether it names any of the programs as a word of its own.
@@ -86,28 +83,6 @@ class GitConfigurationLocation(StrEnum):
         return cls.REPOSITORY in path.parts or path.name == cls.USER
 
 
-class GitHubTool(StrEnum):
-    """
-    What marks a tool's name as one of an MCP server reaching GitHub.
-    """
-
-    NAME_PART = "github"
-    """
-    The word its name holds, compared in lower case.
-    """
-
-    @classmethod
-    def names(cls, tool: str) -> bool:
-        """
-        :param tool: A tool's name.
-        :return: Whether it is an MCP tool reaching GitHub.
-        """
-        return (
-            tool.startswith(HookValue.MCP_TOOL_PREFIX)
-            and cls.NAME_PART in tool.casefold()
-        )
-
-
 # %% the coarse guard
 
 
@@ -117,9 +92,9 @@ class CoarseGuard:
     The decision over one tool call while the guard cannot run.
     """
 
-    hook_input: dict[str, Any]
+    call: HookInput
     """
-    The hook's input, as Claude Code sends it.
+    The tool call.
     """
 
     guard_failure: str
@@ -132,18 +107,15 @@ class CoarseGuard:
         :return: What the call could reach that the guard would have judged, ``None``
             when it reaches neither git nor GitHub.
         """
-        tool = self.hook_input.get(HookKey.TOOL_NAME, "")
-        tool_input = self.hook_input.get(HookKey.TOOL_INPUT, {})
-        if tool == HookValue.BASH_TOOL:
-            if Program.named_in(tool_input[HookKey.COMMAND]):
+        match self.call.kind:
+            case ToolKind.BASH if Program.any_named(self.call.command):
                 return f"a command naming one of {', '.join(Program)}"
-            return None
-        if tool in FileWritingTool._value2member_map_:
-            if GitConfigurationLocation.holds(PurePath(tool_input[HookKey.FILE_PATH])):
+            case ToolKind.FILE_WRITE if GitConfigurationLocation.holds(
+                PurePath(self.call.file_path)
+            ):
                 return "a write to git's configuration or hooks"
-            return None
-        if GitHubTool.names(tool):
-            return "a GitHub tool"
+            case ToolKind.GITHUB:
+                return "a GitHub tool"
         return None
 
     def output(self) -> dict[str, Any] | None:
@@ -154,17 +126,13 @@ class CoarseGuard:
         reach = self.denied_reach()
         if reach is None:
             return None
-        return {
-            HookKey.HOOK_SPECIFIC_OUTPUT: {
-                HookKey.HOOK_EVENT_NAME: HookValue.PRE_TOOL_USE,
-                HookKey.PERMISSION_DECISION: HookValue.DENY,
-                HookKey.PERMISSION_DECISION_REASON: (
-                    f"github-workflow: the guard could not run ({self.guard_failure}), "
-                    f"so {reach} is denied until it can; calls reaching neither git "
-                    f"nor GitHub still run. Tell the person running the tool."
-                ),
-            }
-        }
+        return ToolCallDenial(
+            Speaker.WORKFLOW.says(
+                f"the guard could not run ({self.guard_failure}), so {reach} is denied "
+                f"until it can; calls reaching neither git nor GitHub still run. Tell "
+                f"the person running the tool."
+            )
+        ).answer()
 
 
 # %% entry point
@@ -176,6 +144,8 @@ def main(guard_failure: str) -> None:
 
     :param guard_failure: Why the guard could not run.
     """
-    output = CoarseGuard(json.load(sys.stdin), guard_failure).output()
+    output = CoarseGuard(
+        HookInput.from_json(json.load(sys.stdin)), guard_failure
+    ).output()
     if output is not None:
         print(json.dumps(output))

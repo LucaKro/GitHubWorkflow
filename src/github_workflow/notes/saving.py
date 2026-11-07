@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.exceptions import NotesBlockMissingError
+from github_workflow.notes.exceptions import NotesBlockMissingError
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import BlockRecord, NotesBlock, NotesSection
@@ -33,20 +33,12 @@ class NotesSave:
     """
 
     @property
-    def document(self) -> str:
-        """
-        ``CLAUDE.local.md``'s text, empty when it does not exist.
-        """
-        local = self.checkout.claude_local
-        return local.read_text() if local.exists() else ""
-
-    @property
     def progress_branch(self) -> str:
         """
         The branch the block's progress belongs to: the one it was loaded for, or the
         checked-out one for a block that does not record it; empty for none.
         """
-        recorded = BlockRecord.BRANCH.read(self.document)
+        recorded = BlockRecord.BRANCH.read(self.checkout.claude_local_text)
         if recorded is None:
             return self.checkout.git.checked_out_branch()
         return recorded
@@ -56,7 +48,7 @@ class NotesSave:
         :return: Each file the block's sections are saved to, with the section's text.
         :raises NotesBlockMissingError: If ``CLAUDE.local.md`` holds no block.
         """
-        document = self.document
+        document = self.checkout.claude_local_text
         if not NotesBlock.holds_block(document):
             raise NotesBlockMissingError(str(self.checkout.claude_local))
         sections = NotesBlock.read_sections(document)
@@ -67,7 +59,7 @@ class NotesSave:
         }
         branch = self.progress_branch
         if branch and NotesSection.BRANCH_PROGRESS in sections:
-            files[NotesFile.progress_of(branch)] = sections[
+            files[NotesFile.progress_file(branch)] = sections[
                 NotesSection.BRANCH_PROGRESS
             ]
         return files
@@ -89,5 +81,7 @@ class NotesSave:
         }
         if changed:
             self.notes.write(changed, f"Save notes from {branch or 'a detached HEAD'}")
-        self.checkout.claude_local.write_text(NotesBlock.marked_saved(self.document))
+        self.checkout.claude_local.write_text(
+            NotesBlock.marked_saved(self.checkout.claude_local_text)
+        )
         return list(changed)

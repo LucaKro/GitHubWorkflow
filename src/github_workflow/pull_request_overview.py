@@ -25,29 +25,18 @@ from basstler_domain_model.github.repository_client import (
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import MergeableState
 
-from github_workflow.hooks import Emphasis, Highlight, NumberLink, ReportLine, Tone
-from github_workflow.labels import DescribedLabel
+from github_workflow.hooks import (
+    Emphasis,
+    Highlight,
+    NumberLink,
+    ReportLine,
+    Speaker,
+    Tone,
+)
+from github_workflow.counted_noun import CountedNoun
+from github_workflow.labels import PullRequestLabel, UpstreamLabel
 from github_workflow.report_section import ReportGroup, ReportSection
-from github_workflow.upstream import UpstreamLabel
 from github_workflow.work import WorkflowStep
-
-# %% shelving
-
-
-class PullRequestLabel(DescribedLabel):
-    """
-    The labels the person puts on a pull request to say how sessions treat it.
-    """
-
-    SHELVED = (
-        "pull request: shelved",
-        "Set aside by the person; sessions leave it alone unless it is named",
-        "d4c5f9",
-    )
-    """
-    Set aside by the person: left out of the pull requests a session works on.
-    """
-
 
 # %% one pull request
 
@@ -98,6 +87,26 @@ class PullRequestSignals:
     Its checks and review threads.
     """
 
+    @classmethod
+    def from_reads(
+        cls, pull_request: RestPullRequest, snapshot: UpstreamPullRequestSnapshot
+    ) -> PullRequestSignals:
+        """
+        :param pull_request: The pull request, as read on its own.
+        :param snapshot: Its checks and review threads.
+        :return: What in it asks for attention.
+        """
+        return cls(
+            pull_request.number,
+            pull_request.title,
+            pull_request.head.branch,
+            pull_request.url,
+            pull_request.draft,
+            UpstreamLabel.OPENED_UPSTREAM in pull_request.labels,
+            pull_request.mergeable_state,
+            snapshot,
+        )
+
     @property
     def problems(self) -> list[str]:
         """:return: Each signal asking for attention, in a few words."""
@@ -111,7 +120,7 @@ class PullRequestSignals:
         unresolved = len(self.snapshot.unresolved_threads)
         if unresolved:
             problems.append(
-                f"{unresolved} unresolved thread{'s' if unresolved > 1 else ''}"
+                str(CountedNoun(unresolved, "unresolved thread", "unresolved threads"))
             )
         return problems
 
@@ -153,7 +162,7 @@ class PullRequestGroup(StrEnum):
     """
 
     @classmethod
-    def of(cls, signals: PullRequestSignals) -> PullRequestGroup:
+    def from_signals(cls, signals: PullRequestSignals) -> PullRequestGroup:
         """
         :param signals: An open pull request.
         :return: The group it is listed in.
@@ -183,7 +192,7 @@ class PullRequestSignalReader:
     """
 
     @classmethod
-    def of(cls, github: GitHubRepository) -> PullRequestSignalReader:
+    def from_repository(cls, github: GitHubRepository) -> PullRequestSignalReader:
         """
         :param github: The owner's repository on GitHub.
         :return: A reader of its pull requests, reading review threads through the API
@@ -201,27 +210,7 @@ class PullRequestSignalReader:
         with ThreadPoolExecutor() as pool:
             pull_request = pool.submit(self.pull_requests.pull_request, number)
             snapshot = pool.submit(self.reviews.read_current_state, number)
-        return self.signals_of(pull_request.result(), snapshot.result())
-
-    @staticmethod
-    def signals_of(
-        pull_request: RestPullRequest, snapshot: UpstreamPullRequestSnapshot
-    ) -> PullRequestSignals:
-        """
-        :param pull_request: The pull request, as read on its own.
-        :param snapshot: Its checks and review threads.
-        :return: What in it asks for attention.
-        """
-        return PullRequestSignals(
-            pull_request.number,
-            pull_request.title,
-            pull_request.head.branch,
-            pull_request.url,
-            pull_request.draft,
-            UpstreamLabel.OPENED_UPSTREAM in pull_request.labels,
-            pull_request.mergeable_state,
-            snapshot,
-        )
+        return PullRequestSignals.from_reads(pull_request.result(), snapshot.result())
 
 
 # %% the section
@@ -241,8 +230,8 @@ class PullRequestOverview(ReportSection):
 
     labels: RepositoryLabels
     """
-    Lists the repository's labels, and creates the shelving label for the person to
-    pick where it lacks it.
+    Lists the repository's labels, and creates the shelving label for the person to pick
+    where it lacks it.
     """
 
     requests: ReviewRequests
@@ -258,20 +247,23 @@ class PullRequestOverview(ReportSection):
     def lines(self) -> list[ReportLine]:
         with ThreadPoolExecutor() as pool:
             counted = pool.submit(self.requests.awaiting_my_review)
-            labelled = pool.submit(self.labels.labels)
+            created = pool.submit(
+                self.labels.create_missing_labels, [PullRequestLabel.SHELVED]
+            )
             numbers = [
                 pull_request.number
                 for pull_request in self.reader.pull_requests.open_pull_requests()
                 if PullRequestLabel.SHELVED not in pull_request.labels
             ]
             read = list(pool.map(self.reader.signals, numbers))
-        if PullRequestLabel.SHELVED not in labelled.result():
-            self.labels.create_label(PullRequestLabel.SHELVED)
+        created.result()
         grouped: dict[PullRequestGroup, list[ReportLine]] = {
             group: [] for group in PullRequestGroup
         }
         for signals in read:
-            grouped[PullRequestGroup.of(signals)].append(signals.line(self.checked_out))
+            grouped[PullRequestGroup.from_signals(signals)].append(
+                signals.line(self.checked_out)
+            )
         lines = [
             line
             for group, items in grouped.items()
@@ -279,11 +271,10 @@ class PullRequestOverview(ReportSection):
         ]
         waiting = counted.result()
         if waiting:
-            plural = "s wait" if waiting > 1 else " waits"
+            requests = CountedNoun(waiting, "pull request waits", "pull requests wait")
             lines.append(
                 ReportLine(
-                    f"github-workflow: {waiting} pull request{plural} on your review",
-                    Tone.ACTION,
+                    Speaker.WORKFLOW.says(f"{requests} on your review"), Tone.ACTION
                 )
             )
         return lines

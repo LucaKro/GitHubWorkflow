@@ -84,7 +84,7 @@ def test_the_set_up_instruction_reaches_the_model_alone(tmp_path: Path):
     tool = UvTool(executable=sys.executable)
     lines = ProjectTooling(uv_project(tmp_path), (tool,)).lines()
 
-    report = json.loads(SessionStartReport(lines).json())
+    report = json.loads(SessionStartReport(lines).to_json())
 
     given = report[HookKey.HOOK_SPECIFIC_OUTPUT][HookKey.ADDITIONAL_CONTEXT]
     assert (report[HookKey.SYSTEM_MESSAGE], given) == ("", lines[0].text)

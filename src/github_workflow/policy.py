@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from functools import cached_property
 
+from basstler_domain_model.git.commands import GitIdentity
 from basstler_domain_model.github.repository_client import RepositoryDetails
 
 from github_workflow.checkout import ProjectCheckout
@@ -16,6 +17,7 @@ from github_workflow.exceptions import (
     AssistantCreditError,
     DefaultBranchWriteError,
     DetachedHeadError,
+    MergeInProgressError,
 )
 from github_workflow.remotes import OwnedRemote
 
@@ -35,22 +37,6 @@ class Attribution(StrEnum):
     CO_AUTHOR_TRAILER = "co-authored-by:"
     """
     The trailer crediting a co-author, compared in lower case.
-    """
-
-
-class GitIdentity(StrEnum):
-    """
-    The identities a commit records, as ``git var`` names them.
-    """
-
-    AUTHOR = "GIT_AUTHOR_IDENT"
-    """
-    Who wrote the change.
-    """
-
-    COMMITTER = "GIT_COMMITTER_IDENT"
-    """
-    Who recorded the commit.
     """
 
 
@@ -126,6 +112,14 @@ class WritePolicy:
             raise DefaultBranchWriteError(branch)
         return branch
 
+    def refuse_while_merging(self, branch: str) -> None:
+        """
+        :param branch: The checked-out branch.
+        :raises MergeInProgressError: If a merge is in progress on it.
+        """
+        if self.checkout.git.merge_in_progress():
+            raise MergeInProgressError(branch)
+
     def commit_message(self, message: str) -> str:
         """
         :param message: The message asked for.
@@ -134,7 +128,7 @@ class WritePolicy:
             of the message, credits an assistant.
         """
         for identity in GitIdentity:
-            recorded = self.checkout.git.run("var", identity)
+            recorded = self.checkout.git.identity(identity)
             if AssistantMarker.names_an_assistant(recorded):
                 raise AssistantCreditError(recorded)
         for line in message.splitlines():

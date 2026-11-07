@@ -10,13 +10,12 @@
 # every call that could reach git or GitHub and lets every other call run. Only when that
 # cannot run either is the call blocked (exit 2) with the reason.
 #
-# Runs the package from the interpreter GITHUB_WORKFLOW_PYTHON names, by default the
-# githubworkflow-runtime virtual environment, which the session start installs from this
-# plugin - or this guard, when the session start never ran.
+# Runs the package from the runtime, which the session start installs from this plugin -
+# or this guard, when the session start never ran.
 set -uo pipefail
 
 INPUT="$(cat)"
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+source "$(dirname "$0")/runtime.sh"
 
 # Decides the call with the guard run from the plugin's source by the system's Python on
 # the standard library alone, the runtime having failed for the reason given; with the
@@ -46,23 +45,15 @@ coarse() {
 
 # A plugin synced from the claude.ai account can arrive after the session started, and
 # with it this guard before the runtime it runs: install the runtime first then.
-if [ -n "${GITHUB_WORKFLOW_PYTHON:-}" ]; then
-  PYTHON="${GITHUB_WORKFLOW_PYTHON}"
-else
-  RUNTIME="${HOME}/.virtualenvs/githubworkflow-runtime"
-  PYTHON="${RUNTIME}/bin/python"
-  if [ ! -x "${PYTHON}" ] &&
-    ! INSTALLED="$(python3 -I "${PLUGIN_ROOT}/src/github_workflow/install.py" "${PLUGIN_ROOT}" "${RUNTIME}" 2>&1)"; then
-    from_source "could not install the runtime: $(printf '%s\n' "${INSTALLED}" | tail -n 1)"
-  fi
+if [ -z "${GITHUB_WORKFLOW_PYTHON:-}" ] && [ ! -x "${PYTHON}" ] &&
+  ! INSTALLED="$(python3 -I "${INSTALLER}" "${PLUGIN_ROOT}" "${RUNTIME}" 2>&1)"; then
+  from_source "could not install the runtime: $(printf '%s\n' "${INSTALLED}" | tail -n 1)"
 fi
 if [ ! -x "${PYTHON}" ]; then
   from_source "no interpreter at ${PYTHON}; set GITHUB_WORKFLOW_PYTHON to one with the package installed"
 fi
 
-# The plugin's own code goes first, so a plugin updated after the runtime was installed
-# never runs a guard older than this hook.
-export PYTHONPATH="${PLUGIN_ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
+use_plugin_source
 if ! OUTPUT="$(printf '%s' "${INPUT}" | "${PYTHON}" -m github_workflow.guard 2>&1)"; then
   from_source "the guard failed: $(printf '%s\n' "${OUTPUT}" | tail -n 1)"
 fi

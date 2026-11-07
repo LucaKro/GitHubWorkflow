@@ -1,8 +1,7 @@
 """
-Branches kept up to date without anyone asking: a fork's default branch with its
-upstream's, and the checked-out work branch with the branch its pull request targets.
-
-Run at session start and before ``push``, ``draft`` and ``describe``; never rebased or
+Branches kept up to date without anyone asking, at session start and before ``push``,
+``draft`` and ``describe``: a fork's default branch with its upstream's, and the
+checked-out work branch with the branch its pull request targets; never rebased or
 forced.
 """
 
@@ -17,12 +16,13 @@ from basstler_domain_model.github.repository_client import (
 )
 from basstler_domain_model.github.vocabulary import PullRequestState
 
-from github_workflow.command_line import WorkflowCommand
-from github_workflow.hooks import ReportLine, Tone
+from github_workflow.command_line import CommandOption, RunnableCommand
+from github_workflow.counted_noun import CountedNoun
+from github_workflow.hooks import ReportLine, Speaker, Tone
 from github_workflow.policy import WritePolicy
 from github_workflow.report_section import ReportSection
 from github_workflow.upstream import ForkMainSync
-from github_workflow.work import MergeInProgress, WorkBranchMerge, WorkflowStep
+from github_workflow.work import WorkBranchMerge, WorkflowStep
 
 # %% bringing branches up to date
 
@@ -30,13 +30,10 @@ from github_workflow.work import MergeInProgress, WorkBranchMerge, WorkflowStep
 @dataclass(frozen=True)
 class BranchFreshening:
     """
-    The fork's default branch fast-forwarded to its upstream's when it is behind and has
-    no commits of its own; then the checked-out work branch merged with the branch its
-    open pull request targets, the default branch when it has none, when it is behind,
-    its working tree holds no changes and the merge is clean.
-
-    What cannot be brought up to date this way is said instead, for the session to
-    settle with ``sync``.
+    The fork's default branch fast-forwarded to its upstream's, and the checked-out work
+    branch merged with the branch its open pull request targets, or the default branch,
+    when that cannot conflict and loses nothing; what cannot be brought up to date this
+    way is said instead, for the session to settle with ``sync``.
     """
 
     policy: WritePolicy
@@ -75,9 +72,10 @@ class BranchFreshening:
         if tips.ahead:
             return [
                 ReportLine(
-                    f"{self.policy.default_branch} is {tips.behind} "
-                    f"commit(s) behind {upstream}'s but has {tips.ahead} of its own, so "
-                    f"it is not fast-forwarded; ask the person what to do with them",
+                    f"{self.policy.default_branch} is "
+                    f"{CountedNoun(tips.behind, 'commit', 'commits')} behind "
+                    f"{upstream}'s but has {tips.ahead} of its own, so it is not "
+                    f"fast-forwarded; ask the person what to do with them",
                     Tone.ACTION,
                 )
             ]
@@ -91,24 +89,26 @@ class BranchFreshening:
         """
         git = self.policy.checkout.git
         branch = git.checked_out_branch()
-        if branch in {"", self.policy.default_branch} or MergeInProgress(git).exists():
+        if branch in {"", self.policy.default_branch} or git.merge_in_progress():
             return []
-        base = self.base_of(branch)
-        sync = WorkflowCommand.command_line(
-            WorkflowCommand.SYNC,
-            (
-                "--base"
-                if base == self.policy.default_branch
-                else "--on <the number of the pull request below>"
-            ),
+        base = self.base_branch(branch)
+        sync = (
+            RunnableCommand.SYNC.usage(CommandOption.BASE)
+            if base == self.policy.default_branch
+            else RunnableCommand.SYNC.usage(
+                CommandOption.ON,
+                values={CommandOption.ON: "<the number of the pull request below>"},
+            )
         )
         merged = RemoteBranch(self.policy.remote.name, base)
         git.fetch_branch(merged).raise_if_failed()
         if git.contains(merged.tracking_reference, "HEAD"):
             return []
-        behind = git.run("rev-list", "--count", f"HEAD..{merged.tracking_reference}")
-        stale = f"{branch} is {behind} commit(s) behind {base}"
-        if git.run("status", "--porcelain", "--untracked-files=no"):
+        behind = CountedNoun(
+            git.commits_between("HEAD", merged.tracking_reference), "commit", "commits"
+        )
+        stale = f"{branch} is {behind} behind {base}"
+        if git.has_uncommitted_changes():
             return [
                 ReportLine(
                     f"{stale}, not merged since the working tree holds "
@@ -117,18 +117,18 @@ class BranchFreshening:
                 )
             ]
         if git.automatic_merge_tree("HEAD", merged.tracking_reference) is None:
-            finish = WorkflowCommand.command_line(WorkflowCommand.SYNC, "--continue")
+            finish = RunnableCommand.SYNC.usage(CommandOption.CONTINUE)
             return [
                 ReportLine(
                     f"{stale}, and merging it conflicts; run `{sync}`, "
-                    f"resolve the files it names and finish with `{finish} <files>`",
+                    f"resolve the files it names and finish with `{finish}`",
                     Tone.ACTION,
                 )
             ]
         done = WorkBranchMerge(self.policy).merge(merged, base)
         return [ReportLine(f"{stale}: {done}", Tone.NEWS)]
 
-    def base_of(self, branch: str) -> str:
+    def base_branch(self, branch: str) -> str:
         """
         :param branch: The work branch.
         :return: The branch its open pull request targets, the default branch when it
@@ -183,6 +183,6 @@ class FreshnessReport(ReportSection):
 
     def lines(self) -> list[ReportLine]:
         return [
-            ReportLine(f"github-workflow: {line.text}", line.tone)
+            ReportLine(Speaker.WORKFLOW.says(line.text), line.tone)
             for line in self.freshening.lines()
         ]

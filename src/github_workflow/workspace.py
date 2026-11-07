@@ -13,7 +13,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from github_workflow.hooks import Audience, ReportLine, Tone
+from github_workflow.command_line import CommandOption
+from github_workflow.hooks import Audience, ReportLine, Speaker, Tone
 from github_workflow.locations import ProjectFile
 
 # %% the project's settings
@@ -194,6 +195,9 @@ class UvTool(EnvironmentTool):
     """
 
     executable: str = "uv"
+    """
+    The program the tool is run as.
+    """
 
     def manages(self, root: Path) -> bool:
         if (root / ProjectFile.UV_LOCK).exists():
@@ -241,20 +245,24 @@ class ProjectTooling:
         if shutil.which(tool.executable) is None:
             return [
                 ReportLine(
-                    f"github-workflow: this project's environment is managed with "
-                    f"{tool.executable}, which is not installed, so `{command}` cannot "
-                    f"set it up: ask the person whether to install it, and install "
-                    f"none of the project's packages by hand",
+                    Speaker.WORKFLOW.says(
+                        f"this project's environment is managed with "
+                        f"{tool.executable}, which is not installed, so `{command}` "
+                        f"cannot set it up: ask the person whether to install it, and "
+                        f"install none of the project's packages by hand"
+                    ),
                     Tone.ACTION,
                 )
             ]
         return [
             ReportLine(
-                f"github-workflow: this project's environment is managed with "
-                f"{tool.executable}: whenever tests need it, set it up with `{command}` "
-                f"and run them in it, giving the workflow's proof commands its "
-                f"interpreter with `--python`; never install the project's packages by "
-                f"hand",
+                Speaker.WORKFLOW.says(
+                    f"this project's environment is managed with {tool.executable}: "
+                    f"whenever tests need it, set it up with `{command}` and run them "
+                    f"in it, giving the workflow's proof commands its interpreter with "
+                    f"`{CommandOption.PYTHON}`; never install the project's packages "
+                    f"by hand"
+                ),
                 Tone.NEWS,
                 Audience.MODEL,
             )
