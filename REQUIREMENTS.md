@@ -271,7 +271,10 @@ them:
 - close a pull request only as discarded or replaced, and only an open one from a work
   branch on my repository, labelled `closed by session`, with a comment saying why,
   telling me in chat
-- open draft pull requests
+- open draft pull requests, labelling every issue a draft's description closes
+  (`Fixes #N`) `pull request opened`, created where my repository lacks it; a pull
+  request a session closes unmerged takes the label off its issues again, and a draft
+  replacing one labels its own issues after the old one is closed
 - on the work branch's own open pull request: add or remove labels the repository has
   (`label`), except `pull request: shelved`, which only I set, rewrite its description
   and title (`describe` without a number), and reply to or resolve its review threads

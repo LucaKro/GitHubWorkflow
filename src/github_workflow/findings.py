@@ -48,6 +48,7 @@ from github_workflow.report_section import ReportGroup, ReportSection
 from github_workflow.work import (
     ClosingLines,
     DraftOpening,
+    PullRequestOpenedLabelling,
     PullRequestRetirement,
     SessionLog,
     WorkflowStep,
@@ -607,7 +608,8 @@ class FindingClosing(FindingChange):
 class SessionPullRequestClosing(PullRequestRetirement):
     """
     A pull request closed by a session, labelled :attr:`ClosedBy.SESSION`, commented
-    with why and entered in the session log, so the person can list it and reopen it.
+    with why and entered in the session log, so the person can list it and reopen it;
+    the issues it closes lose :attr:`IssueLabel.PULL_REQUEST_OPENED`.
     """
 
     board: IssueBoard
@@ -630,12 +632,23 @@ class SessionPullRequestClosing(PullRequestRetirement):
     Where the close is entered.
     """
 
+    pull_requests: PullRequestReader
+    """
+    Reads its description.
+    """
+
+    issue_labels: PullRequestOpenedLabelling
+    """
+    Takes the label saying a pull request is open off the issues it closes.
+    """
+
     def retire(self, number: int, reason: str) -> None:
         if ClosedBy.SESSION not in self.labels.labels():
             self.labels.create_label(ClosedBy.SESSION)
         self.board.add_labels(number, [ClosedBy.SESSION])
         self.board.add_comment(number, f"{reason} Closed by a session on its own.")
         self.closer.close_pull_request(number)
+        self.issue_labels.unlabel(self.pull_requests.pull_request(number).body or "")
         self.log.enter(f"closed pull request #{number}: {reason}")
 
 

@@ -117,6 +117,7 @@ from github_workflow.work import (
     NotesSaving,
     OpenPullRequestBranch,
     PullRequestMerge,
+    PullRequestOpenedLabelling,
     PushWork,
     Replacement,
     RepositoryCloning,
@@ -200,8 +201,21 @@ class WorkflowSession(RepositoryDetails):
     def session_closing(self) -> SessionPullRequestClosing:
         """:return: Closes a pull request a session no longer needs, marked so."""
         return SessionPullRequestClosing(
-            self.github, self.github, self.github, self.session_log
+            self.github,
+            self.github,
+            self.github,
+            self.session_log,
+            self.github,
+            self.issue_labels,
         )
+
+    @property
+    def issue_labels(self) -> PullRequestOpenedLabelling:
+        """
+        :return: Labels the issues an opened pull request's description closes, and
+            takes the label off again.
+        """
+        return PullRequestOpenedLabelling(self.github, self.github)
 
     @property
     def foreign_clones(self) -> Path | None:
@@ -315,6 +329,7 @@ class WorkflowSession(RepositoryDetails):
                     self.policy,
                     self.github,
                     self.placement,
+                    self.issue_labels,
                     arguments.title,
                     arguments.body_file.read_text(),
                     arguments.on,
