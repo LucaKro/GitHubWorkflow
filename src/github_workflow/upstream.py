@@ -14,6 +14,8 @@ from basstler_domain_model.github.repository_client import (
     Commenter,
     ForkDetails,
     LabelWriter,
+    PullRequestReader,
+    PullRequestSearch,
     PullRequestsFromForks,
     RepositoryDetails,
     RepositoryLabels,
@@ -30,11 +32,19 @@ from github_workflow.exceptions import (
     PersonOnlyCommandError,
     PullRequestNotProposableError,
 )
+from github_workflow.hooks import NumberLink, ReportLine, Tone
 from github_workflow.install import Launcher
 from github_workflow.labels import DescribedLabel
 from github_workflow.settings import WorkflowSettings
 from github_workflow.policy import WritePolicy
-from github_workflow.work import DescriptionEnding, LocalBranchFollowing, WorkflowStep
+from github_workflow.report_section import ReportSection
+from github_workflow.stacks import StackPlacement
+from github_workflow.work import (
+    DescriptionEnding,
+    LocalBranchFollowing,
+    PullRequestRetirement,
+    WorkflowStep,
+)
 
 # %% proposing
 
@@ -390,3 +400,89 @@ class UpstreamSuggestion(DescriptionEnding):
         return " ".join(
             [Launcher.COMMAND, WorkflowCommand.UPSTREAM, repository.full_name, branch]
         )
+
+
+# %% following merges upstream
+
+
+@dataclass(frozen=True)
+class UpstreamMergeFollowing(ReportSection):
+    """
+    The fork's open pull requests opened upstream whose pull request there was merged:
+    each closed on the fork as merged upstream, and what was stacked on it moved onto
+    the default branch.
+    """
+
+    fork: Repository
+    """
+    The owner's fork.
+    """
+
+    pull_requests: PullRequestReader
+    """
+    Lists the fork's open pull requests.
+    """
+
+    fork_details: ForkDetails
+    """
+    Reads which repository the fork was forked from.
+    """
+
+    repository_details: RepositoryDetails
+    """
+    Reads the fork's default branch.
+    """
+
+    upstream_search: Callable[[Repository], PullRequestSearch]
+    """
+    Searches a repository's pull requests: the upstream's.
+    """
+
+    closing: PullRequestRetirement
+    """
+    Closes a fork's pull request as a session's.
+    """
+
+    placement: StackPlacement
+    """
+    Moves a stack off the pull request closed.
+    """
+
+    def lines(self) -> list[ReportLine]:
+        opened = [
+            pull_request
+            for pull_request in self.pull_requests.open_pull_requests()
+            if UpstreamLabel.OPENED_UPSTREAM in pull_request.labels
+        ]
+        if not opened:
+            return []
+        upstream = self.fork_details.upstream()
+        if upstream is None:
+            return []
+        search = self.upstream_search(upstream)
+        lines = []
+        for pull_request in opened:
+            merged = [
+                found
+                for found in search.search_pull_requests_from(
+                    self.fork.owner, pull_request.head.branch
+                )
+                if found.merged_at is not None
+            ]
+            if not merged:
+                continue
+            self.closing.retire(
+                pull_request.number, f"Merged upstream as {merged[0].url}."
+            )
+            base = self.repository_details.default_branch()
+            moved = self.placement.move_off(pull_request.number, base)
+            link = NumberLink(pull_request.number, pull_request.url).markdown()
+            onto = "" if moved is None else f", and moved #{moved} onto {base}"
+            lines.append(
+                ReportLine(
+                    f"github-workflow: {link} was merged upstream as {merged[0].url}: "
+                    f"closed it{onto}; tell the person",
+                    Tone.ACTION,
+                )
+            )
+        return lines

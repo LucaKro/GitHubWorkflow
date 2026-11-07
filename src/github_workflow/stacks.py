@@ -96,6 +96,30 @@ class StackPlacement:
         if any(self.is_open(number) for number in on_top):
             raise StackContinuesAboveError(below, tuple(on_top))
 
+    def move_off(self, done: int, base: str) -> int | None:
+        """
+        Move what builds on a pull request whose work has landed onto the branch given.
+
+        :param done: The pull request at the bottom of its stack.
+        :param base: The branch the next one targets instead, the default branch.
+        :return: The open pull request now targeting *base*, ``None`` when nothing open
+            builds on *done*; the stack is made again from the open ones above.
+        """
+        stack = self.stacks.stack_of(done)
+        if stack is None:
+            return None
+        position = stack.numbers.index(done)
+        above = [
+            number for number in stack.numbers[position + 1 :] if self.is_open(number)
+        ]
+        if not above:
+            return None
+        self.retargeting.set_base(above[0], base)
+        self.stacking.unstack(stack)
+        if len(above) > 1:
+            self.stacking.create_stack(above)
+        return above[0]
+
     def is_open(self, number: int) -> bool:
         """
         :param number: A pull request.

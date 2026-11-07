@@ -277,9 +277,13 @@ them:
 - mark its own throwaway branches as discarded, closing their open pull requests
 - open a draft replacing one of its own (`draft --replaces <number>`), closing the old
   one; a stack the old one held is made again with the new one in its place
-- close a pull request only as discarded or replaced, and only an open one from a work
-  branch on my repository, labelled `closed by session`, with a comment saying why,
-  telling me in chat
+- close a pull request only as discarded, replaced or merged upstream, and only an open
+  one from a work branch on my repository, labelled `closed by session`, with a comment
+  saying why, telling me in chat. At session start, a fork's pull request labelled
+  `opened upstream` whose pull request upstream was merged - found through GitHub's
+  search, which a cloud session reaches - is closed as merged upstream, linking it, and
+  the pull request stacked on it moves onto the default branch, the stack made again
+  from the open ones above
 - open draft pull requests, labelling every issue a draft's description closes
   (`Fixes #N`) `pull request opened`, created where my repository lacks it; a pull
   request a session closes unmerged takes the label off its issues again, and a draft

@@ -142,6 +142,43 @@ def test_the_top_of_a_stack_is_placeable():
 # %% only the owner's repository
 
 
+# %% moving a stack off a pull request whose work landed
+
+
+def test_the_pull_request_above_a_done_one_moves_onto_the_default_branch():
+    repository = StackedPullRequestsInMemory(
+        {1: "main", 2: StackedPullRequestsInMemory.branch_of(1), 3: "branch-2"}
+    )
+    existing = existing_stack(repository, 1, 2, 3)
+
+    moved = placement(repository).move_off(1, "main")
+
+    assert (moved, repository.writes) == (
+        2,
+        ["set_base 2 main", f"unstack {existing.number}", "create_stack [2, 3]"],
+    )
+
+
+def test_a_single_pull_request_left_above_forms_no_stack():
+    repository = StackedPullRequestsInMemory(
+        {1: "main", 2: StackedPullRequestsInMemory.branch_of(1)}
+    )
+    existing = existing_stack(repository, 1, 2)
+
+    moved = placement(repository).move_off(1, "main")
+
+    assert (moved, repository.writes) == (
+        2,
+        ["set_base 2 main", f"unstack {existing.number}"],
+    )
+
+
+def test_a_done_pull_request_in_no_stack_moves_nothing():
+    repository = StackedPullRequestsInMemory({1: "main"})
+
+    assert (placement(repository).move_off(1, "main"), repository.writes) == (None, [])
+
+
 def test_stacking_in_somebody_else_s_repository_is_refused_before_any_call(
     repositories: RepositoriesByOwner, foreign_url: str
 ):
