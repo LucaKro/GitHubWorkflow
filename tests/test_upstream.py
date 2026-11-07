@@ -17,11 +17,16 @@ from basstler_domain_model.github.repository_client import (
     Commenter,
     ForkDetails,
     LabelWriter,
+    PullRequestSearch,
     PullRequestsFromForks,
     RepositoryDetails,
     RepositoryLabels,
 )
-from basstler_domain_model.github.rest_models import RestPullRequest
+from basstler_domain_model.github.rest_models import (
+    RestPullRequest,
+    SearchedPullRequest,
+)
+from basstler_domain_model.github.stack_models import Stack
 from basstler_domain_model.github.vocabulary import PullRequestState
 from basstler_domain_model.repository import GitHubAddress, Repository
 
@@ -35,8 +40,11 @@ from github_workflow.exceptions import (
 from github_workflow.settings import WorkflowSettings
 from github_workflow.policy import WritePolicy
 from github_workflow.push_hook import PushHook
+from github_workflow.hooks import Tone
+from github_workflow.stacks import StackPlacement
 from github_workflow.upstream import (
     ForkMainSync,
+    UpstreamMergeFollowing,
     UpstreamLabel,
     UpstreamProposal,
     UpstreamSuggestion,
@@ -44,8 +52,9 @@ from github_workflow.upstream import (
 
 from .pull_requests import REPOSITORY, pull_request
 from .repositories_by_owner import RepositoriesByOwner
+from .stacked_pull_requests import StackedPullRequestsInMemory
 from .test_push_hook import in_claude_code  # noqa: F401  (a fixture)
-from .test_work import work  # noqa: F401  (a fixture)
+from .test_work import RetiredInMemory, work  # noqa: F401  (a fixture)
 
 FORK = Repository.parse(REPOSITORY)
 """
@@ -467,3 +476,111 @@ def test_a_fork_s_main_with_commits_of_its_own_is_refused(
 def test_a_repository_that_is_no_fork_follows_no_upstream(work: WritePolicy):
     with pytest.raises(NotAForkError):
         ForkMainSync(work, ForkOfTheUpstream(forked_from=None)).run()
+
+
+# %% following merges upstream
+
+
+@dataclass(frozen=True)
+class UpstreamSearchInMemory(PullRequestSearch):
+    """
+    The upstream's pull requests, found by the branch they were opened from.
+    """
+
+    found: dict[str, list[SearchedPullRequest]]
+    """
+    The pull requests opened from each branch.
+    """
+
+    def search_pull_requests_from(
+        self, author: str, branch: str
+    ) -> list[SearchedPullRequest]:
+        return self.found.get(branch, [])
+
+
+@dataclass(frozen=True)
+class OpenedUpstreamPullRequests(StackedPullRequestsInMemory):
+    """
+    The stand-in, some pull requests labelled as opened upstream.
+    """
+
+    opened_upstream: frozenset[int] = frozenset()
+    """
+    The pull requests labelled so.
+    """
+
+    def pull_request(self, number: int) -> RestPullRequest:
+        labels = (
+            (UpstreamLabel.OPENED_UPSTREAM,) if number in self.opened_upstream else ()
+        )
+        return replace(super().pull_request(number), labels=labels)
+
+
+@dataclass(frozen=True)
+class ForkOf(ForkDetails, RepositoryDetails):
+    """
+    A fork of the repository given, on the default branch ``main``.
+    """
+
+    forked_from: Repository
+    """
+    The upstream.
+    """
+
+    def upstream(self) -> Repository | None:
+        return self.forked_from
+
+    def default_branch(self) -> str:
+        return "main"
+
+
+UPSTREAM_PULL_REQUEST = "https://github.com/an-upstream-owner/project/pull/9"
+"""
+The page of the upstream pull request opened from the fork's branch ``branch-1``.
+"""
+
+
+def following(
+    found: dict[str, list[SearchedPullRequest]],
+) -> tuple[UpstreamMergeFollowing, StackedPullRequestsInMemory, RetiredInMemory]:
+    """
+    :param found: The upstream's pull requests, by the branch they were opened from.
+    :return: The section over a fork whose #1, opened upstream, has #2 stacked on it;
+        the fork's pull requests; and what was closed.
+    """
+    fork = OpenedUpstreamPullRequests(
+        {1: "main", 2: StackedPullRequestsInMemory.branch_of(1)},
+        opened_upstream=frozenset({1}),
+    )
+    fork.existing_stacks.append(Stack(7, "main", True, fork.stacked([1, 2])))
+    retired = RetiredInMemory()
+    section = UpstreamMergeFollowing(
+        Repository.parse(REPOSITORY),
+        fork,
+        ForkOf(Repository.parse("an-upstream-owner/project")),
+        ForkOf(Repository.parse("an-upstream-owner/project")),
+        lambda upstream: UpstreamSearchInMemory(found),
+        retired,
+        StackPlacement(fork, fork, fork, fork),
+    )
+    return section, fork, retired
+
+
+def test_a_pull_request_merged_upstream_is_closed_and_its_stack_moved_on():
+    merged = SearchedPullRequest(9, UPSTREAM_PULL_REQUEST, "2026-11-07T10:00:00Z")
+    section, fork, retired = following({"branch-1": [merged]})
+
+    [line] = section.lines()
+
+    assert (retired.retired, fork.bases[2], line.tone) == (
+        [(1, f"Merged upstream as {UPSTREAM_PULL_REQUEST}.")],
+        "main",
+        Tone.ACTION,
+    )
+
+
+def test_a_pull_request_still_open_upstream_is_left_alone():
+    open_upstream = SearchedPullRequest(9, UPSTREAM_PULL_REQUEST, None)
+    section, fork, retired = following({"branch-1": [open_upstream]})
+
+    assert (section.lines(), retired.retired, fork.writes) == ([], [], [])
