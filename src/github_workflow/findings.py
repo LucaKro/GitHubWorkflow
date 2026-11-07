@@ -23,6 +23,7 @@ from basstler_domain_model.github.repository_client import (
     PullRequestReader,
     RepositoryLabels,
 )
+from basstler_domain_model.repository import Repository
 from basstler_domain_model.github.vocabulary import (
     ClosingKeyword,
     IssueState,
@@ -189,14 +190,16 @@ class Priority(FindingLabel):
         )
 
     @classmethod
-    def named(cls, issue: Issue) -> str:
+    def named(cls, issue: Issue, repository: Repository) -> str:
         """
         :param issue: A finding.
-        :return: Its number, priority level and title, as one line names it.
+        :param repository: The repository it is filed on.
+        :return: Its number, page, priority level and title, as one line names it.
         """
         priority = cls.of(issue)
         level = priority.level if priority else "no priority"
-        return f"#{issue.number} [{level}] {issue.title}"
+        page = repository.issue_url(issue.number)
+        return f"#{issue.number} {page} [{level}] {issue.title}"
 
     @classmethod
     def guide(cls) -> str:
@@ -404,6 +407,11 @@ class FindingListing(WorkflowStep):
     Lists the issues.
     """
 
+    repository: Repository
+    """
+    The repository the board is of.
+    """
+
     def run(self) -> str:
         """
         :return: One finding per line; overrides :meth:`WorkflowStep.run`, which
@@ -414,7 +422,7 @@ class FindingListing(WorkflowStep):
             for issue in Priority.most_urgent_first(issues):
                 evidence = Evidence.of(issue)
                 labels = f"{stage}, {evidence}" if evidence else stage
-                lines.append(f"{Priority.named(issue)} ({labels})")
+                lines.append(f"{Priority.named(issue, self.repository)} ({labels})")
         return "\n".join(lines) or "no open findings"
 
 
@@ -918,6 +926,11 @@ class FindingsSummary(ReportSection):
     Lists the issues.
     """
 
+    repository: Repository
+    """
+    The repository the board is of.
+    """
+
     def lines(self) -> list[ReportLine]:
         grouped: dict[FindingGroup, list[Issue]] = {group: [] for group in FindingGroup}
         for stage, issues in OpenFindings(self.board).by_stage().items():
@@ -929,7 +942,7 @@ class FindingsSummary(ReportSection):
         for group, issues in grouped.items():
             tone = Tone.ACTION if group is FindingGroup.UNREVIEWED else Tone.NEWS
             items = [
-                ReportLine(Priority.named(issue), tone)
+                ReportLine(Priority.named(issue, self.repository), tone)
                 for issue in Priority.most_urgent_first(issues)
             ]
             lines += ReportGroup(group, items).lines()

@@ -401,7 +401,8 @@ class DraftOpening(WorkflowStep):
         :param body: Its description.
         :return: What was done.
         """
-        opened = f"opened draft #{number}: {branch} onto {base}"
+        page = self.policy.remote.repository.issue_url(number)
+        opened = f"opened draft #{number} {page}: {branch} onto {base}"
         if self.replacement is not None:
             replaced = self.replacement.number
             self.replacement.retirement.retire(replaced, f"Replaced by #{number}.")

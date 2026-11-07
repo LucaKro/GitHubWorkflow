@@ -18,6 +18,7 @@ from basstler_domain_model.github.repository_client import (
     PullRequestReader,
 )
 from basstler_domain_model.github.rest_models import RestPullRequest
+from basstler_domain_model.repository import Repository
 from basstler_domain_model.github.vocabulary import (
     ClosingKeyword,
     IssueState,
@@ -79,6 +80,11 @@ from .issues_in_memory import (
 from .pull_requests import pull_request
 from .stacked_pull_requests import DraftsAndStacksInMemory
 from .test_work import EntriesInMemory, work
+
+FINDINGS_REPOSITORY = Repository("LucaKro", "project")
+"""
+The repository the findings here are filed on.
+"""
 
 # %% proofs
 
@@ -272,10 +278,10 @@ def test_a_finding_accepted_on_github_is_listed_once_as_accepted():
     unreviewed = finding(1, FindingStage.UNREVIEWED, Priority.HIGH)
     board = IssuesInMemory({1: accepted_on_github(unreviewed)})
 
-    listed = FindingListing(board).run().splitlines()
+    listed = FindingListing(board, FINDINGS_REPOSITORY).run().splitlines()
 
     assert listed == [
-        f"#1 [{Priority.HIGH.level}] {unreviewed.title} ({FindingStage.ACCEPTED})"
+        f"{Priority.named(unreviewed, FINDINGS_REPOSITORY)} ({FindingStage.ACCEPTED})"
     ]
 
 
@@ -283,7 +289,7 @@ def test_a_finding_accepted_on_github_is_summed_up_once_as_accepted():
     accepted = accepted_on_github(finding(1, FindingStage.UNREVIEWED, Priority.HIGH))
     board = IssuesInMemory({1: accepted})
 
-    lines = FindingsSummary(board).lines()
+    lines = FindingsSummary(board, FINDINGS_REPOSITORY).lines()
 
     assert lines == grouped(FindingGroup.TO_PROVE, [accepted], Tone.NEWS)
 
@@ -297,7 +303,7 @@ def test_findings_are_listed_unreviewed_first_and_most_urgent_first():
         }
     )
 
-    listed = FindingListing(board).run().splitlines()
+    listed = FindingListing(board, FINDINGS_REPOSITORY).run().splitlines()
 
     assert [line.split()[0] for line in listed] == ["#3", "#2", "#1"]
 
@@ -310,7 +316,7 @@ def test_shelved_findings_are_listed_after_the_accepted():
         }
     )
 
-    listed = FindingListing(board).run().splitlines()
+    listed = FindingListing(board, FINDINGS_REPOSITORY).run().splitlines()
 
     assert [line.split()[0] for line in listed] == ["#2", "#1"]
 
@@ -318,7 +324,7 @@ def test_shelved_findings_are_listed_after_the_accepted():
 def test_a_listed_finding_shows_its_evidence():
     board = IssuesInMemory({1: proven(finding(1, FindingStage.ACCEPTED, Priority.LOW))})
 
-    listed = FindingListing(board).run()
+    listed = FindingListing(board, FINDINGS_REPOSITORY).run()
 
     assert listed.endswith(f"({FindingStage.ACCEPTED}, {Evidence.PROVEN})")
 
@@ -1019,7 +1025,9 @@ def grouped(group: FindingGroup, issues: list[Issue], tone: Tone) -> list[Report
     :param tone: How they stand out.
     :return: The group's lines.
     """
-    items = [ReportLine(Priority.named(issue), tone) for issue in issues]
+    items = [
+        ReportLine(Priority.named(issue, FINDINGS_REPOSITORY), tone) for issue in issues
+    ]
     return ReportGroup(group, items).lines()
 
 
@@ -1032,7 +1040,7 @@ def test_the_summary_names_each_finding_in_its_group_most_urgent_first():
         5: unproven(finding(5, FindingStage.ACCEPTED, Priority.LOW)),
     }
 
-    lines = FindingsSummary(IssuesInMemory(issues)).lines()
+    lines = FindingsSummary(IssuesInMemory(issues), FINDINGS_REPOSITORY).lines()
 
     assert lines == [
         *grouped(FindingGroup.UNREVIEWED, [issues[2], issues[1]], Tone.ACTION),
@@ -1045,8 +1053,8 @@ def test_the_summary_names_each_finding_in_its_group_most_urgent_first():
 def test_the_summary_leaves_shelved_findings_out():
     board = IssuesInMemory({1: finding(1, FindingStage.SHELVED, Priority.HIGH)})
 
-    assert FindingsSummary(board).lines() == []
+    assert FindingsSummary(board, FINDINGS_REPOSITORY).lines() == []
 
 
 def test_a_repository_without_findings_says_nothing():
-    assert FindingsSummary(IssuesInMemory()).lines() == []
+    assert FindingsSummary(IssuesInMemory(), FINDINGS_REPOSITORY).lines() == []

@@ -73,6 +73,11 @@ class PullRequestSignals:
     The branch it merges.
     """
 
+    url: str
+    """
+    Its page on GitHub.
+    """
+
     draft: bool
     """
     Whether it is a draft.
@@ -119,7 +124,7 @@ class PullRequestSignals:
         marks = ["this branch"] if self.branch == checked_out else []
         marks += self.problems or ["ok"]
         return ReportLine(
-            f"#{self.number} {self.title} - {' · '.join(marks)}",
+            f"#{self.number} {self.url} {self.title} - {' · '.join(marks)}",
             Tone.ACTION if self.problems else Tone.NEWS,
         )
 
@@ -209,6 +214,7 @@ class PullRequestSignalReader:
             pull_request.number,
             pull_request.title,
             pull_request.head.branch,
+            pull_request.url,
             pull_request.draft,
             UpstreamLabel.OPENED_UPSTREAM in pull_request.labels,
             pull_request.mergeable_state,

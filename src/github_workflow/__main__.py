@@ -393,7 +393,8 @@ class WorkflowSession(RepositoryDetails):
                     Priority[arguments.priority.upper()],
                 )
             case WorkflowCommand.FINDING, FindingSubcommand.LIST:
-                return FindingListing(self.findings_board(arguments.repository))
+                board = self.findings_board(arguments.repository)
+                return FindingListing(board, board.repository)
             case WorkflowCommand.FINDING, FindingSubcommand.ACCEPT:
                 return FindingAcceptance(self.github, self.github, arguments.number)
             case WorkflowCommand.FINDING, FindingSubcommand.SHELVE:
