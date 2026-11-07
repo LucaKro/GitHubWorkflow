@@ -35,7 +35,11 @@ from github_workflow.exceptions import (
 from github_workflow.policy import WritePolicy
 from github_workflow.pull_request_overview import PullRequestLabel
 from github_workflow.upstream import UpstreamLabel
-from github_workflow.upstream_reviews import UpstreamReviewRequest, UpstreamReviews
+from github_workflow.upstream_reviews import (
+    UpstreamReviewRequest,
+    UpstreamReviews,
+    UpstreamReviewsUnavailable,
+)
 from github_workflow.work import WorkflowStep
 
 # %% the work branch's pull request
@@ -228,6 +232,9 @@ class ReviewThreadListing(WorkflowStep):
                 f"{time.time_ns()}.json",
             )
         )
+        if isinstance(snapshot, UpstreamReviewsUnavailable):
+            lines.append(snapshot.line())
+            return "\n".join(lines)
         lines.append(f"upstream {upstream}#{snapshot.number} {snapshot.url}:")
         lines += [
             f"review by {review.author.login} ({review.state}): "

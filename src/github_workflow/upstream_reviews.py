@@ -17,7 +17,7 @@ import json
 import shlex
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -36,11 +36,6 @@ from basstler_domain_model.github.repository_client import RepositoryWorkflows
 from basstler_domain_model.github.vocabulary import WorkflowRunConclusion
 from basstler_domain_model.repository import Repository
 
-from github_workflow.exceptions import (
-    UpstreamReviewsFailedError,
-    UpstreamReviewsNotStartedError,
-    UpstreamReviewsUnansweredError,
-)
 from github_workflow.label_events import ActionRequirement
 from github_workflow.locations import NotesFile, WorkflowTemplate
 from github_workflow.notes.branch import NotesBranch
@@ -153,6 +148,106 @@ class UpstreamReviewRequest:
         )
 
 
+# %% why they could not be read
+
+
+class UpstreamReviewsUnavailable(ABC):
+    """
+    Why the pull request opened upstream could not be read.
+    """
+
+    @abstractmethod
+    def reason(self) -> str:
+        """:return: What kept it from being read."""
+
+    @abstractmethod
+    def correction(self) -> str:
+        """:return: What to do about it."""
+
+    def line(self) -> str:
+        """:return: Both, in one line."""
+        return f"upstream reviews not read: {self.reason()}. {self.correction()}"
+
+
+@dataclass(frozen=True)
+class UpstreamReadNotStarted(UpstreamReviewsUnavailable):
+    """
+    The fork's Actions started no run answering the request: Actions are off on the
+    fork, or its workflows are, or GitHub dropped the push.
+    """
+
+    fork: Repository
+    """
+    The fork.
+    """
+
+    start_seconds: float
+    """
+    How long each request's run was waited for.
+    """
+
+    def reason(self) -> str:
+        return (
+            f"{self.fork}'s Actions started no run reading them within "
+            f"{self.start_seconds:.0f} seconds of each request"
+        )
+
+    def correction(self) -> str:
+        return (
+            f"Ask the person to check that Actions and the fork's workflows are on at "
+            f"{self.fork.url}/actions, then list the reviews again"
+        )
+
+
+@dataclass(frozen=True)
+class UpstreamReadFailed(UpstreamReviewsUnavailable):
+    """
+    The fork's Actions run answering the request failed.
+    """
+
+    run: str
+    """
+    The run's page, with its log.
+    """
+
+    conclusion: WorkflowRunConclusion
+    """
+    How it ended.
+    """
+
+    def reason(self) -> str:
+        return f"the run reading them ended in {self.conclusion}: {self.run}"
+
+    def correction(self) -> str:
+        return "Read its log, and file what went wrong as a finding of the workflow"
+
+
+@dataclass(frozen=True)
+class UpstreamReadUnanswered(UpstreamReviewsUnavailable):
+    """
+    The fork's Actions did not answer the request in time.
+    """
+
+    upstream: Repository
+    """
+    The repository the pull request is open on.
+    """
+
+    timeout_seconds: float
+    """
+    How long the answer was waited for.
+    """
+
+    def reason(self) -> str:
+        return (
+            f"the fork's Actions did not read them on {self.upstream} within "
+            f"{self.timeout_seconds:.0f} seconds"
+        )
+
+    def correction(self) -> str:
+        return "List the reviews again; the run reading them may still be going"
+
+
 # %% reading them
 
 
@@ -162,10 +257,12 @@ class UpstreamReviews(ABC):
     """
 
     @abstractmethod
-    def snapshot(self, request: UpstreamReviewRequest) -> UpstreamPullRequestSnapshot:
+    def snapshot(
+        self, request: UpstreamReviewRequest
+    ) -> UpstreamPullRequestSnapshot | UpstreamReviewsUnavailable:
         """
         :param request: Which pull request.
-        :return: Its reviews, threads and checks.
+        :return: Its reviews, threads and checks, or why they could not be read.
         """
 
 
@@ -180,7 +277,9 @@ class DirectUpstreamReviews(UpstreamReviews):
     How the reads reach GitHub.
     """
 
-    def snapshot(self, request: UpstreamReviewRequest) -> UpstreamPullRequestSnapshot:
+    def snapshot(
+        self, request: UpstreamReviewRequest
+    ) -> UpstreamPullRequestSnapshot | UpstreamReviewsUnavailable:
         return request.snapshot(self.client)
 
 
@@ -190,7 +289,7 @@ class ForwardedUpstreamReviews(UpstreamReviews):
     Has the fork's Actions read it: queues the request on the notes branch with the
     workflow answering it, then waits for the answer there and reads it again from
     GitHub's recorded answers, giving up early when the fork's Actions start no run for
-    it or the run fails.
+    it, after asking again, or the run fails.
     """
 
     notes: NotesBranch
@@ -223,12 +322,32 @@ class ForwardedUpstreamReviews(UpstreamReviews):
     How long to wait between looks.
     """
 
-    def snapshot(self, request: UpstreamReviewRequest) -> UpstreamPullRequestSnapshot:
+    tries: int = 2
+    """
+    How many times the request is made before the fork's Actions are taken to be off.
+    """
+
+    def snapshot(
+        self, request: UpstreamReviewRequest
+    ) -> UpstreamPullRequestSnapshot | UpstreamReviewsUnavailable:
         """
-        :raises UpstreamReviewsNotStartedError: If the fork's Actions started no run
-            for the request in time.
-        :raises UpstreamReviewsFailedError: If the run answering it failed.
-        :raises UpstreamReviewsUnansweredError: If no answer came in time.
+        Asks again, under a new name, when no run starts for a request within
+        :attr:`start_seconds`, up to :attr:`tries` times.
+        """
+        for _ in range(self.tries):
+            answered = self.answer(request)
+            if not isinstance(answered, UpstreamReadNotStarted):
+                return answered
+            request = replace(request, name=f"{time.time_ns()}.json")
+        return answered
+
+    def answer(
+        self, request: UpstreamReviewRequest
+    ) -> UpstreamPullRequestSnapshot | UpstreamReviewsUnavailable:
+        """
+        :param request: The request to queue and wait for.
+        :return: The upstream pull request, read again from the answer, or why no
+            answer came.
         """
         queued = self.queue(request)
         answer = NotesFile.UPSTREAM_REVIEW_ANSWERS.value / request.name
@@ -239,21 +358,23 @@ class ForwardedUpstreamReviews(UpstreamReviews):
             if saved is not None:
                 answers = json.loads(saved)[UpstreamReviewKey.ANSWERS]
                 return request.snapshot(ReplayingGraphQLClient(answers))
-            self.check_run(queued, waited)
+            stopped = self.stopped_run(queued, waited)
+            if stopped is not None:
+                return stopped
             if waited >= self.timeout_seconds:
-                raise UpstreamReviewsUnansweredError(
-                    request.upstream, self.timeout_seconds
-                )
+                return UpstreamReadUnanswered(request.upstream, self.timeout_seconds)
             time.sleep(self.interval_seconds)
             waited += self.interval_seconds
 
-    def check_run(self, queued: str, waited: float) -> None:
+    def stopped_run(
+        self, queued: str, waited: float
+    ) -> UpstreamReviewsUnavailable | None:
         """
         :param queued: The notes branch's commit queuing the request.
         :param waited: How long the answer was waited for so far.
-        :raises UpstreamReviewsNotStartedError: If no run answering the request started
-            within :attr:`start_seconds`.
-        :raises UpstreamReviewsFailedError: If the run answering it failed.
+        :return: That no run answering the request started within
+            :attr:`start_seconds`, or that it failed; ``None`` while one may still
+            answer.
         """
         runs = [
             run
@@ -262,12 +383,16 @@ class ForwardedUpstreamReviews(UpstreamReviews):
             and run.path == str(NotesFile.UPSTREAM_REVIEW_WORKFLOW.value)
         ]
         if not runs:
-            if waited >= self.start_seconds:
-                raise UpstreamReviewsNotStartedError(self.fork, self.start_seconds)
-            return
+            started_late = waited >= self.start_seconds
+            return (
+                UpstreamReadNotStarted(self.fork, self.start_seconds)
+                if started_late
+                else None
+            )
         conclusion = runs[0].conclusion
-        if conclusion not in (None, WorkflowRunConclusion.SUCCESS):
-            raise UpstreamReviewsFailedError(runs[0].url, conclusion)
+        if conclusion in (None, WorkflowRunConclusion.SUCCESS):
+            return None
+        return UpstreamReadFailed(runs[0].url, conclusion)
 
     def queue(self, request: UpstreamReviewRequest) -> str:
         """
