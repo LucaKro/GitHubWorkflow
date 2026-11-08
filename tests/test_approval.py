@@ -15,6 +15,7 @@ from basstler_domain_model.locations import PathEnumeration
 
 from github_workflow import approval
 from github_workflow.approval import ApprovalStatus, SessionCommandApproval
+from github_workflow.install import Launcher
 
 # %% the command lines
 
@@ -80,7 +81,7 @@ def test_the_check_exits_with_its_verdict(
 def test_a_line_whose_quotes_do_not_balance_is_not_approved() -> None:
     finished = subprocess.run(
         [sys.executable, "-m", approval.__name__],
-        input="github-workflow push 'unbalanced",
+        input=f"{Launcher.COMMAND} push 'unbalanced",
         capture_output=True,
         text=True,
     )

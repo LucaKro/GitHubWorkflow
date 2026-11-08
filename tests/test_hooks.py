@@ -10,21 +10,21 @@ import json
 import pytest
 from basstler_domain_model.claude_code.hooks import HookKey
 
-from github_workflow.report_lines import ReportLine, SessionStartReport, Tone
+from github_workflow.report_lines import ReportLine, SessionStartReport, Speaker, Tone
 
 # %% one line
 
 
 @pytest.mark.parametrize("tone", list(Tone))
 def test_a_line_is_shown_in_its_tone_s_colour(tone: Tone) -> None:
-    line = ReportLine("github-workflow: something", tone)
+    line = ReportLine(Speaker.WORKFLOW.says("something"), tone)
 
     assert line.shown == f"\033[1;{tone}m{line.text}\033[0m"
 
 
 @pytest.mark.parametrize("tone", list(Tone))
 def test_a_line_handed_between_processes_arrives_unchanged(tone: Tone) -> None:
-    line = ReportLine("github-workflow: something", tone)
+    line = ReportLine(Speaker.WORKFLOW.says("something"), tone)
 
     assert ReportLine.from_json(line.to_json()) == line
 

@@ -14,16 +14,12 @@ from basstler_domain_model.github.repository_client import (
 )
 from basstler_domain_model.github.rest_models import Workflow, WorkflowRun
 from basstler_domain_model.github.vocabulary import WorkflowState
-from basstler_domain_model.repository import Repository
 
 from github_workflow.locations import NotesFile
 from github_workflow.report_lines import Tone
 from github_workflow.repository_setup import RepositorySetup
 
-REPOSITORY = Repository("LucaKro", "a-repository")
-"""
-The repository every setup here is made sure of.
-"""
+from .scratch_github import ScratchGitHub
 
 # %% settings in memory
 
@@ -102,7 +98,7 @@ class SettingsInMemory(RepositoryFeatures):
 def test_a_repository_set_up_already_is_left_alone() -> None:
     settings = SettingsInMemory()
 
-    assert RepositorySetup(REPOSITORY, settings).lines() == []
+    assert RepositorySetup(ScratchGitHub.owned, settings).lines() == []
     assert settings.changes == []
 
 
@@ -115,7 +111,7 @@ def test_merged_branch_deletion_and_issues_that_are_off_are_left_for_the_person(
     """
     settings = SettingsInMemory(deletes=False, issues=False)
 
-    lines = RepositorySetup(REPOSITORY, settings).lines()
+    lines = RepositorySetup(ScratchGitHub.owned, settings).lines()
 
     assert settings.changes == []
     assert [line.tone for line in lines] == [Tone.ACTION] * 2
@@ -128,34 +124,34 @@ def test_actions_that_are_off_are_left_for_the_person_to_turn_on() -> None:
     """
     settings = SettingsInMemory(actions=False)
 
-    [line] = RepositorySetup(REPOSITORY, settings).lines()
+    [line] = RepositorySetup(ScratchGitHub.owned, settings).lines()
 
     assert settings.changes == []
     assert line.tone is Tone.ACTION
-    assert f"{REPOSITORY.settings_url}/actions" in line.text
+    assert ScratchGitHub.owned.actions_settings_url in line.text
 
 
 def test_actions_that_cannot_be_read_are_not_touched() -> None:
     settings = SettingsInMemory(actions=None)
 
-    assert RepositorySetup(REPOSITORY, settings).lines() == []
+    assert RepositorySetup(ScratchGitHub.owned, settings).lines() == []
     assert settings.changes == []
 
 
 @pytest.mark.parametrize(
     "settings, page",
     [
-        (SettingsInMemory(deletes=False), REPOSITORY.settings_url),
-        (SettingsInMemory(issues=False), REPOSITORY.settings_url),
-        (SettingsInMemory(actions=False), f"{REPOSITORY.settings_url}/actions"),
-        (SettingsInMemory(discussions=False), REPOSITORY.settings_url),
+        (SettingsInMemory(deletes=False), ScratchGitHub.owned.settings_url),
+        (SettingsInMemory(issues=False), ScratchGitHub.owned.settings_url),
+        (SettingsInMemory(actions=False), ScratchGitHub.owned.actions_settings_url),
+        (SettingsInMemory(discussions=False), ScratchGitHub.owned.settings_url),
     ],
     ids=["deletion", "issues", "actions", "discussions"],
 )
 def test_a_feature_that_is_off_says_where_to_turn_it_on(
     settings: SettingsInMemory, page: str
 ) -> None:
-    [line] = RepositorySetup(REPOSITORY, settings).lines()
+    [line] = RepositorySetup(ScratchGitHub.owned, settings).lines()
 
     assert settings.changes == []
     assert line.tone is Tone.ACTION
@@ -175,9 +171,12 @@ def test_a_notes_workflow_github_turned_off_is_reported_with_where_to_turn_it_on
     )
     settings = SettingsInMemory(listed=[posting])
 
-    [line] = RepositorySetup(REPOSITORY, settings).lines()
+    [line] = RepositorySetup(ScratchGitHub.owned, settings).lines()
 
-    assert (line.tone, f"{REPOSITORY.url}/actions" in line.text) == (Tone.ACTION, True)
+    assert (line.tone, ScratchGitHub.owned.actions_url in line.text) == (
+        Tone.ACTION,
+        True,
+    )
 
 
 @pytest.mark.parametrize(
@@ -195,4 +194,4 @@ def test_a_notes_workflow_github_turned_off_is_reported_with_where_to_turn_it_on
 def test_other_workflows_are_left_unreported(workflow: Workflow) -> None:
     settings = SettingsInMemory(listed=[workflow])
 
-    assert RepositorySetup(REPOSITORY, settings).lines() == []
+    assert RepositorySetup(ScratchGitHub.owned, settings).lines() == []

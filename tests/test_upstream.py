@@ -46,21 +46,12 @@ from github_workflow.upstream import (
     UpstreamSuggestion,
 )
 
-from .pull_requests import REPOSITORY, pull_request
+from .pull_requests import pull_request
 from .repositories_by_owner import RepositoriesByOwner
+from .scratch_github import ScratchGitHub
 from .stacked_pull_requests import StackedPullRequestsInMemory
 from .test_push_hook import in_claude_code  # noqa: F401  (a fixture)
 from .test_work import RetiredInMemory, work  # noqa: F401  (a fixture)
-
-FORK = Repository.parse(REPOSITORY)
-"""
-The owner's fork every proposal here starts from.
-"""
-
-UPSTREAM = Repository("an-upstream-owner", FORK.name)
-"""
-The repository the fork was forked from.
-"""
 
 # %% repositories in memory
 
@@ -77,7 +68,7 @@ class ForkInMemory(ProposingFork):
     Its pull requests.
     """
 
-    forked_from: Repository | None = UPSTREAM
+    forked_from: Repository | None = ScratchGitHub.upstream
     """
     The repository it was forked from.
     """
@@ -114,7 +105,9 @@ class ForkInMemory(ProposingFork):
         self, owner: str, branch: str, base: str, title: str, body: str
     ) -> RestPullRequest:
         self.written.append(f"open {owner}:{branch} onto {base}: {title} | {body}")
-        return pull_request(7, branch, repository=f"{owner}/{FORK.name}", title=title)
+        return pull_request(
+            7, branch, repository=f"{owner}/{ScratchGitHub.owned.name}", title=title
+        )
 
     def upstream(self) -> Repository | None:
         return self.forked_from
@@ -142,7 +135,7 @@ def proposal(
     branch: str = "feature",
     *,
     run_by_a_session: bool = False,
-    repository: Repository = FORK,
+    repository: Repository = ScratchGitHub.owned,
 ) -> UpstreamProposal:
     """
     :param fork: The owner's fork.
@@ -173,7 +166,7 @@ def test_the_fork_s_pull_request_is_opened_upstream_linking_back_to_it() -> None
     proposal(fork, upstream).run()
 
     assert upstream.written == [
-        f"open {FORK.owner}:feature onto develop: Add the thing | "
+        f"open {ScratchGitHub.owned.owner}:feature onto develop: Add the thing | "
         f"{UpstreamProposal.body_linking(local.url)}"
     ]
 
@@ -184,7 +177,9 @@ def test_the_fork_s_pull_request_is_given_the_upstream_link() -> None:
 
     proposal(fork, upstream).run()
 
-    opened = upstream.open_pull_request_from(FORK.owner, "feature", "main", "", "")
+    opened = upstream.open_pull_request_from(
+        ScratchGitHub.owned.owner, "feature", "main", "", ""
+    )
     assert fork.written == [
         f"comment 3: {UpstreamProposal.comment_linking(opened.url)}"
     ]
@@ -247,7 +242,7 @@ def test_somebody_else_s_repository_is_not_proposed_from() -> None:
     upstream = ForkInMemory(forked_from=None)
 
     with pytest.raises(ForeignRepositoryError):
-        proposal(fork, upstream, repository=UPSTREAM).run()
+        proposal(fork, upstream, repository=ScratchGitHub.upstream).run()
 
     assert upstream.written == []
 
@@ -290,34 +285,36 @@ def test_a_pull_request_that_cannot_go_upstream_is_refused(
 
 
 def test_a_draft_on_a_fork_suggests_the_command_to_the_person() -> None:
-    suggestion = UpstreamSuggestion(ForkInMemory(), FORK)
+    suggestion = UpstreamSuggestion(ForkInMemory(), ScratchGitHub.owned)
 
     described = suggestion.appended_to("What the change does.", "feature")
 
     assert described.startswith("What the change does.")
-    assert UpstreamSuggestion.opening_command(FORK, "feature") in described
+    assert (
+        UpstreamSuggestion.opening_command(ScratchGitHub.owned, "feature") in described
+    )
 
 
 def test_a_description_ending_with_the_suggestion_keeps_it_once() -> None:
-    suggestion = UpstreamSuggestion(ForkInMemory(), FORK)
+    suggestion = UpstreamSuggestion(ForkInMemory(), ScratchGitHub.owned)
     described = suggestion.appended_to("What the change does.", "feature")
 
     assert suggestion.appended_to(described, "feature") == described
 
 
 def test_a_suggestion_amid_a_description_moves_to_its_end() -> None:
-    suggestion = UpstreamSuggestion(ForkInMemory(), FORK)
+    suggestion = UpstreamSuggestion(ForkInMemory(), ScratchGitHub.owned)
     described = suggestion.appended_to("What the change does.", "feature")
 
     rewritten = suggestion.appended_to(f"{described}\nAfter the review.", "feature")
 
-    command = UpstreamSuggestion.opening_command(FORK, "feature")
+    command = UpstreamSuggestion.opening_command(ScratchGitHub.owned, "feature")
     assert rewritten.count(command) == 1
     assert rewritten.index("After the review.") < rewritten.index(command)
 
 
 def test_a_draft_on_a_repository_that_is_no_fork_suggests_nothing() -> None:
-    suggestion = UpstreamSuggestion(ForkInMemory(forked_from=None), FORK)
+    suggestion = UpstreamSuggestion(ForkInMemory(forked_from=None), ScratchGitHub.owned)
 
     described = suggestion.appended_to("What the change does.", "feature")
 
@@ -334,7 +331,7 @@ class ForkOfTheUpstream(ForkDetails):
     can write to GitHub only through git, as behind a cloud session's proxy.
     """
 
-    forked_from: Repository | None = UPSTREAM
+    forked_from: Repository | None = ScratchGitHub.upstream
     """
     The repository it was forked from.
     """
@@ -356,7 +353,11 @@ def with_upstream(
     :param ahead: The commits the upstream's branch gains.
     :param own: The commits the fork's branch gains.
     """
-    upstream = repositories.root / UPSTREAM.owner / f"{UPSTREAM.name}.git"
+    upstream = (
+        repositories.root
+        / ScratchGitHub.upstream.owner
+        / f"{ScratchGitHub.upstream.name}.git"
+    )
     default = RepositoriesByOwner.default_branch
     git = work.checkout.git
     git.run("init", "--quiet", "--bare", f"--initial-branch={default}", str(upstream))
@@ -390,7 +391,11 @@ def default_branch_tips(
     :return: Where the fork's default branch is on GitHub, and where the upstream's is.
     """
     default = RepositoriesByOwner.default_branch
-    upstream = repositories.root / UPSTREAM.owner / f"{UPSTREAM.name}.git"
+    upstream = (
+        repositories.root
+        / ScratchGitHub.upstream.owner
+        / f"{ScratchGitHub.upstream.name}.git"
+    )
     git = work.checkout.git
     return (
         git.run("ls-remote", work.remote.push_url, default).split()[0],
@@ -484,8 +489,8 @@ class UpstreamSearchInMemory(PullRequestSearch):
 @dataclass(frozen=True)
 class OpenedUpstreamPullRequests(StackedPullRequestsInMemory, FollowedFork):
     """
-    The stand-in, a fork of :data:`UPSTREAM` on the default branch ``main``, with some
-    pull requests labelled as opened upstream.
+    The stand-in, a fork of :attr:`ScratchGitHub.upstream` on the default branch
+    ``main``, with some pull requests labelled as opened upstream.
     """
 
     opened_upstream: frozenset[int] = frozenset()
@@ -500,16 +505,10 @@ class OpenedUpstreamPullRequests(StackedPullRequestsInMemory, FollowedFork):
         return replace(super().pull_request(number), labels=labels)
 
     def upstream(self) -> Repository | None:
-        return UPSTREAM
+        return ScratchGitHub.upstream
 
     def default_branch(self) -> str:
         return "main"
-
-
-UPSTREAM_PULL_REQUEST = "https://github.com/an-upstream-owner/project/pull/9"
-"""
-The page of the upstream pull request opened from the fork's branch ``branch-1``.
-"""
 
 
 def following(
@@ -527,7 +526,7 @@ def following(
     fork.existing_stacks.append(Stack(7, "main", True, fork.stacked([1, 2])))
     retired = RetiredInMemory()
     section = UpstreamMergeFollowing(
-        Repository.parse(REPOSITORY).owner,
+        ScratchGitHub.owned.owner,
         fork,
         lambda upstream: UpstreamSearchInMemory(found),
         retired,
@@ -537,20 +536,24 @@ def following(
 
 
 def test_a_pull_request_merged_upstream_is_closed_and_its_stack_moved_on() -> None:
-    merged = SearchedPullRequest(9, UPSTREAM_PULL_REQUEST, "2026-11-07T10:00:00Z")
+    merged = SearchedPullRequest(
+        9, ScratchGitHub.upstream.pull_request_url(9), "2026-11-07T10:00:00Z"
+    )
     section, fork, retired = following({"branch-1": [merged]})
 
     [line] = section.lines()
 
     assert (retired.retired, fork.bases[2], line.tone) == (
-        [(1, f"Merged upstream as {UPSTREAM_PULL_REQUEST}.")],
+        [(1, f"Merged upstream as {ScratchGitHub.upstream.pull_request_url(9)}.")],
         "main",
         Tone.ACTION,
     )
 
 
 def test_a_pull_request_still_open_upstream_is_left_alone() -> None:
-    open_upstream = SearchedPullRequest(9, UPSTREAM_PULL_REQUEST, None)
+    open_upstream = SearchedPullRequest(
+        9, ScratchGitHub.upstream.pull_request_url(9), None
+    )
     section, fork, retired = following({"branch-1": [open_upstream]})
 
     assert (section.lines(), retired.retired, fork.writes) == ([], [], [])

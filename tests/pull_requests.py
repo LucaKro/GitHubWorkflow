@@ -8,10 +8,8 @@ from basstler_domain_model.github.rest_models import PullRequestHead, RestPullRe
 from basstler_domain_model.github.review_models import Author
 from basstler_domain_model.github.vocabulary import MergeableState, PullRequestState
 
-REPOSITORY = "LucaKro/project"
-"""
-The full name of the repository the pull requests here are on.
-"""
+from .repositories_by_owner import RepositoriesByOwner
+from .scratch_github import ScratchGitHub
 
 # %% building a pull request
 
@@ -21,10 +19,10 @@ def pull_request(
     branch: str,
     commit: str = "0" * 40,
     state: PullRequestState = PullRequestState.OPEN,
-    repository: str | None = REPOSITORY,
+    repository: str | None = ScratchGitHub.owned.full_name,
     *,
     title: str | None = None,
-    base: str = "main",
+    base: str = RepositoriesByOwner.default_branch,
     draft: bool = False,
     mergeable_state: MergeableState | None = None,
 ) -> RestPullRequest:
@@ -44,11 +42,13 @@ def pull_request(
         number=number,
         title=f"Pull request {number}" if title is None else title,
         body=None,
-        url=f"https://github.com/{REPOSITORY}/pull/{number}",
+        url=ScratchGitHub.owned.pull_request_url(number),
         state=state,
         merged=False,
         draft=draft,
-        head=PullRequestHead(branch, repository, commit, Author("LucaKro")),
+        head=PullRequestHead(
+            branch, repository, commit, Author(ScratchGitHub.owned.owner)
+        ),
         base=base,
         labels=(),
         mergeable_state=mergeable_state,

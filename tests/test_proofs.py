@@ -93,6 +93,13 @@ class ProofDataset(PathEnumeration):
     could find it.
     """
 
+    COMMENT_ENDS_AND_FENCES = (
+        Path(__file__).parent / "dataset" / "proofs" / "comment_ends_and_fences.py"
+    )
+    """
+    A module whose text holds a comment's end and a fence of four backticks.
+    """
+
     WORKSPACE_PYPROJECT = (
         Path(__file__).parent / "dataset" / "proofs" / "workspace_pyproject.toml"
     )
@@ -431,7 +438,7 @@ def test_a_posted_proof_reads_back_as_it_was(settings: WorkflowSettings) -> None
 def test_a_test_holding_comment_ends_and_fences_reads_back_as_it_was(
     settings: WorkflowSettings,
 ) -> None:
-    proof = proof_of('text = """\n-->\n````\n"""\n')
+    proof = proof_of(ProofDataset.COMMENT_ENDS_AND_FENCES.read_text())
 
     posted = [IssueComment(settings.owner, proof.comment())]
 
@@ -439,8 +446,8 @@ def test_a_test_holding_comment_ends_and_fences_reads_back_as_it_was(
 
 
 def test_the_latest_proof_counts(settings: WorkflowSettings) -> None:
-    earlier = proof_of("def test_one(): pass\n", "1111111")
-    later = proof_of("def test_two(): pass\n", "2222222")
+    earlier = proof_of(ProofDataset.DOUBLING_SHOWN_WRONG.read_text(), "1111111")
+    later = proof_of(ProofDataset.MISSPELT_IMPORT.read_text(), "2222222")
 
     posted = [
         IssueComment(settings.owner, earlier.comment()),
@@ -452,8 +459,8 @@ def test_the_latest_proof_counts(settings: WorkflowSettings) -> None:
 
 
 def test_a_proof_by_an_untrusted_author_is_ignored(settings: WorkflowSettings) -> None:
-    trusted = proof_of("def test_one(): pass\n", "1111111")
-    forged = proof_of("def test_two(): pass\n", "2222222")
+    trusted = proof_of(ProofDataset.DOUBLING_SHOWN_WRONG.read_text(), "1111111")
+    forged = proof_of(ProofDataset.MISSPELT_IMPORT.read_text(), "2222222")
 
     posted = [
         IssueComment(settings.owner.upper(), trusted.comment()),

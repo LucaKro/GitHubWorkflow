@@ -20,6 +20,7 @@ from github_workflow.command_line import (
     WorkflowCommand,
 )
 from github_workflow.exceptions import NoOwnedRemoteError
+from github_workflow.report_lines import Speaker
 from github_workflow.settings import WorkflowSettings
 
 from .repositories_by_owner import RepositoriesByOwner
@@ -203,5 +204,5 @@ def test_stacking_in_somebody_else_s_repository_is_refused_before_any_call(
     refusal = NoOwnedRemoteError(WorkflowSettings().owner, (RemoteName.ORIGIN,))
     assert (finished.returncode, finished.stderr) == (
         1,
-        f"github-workflow: {refusal}\n",
+        f"{Speaker.WORKFLOW.says(str(refusal))}\n",
     )

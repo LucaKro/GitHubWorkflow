@@ -36,7 +36,13 @@ from github_workflow.pull_request_overview import (
     PullRequestOverview,
     PullRequestSignalReader,
 )
-from github_workflow.report_lines import Emphasis, Highlight, Tone
+from github_workflow.report_lines import (
+    CountedThing,
+    Emphasis,
+    Highlight,
+    Speaker,
+    Tone,
+)
 from github_workflow.upstream import UpstreamLabel
 
 from .pull_requests import pull_request
@@ -162,12 +168,11 @@ class PullRequestsWithSignals(
         )
 
 
-FAILING = CheckStatus.over(
-    [CheckResult("build", CheckOutcome.FAILURE, "https://example.com/build")]
-)
-"""
-Checks one of which failed.
-"""
+def failing_checks() -> CheckStatus:
+    """:return: Checks one of which failed."""
+    return CheckStatus.over(
+        [CheckResult("build", CheckOutcome.FAILURE, "https://example.com/build")]
+    )
 
 
 # %% the lines
@@ -187,7 +192,7 @@ def test_a_pull_request_nothing_asks_attention_for_is_ok() -> None:
     [
         (
             PullRequestsWithSignals(
-                mergeable={1: MergeableState.CLEAN}, checks={1: FAILING}
+                mergeable={1: MergeableState.CLEAN}, checks={1: failing_checks()}
             ),
             "CI failing",
         ),
@@ -251,7 +256,7 @@ def test_pull_requests_are_grouped_open_upstream_then_drafts_then_ready() -> Non
     headings = [line.text for line in lines if not line.text.startswith(" ")]
     named = [line.text.split()[0] for line in lines if line.text.startswith(" ")]
     assert (headings, named) == (
-        [f"github-workflow: {group}:" for group in PullRequestGroup],
+        [Speaker.WORKFLOW.says(f"{group}:") for group in PullRequestGroup],
         [
             NumberLink(number, github.pull_request(number).url).markdown()
             for number in (3, 4, 2, 1)
@@ -264,7 +269,9 @@ def test_pull_requests_waiting_on_the_person_are_counted() -> None:
 
     [line] = github.overview().lines()
 
-    assert line.text == "github-workflow: 2 pull requests wait on your review"
+    assert line.text == Speaker.WORKFLOW.says(
+        f"{CountedThing.WAITING_PULL_REQUEST.counted(2)} on your review"
+    )
 
 
 def test_a_shelved_pull_request_is_left_out() -> None:
@@ -289,13 +296,13 @@ def test_the_shelving_label_is_created_for_the_person_to_pick() -> None:
 def test_the_details_name_the_failing_check_the_merge_state_and_the_thread() -> None:
     github = PullRequestsWithSignals(
         mergeable={1: MergeableState.DIRTY},
-        checks={1: FAILING},
+        checks={1: failing_checks()},
         threads={1: [thread(resolved=False)]},
     )
 
     details = PullRequestDetails(PullRequestSignalReader(github, github), 1).run()
 
-    [check] = FAILING.unsuccessful
+    [check] = failing_checks().unsuccessful
     assert details.splitlines()[1:] == [
         f"check {check.outcome}: {check.name} {check.url}",
         f"merge state: {MergeableState.DIRTY}",

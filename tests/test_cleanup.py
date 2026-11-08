@@ -35,13 +35,14 @@ from github_workflow.locations import NotesFile, PluginDataDirectory
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.policy import WritePolicy
 from github_workflow.remotes import OwnedRemotes
-from github_workflow.report_lines import Tone
+from github_workflow.report_lines import CountedThing, Tone
 from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
 from github_workflow.work import BranchStart, CommitWork, PushWork
 
-from .pull_requests import REPOSITORY, pull_request
+from .pull_requests import pull_request
 from .repositories_by_owner import RepositoriesByOwner
+from .scratch_github import ScratchGitHub
 from .test_commands import github, run  # noqa: F401
 from .test_work import (
     EntriesInMemory,
@@ -59,7 +60,10 @@ def kept(tips: dict[str, str], *pull_requests: RestPullRequest) -> KeptBranches:
     :param pull_requests: The repository's pull requests.
     :return: Them, with ``main`` and the notes branch protected."""
     return KeptBranches(
-        tips, list(pull_requests), REPOSITORY, frozenset({"main", "notes"})
+        tips,
+        list(pull_requests),
+        ScratchGitHub.owned.full_name,
+        frozenset({"main", "notes"}),
     )
 
 
@@ -133,7 +137,7 @@ def test_a_discarded_branch_still_at_its_commit_is_ready() -> None:
     branches = KeptBranches(
         {"tried": "g1"},
         [],
-        REPOSITORY,
+        ScratchGitHub.owned.full_name,
         frozenset({"main", "notes"}),
         DiscardedBranches({"tried": "g1"}),
     )
@@ -145,7 +149,7 @@ def test_a_discarded_branch_with_new_commits_is_kept() -> None:
     branches = KeptBranches(
         {"tried": "g2"},
         [],
-        REPOSITORY,
+        ScratchGitHub.owned.full_name,
         frozenset({"main", "notes"}),
         DiscardedBranches({"tried": "g1"}),
     )
@@ -168,7 +172,7 @@ def test_the_reminder_names_how_many_and_the_command() -> None:
 
     [line] = CleanupReminder(branches).lines()
 
-    assert "2 branches ready for deletion" in line.text
+    assert f"{CountedThing.BRANCH.counted(2)} ready for deletion" in line.text
     assert line.tone is Tone.ACTION
 
 

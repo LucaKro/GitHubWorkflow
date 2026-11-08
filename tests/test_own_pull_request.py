@@ -51,7 +51,8 @@ from github_workflow.upstream_reviews import (
 )
 
 from .issues_in_memory import IssuesInMemory
-from .pull_requests import REPOSITORY, pull_request
+from .pull_requests import pull_request
+from .scratch_github import ScratchGitHub
 from .test_work import PullRequestsFromBranchesInMemory, work  # noqa: F401
 
 # %% the work branch's pull request
@@ -159,7 +160,7 @@ def thread(first: int, resolved: bool = False) -> ReviewThread:
         author=Author("a-reviewer"),
         body=f"Comment {first}.\nMore.",
         created_at="2026-11-04T10:00:00Z",
-        url=f"https://github.com/{REPOSITORY}/pull/3#discussion_r{first}",
+        url=f"{ScratchGitHub.owned.pull_request_url(3)}#discussion_r{first}",
     )
     return ReviewThread(
         identifier=f"thread-{first}",
@@ -223,10 +224,9 @@ def threads(*listed: ReviewThread) -> ThreadsInMemory:
 
 def writer() -> ThreadWriterInMemory:
     """:return: A writer recording what it writes."""
-    return ThreadWriterInMemory(None, Repository.parse(REPOSITORY))
+    return ThreadWriterInMemory(None, ScratchGitHub.owned)
 
 
-UPSTREAM = Repository.parse("an-upstream-owner/project")
 """
 The repository the owner's was forked from.
 """
@@ -273,7 +273,7 @@ class UpstreamReviewsInMemory(UpstreamReviews):
         return UpstreamPullRequestSnapshot(
             9,
             "A title",
-            f"https://github.com/{UPSTREAM}/pull/9",
+            ScratchGitHub.upstream.pull_request_url(9),
             self.reviews,
             self.threads,
             None,
@@ -315,19 +315,22 @@ def test_the_upstream_pull_request_s_reviews_and_threads_follow_with_addresses(
     )
     upstream = UpstreamReviewsInMemory([upstream_thread], [review])
     listing = ReviewThreadListing(
-        own(work, opened_upstream(3)), threads(thread(8)), ForkOf(UPSTREAM), upstream
+        own(work, opened_upstream(3)),
+        threads(thread(8)),
+        ForkOf(ScratchGitHub.upstream),
+        upstream,
     )
 
     listed = listing.run().splitlines()
 
     assert listed[1:] == [
-        f"upstream {UPSTREAM}#9 https://github.com/{UPSTREAM}/pull/9:",
+        f"upstream {ScratchGitHub.upstream}#9 {ScratchGitHub.upstream.pull_request_url(9)}:",
         f"review by upstream-reviewer ({ReviewState.CHANGES_REQUESTED}): Rename it.",
         f"{ReviewThreadListing.described(upstream_thread)} "
         f"{upstream_thread.comments[0].url}",
     ]
     assert [(request.upstream, request.branch) for request in upstream.requests] == [
-        (UPSTREAM, "feature")
+        (ScratchGitHub.upstream, "feature")
     ]
 
 
@@ -351,11 +354,11 @@ class UpstreamUnreadable(UpstreamReviews):
 def test_the_own_threads_are_listed_with_why_upstream_was_not_read(
     work: WritePolicy,  # noqa: F811
 ) -> None:
-    unavailable = UpstreamReadNotStarted(UPSTREAM, 90.0)
+    unavailable = UpstreamReadNotStarted(ScratchGitHub.upstream, 90.0)
     listing = ReviewThreadListing(
         own(work, opened_upstream(3)),
         threads(thread(8)),
-        ForkOf(UPSTREAM),
+        ForkOf(ScratchGitHub.upstream),
         UpstreamUnreadable(unavailable),
     )
 
@@ -370,7 +373,10 @@ def test_a_pull_request_not_opened_upstream_reads_nothing_upstream(
     upstream = UpstreamReviewsInMemory([thread(77)])
 
     ReviewThreadListing(
-        own(work, pull_request(3, "feature")), threads(), ForkOf(UPSTREAM), upstream
+        own(work, pull_request(3, "feature")),
+        threads(),
+        ForkOf(ScratchGitHub.upstream),
+        upstream,
     ).run()
 
     assert upstream.requests == []
@@ -396,11 +402,11 @@ def test_an_addressed_upstream_comment_is_linked_on_the_own_pull_request(
     work: WritePolicy,  # noqa: F811
 ) -> None:
     comments = CommentsInMemory()
-    address = f"https://github.com/{UPSTREAM}/pull/9#discussion_r77"
+    address = f"{ScratchGitHub.upstream.pull_request_url(9)}#discussion_r77"
 
     ReviewAddressing(
         own(work, opened_upstream(3)),
-        ForkOf(UPSTREAM),
+        ForkOf(ScratchGitHub.upstream),
         comments,
         address,
         "Renamed it.",
@@ -412,8 +418,11 @@ def test_an_addressed_upstream_comment_is_linked_on_the_own_pull_request(
 @pytest.mark.parametrize(
     "forked_from, address",
     [
-        (UPSTREAM, "https://github.com/someone-else/project/pull/9#discussion_r77"),
-        (None, f"https://github.com/{UPSTREAM}/pull/9#discussion_r77"),
+        (
+            ScratchGitHub.upstream,
+            "https://github.com/someone-else/project/pull/9#discussion_r77",
+        ),
+        (None, f"{ScratchGitHub.upstream.pull_request_url(9)}#discussion_r77"),
     ],
     ids=["another repository", "no fork"],
 )

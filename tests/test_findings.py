@@ -26,7 +26,6 @@ from basstler_domain_model.github.vocabulary import (
     IssueStateReason,
     PullRequestState,
 )
-from basstler_domain_model.repository import Repository
 
 from github_workflow.exceptions import (
     AlreadyProvenError,
@@ -84,13 +83,10 @@ from .issues_in_memory import (
     labelled_board,
 )
 from .pull_requests import pull_request
+from .scratch_github import ScratchGitHub
 from .stacked_pull_requests import DraftsAndStacksInMemory
+from .test_proofs import ProofDataset
 from .test_work import EntriesInMemory, work
-
-FINDINGS_REPOSITORY = Repository("LucaKro", "project")
-"""
-The repository the findings here are filed on.
-"""
 
 # %% proofs
 
@@ -98,7 +94,7 @@ The repository the findings here are filed on.
 def finding_test() -> FindingTest:
     """:return: A test showing a finding."""
     return FindingTest(
-        Path("tests/test_finding.py"), "def test_it():\n    assert False\n"
+        Path("tests/test_finding.py"), ProofDataset.DOUBLING_SHOWN_WRONG.read_text()
     )
 
 
@@ -282,10 +278,10 @@ def test_a_finding_accepted_on_github_is_listed_once_as_accepted() -> None:
     unreviewed = finding(1, FindingStage.UNREVIEWED, Priority.HIGH)
     board = IssuesInMemory({1: accepted_on_github(unreviewed)})
 
-    listed = FindingListing(board, FINDINGS_REPOSITORY).run().splitlines()
+    listed = FindingListing(board, ScratchGitHub.owned).run().splitlines()
 
     assert listed == [
-        f"{Priority.named(unreviewed, FINDINGS_REPOSITORY)} ({FindingStage.ACCEPTED})"
+        f"{Priority.named(unreviewed, ScratchGitHub.owned)} ({FindingStage.ACCEPTED})"
     ]
 
 
@@ -293,7 +289,7 @@ def test_a_finding_accepted_on_github_is_summed_up_once_as_accepted() -> None:
     accepted = accepted_on_github(finding(1, FindingStage.UNREVIEWED, Priority.HIGH))
     board = IssuesInMemory({1: accepted})
 
-    lines = FindingsSummary(board, FINDINGS_REPOSITORY).lines()
+    lines = FindingsSummary(board, ScratchGitHub.owned).lines()
 
     assert lines == grouped(FindingGroup.TO_PROVE, [accepted], Tone.NEWS)
 
@@ -307,10 +303,10 @@ def test_findings_are_listed_unreviewed_first_and_most_urgent_first() -> None:
         }
     )
 
-    listed = FindingListing(board, FINDINGS_REPOSITORY).run().splitlines()
+    listed = FindingListing(board, ScratchGitHub.owned).run().splitlines()
 
     assert [line.split()[0] for line in listed] == [
-        NumberLink(number, FINDINGS_REPOSITORY.issue_url(number)).markdown()
+        NumberLink(number, ScratchGitHub.owned.issue_url(number)).markdown()
         for number in (3, 2, 1)
     ]
 
@@ -323,10 +319,10 @@ def test_shelved_findings_are_listed_after_the_accepted() -> None:
         }
     )
 
-    listed = FindingListing(board, FINDINGS_REPOSITORY).run().splitlines()
+    listed = FindingListing(board, ScratchGitHub.owned).run().splitlines()
 
     assert [line.split()[0] for line in listed] == [
-        NumberLink(number, FINDINGS_REPOSITORY.issue_url(number)).markdown()
+        NumberLink(number, ScratchGitHub.owned.issue_url(number)).markdown()
         for number in (2, 1)
     ]
 
@@ -334,7 +330,7 @@ def test_shelved_findings_are_listed_after_the_accepted() -> None:
 def test_a_listed_finding_shows_its_evidence() -> None:
     board = IssuesInMemory({1: proven(finding(1, FindingStage.ACCEPTED, Priority.LOW))})
 
-    listed = FindingListing(board, FINDINGS_REPOSITORY).run()
+    listed = FindingListing(board, ScratchGitHub.owned).run()
 
     assert listed.endswith(f"({FindingStage.ACCEPTED}, {Evidence.PROVEN})")
 
@@ -1041,7 +1037,7 @@ def grouped(group: FindingGroup, issues: list[Issue], tone: Tone) -> list[Report
     """
     items = [
         ReportLine(
-            Priority.named(issue, FINDINGS_REPOSITORY),
+            Priority.named(issue, ScratchGitHub.owned),
             tone,
             emphases=Priority.emphases(issue),
         )
@@ -1059,7 +1055,7 @@ def test_the_summary_names_each_finding_in_its_group_most_urgent_first() -> None
         5: unproven(finding(5, FindingStage.ACCEPTED, Priority.LOW)),
     }
 
-    lines = FindingsSummary(IssuesInMemory(issues), FINDINGS_REPOSITORY).lines()
+    lines = FindingsSummary(IssuesInMemory(issues), ScratchGitHub.owned).lines()
 
     assert lines == [
         *grouped(FindingGroup.UNREVIEWED, [issues[2], issues[1]], Tone.ACTION),
@@ -1083,8 +1079,8 @@ def test_a_finding_s_priority_tag_is_shown_in_its_priority_s_style(
 def test_the_summary_leaves_shelved_findings_out() -> None:
     board = IssuesInMemory({1: finding(1, FindingStage.SHELVED, Priority.HIGH)})
 
-    assert FindingsSummary(board, FINDINGS_REPOSITORY).lines() == []
+    assert FindingsSummary(board, ScratchGitHub.owned).lines() == []
 
 
 def test_a_repository_without_findings_says_nothing() -> None:
-    assert FindingsSummary(IssuesInMemory(), FINDINGS_REPOSITORY).lines() == []
+    assert FindingsSummary(IssuesInMemory(), ScratchGitHub.owned).lines() == []

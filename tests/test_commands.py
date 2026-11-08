@@ -79,12 +79,13 @@ from github_workflow.notes.document import NotesBlock, NotesSection
 from github_workflow.proofs import BranchProofRunner, FindingTest
 from github_workflow.pull_request_overview import PullRequestLabel
 from github_workflow.remotes import OwnedRemotes
-from github_workflow.report_lines import Tone
+from github_workflow.report_lines import Speaker, Tone
 from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
 from github_workflow.upstream import UpstreamSuggestion
 
 from .repositories_by_owner import RepositoriesByOwner
+from .test_proofs import ProofDataset
 
 # %% datasets
 
@@ -609,7 +610,9 @@ def finding_checkout(
     checkout = repositories.clone(owned_url, "session")
     monkeypatch.chdir(checkout.root)
     (checkout.root / "tests").mkdir()
-    (checkout.root / "tests" / "test_finding.py").write_text("def test_it(): ...\n")
+    (checkout.root / "tests" / "test_finding.py").write_text(
+        ProofDataset.DOUBLING_SHOWN_WRONG.read_text()
+    )
     (checkout.root / "finding.md").write_text("What was found.\n")
     return checkout
 
@@ -1171,7 +1174,7 @@ def test_a_refusal_is_reported_as_its_reason_without_a_traceback(
     refusal = PersonOnlyCommandError(WorkflowCommand.UPSTREAM)
     assert (finished.returncode, finished.stderr) == (
         1,
-        f"github-workflow: {refusal}\n",
+        f"{Speaker.WORKFLOW.says(str(refusal))}\n",
     )
 
 

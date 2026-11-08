@@ -5,7 +5,7 @@ shown under a heading.
 
 from __future__ import annotations
 
-from github_workflow.report_lines import Emphasis, Highlight, ReportLine, Tone
+from github_workflow.report_lines import Emphasis, Highlight, ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportGroup
 
 # %% a group of lines
@@ -16,9 +16,9 @@ def test_a_group_is_its_heading_followed_by_its_items_indented() -> None:
 
     assert group.lines() == [
         ReportLine(
-            "github-workflow: drafts:",
+            Speaker.WORKFLOW.says("drafts:"),
             Tone.NEWS,
-            emphases=(Emphasis("github-workflow: drafts:", Highlight.HEADING),),
+            emphases=(Emphasis(Speaker.WORKFLOW.says("drafts:"), Highlight.HEADING),),
         ),
         ReportLine("  #1 One", Tone.NEWS),
     ]

@@ -7,11 +7,10 @@ answered on the runner with GitHub's recorded answers, and read again from them.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import pytest
 from basstler_domain_model.github.clients import GraphQLClient, ReplayingGraphQLClient
 from basstler_domain_model.github.repository_client import RepositoryWorkflows
 from basstler_domain_model.github.rest_models import Workflow, WorkflowRun
@@ -42,6 +41,7 @@ from github_workflow.workflow_templates import (
 )
 
 from .repositories_by_owner import RepositoriesByOwner
+from .scratch_github import ScratchGitHub
 from .test_discussions import notes_in
 
 # %% GitHub's answers
@@ -152,12 +152,6 @@ def test_an_answer_read_again_gives_what_github_answered() -> None:
 # %% asking through the notes branch
 
 
-FORK = Repository("LucaKro", RepositoriesByOwner.repository_name)
-"""
-The owner's fork, whose Actions answer the requests.
-"""
-
-
 @dataclass(frozen=True)
 class RunsOfTheQueuedRequest(RepositoryWorkflows):
     """
@@ -194,7 +188,7 @@ class RunsOfTheQueuedRequest(RepositoryWorkflows):
                 tip,
                 self.status,
                 self.conclusion,
-                f"{FORK.url}/actions/runs/1",
+                ScratchGitHub.owned.workflow_run_url(1),
             )
         ]
 
@@ -209,7 +203,7 @@ def forwarded(
     """
     return ForwardedUpstreamReviews(
         notes,
-        FORK,
+        ScratchGitHub.owned,
         runs or RunsOfTheQueuedRequest(notes),
         timeout_seconds=0,
         start_seconds=0,
@@ -297,7 +291,7 @@ def test_a_request_no_run_started_for_is_asked_again_then_given_up_on(
     unavailable = forwarded(notes).snapshot(request())
 
     assert (unavailable, len(queued_requests(notes))) == (
-        UpstreamReadNotStarted(FORK, 0),
+        UpstreamReadNotStarted(ScratchGitHub.owned, 0),
         2,
     )
 
@@ -313,7 +307,7 @@ def test_a_request_whose_run_failed_is_given_up_on(
     unavailable = forwarded(notes, failed).snapshot(request())
 
     assert unavailable == UpstreamReadFailed(
-        f"{FORK.url}/actions/runs/1", WorkflowRunConclusion.FAILURE
+        ScratchGitHub.owned.workflow_run_url(1), WorkflowRunConclusion.FAILURE
     )
 
 
