@@ -7,7 +7,7 @@ repos:
           Runs black, then docformatter on top of it, keeping docformatter's
           docstring changes only when a subsequent black pass leaves them
           unchanged.
-        entry: python scripts/format_docstrings.py
+        entry: python domain_model/scripts/format_docstrings.py
         language: python
         additional_dependencies: ["black==25.11.0", "docformatter==1.7.8"]
         files: \.py$

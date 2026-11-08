@@ -2,7 +2,8 @@
 Pre-commit entry point that formats Python files with black, then keeps docformatter's
 changes only where a second black pass leaves them as they are.
 
-Usage: ``python scripts/format_docstrings.py <file>...``; exits with
+Usage: ``python domain_model/scripts/format_docstrings.py <file>...``, or from the
+domain model's own directory ``python scripts/format_docstrings.py <file>...``; exits with
 :attr:`HookStatus.CHANGED` when it rewrote a file.
 """
 

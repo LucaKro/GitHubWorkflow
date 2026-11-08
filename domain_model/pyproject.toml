@@ -30,3 +30,10 @@ raw-options = { root = ".." }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/basstler_domain_model"]
+
+# Docstrings are formatted by docformatter on top of black.
+[tool.docformatter]
+make-summary-multi-line = true
+pre-summary-newline = true
+close-quotes-on-newline = true
+black = true

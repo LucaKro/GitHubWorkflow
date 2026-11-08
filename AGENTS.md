@@ -131,7 +131,7 @@
 - A docstring holds at most 4 lines of prose, field lists, literal blocks and a module's usage line aside, and a comment block at most 3 lines. Comments are meaningful and DRY; remove comments that restate the code
 - Reference code with Sphinx roles (`:func:`, `:class:`, `:attr:`, `:meth:`), never with plain backticks, and use directives such as `.. note::` and `.. warning::` for notes and warnings
 - Never use all-caps words for emphasis in docstrings or comments; use RST emphasis (`*word*`). Genuine identifiers, acronyms and enum/constant names (`UUID`, `WHERE`, `Definiteness.DEFINITE`) are exempt
-- Always format modified Python files with black followed by docformatter, through the repository's pre-commit hook (`scripts/format_docstrings.py`)
+- Always format modified Python files with black followed by docformatter, through the repository's pre-commit hook (`domain_model/scripts/format_docstrings.py`)
 
 ## Version Control
 - Author commits as the human user running the tool, with their own configured git `user.name` and `user.email`. Never author or amend a commit as an assistant, and never credit one as author or co-author: no `Co-Authored-By:` trailer for an assistant, no `noreply@anthropic.com` or similar as author or committer
