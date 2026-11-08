@@ -208,6 +208,16 @@ class Repository:
         """:return: The repository's settings page on GitHub."""
         return f"{self.url}/settings"
 
+    @property
+    def actions_settings_url(self) -> str:
+        """:return: The repository's settings page for GitHub Actions."""
+        return f"{self.settings_url}/actions"
+
+    @property
+    def actions_url(self) -> str:
+        """:return: The repository's page listing its Actions workflows and runs."""
+        return f"{self.url}/actions"
+
     def issue_url(self, number: int) -> str:
         """
         :param number: An issue or pull request of the repository.
@@ -220,7 +230,7 @@ class Repository:
         :param run: The Actions workflow run's own number.
         :return: The run's page on GitHub.
         """
-        return f"{self.url}/actions/runs/{run}"
+        return f"{self.actions_url}/runs/{run}"
 
     @property
     def api_path(self) -> str:

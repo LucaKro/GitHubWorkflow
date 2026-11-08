@@ -71,7 +71,7 @@ def test_a_push_to_a_foreign_repository_is_refused(
     check = PushCheck(git, "origin", foreign_url, settings)
 
     with pytest.raises(ForeignPushError):
-        check.check([update_of("work")])
+        check.raise_if_forbidden([update_of("work")])
 
 
 def test_a_push_to_the_default_branch_is_refused(
@@ -81,7 +81,7 @@ def test_a_push_to_the_default_branch_is_refused(
     check = PushCheck(git, "origin", owned_url, settings)
 
     with pytest.raises(DefaultBranchWriteError):
-        check.check([update_of(RepositoriesByOwner.default_branch)])
+        check.raise_if_forbidden([update_of(RepositoriesByOwner.default_branch)])
 
 
 def test_a_push_of_a_work_branch_to_the_owner_is_allowed(
@@ -90,7 +90,7 @@ def test_a_push_of_a_work_branch_to_the_owner_is_allowed(
     git = repositories.clone(owned_url, "owned").git
     check = PushCheck(git, "origin", owned_url, settings)
 
-    assert check.check([update_of("work")]) is None
+    assert check.raise_if_forbidden([update_of("work")]) is None
 
 
 def test_a_push_to_a_remote_whose_default_branch_cannot_be_read_is_refused(
@@ -104,7 +104,7 @@ def test_a_push_to_a_remote_whose_default_branch_cannot_be_read_is_refused(
     check = PushCheck(git, unreachable, unreachable, settings)
 
     with pytest.raises(UnknownDefaultBranchError):
-        check.check([update_of("work")])
+        check.raise_if_forbidden([update_of("work")])
 
 
 # %% the hook on a push

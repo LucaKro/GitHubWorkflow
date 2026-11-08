@@ -107,6 +107,14 @@ def test_a_job_log_path_is_the_one_the_actions_api_serves_it_from():
     )
 
 
+def test_the_actions_settings_url_is_the_actions_page_under_the_settings():
+    assert REPOSITORY.actions_settings_url == f"{REPOSITORY.settings_url}/actions"
+
+
+def test_the_actions_url_is_the_actions_page_under_the_repository():
+    assert REPOSITORY.actions_url == f"{REPOSITORY.url}/actions"
+
+
 def test_a_settings_url_is_the_settings_page_under_the_repository():
     assert REPOSITORY.settings_url == f"{REPOSITORY.url}/settings"
 

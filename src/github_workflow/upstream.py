@@ -8,7 +8,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from basstler_domain_model.counted_noun import CountedNoun
 from basstler_domain_model.git.branch_tips import BranchTip
 from basstler_domain_model.git.commands import ProposedPush, RemoteBranch
 from basstler_domain_model.github.labels import LabelWrite
@@ -36,7 +35,7 @@ from github_workflow.exceptions import (
 from github_workflow.install import Launcher
 from github_workflow.labels import UpstreamLabel
 from github_workflow.policy import WritePolicy
-from github_workflow.report_lines import ReportLine, Speaker, Tone
+from github_workflow.report_lines import CountedThing, ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportSection
 from github_workflow.settings import WorkflowSettings
 from github_workflow.work import (
@@ -270,7 +269,7 @@ class ForkMainSync(WorkflowStep):
         ).raise_if_failed()
         git.fetch_branch(fork).raise_if_failed()
         local = LocalBranchFollowing(git).follow(fork)
-        behind = CountedNoun(tips.behind, "commit", "commits")
+        behind = CountedThing.COMMIT.counted(tips.behind)
         return f"{fork.name} fast-forwarded by {behind} to {upstream}'s{local}"
 
 

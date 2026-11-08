@@ -38,6 +38,11 @@ class DatasetLocation(PathEnumeration):
     A pull request as REST describes it once closed without merging.
     """
 
+    ISSUE_LABELLED = DIRECTORY / "events" / "issue_labelled.json"
+    """
+    The ``issues`` event of a label added to an issue.
+    """
+
     STACK_CREATED = DIRECTORY / "stacks" / "create.json"
     """
     A stack of two pull requests, as creating it answered.

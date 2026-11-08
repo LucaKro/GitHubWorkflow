@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum, StrEnum
 
 from basstler_domain_model.claude_code.hooks import HookKey, HookValue
+from basstler_domain_model.counted_noun import CountedNoun
 
 from github_workflow.install import Distribution
 
@@ -32,6 +33,48 @@ class Speaker(StrEnum):
         :return: It, opened by who says it.
         """
         return f"{self}: {text}"
+
+
+# %% counted things
+
+
+class CountedThing(Enum):
+    """
+    The things the workflow's lines count, each with the words naming one and several.
+    """
+
+    BRANCH = ("branch", "branches")
+    """
+    Branches.
+    """
+
+    CLONE = ("clone", "clones")
+    """
+    Clones of somebody else's repository.
+    """
+
+    COMMIT = ("commit", "commits")
+    """
+    Commits.
+    """
+
+    UNRESOLVED_THREAD = ("unresolved thread", "unresolved threads")
+    """
+    Review threads nobody resolved yet.
+    """
+
+    WAITING_PULL_REQUEST = ("pull request waits", "pull requests wait")
+    """
+    Pull requests waiting on someone, the verb agreeing with the count.
+    """
+
+    def counted(self, count: int) -> CountedNoun:
+        """
+        :param count: How many there are.
+        :return: The number of them, worded.
+        """
+        singular, plural = self.value
+        return CountedNoun(count, singular, plural)
 
 
 # %% report lines

@@ -6,47 +6,29 @@ is written into a checkout.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from basstler_domain_model.github.issue_models import Issue, LabelEvent
 from basstler_domain_model.github.repository_client import IssueLabelTracker
 from basstler_domain_model.github.vocabulary import IssueState, IssueStateReason
-from basstler_domain_model.locations import PathEnumeration
-from basstler_domain_model.repository import Repository
 
 from github_workflow import label_events
-from github_workflow.workflow_templates import ActionPlaceholder
 from github_workflow.findings import Evidence, FindingLabel, FindingStage, Priority
 from github_workflow.label_events import (
     FindingAutomation,
     FindingLabelCompletion,
-    IssueLabelled,
     LabelsCompletedReport,
     PickedLabelCompletion,
 )
-from github_workflow.workflow_templates import ActionRequirement
-from github_workflow.report_lines import ReportLine, Tone
 from github_workflow.locations import ProjectFile
+from github_workflow.report_lines import ReportLine, Tone
 from github_workflow.report_section import ReportSection
+from github_workflow.workflow_templates import ActionPlaceholder, ActionRequirement
 
 from .issues_in_memory import IssuesInMemory, finding, labelled_board
 
-# %% the dataset
-
-
-class LabelEventDataset(PathEnumeration):
-    """
-    Events GitHub hands an Actions workflow.
-    """
-
-    ISSUE_LABELLED = (
-        Path(__file__).parent / "dataset" / "events" / "issue_labelled.json"
-    )
-    """
-    A shelved label added to an unreviewed finding.
-    """
+# %% helpers
 
 
 def labelled(issue: Issue, label: str) -> Issue:
@@ -60,21 +42,6 @@ def board_with(issue: Issue) -> IssuesInMemory:
     """:param issue: The one issue on the board.
     :return: A board carrying every finding label already."""
     return IssuesInMemory({issue.number: issue}, set(FindingLabel.every_label))
-
-
-# %% the event
-
-
-def test_the_labelled_issue_and_label_are_read_from_the_event():
-    data = json.loads(LabelEventDataset.ISSUE_LABELLED.value.read_text())
-
-    event = IssueLabelled.from_json(data)
-
-    assert event == IssueLabelled(
-        Repository.parse(data["repository"]["full_name"]),
-        data["issue"]["number"],
-        data["label"]["name"],
-    )
 
 
 # %% completing a label change

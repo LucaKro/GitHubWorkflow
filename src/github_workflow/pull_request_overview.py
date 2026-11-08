@@ -12,7 +12,6 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import StrEnum
 
-from basstler_domain_model.counted_noun import CountedNoun
 from basstler_domain_model.github.number_links import NumberLink
 from basstler_domain_model.github.pull_request_models import (
     UpstreamPullRequestSnapshot,
@@ -29,6 +28,7 @@ from basstler_domain_model.github.vocabulary import MergeableState
 
 from github_workflow.labels import PullRequestLabel, UpstreamLabel
 from github_workflow.report_lines import (
+    CountedThing,
     Emphasis,
     Highlight,
     ReportLine,
@@ -119,9 +119,7 @@ class PullRequestSignals:
             problems.append("behind its base")
         unresolved = len(self.snapshot.unresolved_threads)
         if unresolved:
-            problems.append(
-                str(CountedNoun(unresolved, "unresolved thread", "unresolved threads"))
-            )
+            problems.append(str(CountedThing.UNRESOLVED_THREAD.counted(unresolved)))
         return problems
 
     def line(self, checked_out: str) -> ReportLine:
@@ -271,7 +269,7 @@ class PullRequestOverview(ReportSection):
         ]
         waiting = counted.result()
         if waiting:
-            requests = CountedNoun(waiting, "pull request waits", "pull requests wait")
+            requests = CountedThing.WAITING_PULL_REQUEST.counted(waiting)
             lines.append(
                 ReportLine(
                     Speaker.WORKFLOW.says(f"{requests} on your review"), Tone.ACTION

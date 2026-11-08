@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from basstler_domain_model.counted_noun import CountedNoun
 from basstler_domain_model.git.commands import RemoteBranch
 from basstler_domain_model.github.repository_client import (
     ForkDetails,
@@ -19,7 +18,7 @@ from basstler_domain_model.github.vocabulary import PullRequestState
 
 from github_workflow.command_line import CommandOption, RunnableCommand
 from github_workflow.policy import WritePolicy
-from github_workflow.report_lines import ReportLine, Speaker, Tone
+from github_workflow.report_lines import CountedThing, ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportSection
 from github_workflow.upstream import ForkMainSync
 from github_workflow.work import WorkBranchMerge, WorkflowStep
@@ -73,7 +72,7 @@ class BranchFreshening:
             return [
                 ReportLine(
                     f"{self.policy.default_branch} is "
-                    f"{CountedNoun(tips.behind, 'commit', 'commits')} behind "
+                    f"{CountedThing.COMMIT.counted(tips.behind)} behind "
                     f"{upstream}'s but has {tips.ahead} of its own, so it is not "
                     f"fast-forwarded; ask the person what to do with them",
                     Tone.ACTION,
@@ -104,8 +103,8 @@ class BranchFreshening:
         git.fetch_branch(merged).raise_if_failed()
         if git.contains(merged.tracking_reference, "HEAD"):
             return []
-        behind = CountedNoun(
-            git.commits_between("HEAD", merged.tracking_reference), "commit", "commits"
+        behind = CountedThing.COMMIT.counted(
+            git.commits_between("HEAD", merged.tracking_reference)
         )
         stale = f"{branch} is {behind} behind {base}"
         if git.has_uncommitted_changes():

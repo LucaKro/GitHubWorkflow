@@ -16,7 +16,6 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Self
 
-from basstler_domain_model.counted_noun import CountedNoun
 from basstler_domain_model.git.branch_tips import BranchTip
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
 from basstler_domain_model.github.repository_client import (
@@ -36,7 +35,7 @@ from github_workflow.locations import GitStateFile, NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.policy import WritePolicy
 from github_workflow.remotes import OwnedRemote
-from github_workflow.report_lines import ReportLine, Speaker, Tone
+from github_workflow.report_lines import CountedThing, ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportSection
 from github_workflow.work import PullRequestRetirement, SessionLog, WorkflowStep
 from github_workflow.workflow_templates import DeletionPlaceholder, NotesBranchWorkflow
@@ -270,7 +269,7 @@ class CleanupReminder(ReportSection):
         ready = self.kept.ready()
         if not ready:
             return []
-        branches = CountedNoun(len(ready), "branch", "branches")
+        branches = CountedThing.BRANCH.counted(len(ready))
         command = RunnableCommand.CLEANUP.usage()
         return [
             ReportLine(
@@ -340,7 +339,7 @@ class BranchCleanup(WorkflowStep):
             )
         )
         if not refused:
-            return f"deleted {CountedNoun(deleted, 'branch', 'branches')}"
+            return f"deleted {CountedThing.BRANCH.counted(deleted)}"
         listed = BranchTips({branch: self.kept.tips[branch] for branch in refused})
         workflow = NotesBranchWorkflow.DELETION.files(
             self.notes.branch.name,
@@ -349,7 +348,7 @@ class BranchCleanup(WorkflowStep):
         self.notes.fetch()
         self.notes.write(
             {NotesFile.READY_FOR_DELETION.value: listed.to_text(), **workflow},
-            f"List {CountedNoun(len(refused), 'branch', 'branches')} for deletion",
+            f"List {CountedThing.BRANCH.counted(len(refused))} for deletion",
         )
         return (
             f"deleted {deleted}; this session may not delete the other {len(refused)}, "
@@ -391,7 +390,7 @@ class UnusedCloneRemoval(WorkflowStep):
                 clone.parent.rmdir()
         if not unused:
             return "no clone of somebody else's repository is unused"
-        clones = CountedNoun(len(unused), "clone", "clones")
+        clones = CountedThing.CLONE.counted(len(unused))
         return (
             f"removed {clones} of somebody else's repositories unused for "
             f"{self.unused_for.days} days"

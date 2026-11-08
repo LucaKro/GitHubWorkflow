@@ -91,7 +91,7 @@ class PushCheck:
     Whose repositories may be pushed to.
     """
 
-    def check(self, updates: Sequence[ReferenceUpdate]) -> None:
+    def raise_if_forbidden(self, updates: Sequence[ReferenceUpdate]) -> None:
         """
         :param updates: The references the push changes.
         :raises ForeignPushError: If the URL names no repository of the owner's.
@@ -200,7 +200,9 @@ def main() -> None:
     destination, url = sys.argv[1:3]
     checkout = ProjectCheckout.containing(Path.cwd())
     updates = [ReferenceUpdate.from_line(line) for line in sys.stdin if line.strip()]
-    PushCheck(checkout.git, destination, url, WorkflowSettings()).check(updates)
+    PushCheck(checkout.git, destination, url, WorkflowSettings()).raise_if_forbidden(
+        updates
+    )
 
 
 if __name__ == "__main__":
