@@ -24,7 +24,7 @@ from basstler_domain_model.github.stack_placement import StackPlacement
 from basstler_domain_model.github.vocabulary import PullRequestState
 from basstler_domain_model.repository import Repository
 
-from github_workflow.command_line import RunnableCommand
+from github_workflow.command_line import ArgumentName, RunnableCommand
 from github_workflow.exceptions import (
     ForeignRepositoryError,
     ForkBranchDivergedError,
@@ -340,9 +340,12 @@ class UpstreamSuggestion(DescriptionEnding):
             person runs it on their own machine.
         """
         words = RunnableCommand.UPSTREAM.words_naming(
-            "repository",
-            "branch",
-            values={"repository": repository.full_name, "branch": branch},
+            ArgumentName.REPOSITORY,
+            ArgumentName.BRANCH,
+            values={
+                ArgumentName.REPOSITORY: repository.full_name,
+                ArgumentName.BRANCH: branch,
+            },
         )
         return " ".join([Launcher.COMMAND, *words])
 

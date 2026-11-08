@@ -25,7 +25,7 @@ from basstler_domain_model.claude_code.hooks import (
     ToolCallDenial,
     ToolKind,
 )
-from basstler_domain_model.environment import ClaudeCodeVariable
+from basstler_domain_model.environment import ClaudeCodeVariable, GitVariable
 from basstler_domain_model.git.reading import (
     GitCall,
     GitCallEffect,
@@ -50,6 +50,7 @@ from basstler_domain_model.shell import (
 
 import github_workflow
 from github_workflow.command_line import (
+    ArgumentName,
     CommandAuthority,
     CommandOption,
     RefusalAdvice,
@@ -267,7 +268,7 @@ class CommitAlternative(WorkflowAlternative):
         return GitWrite.COMMIT, GitWrite.ADD
 
     def command_line(self) -> str:
-        return RunnableCommand.COMMIT.usage(CommandOption.MESSAGE, "paths")
+        return RunnableCommand.COMMIT.usage(CommandOption.MESSAGE, ArgumentName.PATHS)
 
 
 @dataclass(frozen=True)
@@ -282,8 +283,8 @@ class BranchSwitchAlternative(WorkflowAlternative):
         return GitWrite.SWITCH, GitWrite.CHECKOUT
 
     def command_line(self) -> str:
-        start = RunnableCommand.BRANCH_START.usage("name")
-        switch = RunnableCommand.BRANCH_SWITCH.usage("name")
+        start = RunnableCommand.BRANCH_START.usage(ArgumentName.NAME)
+        switch = RunnableCommand.BRANCH_SWITCH.usage(ArgumentName.NAME)
         return f"{switch}`, or for a new one `{start}"
 
 
@@ -298,7 +299,7 @@ class BranchStartAlternative(WorkflowAlternative):
         return (GitWrite.BRANCH,)
 
     def command_line(self) -> str:
-        return RunnableCommand.BRANCH_START.usage("name")
+        return RunnableCommand.BRANCH_START.usage(ArgumentName.NAME)
 
 
 @dataclass(frozen=True)
@@ -342,7 +343,7 @@ class CloneAlternative(WorkflowAlternative):
         return (GitWrite.CLONE,)
 
     def command_line(self) -> str:
-        clone = RunnableCommand.CLONE.usage("repository")
+        clone = RunnableCommand.CLONE.usage(ArgumentName.REPOSITORY)
         return (
             f"{clone}`; to review a pull request, then run in the clone `git fetch "
             f"origin +refs/pull/<number>/head:refs/remotes/pull/<number>"
@@ -375,7 +376,7 @@ class DescribeAlternative(WorkflowAlternative):
 
     def command_line(self) -> str:
         return RunnableCommand.DESCRIBE.usage(
-            "number", optional=(CommandOption.BODY_FILE, CommandOption.TITLE)
+            ArgumentName.NUMBER, optional=(CommandOption.BODY_FILE, CommandOption.TITLE)
         )
 
 
@@ -405,7 +406,9 @@ class ReviewReplyAlternative(WorkflowAlternative):
         return (GitHubToolWrite.ADD_REPLY_TO_PULL_REQUEST_COMMENT,)
 
     def command_line(self) -> str:
-        return RunnableCommand.REVIEW_REPLY.usage("comment", CommandOption.BODY_FILE)
+        return RunnableCommand.REVIEW_REPLY.usage(
+            ArgumentName.COMMENT, CommandOption.BODY_FILE
+        )
 
 
 @dataclass(frozen=True)
@@ -420,7 +423,7 @@ class ReviewResolveAlternative(WorkflowAlternative):
         return (GitHubToolWrite.RESOLVE_REVIEW_THREAD,)
 
     def command_line(self) -> str:
-        return RunnableCommand.REVIEW_RESOLVE.usage("comment")
+        return RunnableCommand.REVIEW_RESOLVE.usage(ArgumentName.COMMENT)
 
 
 # %% judging one program
@@ -681,7 +684,9 @@ class CommandGuard:
         """
         command = SimpleCommand(words)
         program, arguments = command.program, command.arguments
-        if any(assignment.startswith("GIT_") for assignment in command.assignments):
+        if any(
+            GitVariable.steers_git(assignment) for assignment in command.assignments
+        ):
             return Denial("setting git's environment can make it run a program")
         marker = ClaudeCodeVariable.COMMAND_MARKER
         if any(
@@ -691,7 +696,7 @@ class CommandGuard:
         if not program:
             return None
         if program in VariableExport and any(
-            argument.startswith("GIT_") for argument in arguments
+            GitVariable.steers_git(argument) for argument in arguments
         ):
             return Denial("exporting git's environment can make it run a program")
         changes_variables = program in VariableExport or program in VariableRemoval
@@ -720,7 +725,7 @@ class CommandGuard:
                 reason = self.denial(argument)
                 if reason is not None:
                     return reason
-            if argument.startswith("GIT_") and CommandLine.assignment.fullmatch(
+            if GitVariable.steers_git(argument) and CommandLine.assignment.fullmatch(
                 argument
             ):
                 return Denial("setting git's environment can make it run a program")

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from basstler_domain_model.locations import PathEnumeration
+from basstler_domain_model.locations import GitHubRepositoryFile, PathEnumeration
 
 # %% the notes branch
 
@@ -37,12 +37,19 @@ class NotesFile(PathEnumeration):
     The branches thrown away, one per line with the commit each was at when discarded.
     """
 
-    DELETION_WORKFLOW = Path(".github/workflows/delete-ready-branches.yml")
+    DELETION_WORKFLOW = (
+        GitHubRepositoryFile.WORKFLOWS_DIRECTORY / "delete-ready-branches.yml"
+    )
     """
     The Actions workflow deleting those branches whenever the notes branch is pushed.
     """
 
-    DELETION_SCRIPT = Path(".github/scripts/delete-ready-branches.sh")
+    SCRIPTS_DIRECTORY = Path(".github/scripts")
+    """
+    The scripts the notes branch's workflows run.
+    """
+
+    DELETION_SCRIPT = SCRIPTS_DIRECTORY / "delete-ready-branches.sh"
     """
     The script the deletion workflow runs.
     """
@@ -52,32 +59,32 @@ class NotesFile(PathEnumeration):
     The discussions waiting to be posted, one file each, removed once posted.
     """
 
-    POSTING_WORKFLOW = Path(".github/workflows/post-discussions.yml")
+    POSTING_WORKFLOW = GitHubRepositoryFile.WORKFLOWS_DIRECTORY / "post-discussions.yml"
     """
     The Actions workflow posting those discussions whenever they change.
     """
 
-    POSTING_SCRIPT = Path(".github/scripts/post-discussions.sh")
+    POSTING_SCRIPT = SCRIPTS_DIRECTORY / "post-discussions.sh"
     """
     The script the posting workflow runs.
     """
 
-    CATEGORIES_QUERY = Path(".github/scripts/discussion-categories.graphql")
+    CATEGORIES_QUERY = SCRIPTS_DIRECTORY / "discussion-categories.graphql"
     """
     The query the posting script reads the repository's discussion categories with.
     """
 
-    CREATE_QUERY = Path(".github/scripts/create-discussion.graphql")
+    CREATE_QUERY = SCRIPTS_DIRECTORY / "create-discussion.graphql"
     """
     The mutation the posting script creates a discussion with.
     """
 
-    FIND_QUERY = Path(".github/scripts/find-discussions.graphql")
+    FIND_QUERY = SCRIPTS_DIRECTORY / "find-discussions.graphql"
     """
     The query the posting script finds the discussion a comment goes on with.
     """
 
-    COMMENT_QUERY = Path(".github/scripts/add-discussion-comment.graphql")
+    COMMENT_QUERY = SCRIPTS_DIRECTORY / "add-discussion-comment.graphql"
     """
     The mutation the posting script comments on a discussion with.
     """
@@ -94,12 +101,14 @@ class NotesFile(PathEnumeration):
     recorded by the Actions workflow.
     """
 
-    UPSTREAM_REVIEW_WORKFLOW = Path(".github/workflows/read-upstream-reviews.yml")
+    UPSTREAM_REVIEW_WORKFLOW = (
+        GitHubRepositoryFile.WORKFLOWS_DIRECTORY / "read-upstream-reviews.yml"
+    )
     """
     The Actions workflow answering the requests.
     """
 
-    COMMIT_SCRIPT = Path(".github/scripts/commit-notes-branch.sh")
+    COMMIT_SCRIPT = SCRIPTS_DIRECTORY / "commit-notes-branch.sh"
     """
     The script every workflow on the notes branch commits and pushes its changes with.
     """
@@ -126,25 +135,11 @@ class ProjectFile(PathEnumeration):
     The personal memory file Claude Code loads, which the notes are written into.
     """
 
-    LABEL_COMPLETION_WORKFLOW = Path(".github/workflows/complete-finding-labels.yml")
+    LABEL_COMPLETION_WORKFLOW = (
+        GitHubRepositoryFile.WORKFLOWS_DIRECTORY / "complete-finding-labels.yml"
+    )
     """
     The Actions workflow completing finding labels picked on GitHub.
-    """
-
-
-class GitFile(PathEnumeration):
-    """
-    The files inside a repository's git directory the workflow writes, relative to it.
-    """
-
-    EXCLUDE = Path("info/exclude")
-    """
-    The repository's own ignore list, which is never committed.
-    """
-
-    PRE_PUSH_HOOK = Path("hooks/pre-push")
-    """
-    The hook git runs before every push, which may refuse it.
     """
 
 
@@ -298,7 +293,9 @@ class RepositoryFile(PathEnumeration):
     Where in a repository the probe puts the files it pushes.
     """
 
-    BRANCH_DELETION_WORKFLOW = Path(".github/workflows/probe-branch-deletion.yml")
+    BRANCH_DELETION_WORKFLOW = (
+        GitHubRepositoryFile.WORKFLOWS_DIRECTORY / "probe-branch-deletion.yml"
+    )
     """
     The branch deletion workflow, where GitHub Actions finds it.
     """
@@ -315,18 +312,4 @@ class PluginDataDirectory(PathEnumeration):
     CLONES = Path("clones")
     """
     The clones of somebody else's repositories, as ``<owner>/<name>``.
-    """
-
-
-# %% git's state
-
-
-class GitStateFile(PathEnumeration):
-    """
-    The files git keeps in a repository's git directory that the workflow reads.
-    """
-
-    FETCH_HEAD = Path("FETCH_HEAD")
-    """
-    What the last fetch brought in, rewritten by every fetch.
     """

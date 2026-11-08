@@ -80,6 +80,35 @@ class GitStateFile(PathEnumeration):
     The commit message a merge in progress was started with.
     """
 
+    FETCH_HEAD = Path("FETCH_HEAD")
+    """
+    What the last fetch brought in, rewritten by every fetch.
+    """
+
+    EXCLUDE = Path("info/exclude")
+    """
+    The repository's own ignore list, which is never committed.
+    """
+
+    PRE_PUSH_HOOK = Path("hooks/pre-push")
+    """
+    The hook git runs before every push, which may refuse it.
+    """
+
+
+# %% what GitHub reads in a repository
+
+
+class GitHubRepositoryFile(PathEnumeration):
+    """
+    The places in a repository GitHub reads, relative to its root.
+    """
+
+    WORKFLOWS_DIRECTORY = Path(".github/workflows")
+    """
+    Where GitHub Actions finds a repository's workflows.
+    """
+
 
 # %% a Python project's files
 

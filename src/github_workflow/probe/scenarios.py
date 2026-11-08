@@ -37,7 +37,7 @@ from basstler_domain_model.github.vocabulary import (
 from basstler_domain_model.templates import Placeholder
 
 import github_workflow
-from github_workflow.command_line import RunnableCommand
+from github_workflow.command_line import ArgumentName, RunnableCommand
 from github_workflow.locations import ProbeTemplate, RepositoryFile
 from github_workflow.probe import library_check
 from github_workflow.probe.library_check import LibraryCheck
@@ -706,7 +706,9 @@ class Probe:
             "-m",
             github_workflow.__name__,
             *RunnableCommand.STACK_ON.words_naming(
-                "below", "above", values={"below": str(lower), "above": str(upper)}
+                ArgumentName.BELOW,
+                ArgumentName.ABOVE,
+                values={ArgumentName.BELOW: str(lower), ArgumentName.ABOVE: str(upper)},
             ),
         )
         self.record_command(

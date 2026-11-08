@@ -24,6 +24,7 @@ from basstler_domain_model.github.repository_client import (
 )
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import PullRequestState
+from basstler_domain_model.locations import GitStateFile
 
 from github_workflow.command_line import RunnableCommand
 from github_workflow.exceptions import (
@@ -31,7 +32,7 @@ from github_workflow.exceptions import (
     NothingToDiscardError,
     UndiscardableBranchError,
 )
-from github_workflow.locations import GitStateFile, NotesFile
+from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.policy import WritePolicy
 from github_workflow.remotes import OwnedRemote

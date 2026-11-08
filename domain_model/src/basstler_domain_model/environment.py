@@ -146,6 +146,14 @@ class GitVariable(EnvironmentVariable):
     instead.
     """
 
+    @staticmethod
+    def steers_git(variable: str) -> bool:
+        """
+        :param variable: A variable's name, or an assignment to it.
+        :return: Whether git reads it, as it reads every variable starting ``GIT_``.
+        """
+        return variable.startswith("GIT_")
+
 
 class GitIdentityVariable(EnvironmentVariable):
     """

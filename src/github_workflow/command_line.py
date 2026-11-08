@@ -290,6 +290,57 @@ class NotesSubcommand(StrEnum):
     """
 
 
+class ArgumentName(StrEnum):
+    """
+    The names of the positional arguments the commands take, each spelled once.
+    """
+
+    ABOVE = "above"
+    """
+    The pull request a stack ends at, the top of the range.
+    """
+
+    ADDRESS = "address"
+    """
+    The address of a review comment on the pull request opened upstream.
+    """
+
+    BELOW = "below"
+    """
+    The pull request a stack starts at, the bottom of the range.
+    """
+
+    BRANCH = "branch"
+    """
+    A branch of the repository named.
+    """
+
+    COMMENT = "comment"
+    """
+    The identifier of a comment in a review thread.
+    """
+
+    NAME = "name"
+    """
+    A branch's name.
+    """
+
+    NUMBER = "number"
+    """
+    A pull request's or issue's number.
+    """
+
+    PATHS = "paths"
+    """
+    The files a command works on.
+    """
+
+    REPOSITORY = "repository"
+    """
+    A repository, as ``owner/name``.
+    """
+
+
 class CommandOption(StrEnum):
     """
     The options the commands take, each spelled once.
@@ -653,7 +704,7 @@ class CommandArgument:
         :param description: What it is the number of, as ``--help`` shows it.
         :return: The number of an issue or pull request.
         """
-        return cls("number", "number", description, int)
+        return cls(ArgumentName.NUMBER, "number", description, int)
 
     @property
     def is_option(self) -> bool:
@@ -802,7 +853,7 @@ class RunnableCommand(CommandSpecification, Enum):
         "start a work branch",
         CommandAuthority.SESSION,
         (
-            CommandArgument("name", "name"),
+            CommandArgument(ArgumentName.NAME, "name"),
             CommandArgument(CommandOption.ON, "branch", "the branch to start from"),
         ),
     )
@@ -814,7 +865,7 @@ class RunnableCommand(CommandSpecification, Enum):
         (WorkflowCommand.BRANCH, BranchSubcommand.SWITCH),
         "switch to a branch",
         CommandAuthority.SESSION,
-        (CommandArgument("name", "branch"),),
+        (CommandArgument(ArgumentName.NAME, "branch"),),
     )
     """
     ``branch switch``.
@@ -826,7 +877,7 @@ class RunnableCommand(CommandSpecification, Enum):
         CommandAuthority.SESSION,
         (
             CommandArgument(
-                "name",
+                ArgumentName.NAME,
                 "branch",
                 "the branch, the checked-out one when left out",
                 count=ArgumentCount.OPTIONAL,
@@ -846,7 +897,10 @@ class RunnableCommand(CommandSpecification, Enum):
                 CommandOption.MESSAGE, "message", required=True, short_name="-m"
             ),
             CommandArgument(
-                "paths", "paths", value_type=Path, count=ArgumentCount.SEVERAL
+                ArgumentName.PATHS,
+                "paths",
+                value_type=Path,
+                count=ArgumentCount.SEVERAL,
             ),
         ),
     )
@@ -940,8 +994,8 @@ class RunnableCommand(CommandSpecification, Enum):
         "put above on below",
         CommandAuthority.PERSONS_WORD,
         (
-            CommandArgument("below", "below", value_type=int),
-            CommandArgument("above", "above", value_type=int),
+            CommandArgument(ArgumentName.BELOW, "below", value_type=int),
+            CommandArgument(ArgumentName.ABOVE, "above", value_type=int),
         ),
     )
     """
@@ -1186,7 +1240,7 @@ class RunnableCommand(CommandSpecification, Enum):
         CommandAuthority.OWN_PULL_REQUEST,
         (
             CommandArgument(
-                "number",
+                ArgumentName.NUMBER,
                 "number",
                 "the open pull request, the work branch's own when left out",
                 int,
@@ -1204,7 +1258,11 @@ class RunnableCommand(CommandSpecification, Enum):
         (WorkflowCommand.CLONE,),
         "clone a repository: the owner's to work in, anyone's to read",
         CommandAuthority.SESSION,
-        (CommandArgument("repository", "owner/name", "the repository, as owner/name"),),
+        (
+            CommandArgument(
+                ArgumentName.REPOSITORY, "owner/name", "the repository, as owner/name"
+            ),
+        ),
     )
     """
     ``clone``.
@@ -1247,7 +1305,9 @@ class RunnableCommand(CommandSpecification, Enum):
         "reply in a thread, without asking",
         CommandAuthority.SESSION,
         (
-            CommandArgument("comment", "comment", "the thread's identifier", int),
+            CommandArgument(
+                ArgumentName.COMMENT, "comment", "the thread's identifier", int
+            ),
             CommandArgument.body_file(),
         ),
     )
@@ -1259,7 +1319,11 @@ class RunnableCommand(CommandSpecification, Enum):
         (WorkflowCommand.REVIEW, ReviewSubcommand.RESOLVE),
         "resolve a thread once its fix is pushed, without asking",
         CommandAuthority.SESSION,
-        (CommandArgument("comment", "comment", "the thread's identifier", int),),
+        (
+            CommandArgument(
+                ArgumentName.COMMENT, "comment", "the thread's identifier", int
+            ),
+        ),
     )
     """
     ``review resolve``.
@@ -1272,7 +1336,7 @@ class RunnableCommand(CommandSpecification, Enum):
         CommandAuthority.SESSION,
         (
             CommandArgument(
-                "address",
+                ArgumentName.ADDRESS,
                 "its address",
                 "the upstream comment's address, as `review list` shows it",
             ),
@@ -1289,10 +1353,10 @@ class RunnableCommand(CommandSpecification, Enum):
         CommandAuthority.PERSON,
         (
             CommandArgument(
-                "repository", "owner/name", "the owner's fork, as owner/name"
+                ArgumentName.REPOSITORY, "owner/name", "the owner's fork, as owner/name"
             ),
             CommandArgument(
-                "branch", "branch", "the fork's branch with the pull request"
+                ArgumentName.BRANCH, "branch", "the fork's branch with the pull request"
             ),
         ),
     )

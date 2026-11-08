@@ -17,7 +17,7 @@ from http import HTTPStatus
 from pathlib import Path
 
 import pytest
-
+from basstler_domain_model.claude_code.hooks import HookKey, HookValue
 from basstler_domain_model.environment import (
     ClaudeCodeVariable,
     GitHubActionsVariable,
@@ -37,16 +37,19 @@ from basstler_domain_model.github.vocabulary import (
     PullRequestState,
     RestJSONKey,
 )
-from basstler_domain_model.locations import PathEnumeration
+from basstler_domain_model.locations import GitStateFile, PathEnumeration
 from basstler_domain_model.repository import GitHubAddress, Repository
 
 import github_workflow
 import github_workflow.session_start
-from github_workflow.command_line import RunnableCommand
-from github_workflow.session import WorkflowSession
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.command_line import BranchSubcommand, FindingSubcommand
-from github_workflow.install import ToolRepository
+from github_workflow.command_line import (
+    BranchSubcommand,
+    FindingSubcommand,
+    NotesSubcommand,
+    RunnableCommand,
+    WorkflowCommand,
+)
 from github_workflow.discussions import DiscussionPosting, DiscussionSessionLog
 from github_workflow.environment import WorkflowVariable
 from github_workflow.exceptions import (
@@ -69,17 +72,17 @@ from github_workflow.findings import (
     Priority,
     ProvenFindingFiling,
 )
-from basstler_domain_model.claude_code.hooks import HookKey, HookValue
-from github_workflow.report_lines import Tone
-from github_workflow.locations import GitFile, NotesFile, ProjectFile
+from github_workflow.install import ToolRepository
+from github_workflow.locations import NotesFile, ProjectFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection
 from github_workflow.proofs import BranchProofRunner, FindingTest
 from github_workflow.pull_request_overview import PullRequestLabel
-from github_workflow.command_line import NotesSubcommand, WorkflowCommand
 from github_workflow.remotes import OwnedRemotes
-from github_workflow.upstream import UpstreamSuggestion
+from github_workflow.report_lines import Tone
+from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
+from github_workflow.upstream import UpstreamSuggestion
 
 from .repositories_by_owner import RepositoriesByOwner
 
@@ -309,7 +312,7 @@ def test_claude_local_md_is_excluded_from_git_once(
     start_session(checkout)
 
     exclude = checkout.root / checkout.git.run(
-        "rev-parse", "--git-path", str(GitFile.EXCLUDE)
+        "rev-parse", "--git-path", str(GitStateFile.EXCLUDE)
     )
     assert exclude.read_text().splitlines().count(str(ProjectFile.CLAUDE_LOCAL)) == 1
 

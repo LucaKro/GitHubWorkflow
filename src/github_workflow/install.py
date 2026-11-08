@@ -21,7 +21,7 @@ import sys
 import sysconfig
 import tempfile
 from dataclasses import dataclass, field
-from enum import Enum, StrEnum
+from enum import Enum, IntEnum, StrEnum
 from pathlib import Path
 
 # %% vocabulary
@@ -42,6 +42,11 @@ class RuntimeFile(StrEnum):
     """
     Lists the source directories the runtime's interpreter imports from, in its
     site-packages.
+    """
+
+    INTERPRETER = "bin/python"
+    """
+    The runtime's interpreter.
     """
 
 
@@ -84,6 +89,33 @@ class PluginSource(Enum):
         """
         self.path = path
         self.distribution = distribution
+
+
+class RuntimeModule(StrEnum):
+    """
+    The modules a runtime's interpreter runs.
+    """
+
+    COMMANDS = "github_workflow"
+    """
+    The workflow's commands.
+    """
+
+    RUNTIME_CHECK = "github_workflow.runtime_check"
+    """
+    The check a new runtime passes before it is switched over to.
+    """
+
+
+class FileMode(IntEnum):
+    """
+    The modes the workflow writes a file it runs with.
+    """
+
+    RUNNABLE = 0o755
+    """
+    Readable and runnable by everyone, writable by its owner.
+    """
 
 
 class RuntimeDirectory(StrEnum):
@@ -193,10 +225,10 @@ class LauncherInstallation:
         """
         The launcher, as written.
         """
-        interpreter = self.runtime / "bin" / "python"
+        interpreter = self.runtime / RuntimeFile.INTERPRETER
         return (
             f"#!/bin/sh\n{Launcher.MARKER}\n"
-            f'exec "{interpreter}" -I -m github_workflow "$@"\n'
+            f'exec "{interpreter}" -I -m {RuntimeModule.COMMANDS} "$@"\n'
         )
 
     def install(self) -> str | None:
@@ -211,7 +243,7 @@ class LauncherInstallation:
             return f"left {path} alone, which is not the workflow's"
         self.directory.mkdir(parents=True, exist_ok=True)
         path.write_text(self.script)
-        path.chmod(0o755)
+        path.chmod(FileMode.RUNNABLE)
         searched = os.environ.get("PATH", "").split(os.pathsep)
         if str(self.directory) not in searched:
             return f"add {self.directory} to PATH to run {Launcher.COMMAND}"
@@ -313,7 +345,7 @@ class RuntimeInstallation:
     def stamp(self) -> str:
         """
         What a runtime built from this plugin records: the plugin's directory, and a
-        digest of its content, the domain model's pin among it.
+        digest of its content, the domain model's source among it.
         """
         files = []
         for directory, subdirectories, names in os.walk(self.plugin):
@@ -353,7 +385,8 @@ class RuntimeInstallation:
             start_new_session=True,
         )
         return (
-            f"github-workflow: installing the runtime from the plugin at {self.plugin}"
+            f"{Distribution.WORKFLOW}: installing the runtime from the plugin at "
+            f"{self.plugin}"
         )
 
     def install(self) -> str | None:
@@ -379,7 +412,7 @@ class RuntimeInstallation:
         build = Path(
             tempfile.mkdtemp(prefix=f".{self.location.name}-", dir=self.location.parent)
         )
-        python = build / "bin" / "python"
+        python = build / RuntimeFile.INTERPRETER
         created = self._ran([sys.executable, "-m", "venv", "--without-pip", str(build)])
         if created is None or created.returncode != 0:
             shutil.rmtree(build)
@@ -406,7 +439,7 @@ class RuntimeInstallation:
             "".join(f"{copy}\n" for copy in copies)
         )
         checked = subprocess.run(
-            [str(python), "-I", "-m", "github_workflow.runtime_check"],
+            [str(python), "-I", "-m", RuntimeModule.RUNTIME_CHECK],
             capture_output=True,
             text=True,
         )
@@ -415,7 +448,8 @@ class RuntimeInstallation:
         (build / RuntimeFile.PLUGIN).write_text(stamp)
         RuntimeSwitch(self.location).to(build)
         installed = (
-            f"github-workflow: runtime installed from the plugin at {self.plugin}"
+            f"{Distribution.WORKFLOW}: runtime installed from the plugin at "
+            f"{self.plugin}"
         )
         launcher = LauncherInstallation(
             self.launcher_directory, self.location

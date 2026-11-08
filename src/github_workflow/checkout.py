@@ -8,9 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from basstler_domain_model.git.commands import GitCommandRunner
+from basstler_domain_model.locations import GitStateFile
 
 from github_workflow.exceptions import NotACheckoutError
-from github_workflow.locations import GitFile, ProjectFile
+from github_workflow.locations import ProjectFile
 
 # %% the checkout
 
@@ -68,7 +69,7 @@ class ProjectCheckout:
         Add ``CLAUDE.local.md`` to the repository's own ignore list, once, so it is
         never committed and no file of the project changes.
         """
-        exclude = self.git.git_path(GitFile.EXCLUDE)
+        exclude = self.git.git_path(GitStateFile.EXCLUDE)
         lines = exclude.read_text().splitlines() if exclude.exists() else []
         if str(ProjectFile.CLAUDE_LOCAL) in lines:
             return

@@ -9,20 +9,19 @@ with git's reference updates on standard input.
 
 from __future__ import annotations
 
-import stat
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import auto
 from pathlib import Path
 
-from basstler_domain_model.class_property import classproperty
 from basstler_domain_model.environment import ClaudeCodeVariable
 from basstler_domain_model.git.commands import (
     GitCommandRunner,
     ReferenceUpdate,
     RemoteBranch,
 )
+from basstler_domain_model.locations import GitStateFile
 from basstler_domain_model.repository import Repository
 from basstler_domain_model.templates import Placeholder
 
@@ -32,7 +31,8 @@ from github_workflow.exceptions import (
     ForeignPushError,
     UnknownDefaultBranchError,
 )
-from github_workflow.locations import GitFile, WorkflowTemplate
+from github_workflow.install import FileMode
+from github_workflow.locations import WorkflowTemplate
 from github_workflow.report_lines import ReportLine, Speaker, Tone
 from github_workflow.settings import WorkflowSettings
 
@@ -132,22 +132,12 @@ class PushHook:
     The interpreter the package is installed in, which the hook runs the check with.
     """
 
-    @classproperty
-    def file_mode(cls) -> int:
-        """
-        The file mode the hook is written with: readable and runnable by everyone,
-        writable by its owner.
-        """
-        everyone = stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
-        runnable = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
-        return everyone | runnable | stat.S_IWUSR
-
     @property
     def path(self) -> Path:
         """
         Where git runs the checkout's ``pre-push`` hook from.
         """
-        return self.checkout.git.git_path(GitFile.PRE_PUSH_HOOK)
+        return self.checkout.git.git_path(GitStateFile.PRE_PUSH_HOOK)
 
     @property
     def script(self) -> str:
@@ -186,7 +176,7 @@ class PushHook:
             ]
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(self.script)
-        path.chmod(self.file_mode)
+        path.chmod(FileMode.RUNNABLE)
         return []
 
 
