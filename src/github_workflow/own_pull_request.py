@@ -14,9 +14,8 @@ from basstler_domain_model.github.readers import PullRequestSource
 from basstler_domain_model.github.repository_client import (
     Commenter,
     ForkDetails,
-    IssueBoard,
+    IssueTracker,
     PullRequestsFromForks,
-    RepositoryLabels,
 )
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.review_models import ReviewThread
@@ -96,14 +95,9 @@ class PullRequestLabelling(WorkflowStep):
     The work branch's pull request.
     """
 
-    labels: RepositoryLabels
+    issues: IssueTracker
     """
-    Reads the repository's labels.
-    """
-
-    board: IssueBoard
-    """
-    Adds and removes the pull request's labels, a pull request being an issue to GitHub
+    The repository's labels, and its issues, a pull request being an issue to GitHub
     too.
     """
 
@@ -122,15 +116,15 @@ class PullRequestLabelling(WorkflowStep):
             raise NothingToLabelError(self.pull_request.policy.work_branch())
         if PullRequestLabel.SHELVED in {*self.added, *self.removed}:
             raise PersonOnlyLabelError(PullRequestLabel.SHELVED)
-        unknown = sorted(set(self.added) - self.labels.labels())
+        unknown = sorted(set(self.added) - self.issues.labels())
         if unknown:
             raise UnknownLabelError(tuple(unknown))
         found = self.pull_request.find()
         if self.added:
-            self.board.add_labels(found.number, list(self.added))
+            self.issues.add_labels(found.number, list(self.added))
         carried = [label for label in self.removed if label in found.labels]
         for label in carried:
-            self.board.remove_label(found.number, label)
+            self.issues.remove_label(found.number, label)
         changes = [f"added {', '.join(self.added)}"] if self.added else []
         changes += [f"removed {', '.join(carried)}"] if carried else []
         return f"labels of #{found.number}: {'; '.join(changes) or 'unchanged'}"

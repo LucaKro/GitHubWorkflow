@@ -597,29 +597,76 @@ class PullRequestListState(PullRequestListingSpecification, Enum):
     """
 
 
+# %% roles: what one caller reads and writes of one repository
+
+
+@dataclass(frozen=True)
+class IssueTracker(IssueBoard, RepositoryLabels, ABC):
+    """
+    A repository's issues, and the labels it can give them.
+    """
+
+
+@dataclass(frozen=True)
+class IssueLabelTracker(IssueTracker, IssueLabelHistory, ABC):
+    """
+    A repository's issues and labels, and in which order its issues' labels were added.
+    """
+
+
+@dataclass(frozen=True)
+class StackHost(
+    PullRequestReader, PullRequestBaseWriter, StackReader, StackWriter, ABC
+):
+    """
+    A repository's pull requests as far as stacking them goes: reading them, pointing
+    them at another branch, and its native stacks.
+    """
+
+
+@dataclass(frozen=True)
+class RepositoryFeatures(
+    RepositorySettings, RepositoryDiscussions, RepositoryWorkflows, ABC
+):
+    """
+    The features of a repository a tool relies on: its settings, its Discussions and its
+    Actions workflows.
+    """
+
+
+@dataclass(frozen=True)
+class UpstreamRepository(PullRequestsFromForks, RepositoryDetails, ABC):
+    """
+    The repository a fork was forked from, as far as proposing a fork's pull request
+    there goes: its pull requests from forks, and its default branch.
+    """
+
+
+@dataclass(frozen=True)
+class ProposingFork(
+    UpstreamRepository, ForkDetails, LabelWriter, Commenter, RepositoryLabels, ABC
+):
+    """
+    A fork, as far as proposing its pull requests upstream goes: its pull requests and
+    default branch, what it was forked from, and commenting on and labelling them.
+    """
+
+
 # %% the client that makes the calls
 
 
 @dataclass(frozen=True)
 class GitHubRepository(
     ForkPullRequests,
-    ForkDetails,
+    ProposingFork,
     ForkSync,
-    PullRequestsFromForks,
-    PullRequestBaseWriter,
     PullRequestCloser,
     PullRequestOpener,
-    RepositoryDetails,
-    RepositoryDiscussions,
-    RepositorySettings,
-    IssueBoard,
-    IssueLabelHistory,
+    RepositoryFeatures,
+    IssueLabelTracker,
+    StackHost,
     ReviewRequests,
-    StackReader,
-    StackWriter,
     CommitChecks,
-    RepositoryLabels,
-    RepositoryWorkflows,
     PullRequestSearch,
     CredentialHolder,
 ):

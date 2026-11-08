@@ -13,16 +13,15 @@ from basstler_domain_model.git.branch_tips import BranchTip
 from basstler_domain_model.git.commands import ProposedPush, RemoteBranch
 from basstler_domain_model.github.labels import LabelWrite
 from basstler_domain_model.github.repository_client import (
-    Commenter,
     ForkDetails,
-    LabelWriter,
+    ProposingFork,
     PullRequestReader,
     PullRequestSearch,
-    PullRequestsFromForks,
     RepositoryDetails,
-    RepositoryLabels,
+    UpstreamRepository,
 )
 from basstler_domain_model.github.rest_models import RestPullRequest
+from basstler_domain_model.github.stack_placement import StackPlacement
 from basstler_domain_model.github.vocabulary import PullRequestState
 from basstler_domain_model.repository import Repository
 
@@ -40,7 +39,6 @@ from github_workflow.policy import WritePolicy
 from github_workflow.report_lines import NumberLink, ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportSection
 from github_workflow.settings import WorkflowSettings
-from github_workflow.stacks import StackPlacement
 from github_workflow.work import (
     DescriptionEnding,
     LocalBranchFollowing,
@@ -76,44 +74,15 @@ class UpstreamProposal(WorkflowStep):
     The fork's branch whose pull request is proposed.
     """
 
-    fork_pull_requests: PullRequestsFromForks
+    fork: ProposingFork
     """
-    Finds the fork's pull request from the branch.
-    """
-
-    fork_details: ForkDetails
-    """
-    Reads which repository the fork was forked from.
+    The fork: its pull request from the branch, what it was forked from, and the link
+    and label put on that pull request.
     """
 
-    fork_repository_details: RepositoryDetails
+    upstream_repository: Callable[[Repository], UpstreamRepository]
     """
-    Reads the fork's default branch.
-    """
-
-    commenter: Commenter
-    """
-    Writes the link to the new pull request on the fork's.
-    """
-
-    labeller: LabelWriter
-    """
-    Labels the fork's pull request.
-    """
-
-    fork_labels: RepositoryLabels
-    """
-    Creates the label when the fork lacks it.
-    """
-
-    upstream_pull_requests: Callable[[Repository], PullRequestsFromForks]
-    """
-    Reaches the pull requests of the repository the fork was forked from.
-    """
-
-    upstream_details: Callable[[Repository], RepositoryDetails]
-    """
-    Reads the default branch of the repository the fork was forked from.
+    Reaches the repository the fork was forked from.
     """
 
     settings: WorkflowSettings
@@ -131,11 +100,11 @@ class UpstreamProposal(WorkflowStep):
             raise PersonOnlyCommandError(" ".join(RunnableCommand.UPSTREAM.words))
         if not self.settings.owns(self.repository):
             raise ForeignRepositoryError(self.repository, self.settings.owner)
-        upstream = self.fork_details.upstream()
+        upstream = self.fork.upstream()
         if upstream is None:
             raise NotAForkError(self.repository)
         local = self.local_pull_request()
-        proposals = self.upstream_pull_requests(upstream)
+        proposals = self.upstream_repository(upstream)
         already = [
             pull_request
             for pull_request in proposals.pull_requests_from(
@@ -152,13 +121,13 @@ class UpstreamProposal(WorkflowStep):
         opened = proposals.open_pull_request_from(
             self.repository.owner,
             self.branch,
-            self.upstream_details(upstream).default_branch(),
+            proposals.default_branch(),
             local.title,
             self.body_linking(local.url),
         )
-        self.commenter.add_comment(local.number, self.comment_linking(opened.url))
-        self.fork_labels.create_missing_labels([UpstreamLabel.OPENED_UPSTREAM])
-        self.labeller.replace_labels(
+        self.fork.add_comment(local.number, self.comment_linking(opened.url))
+        self.fork.create_missing_labels([UpstreamLabel.OPENED_UPSTREAM])
+        self.fork.replace_labels(
             local.number,
             LabelWrite.replacing(local.labels, [UpstreamLabel.OPENED_UPSTREAM]).labels,
         )
@@ -169,9 +138,7 @@ class UpstreamProposal(WorkflowStep):
         :return: The fork's open pull request from the branch, onto its default branch.
         :raises PullRequestNotProposableError: If there is none.
         """
-        every = self.fork_pull_requests.pull_requests_from(
-            self.repository.owner, self.branch
-        )
+        every = self.fork.pull_requests_from(self.repository.owner, self.branch)
         if not every:
             raise PullRequestNotProposableError(
                 self.branch, f"{self.repository} has no pull request from it"
@@ -187,7 +154,7 @@ class UpstreamProposal(WorkflowStep):
                 self.branch,
                 f"its pull request #{latest.number} is {latest.state}, not open",
             )
-        default_branch = self.fork_repository_details.default_branch()
+        default_branch = self.fork.default_branch()
         onto_default = [
             pull_request
             for pull_request in open_ones

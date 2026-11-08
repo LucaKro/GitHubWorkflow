@@ -11,9 +11,7 @@ from dataclasses import dataclass, field
 import pytest
 
 from basstler_domain_model.github.repository_client import (
-    RepositoryDiscussions,
-    RepositorySettings,
-    RepositoryWorkflows,
+    RepositoryFeatures,
 )
 from basstler_domain_model.github.rest_models import Workflow, WorkflowRun
 from basstler_domain_model.github.vocabulary import WorkflowState
@@ -32,7 +30,7 @@ The repository every setup here is made sure of.
 
 
 @dataclass(frozen=True)
-class SettingsInMemory(RepositorySettings, RepositoryDiscussions, RepositoryWorkflows):
+class SettingsInMemory(RepositoryFeatures):
     """
     A repository's features, each on or off, and its workflows, recording every change
     asked for.
@@ -105,7 +103,7 @@ class SettingsInMemory(RepositorySettings, RepositoryDiscussions, RepositoryWork
 def test_a_repository_set_up_already_is_left_alone():
     settings = SettingsInMemory()
 
-    assert RepositorySetup(REPOSITORY, settings, settings, settings).lines() == []
+    assert RepositorySetup(REPOSITORY, settings).lines() == []
     assert settings.changes == []
 
 
@@ -116,7 +114,7 @@ def test_merged_branch_deletion_and_issues_that_are_off_are_left_for_the_person(
     """
     settings = SettingsInMemory(deletes=False, issues=False)
 
-    lines = RepositorySetup(REPOSITORY, settings, settings, settings).lines()
+    lines = RepositorySetup(REPOSITORY, settings).lines()
 
     assert settings.changes == []
     assert [line.tone for line in lines] == [Tone.ACTION] * 2
@@ -129,7 +127,7 @@ def test_actions_that_are_off_are_left_for_the_person_to_turn_on():
     """
     settings = SettingsInMemory(actions=False)
 
-    [line] = RepositorySetup(REPOSITORY, settings, settings, settings).lines()
+    [line] = RepositorySetup(REPOSITORY, settings).lines()
 
     assert settings.changes == []
     assert line.tone is Tone.ACTION
@@ -139,7 +137,7 @@ def test_actions_that_are_off_are_left_for_the_person_to_turn_on():
 def test_actions_that_cannot_be_read_are_not_touched():
     settings = SettingsInMemory(actions=None)
 
-    assert RepositorySetup(REPOSITORY, settings, settings, settings).lines() == []
+    assert RepositorySetup(REPOSITORY, settings).lines() == []
     assert settings.changes == []
 
 
@@ -156,7 +154,7 @@ def test_actions_that_cannot_be_read_are_not_touched():
 def test_a_feature_that_is_off_says_where_to_turn_it_on(
     settings: SettingsInMemory, page: str
 ):
-    [line] = RepositorySetup(REPOSITORY, settings, settings, settings).lines()
+    [line] = RepositorySetup(REPOSITORY, settings).lines()
 
     assert settings.changes == []
     assert line.tone is Tone.ACTION
@@ -174,7 +172,7 @@ def test_a_notes_workflow_github_turned_off_is_reported_with_where_to_turn_it_on
     )
     settings = SettingsInMemory(listed=[posting])
 
-    [line] = RepositorySetup(REPOSITORY, settings, settings, settings).lines()
+    [line] = RepositorySetup(REPOSITORY, settings).lines()
 
     assert (line.tone, f"{REPOSITORY.url}/actions" in line.text) == (Tone.ACTION, True)
 
@@ -194,4 +192,4 @@ def test_a_notes_workflow_github_turned_off_is_reported_with_where_to_turn_it_on
 def test_other_workflows_are_left_unreported(workflow: Workflow):
     settings = SettingsInMemory(listed=[workflow])
 
-    assert RepositorySetup(REPOSITORY, settings, settings, settings).lines() == []
+    assert RepositorySetup(REPOSITORY, settings).lines() == []

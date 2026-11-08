@@ -9,9 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from basstler_domain_model.github.repository_client import (
-    RepositoryDiscussions,
-    RepositorySettings,
-    RepositoryWorkflows,
+    RepositoryFeatures,
 )
 from basstler_domain_model.github.vocabulary import WorkflowState
 from basstler_domain_model.repository import Repository
@@ -35,24 +33,14 @@ class RepositorySetup(ReportSection):
     The repository.
     """
 
-    settings: RepositorySettings
+    features: RepositoryFeatures
     """
-    Reads its settings.
-    """
-
-    discussions: RepositoryDiscussions
-    """
-    Says whether it has Discussions turned on.
-    """
-
-    workflows: RepositoryWorkflows
-    """
-    Says whether GitHub runs each of its Actions workflows.
+    Its settings, its Discussions and its Actions workflows, as GitHub has them.
     """
 
     def lines(self) -> list[ReportLine]:
         lines = []
-        if not self.settings.deletes_merged_branches():
+        if not self.features.deletes_merged_branches():
             lines.append(
                 self._left_off(
                     "GitHub's deletion of merged branches",
@@ -61,7 +49,7 @@ class RepositorySetup(ReportSection):
                     self.repository.settings_url,
                 )
             )
-        if not self.settings.issues_enabled():
+        if not self.features.issues_enabled():
             lines.append(
                 self._left_off(
                     "issues",
@@ -70,7 +58,7 @@ class RepositorySetup(ReportSection):
                     self.repository.settings_url,
                 )
             )
-        if self.settings.actions_enabled() is False:
+        if self.features.actions_enabled() is False:
             lines.append(
                 self._left_off(
                     "GitHub Actions",
@@ -86,7 +74,7 @@ class RepositorySetup(ReportSection):
         }
         off = [
             workflow
-            for workflow in self.workflows.workflows()
+            for workflow in self.features.workflows()
             if workflow.path in notes_workflows
             and workflow.state not in (WorkflowState.ACTIVE, WorkflowState.DELETED)
         ]
@@ -100,7 +88,7 @@ class RepositorySetup(ReportSection):
                     f"{self.repository.url}/actions",
                 )
             )
-        if not self.discussions.discussions_enabled():
+        if not self.features.discussions_enabled():
             lines.append(
                 self._left_off(
                     "Discussions",

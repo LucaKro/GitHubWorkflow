@@ -13,13 +13,14 @@ from basstler_domain_model.git.commands import RemoteName
 from basstler_domain_model.github.stack_models import Stack
 
 import github_workflow
-from github_workflow.exceptions import NoOwnedRemoteError, StackContinuesAboveError
+from github_workflow.exceptions import NoOwnedRemoteError
 from github_workflow.command_line import (
     StackSubcommand,
     WorkflowCommand,
 )
 from github_workflow.settings import WorkflowSettings
-from github_workflow.stacks import StackPlacement
+from basstler_domain_model.github.exceptions import StackContinuesAboveError
+from basstler_domain_model.github.stack_placement import StackPlacement
 
 from .repositories_by_owner import RepositoriesByOwner
 from .stacked_pull_requests import DraftsInMemory, StackedPullRequestsInMemory
@@ -30,7 +31,7 @@ from .stacked_pull_requests import DraftsInMemory, StackedPullRequestsInMemory
 def placement(repository: StackedPullRequestsInMemory) -> StackPlacement:
     """:param repository: The pull requests and stacks in memory.
     :return: A placement working on them."""
-    return StackPlacement(repository, repository, repository, repository)
+    return StackPlacement(repository)
 
 
 def existing_stack(repository: StackedPullRequestsInMemory, *numbers: int) -> Stack:

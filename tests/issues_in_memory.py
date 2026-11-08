@@ -10,10 +10,7 @@ from dataclasses import dataclass, field, replace
 
 from basstler_domain_model.github.issue_models import Issue, IssueComment
 from basstler_domain_model.github.labels import GitHubLabel
-from basstler_domain_model.github.repository_client import (
-    IssueBoard,
-    RepositoryLabels,
-)
+from basstler_domain_model.github.repository_client import IssueTracker
 from basstler_domain_model.github.vocabulary import IssueState, IssueStateReason
 
 from github_workflow.findings import FindingLabel, FindingStage, Priority
@@ -24,7 +21,7 @@ from github_workflow.settings import WorkflowSettings
 
 
 @dataclass(frozen=True)
-class IssuesInMemory(IssueBoard, RepositoryLabels):
+class IssuesInMemory(IssueTracker):
     """
     A repository's issues and labels, recording every write.
     """

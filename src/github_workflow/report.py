@@ -73,9 +73,7 @@ class SectionName(StrEnum):
         github = session.github
         match self:
             case SectionName.SETUP:
-                return RepositorySetup(
-                    session.remote.repository, github, github, github
-                )
+                return RepositorySetup(session.remote.repository, github)
             case SectionName.PULL_REQUESTS:
                 return PullRequestOverview(
                     PullRequestSignalReader.from_repository(github),

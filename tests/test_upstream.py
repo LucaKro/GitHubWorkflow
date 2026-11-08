@@ -14,13 +14,10 @@ import pytest
 
 from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.repository_client import (
-    Commenter,
     ForkDetails,
-    LabelWriter,
+    ProposingFork,
     PullRequestSearch,
-    PullRequestsFromForks,
     RepositoryDetails,
-    RepositoryLabels,
 )
 from basstler_domain_model.github.rest_models import (
     RestPullRequest,
@@ -41,7 +38,7 @@ from github_workflow.settings import WorkflowSettings
 from github_workflow.policy import WritePolicy
 from github_workflow.push_hook import PushHook
 from github_workflow.report_lines import Tone
-from github_workflow.stacks import StackPlacement
+from basstler_domain_model.github.stack_placement import StackPlacement
 from github_workflow.upstream import (
     ForkMainSync,
     UpstreamMergeFollowing,
@@ -70,14 +67,7 @@ The repository the fork was forked from.
 
 
 @dataclass(frozen=True)
-class ForkInMemory(
-    PullRequestsFromForks,
-    ForkDetails,
-    RepositoryDetails,
-    Commenter,
-    LabelWriter,
-    RepositoryLabels,
-):
+class ForkInMemory(ProposingFork):
     """
     A repository with its pull requests, the one it was forked from, its labels, and the
     comments and label sets written on it.
@@ -167,12 +157,6 @@ def proposal(
         repository,
         branch,
         fork,
-        fork,
-        fork,
-        fork,
-        fork,
-        fork,
-        lambda named: upstream,
         lambda named: upstream,
         WorkflowSettings(),
         run_by_a_session,
@@ -561,7 +545,7 @@ def following(
         ForkOf(Repository.parse("an-upstream-owner/project")),
         lambda upstream: UpstreamSearchInMemory(found),
         retired,
-        StackPlacement(fork, fork, fork, fork),
+        StackPlacement(fork),
     )
     return section, fork, retired
 

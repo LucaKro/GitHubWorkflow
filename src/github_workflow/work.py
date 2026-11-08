@@ -22,14 +22,15 @@ from basstler_domain_model.git.conflict_markers import ConflictMarker
 from basstler_domain_model.github.closing_lines import ClosingLines
 from basstler_domain_model.github.repository_client import (
     IssueBoard,
+    IssueTracker,
     PullRequestOpener,
     PullRequestReader,
     PullRequestsFromForks,
     PullRequestWriter,
     RepositoryDetails,
-    RepositoryLabels,
     StackReader,
 )
+from basstler_domain_model.github.stack_placement import StackPlacement
 from basstler_domain_model.github.vocabulary import PullRequestState
 from basstler_domain_model.repository import GitHubAddress, Repository
 
@@ -58,7 +59,6 @@ from github_workflow.policy import WritePolicy
 from github_workflow.push_hook import PushHook
 from github_workflow.report_lines import NumberLink
 from github_workflow.settings import WorkflowSettings
-from github_workflow.stacks import StackPlacement
 
 if TYPE_CHECKING:
     from basstler_domain_model.github.repository_client import GitHubRepository
@@ -378,7 +378,7 @@ class DraftOpening(WorkflowStep):
         base = (
             self.policy.default_branch
             if self.below is None
-            else self.placement.pull_requests.pull_request(self.below).head.branch
+            else self.placement.host.pull_request(self.below).head.branch
         )
         body = (
             self.ending.appended_to(self.body, branch.name)
@@ -424,7 +424,7 @@ class DraftOpening(WorkflowStep):
         :raises UnreplaceablePullRequestError: If it is not open, is on another
             repository, or is the work branch's own.
         """
-        replaced = self.placement.pull_requests.pull_request(number)
+        replaced = self.placement.host.pull_request(number)
         repository = self.policy.remote.repository.full_name
         if replaced.state is not PullRequestState.OPEN:
             raise UnreplaceablePullRequestError(number, f"it is {replaced.state}")
@@ -445,14 +445,9 @@ class PullRequestOpenedLabelling:
     closes, put on when it opens and taken off when it is closed unmerged.
     """
 
-    board: IssueBoard
+    issues: IssueTracker
     """
-    Labels the issues.
-    """
-
-    labels: RepositoryLabels
-    """
-    Creates the label where the repository lacks it.
+    The issues, and the labels they are given.
     """
 
     def label(self, description: str) -> list[int]:
@@ -463,9 +458,9 @@ class PullRequestOpenedLabelling:
         issues = ClosingLines(description).issues()
         if not issues:
             return []
-        self.labels.create_missing_labels([IssueLabel.PULL_REQUEST_OPENED])
+        self.issues.create_missing_labels([IssueLabel.PULL_REQUEST_OPENED])
         for issue in issues:
-            self.board.add_labels(issue, [IssueLabel.PULL_REQUEST_OPENED])
+            self.issues.add_labels(issue, [IssueLabel.PULL_REQUEST_OPENED])
         return issues
 
     def unlabel(self, description: str) -> list[int]:
@@ -476,10 +471,10 @@ class PullRequestOpenedLabelling:
         carrying = [
             issue
             for issue in ClosingLines(description).issues()
-            if IssueLabel.PULL_REQUEST_OPENED in self.board.issue(issue).labels
+            if IssueLabel.PULL_REQUEST_OPENED in self.issues.issue(issue).labels
         ]
         for issue in carrying:
-            self.board.remove_label(issue, IssueLabel.PULL_REQUEST_OPENED)
+            self.issues.remove_label(issue, IssueLabel.PULL_REQUEST_OPENED)
         return carrying
 
 

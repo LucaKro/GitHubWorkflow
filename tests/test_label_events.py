@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from basstler_domain_model.github.issue_models import Issue, LabelEvent
-from basstler_domain_model.github.repository_client import IssueLabelHistory
+from basstler_domain_model.github.repository_client import IssueLabelTracker
 from basstler_domain_model.github.vocabulary import IssueState, IssueStateReason
 from basstler_domain_model.locations import PathEnumeration
 from basstler_domain_model.repository import Repository
@@ -86,7 +86,7 @@ def test_a_picked_stage_replaces_the_previous_stage():
     )
     board = board_with(issue)
 
-    FindingLabelCompletion(board, board, 1, FindingStage.SHELVED).run()
+    FindingLabelCompletion(board, 1, FindingStage.SHELVED).run()
 
     assert board.writes == [f"remove_label 1 {FindingStage.UNREVIEWED}"]
 
@@ -97,7 +97,7 @@ def test_a_picked_incorrect_stage_closes_the_finding_as_not_planned():
     )
     board = board_with(issue)
 
-    FindingLabelCompletion(board, board, 1, FindingStage.INCORRECT).run()
+    FindingLabelCompletion(board, 1, FindingStage.INCORRECT).run()
 
     assert board.writes == [
         f"remove_label 1 {FindingStage.ACCEPTED}",
@@ -109,7 +109,7 @@ def test_a_picked_priority_replaces_the_previous_priority():
     issue = labelled(finding(1, FindingStage.ACCEPTED, Priority.LOW), Priority.HIGH)
     board = board_with(issue)
 
-    FindingLabelCompletion(board, board, 1, Priority.HIGH).run()
+    FindingLabelCompletion(board, 1, Priority.HIGH).run()
 
     assert board.writes == [f"remove_label 1 {Priority.LOW}"]
 
@@ -118,7 +118,7 @@ def test_a_priority_picked_on_a_plain_issue_makes_it_an_unreviewed_finding():
     issue = Issue(1, "An issue", ("bug", Priority.MEDIUM), IssueState.OPEN)
     board = board_with(issue)
 
-    FindingLabelCompletion(board, board, 1, Priority.MEDIUM).run()
+    FindingLabelCompletion(board, 1, Priority.MEDIUM).run()
 
     assert board.writes == [f"add_labels 1 {[FindingStage.UNREVIEWED]}"]
 
@@ -129,7 +129,7 @@ def test_picked_evidence_replaces_the_previous_evidence():
     )
     board = board_with(labelled(unproven, Evidence.PROVEN))
 
-    FindingLabelCompletion(board, board, 1, Evidence.PROVEN).run()
+    FindingLabelCompletion(board, 1, Evidence.PROVEN).run()
 
     assert board.writes == [f"remove_label 1 {Evidence.UNPROVEN}"]
 
@@ -137,7 +137,7 @@ def test_picked_evidence_replaces_the_previous_evidence():
 def test_a_label_removed_again_since_changes_nothing():
     board = board_with(finding(1, FindingStage.UNREVIEWED, Priority.LOW))
 
-    FindingLabelCompletion(board, board, 1, FindingStage.SHELVED).run()
+    FindingLabelCompletion(board, 1, FindingStage.SHELVED).run()
 
     assert board.writes == []
 
@@ -146,7 +146,7 @@ def test_a_label_outside_the_findings_changes_nothing():
     issue = labelled(finding(1, FindingStage.UNREVIEWED, Priority.LOW), "bug")
     board = board_with(issue)
 
-    FindingLabelCompletion(board, board, 1, "bug").run()
+    FindingLabelCompletion(board, 1, "bug").run()
 
     assert board.writes == []
 
@@ -167,9 +167,10 @@ def test_the_actions_workflow_is_written_into_the_checkout_filled_in(tmp_path: P
 
 
 @dataclass(frozen=True)
-class LabelsAddedInMemory(IssueLabelHistory):
+class LabelsAddedInMemory(IssuesInMemory, IssueLabelTracker):
     """
-    Each issue's labels, added in the order given, none ever removed.
+    A repository's issues and labels, each issue's labels added in the order given, none
+    ever removed.
     """
 
     added: dict[int, list[str]] = field(default_factory=dict)
@@ -199,7 +200,16 @@ def completion(
     :param added: The labels added to each issue, oldest first.
     :return: Completes the labels picked on the board.
     """
-    return PickedLabelCompletion(board, board, LabelsAddedInMemory(added))
+    return PickedLabelCompletion(
+        LabelsAddedInMemory(
+            board.open_issues,
+            board.present_labels,
+            board.posted,
+            board.author,
+            board.writes,
+            added,
+        )
+    )
 
 
 def with_labels(*labels: str) -> Issue:

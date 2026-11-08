@@ -47,7 +47,6 @@ from github_workflow.exceptions import (
     NothingToDescribeError,
     PullRequestNotOpenError,
     PushRefusedError,
-    StackContinuesAboveError,
     StackedBranchMergeError,
     UnbuildablePullRequestError,
     UnreplaceablePullRequestError,
@@ -60,7 +59,8 @@ from github_workflow.policy import Attribution, WritePolicy
 from github_workflow.push_hook import PushHook
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.settings import WorkflowSettings
-from github_workflow.stacks import StackPlacement
+from basstler_domain_model.github.exceptions import StackContinuesAboveError
+from basstler_domain_model.github.stack_placement import StackPlacement
 from github_workflow.work import (
     BaseMerge,
     BranchStart,
@@ -476,8 +476,8 @@ def draft(
     return DraftOpening(
         policy,
         github,
-        StackPlacement(github, github, github, github),
-        PullRequestOpenedLabelling(IssuesInMemory(), IssuesInMemory()),
+        StackPlacement(github),
+        PullRequestOpenedLabelling(IssuesInMemory()),
         "A title",
         "A body",
         below,

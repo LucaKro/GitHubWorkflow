@@ -18,9 +18,9 @@ from basstler_domain_model.github.closing_lines import ClosingLines
 from basstler_domain_model.github.issue_models import Issue
 from basstler_domain_model.github.repository_client import (
     IssueBoard,
+    IssueTracker,
     PullRequestCloser,
     PullRequestReader,
-    RepositoryLabels,
 )
 from basstler_domain_model.github.vocabulary import (
     ClosingKeyword,
@@ -282,21 +282,16 @@ class FindingLabelling(WorkflowStep, ABC):
     repository lacks.
     """
 
-    board: IssueBoard
+    issues: IssueTracker
     """
-    Writes the issue.
-    """
-
-    labels: RepositoryLabels
-    """
-    Lists and creates the repository's labels.
+    The issues, and the labels they are given.
     """
 
     def create_missing_labels(self) -> None:
         """
         Create every finding label the repository does not carry yet.
         """
-        self.labels.create_missing_labels(FindingLabel.every_label)
+        self.issues.create_missing_labels(FindingLabel.every_label)
 
     def relabel(self, issue: Issue, labels: Sequence[FindingLabel]) -> None:
         """
@@ -309,11 +304,11 @@ class FindingLabelling(WorkflowStep, ABC):
         self.create_missing_labels()
         added = [label for label in labels if label not in issue.labels]
         if added:
-            self.board.add_labels(issue.number, added)
+            self.issues.add_labels(issue.number, added)
         for label in labels:
             for replaced in type(label):
                 if replaced not in labels and replaced in issue.labels:
-                    self.board.remove_label(issue.number, replaced)
+                    self.issues.remove_label(issue.number, replaced)
 
 
 # %% filing and listing
@@ -350,7 +345,7 @@ class FindingFiling(FindingLabelling):
         :return: The number of the issue filed.
         """
         self.create_missing_labels()
-        return self.board.open_issue(
+        return self.issues.open_issue(
             self.title, self.body, [FindingStage.UNREVIEWED, self.priority, *evidence]
         )
 
@@ -379,7 +374,7 @@ class ProvenFindingFiling(FindingFiling):
         """
         proof = self.runner.attempt(self.test).proof()
         number = self.file([Evidence.PROVEN])
-        self.board.add_comment(number, proof.comment())
+        self.issues.add_comment(number, proof.comment())
         return f"filed finding #{number} ({self.priority.level}), proven on {proof.tip}"
 
 
@@ -465,7 +460,7 @@ class FindingPrioritization(FindingLabelling):
     """
 
     def run(self) -> str:
-        issue = self.board.issue(self.number)
+        issue = self.issues.issue(self.number)
         stage = [] if FindingStage.from_issue(issue) else [FindingStage.UNREVIEWED]
         self.relabel(issue, [self.priority, *stage])
         return f"prioritized #{self.number} as {self.priority.level}"
@@ -491,7 +486,7 @@ class FindingChange(FindingLabelling, ABC):
         :return: The finding, open in one of them.
         :raises NotAFindingError: If it is no open finding in one of them.
         """
-        issue = self.board.issue(self.number)
+        issue = self.issues.issue(self.number)
         if (
             issue.state is not IssueState.OPEN
             or FindingStage.from_issue(issue) not in stages
@@ -542,8 +537,8 @@ class FindingRejection(FindingChange):
     def run(self) -> str:
         issue = self.open_finding(FindingStage.open_stages)
         self.relabel(issue, [FindingStage.INCORRECT])
-        self.board.add_comment(self.number, f"Rejected: {self.reason}")
-        self.board.close_issue(self.number, IssueStateReason.NOT_PLANNED)
+        self.issues.add_comment(self.number, f"Rejected: {self.reason}")
+        self.issues.close_issue(self.number, IssueStateReason.NOT_PLANNED)
         return f"rejected finding #{self.number}"
 
 
@@ -597,11 +592,11 @@ class FindingClosing(FindingChange):
     """
 
     def run(self) -> str:
-        issue = self.board.issue(self.number)
+        issue = self.issues.issue(self.number)
         accepted = FindingStage.from_issue(issue) is FindingStage.ACCEPTED
         if issue.state is not IssueState.OPEN or not accepted:
             raise FindingNotAcceptedError(self.number)
-        proof = Proof.posted_in(self.board.comments(self.number), self.authors)
+        proof = Proof.posted_in(self.issues.comments(self.number), self.authors)
         if Evidence.from_issue(issue) is not Evidence.PROVEN or proof is None:
             raise UnprovenFindingCloseError(self.number)
         fix = self.pull_requests.pull_request(self.fixed_by)
@@ -613,13 +608,13 @@ class FindingClosing(FindingChange):
         if attempt.outcome is ProofOutcome.FAILS:
             raise FindingStillFailsError(self.number, attempt.tip, attempt.message)
         self.create_missing_labels()
-        self.board.add_labels(self.number, [ClosedBy.SESSION])
-        self.board.add_comment(
+        self.issues.add_labels(self.number, [ClosedBy.SESSION])
+        self.issues.add_comment(
             self.number,
             f"Fixed by #{self.fixed_by}: its proof test passes on {attempt.tip}. "
             f"Closed by a session on its own.",
         )
-        self.board.close_issue(self.number, IssueStateReason.COMPLETED)
+        self.issues.close_issue(self.number, IssueStateReason.COMPLETED)
         self.log.enter(
             f"closed finding #{self.number} as fixed by #{self.fixed_by}, its proof test "
             f"passing on {attempt.tip}"
@@ -641,14 +636,9 @@ class SessionPullRequestClosing(PullRequestRetirement):
     the issues it closes lose :attr:`IssueLabel.PULL_REQUEST_OPENED`.
     """
 
-    board: IssueBoard
+    issues: IssueTracker
     """
-    Labels and comments on it, a pull request being an issue to GitHub too.
-    """
-
-    labels: RepositoryLabels
-    """
-    Creates the label when the repository lacks it.
+    The issues, and the labels they are given.
     """
 
     closer: PullRequestCloser
@@ -672,9 +662,9 @@ class SessionPullRequestClosing(PullRequestRetirement):
     """
 
     def retire(self, number: int, reason: str) -> None:
-        self.labels.create_missing_labels([ClosedBy.SESSION])
-        self.board.add_labels(number, [ClosedBy.SESSION])
-        self.board.add_comment(number, f"{reason} Closed by a session on its own.")
+        self.issues.create_missing_labels([ClosedBy.SESSION])
+        self.issues.add_labels(number, [ClosedBy.SESSION])
+        self.issues.add_comment(number, f"{reason} Closed by a session on its own.")
         self.closer.close_pull_request(number)
         self.issue_labels.unlabel(self.pull_requests.pull_request(number).body or "")
         self.log.enter(f"closed pull request #{number}: {reason}")
@@ -699,9 +689,9 @@ class FindingComment(FindingChange):
         """
         :raises NotAFindingError: If the issue is no finding.
         """
-        if FindingStage.from_issue(self.board.issue(self.number)) is None:
+        if FindingStage.from_issue(self.issues.issue(self.number)) is None:
             raise NotAFindingError(self.number)
-        url = self.board.add_comment(self.number, self.body)
+        url = self.issues.add_comment(self.number, self.body)
         return f"commented on finding #{self.number}: {url}"
 
 
@@ -728,9 +718,9 @@ class FindingEdit(FindingChange):
             raise NothingToEditError(self.number)
         self.open_finding(FindingStage.open_stages)
         if self.title is not None:
-            self.board.set_issue_title(self.number, self.title)
+            self.issues.set_issue_title(self.number, self.title)
         if self.body is not None:
-            self.board.set_issue_description(self.number, self.body)
+            self.issues.set_issue_description(self.number, self.body)
         return f"edited finding #{self.number}"
 
 
@@ -764,7 +754,7 @@ class FindingProving(FindingChange):
         """
         issue = self.open_finding(FindingStage.open_stages)
         proof = self.runner.attempt(self.test).proof()
-        self.board.add_comment(self.number, proof.comment())
+        self.issues.add_comment(self.number, proof.comment())
         self.relabel(issue, [Evidence.PROVEN])
         return f"proved finding #{self.number} on {proof.tip}"
 
@@ -789,7 +779,7 @@ class FindingUnproving(FindingChange):
         issue = self.open_finding(FindingStage.open_stages)
         if Evidence.from_issue(issue) is Evidence.PROVEN:
             raise AlreadyProvenError(self.number)
-        self.board.add_comment(self.number, f"Unproven: {self.reason}")
+        self.issues.add_comment(self.number, f"Unproven: {self.reason}")
         self.relabel(issue, [Evidence.UNPROVEN])
         return f"marked finding #{self.number} unproven"
 

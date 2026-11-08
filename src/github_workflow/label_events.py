@@ -19,9 +19,7 @@ from typing import Any
 from basstler_domain_model.github.issue_models import Issue, LabelEvent
 from basstler_domain_model.github.repository_client import (
     GitHubRepository,
-    IssueBoard,
-    IssueLabelHistory,
-    RepositoryLabels,
+    IssueLabelTracker,
 )
 from basstler_domain_model.github.vocabulary import (
     IssueState,
@@ -127,12 +125,12 @@ class FindingLabelCompletion(FindingLabelling):
     """
 
     def run(self) -> str:
-        issue = self.board.issue(self.number)
+        issue = self.issues.issue(self.number)
         if self.label not in issue.labels:
             return f"#{self.number} no longer carries {self.label}"
         if self.label in Priority:
             return FindingPrioritization(
-                self.board, self.labels, self.number, Priority(self.label)
+                self.issues, self.number, Priority(self.label)
             ).run()
         if self.label in Evidence:
             self.relabel(issue, [Evidence(self.label)])
@@ -142,7 +140,7 @@ class FindingLabelCompletion(FindingLabelling):
         stage = FindingStage(self.label)
         self.relabel(issue, [stage])
         if stage is FindingStage.INCORRECT and issue.state is IssueState.OPEN:
-            self.board.close_issue(self.number, IssueStateReason.NOT_PLANNED)
+            self.issues.close_issue(self.number, IssueStateReason.NOT_PLANNED)
         return f"moved #{self.number} to {stage}"
 
 
@@ -158,19 +156,9 @@ class PickedLabelCompletion:
     is closed.
     """
 
-    board: IssueBoard
+    issues: IssueLabelTracker
     """
-    Lists and labels the issues.
-    """
-
-    labels: RepositoryLabels
-    """
-    Creates the finding labels the repository lacks.
-    """
-
-    history: IssueLabelHistory
-    """
-    Reads in which order an issue's labels were added.
+    The issues, the labels they are given, and in which order.
     """
 
     def complete(self) -> list[str]:
@@ -180,10 +168,10 @@ class PickedLabelCompletion:
         found = {
             issue.number: issue
             for stage in FindingStage
-            for issue in self.board.issues([stage], IssueState.OPEN)
+            for issue in self.issues.issues([stage], IssueState.OPEN)
         }
         return [
-            FindingLabelCompletion(self.board, self.labels, number, label).run()
+            FindingLabelCompletion(self.issues, number, label).run()
             for number, issue in found.items()
             for label in self.picks(issue)
         ]
@@ -202,7 +190,7 @@ class PickedLabelCompletion:
         if not contested:
             incorrect = FindingStage.from_issue(issue) is FindingStage.INCORRECT
             return [FindingStage.INCORRECT] if incorrect else []
-        events = self.history.label_events(issue.number)
+        events = self.issues.label_events(issue.number)
         return [
             picked
             for kind in contested
@@ -319,7 +307,7 @@ def main() -> None:
     parser.add_argument("event", type=Path, help="the issues event GitHub handed over")
     event = IssueLabelled.from_json(json.loads(parser.parse_args().event.read_text()))
     github = GitHubRepository.from_environment(event.repository)
-    print(FindingLabelCompletion(github, github, event.number, event.label).run())
+    print(FindingLabelCompletion(github, event.number, event.label).run())
 
 
 if __name__ == "__main__":

@@ -9,12 +9,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 
 from basstler_domain_model.github.repository_client import (
-    PullRequestBaseWriter,
     PullRequestOpener,
-    PullRequestReader,
     PullRequestWriter,
-    StackReader,
-    StackWriter,
+    StackHost,
 )
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.stack_models import Stack, StackedPullRequest
@@ -26,9 +23,7 @@ from .pull_requests import pull_request
 
 
 @dataclass(frozen=True)
-class StackedPullRequestsInMemory(
-    PullRequestReader, PullRequestBaseWriter, StackReader, StackWriter
-):
+class StackedPullRequestsInMemory(StackHost):
     """
     A repository's pull requests, each a branch and the base it targets, and its stacks.
     """

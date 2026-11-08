@@ -16,6 +16,7 @@ from basstler_domain_model.github.repository_client import (
     RepositoryDetails,
 )
 from basstler_domain_model.github.review_writers import ReviewThreadWriter
+from basstler_domain_model.github.stack_placement import StackPlacement
 from basstler_domain_model.repository import Repository
 
 from github_workflow.checkout import ProjectCheckout
@@ -34,7 +35,6 @@ from github_workflow.policy import WritePolicy
 from github_workflow.proofs import BranchProofRunner
 from github_workflow.remotes import OwnedRemote, OwnedRemotes
 from github_workflow.settings import WorkflowSettings
-from github_workflow.stacks import StackPlacement
 from github_workflow.upstream_reviews import (
     DirectUpstreamReviews,
     ForwardedUpstreamReviews,
@@ -111,7 +111,7 @@ class WorkflowSession(RepositoryDetails):
     @property
     def placement(self) -> StackPlacement:
         """:return: Places pull requests in the repository's native stacks."""
-        return StackPlacement(self.github, self.github, self.github, self.github)
+        return StackPlacement(self.github)
 
     @property
     def freshening(self) -> BranchFreshening:
@@ -129,12 +129,7 @@ class WorkflowSession(RepositoryDetails):
     def session_closing(self) -> SessionPullRequestClosing:
         """:return: Closes a pull request a session no longer needs, marked so."""
         return SessionPullRequestClosing(
-            self.github,
-            self.github,
-            self.github,
-            self.session_log,
-            self.github,
-            self.issue_labels,
+            self.github, self.github, self.session_log, self.github, self.issue_labels
         )
 
     @property
@@ -143,7 +138,7 @@ class WorkflowSession(RepositoryDetails):
         :return: Labels the issues an opened pull request's description closes, and
             takes the label off again.
         """
-        return PullRequestOpenedLabelling(self.github, self.github)
+        return PullRequestOpenedLabelling(self.github)
 
     @property
     def work_branch_pull_request(self) -> WorkBranchPullRequest:
@@ -153,7 +148,7 @@ class WorkflowSession(RepositoryDetails):
     @property
     def label_completion(self) -> PickedLabelCompletion:
         """:return: Completes the finding labels picked on GitHub."""
-        return PickedLabelCompletion(self.github, self.github, self.github)
+        return PickedLabelCompletion(self.github)
 
     @property
     def kept_branches(self) -> KeptBranches:

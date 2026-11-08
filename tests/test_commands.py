@@ -672,7 +672,6 @@ def test_a_finding_filed_with_a_test_is_proven_on_the_default_branch(
     github = owner_s_github(settings)
     assert step == ProvenFindingFiling(
         github,
-        github,
         "A title",
         "What was found.\n",
         Priority.HIGH,
@@ -694,9 +693,7 @@ def test_a_finding_filed_without_a_test_runs_none(
     )
 
     github = owner_s_github(settings)
-    assert step == FindingFiling(
-        github, github, "A title", "What was found.\n", Priority.HIGH
-    )
+    assert step == FindingFiling(github, "A title", "What was found.\n", Priority.HIGH)
 
 
 def test_proving_runs_the_test_on_the_default_branch(
@@ -713,11 +710,7 @@ def test_proving_runs_the_test_on_the_default_branch(
 
     github = owner_s_github(settings)
     assert step == FindingProving(
-        github,
-        github,
-        3,
-        finding_test_in(finding_checkout),
-        runner_in(finding_checkout),
+        github, 3, finding_test_in(finding_checkout), runner_in(finding_checkout)
     )
 
 
@@ -827,7 +820,7 @@ def test_marking_unproven_keeps_the_reason(
     )
 
     github = owner_s_github(settings)
-    assert step == FindingUnproving(github, github, 3, "Needs a live server")
+    assert step == FindingUnproving(github, 3, "Needs a live server")
 
 
 def test_a_recheck_trusts_the_owner_and_the_signed_in_account(
@@ -867,7 +860,6 @@ def test_a_fixed_finding_is_closed_through_the_command_line(
         git, OwnedRemotes.read(git, settings).chosen, settings
     )
     assert step == FindingClosing(
-        github,
         github,
         3,
         github,
@@ -989,7 +981,7 @@ def test_a_finding_on_another_of_the_owner_s_repositories_is_reached(
         f"--repository={workflow.full_name}",
     )
 
-    assert step.board == GitHubRepository.from_environment(workflow)
+    assert step.issues == GitHubRepository.from_environment(workflow)
 
 
 @pytest.mark.parametrize(
@@ -1328,7 +1320,6 @@ def test_a_finding_is_filed_on_the_workflow_from_outside_any_checkout(tmp_path: 
 
     board = GitHubRepository.from_environment(Repository.parse(ToolRepository.WORKFLOW))
     assert step == FindingFiling(
-        board,
         board,
         "A read was refused",
         (tmp_path / "finding.md").read_text(),

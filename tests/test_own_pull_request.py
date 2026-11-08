@@ -92,7 +92,7 @@ def test_labels_the_repository_has_are_added_to_the_pull_request(
     board = labelled()
 
     PullRequestLabelling(
-        own(work, pull_request(3, "feature")), board, board, ("bug-fix",), ()
+        own(work, pull_request(3, "feature")), board, ("bug-fix",), ()
     ).run()
 
     assert board.writes == [f"add_labels 3 {['bug-fix']}"]
@@ -105,7 +105,7 @@ def test_a_label_the_repository_lacks_is_refused_before_anything_is_written(
 
     with pytest.raises(UnknownLabelError):
         PullRequestLabelling(
-            own(work, pull_request(3, "feature")), board, board, ("made-up",), ()
+            own(work, pull_request(3, "feature")), board, ("made-up",), ()
         ).run()
 
     assert board.writes == []
@@ -117,9 +117,7 @@ def test_only_labels_the_pull_request_carries_are_removed(
     board = labelled()
     carrying = replace(pull_request(3, "feature"), labels=("api-break",))
 
-    PullRequestLabelling(
-        own(work, carrying), board, board, (), ("api-break", "bug-fix")
-    ).run()
+    PullRequestLabelling(own(work, carrying), board, (), ("api-break", "bug-fix")).run()
 
     assert board.writes == ["remove_label 3 api-break"]
 
@@ -128,9 +126,7 @@ def test_labelling_nothing_is_refused(work: WritePolicy):  # noqa: F811
     board = labelled()
 
     with pytest.raises(NothingToLabelError):
-        PullRequestLabelling(
-            own(work, pull_request(3, "feature")), board, board, (), ()
-        ).run()
+        PullRequestLabelling(own(work, pull_request(3, "feature")), board, (), ()).run()
 
 
 @pytest.mark.parametrize(
@@ -145,7 +141,7 @@ def test_shelving_is_left_to_the_person(
     carrying = replace(pull_request(3, "feature"), labels=removed)
 
     with pytest.raises(PersonOnlyLabelError):
-        PullRequestLabelling(own(work, carrying), board, board, added, removed).run()
+        PullRequestLabelling(own(work, carrying), board, added, removed).run()
 
     assert board.writes == []
 

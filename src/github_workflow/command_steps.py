@@ -398,7 +398,6 @@ class LabelStep(CommandStep):
         return PullRequestLabelling(
             self.session.work_branch_pull_request,
             self.session.github,
-            self.session.github,
             tuple(self.arguments.add or ()),
             tuple(self.arguments.remove or ()),
         )
@@ -438,11 +437,8 @@ class FindingFileStep(CommandStep):
         session, arguments = self.session, self.arguments
         if arguments.test is None:
             board = session.findings_board(arguments.repository)
-            return FindingFiling(
-                board, board, arguments.title, self.body, self.priority
-            )
+            return FindingFiling(board, arguments.title, self.body, self.priority)
         return ProvenFindingFiling(
-            session.github,
             session.github,
             arguments.title,
             self.body,
@@ -464,9 +460,7 @@ class FindingPrioritizeStep(CommandStep):
 
     def step(self) -> WorkflowStep:
         github = self.session.github
-        return FindingPrioritization(
-            github, github, self.arguments.number, self.priority
-        )
+        return FindingPrioritization(github, self.arguments.number, self.priority)
 
 
 @dataclass(frozen=True)
@@ -489,9 +483,7 @@ class FindingListStep(CommandStep):
         completed.
         """
         board = self.session.findings_board(self.arguments.repository)
-        return LabelsCompletedStep(
-            PickedLabelCompletion(board, board, board), self.step()
-        )
+        return LabelsCompletedStep(PickedLabelCompletion(board), self.step())
 
 
 @dataclass(frozen=True)
@@ -506,7 +498,7 @@ class FindingAcceptStep(CommandStep):
 
     def step(self) -> WorkflowStep:
         github = self.session.github
-        return FindingAcceptance(github, github, self.arguments.number)
+        return FindingAcceptance(github, self.arguments.number)
 
 
 @dataclass(frozen=True)
@@ -521,7 +513,7 @@ class FindingShelveStep(CommandStep):
 
     def step(self) -> WorkflowStep:
         github = self.session.github
-        return FindingShelving(github, github, self.arguments.number)
+        return FindingShelving(github, self.arguments.number)
 
 
 @dataclass(frozen=True)
@@ -536,9 +528,7 @@ class FindingRejectStep(CommandStep):
 
     def step(self) -> WorkflowStep:
         github = self.session.github
-        return FindingRejection(
-            github, github, self.arguments.number, self.arguments.reason
-        )
+        return FindingRejection(github, self.arguments.number, self.arguments.reason)
 
 
 @dataclass(frozen=True)
@@ -553,7 +543,7 @@ class FindingCommentStep(CommandStep):
 
     def step(self) -> WorkflowStep:
         board = self.session.findings_board(self.arguments.repository)
-        return FindingComment(board, board, self.arguments.number, self.body)
+        return FindingComment(board, self.arguments.number, self.body)
 
 
 @dataclass(frozen=True)
@@ -569,7 +559,7 @@ class FindingEditStep(CommandStep):
     def step(self) -> WorkflowStep:
         board = self.session.findings_board(self.arguments.repository)
         return FindingEdit(
-            board, board, self.arguments.number, self.arguments.title, self.body
+            board, self.arguments.number, self.arguments.title, self.body
         )
 
 
@@ -586,7 +576,6 @@ class FindingProveStep(CommandStep):
     def step(self) -> WorkflowStep:
         session, arguments = self.session, self.arguments
         return FindingProving(
-            session.github,
             session.github,
             arguments.number,
             FindingTest.read(session.checkout, arguments.test),
@@ -606,9 +595,7 @@ class FindingMarkUnprovenStep(CommandStep):
 
     def step(self) -> WorkflowStep:
         github = self.session.github
-        return FindingUnproving(
-            github, github, self.arguments.number, self.arguments.reason
-        )
+        return FindingUnproving(github, self.arguments.number, self.arguments.reason)
 
 
 @dataclass(frozen=True)
@@ -645,7 +632,6 @@ class FindingCloseStep(CommandStep):
         session, arguments = self.session, self.arguments
         default_branch = session.default_branch()
         return FindingClosing(
-            session.github,
             session.github,
             arguments.number,
             session.github,
@@ -757,12 +743,6 @@ class UpstreamStep(CommandStep):
             fork,
             self.arguments.branch,
             github,
-            github,
-            github,
-            github,
-            github,
-            github,
-            GitHubRepository.from_environment,
             GitHubRepository.from_environment,
             self.session.settings,
             ClaudeCodeVariable.COMMAND_MARKER.read() is not None,
