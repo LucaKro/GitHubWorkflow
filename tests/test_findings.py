@@ -14,10 +14,6 @@ import pytest
 from basstler_domain_model.git.branch_tips import BranchTip
 from basstler_domain_model.github.issue_models import Issue, IssueComment
 from basstler_domain_model.github.number_links import NumberLink
-from basstler_domain_model.github.repository_client import (
-    PullRequestCloser,
-    PullRequestReader,
-)
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.stack_placement import StackPlacement
 from basstler_domain_model.github.vocabulary import (
@@ -83,6 +79,7 @@ from .issues_in_memory import (
     labelled_board,
 )
 from .pull_requests import pull_request
+from .repositories_by_owner import RepositoriesByOwner
 from .scratch_github import ScratchGitHub
 from .stacked_pull_requests import DraftsAndStacksInMemory
 from .test_proofs import ProofDataset
@@ -428,52 +425,42 @@ def test_rejecting_a_closed_finding_is_refused() -> None:
 # %% closing a fixed finding
 
 
-@dataclass(frozen=True)
-class FixesInMemory(PullRequestReader):
+def fix(
+    merged: bool = True, base: str = RepositoriesByOwner.default_branch
+) -> RestPullRequest:
     """
-    Answers pull request 157, merged into the default branch or not.
+    :param merged: Whether it is merged.
+    :param base: The branch it targets.
+    :return: Pull request 157, named as a finding's fix.
     """
-
-    merged: bool = True
-    """
-    Whether it is merged.
-    """
-
-    base: str = "main"
-    """
-    The branch it targets.
-    """
-
-    def pull_request(self, number: int) -> RestPullRequest:
-        state = PullRequestState.CLOSED if self.merged else PullRequestState.OPEN
-        opened = pull_request(number, "fix", state=state, base=self.base)
-        return replace(opened, merged=self.merged)
-
-    def open_pull_requests(self) -> list[RestPullRequest]:
-        raise NotImplementedError
+    state = PullRequestState.CLOSED if merged else PullRequestState.OPEN
+    opened = pull_request(157, "fix", state=state, base=base)
+    return replace(opened, merged=merged)
 
 
 def closing(
     board: IssuesInMemory,
     settings: WorkflowSettings,
     outcome: ProofOutcome = ProofOutcome.PASSES,
-    fixes: FixesInMemory = FixesInMemory(),
+    fixed_by: RestPullRequest | None = None,
 ) -> FindingClosing:
     """
-    :param board: The findings.
+    :param board: The findings, given the pull request named as the fix.
     :param settings: The workflow's settings.
     :param outcome: How the proof test fares on the default branch now.
-    :param fixes: The pull request named as the fix.
-    :return: The closing of finding 1 as fixed by pull request 157.
+    :param fixed_by: The pull request named as the fix, merged into the default branch
+        when ``None``.
+    :return: The closing of finding 1 as fixed by that pull request.
     """
+    named = fix() if fixed_by is None else fixed_by
+    board.pull_requests[named.number] = named
     return FindingClosing(
         board,
         1,
-        fixes,
         runner(outcome),
         [settings.owner],
-        "main",
-        157,
+        RepositoriesByOwner.default_branch,
+        named.number,
         EntriesInMemory(),
     )
 
@@ -518,17 +505,17 @@ def test_a_fixed_finding_s_close_is_entered_in_the_session_log(
 
 
 @pytest.mark.parametrize(
-    "fixes",
-    [FixesInMemory(merged=False), FixesInMemory(base="another-branch")],
+    "fixed_by",
+    [fix(merged=False), fix(base="another-branch")],
     ids=["not merged", "merged elsewhere"],
 )
 def test_a_fix_not_merged_into_the_default_branch_closes_nothing(
-    settings: WorkflowSettings, fixes: FixesInMemory
+    settings: WorkflowSettings, fixed_by: RestPullRequest
 ) -> None:
     board = proven_accepted(settings)
 
     with pytest.raises(FixNotMergedError):
-        closing(board, settings, fixes=fixes).run()
+        closing(board, settings, fixed_by=fixed_by).run()
 
     assert board.writes == []
 
@@ -577,61 +564,17 @@ def test_a_finding_the_person_has_not_accepted_is_not_closed(
 # %% closing a session's own pull requests
 
 
-@dataclass(frozen=True)
-class ClosedInMemory(PullRequestCloser):
-    """
-    Records every pull request closed.
-    """
-
-    closed: list[int] = field(default_factory=list)
-    """
-    The pull requests closed, in order.
-    """
-
-    def close_pull_request(self, number: int) -> None:
-        self.closed.append(number)
-
-
-@dataclass(frozen=True)
-class DescribedPullRequests(PullRequestReader):
-    """
-    Pull requests, each with the description given.
-    """
-
-    descriptions: dict[int, str]
-    """
-    Each pull request's description, by number.
-    """
-
-    def open_pull_requests(self) -> list[RestPullRequest]:
-        return [self.pull_request(number) for number in self.descriptions]
-
-    def pull_request(self, number: int) -> RestPullRequest:
-        return replace(
-            pull_request(number, f"branch-{number}"), body=self.descriptions[number]
-        )
-
-
 def session_closing(
-    board: IssuesInMemory,
-    closer: ClosedInMemory,
-    log: EntriesInMemory,
-    description: str = "A body",
+    board: IssuesInMemory, log: EntriesInMemory, description: str = "A body"
 ) -> SessionPullRequestClosing:
     """
-    :param board: The issues and labels.
-    :param closer: Closes the pull request.
+    :param board: The issues and labels, given pull request #3.
     :param log: The session log.
     :param description: The description of pull request #3.
     :return: Closes pull request #3 as a session's.
     """
-    return SessionPullRequestClosing(
-        board,
-        closer,
-        log,
-        DescribedPullRequests({3: description}),
-        PullRequestOpenedLabelling(board),
-    )
+    board.pull_requests[3] = replace(pull_request(3, "branch-3"), body=description)
+    return SessionPullRequestClosing(board, log)
 
 
 @pytest.mark.parametrize("labelled", [True, False], ids=["label there", "label made"])
@@ -639,9 +582,7 @@ def test_a_session_s_pull_request_is_closed_marked_and_explained(
     labelled: bool,
 ) -> None:
     board = labelled_board() if labelled else IssuesInMemory({})
-    closer = ClosedInMemory()
-
-    session_closing(board, closer, EntriesInMemory()).retire(3, "Replaced by #5.")
+    session_closing(board, EntriesInMemory()).retire(3, "Replaced by #5.")
 
     made = [] if labelled else [f"create_label {ClosedBy.SESSION}"]
     assert board.writes == [
@@ -649,14 +590,14 @@ def test_a_session_s_pull_request_is_closed_marked_and_explained(
         f"add_labels 3 {[ClosedBy.SESSION]}",
         "add_comment 3 Replaced by #5. Closed by a session on its own.",
     ]
-    assert closer.closed == [3]
+    assert board.closed_pull_requests == [3]
 
 
 def test_a_session_s_pull_request_close_is_entered_in_the_session_log() -> None:
     board = labelled_board()
     log = EntriesInMemory()
 
-    session_closing(board, ClosedInMemory(), log).retire(3, "Replaced by #5.")
+    session_closing(board, log).retire(3, "Replaced by #5.")
 
     [entry] = log.entries
     assert "#3" in entry
@@ -673,7 +614,6 @@ def test_the_issues_a_closed_pull_request_closes_lose_the_open_pull_request_labe
 
     session_closing(
         board,
-        ClosedInMemory(),
         EntriesInMemory(),
         f"A body\n\n{ClosingKeyword.FIXES.reference(7)}",
     ).retire(3, "Discarded.")

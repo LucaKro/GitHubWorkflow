@@ -21,14 +21,12 @@ from basstler_domain_model.git.conflict_markers import ConflictMarker
 from basstler_domain_model.github.closing_lines import ClosingLines
 from basstler_domain_model.github.number_links import NumberLink
 from basstler_domain_model.github.repository_client import (
-    IssueBoard,
+    BranchStacks,
     IssueTracker,
     PullRequestOpener,
     PullRequestReader,
     PullRequestsFromForks,
-    PullRequestWriter,
-    RepositoryDetails,
-    StackReader,
+    RewritablePullRequests,
 )
 from basstler_domain_model.github.stack_placement import StackPlacement
 from basstler_domain_model.github.vocabulary import PullRequestState
@@ -483,24 +481,10 @@ class DescriptionRewrite(WorkflowStep):
     :raises PullRequestNotOpenError: If the pull request is not open.
     """
 
-    pull_requests: PullRequestReader
+    pull_requests: RewritablePullRequests
     """
-    Reads the pull request.
-    """
-
-    writer: PullRequestWriter
-    """
-    Writes its description.
-    """
-
-    titles: IssueBoard
-    """
-    Writes its title, a pull request being an issue to GitHub too.
-    """
-
-    repository: RepositoryDetails
-    """
-    Reads the repository's default branch.
+    Reads the pull request and the repository's default branch, and writes its
+    description and title.
     """
 
     number: int
@@ -533,16 +517,16 @@ class DescriptionRewrite(WorkflowStep):
         rewritten = []
         if self.body is not None:
             kept = ClosingLines(pull_request.body or "").kept_in(self.body)
-            onto_default = pull_request.base == self.repository.default_branch()
+            onto_default = pull_request.base == self.pull_requests.default_branch()
             body = (
                 self.ending.appended_to(kept, pull_request.head.branch)
                 if self.ending is not None and onto_default
                 else kept
             )
-            self.writer.set_description(self.number, body)
+            self.pull_requests.set_description(self.number, body)
             rewritten.append("description")
         if self.title is not None:
-            self.titles.set_issue_title(self.number, self.title)
+            self.pull_requests.set_issue_title(self.number, self.title)
             rewritten.append("title")
         return f"rewrote the {' and '.join(rewritten)} of #{self.number}"
 
@@ -743,21 +727,16 @@ class BaseMerge(WorkflowStep):
     The checkout, its work branch and the default branch.
     """
 
-    pull_requests: PullRequestsFromForks
+    branches: BranchStacks
     """
-    Finds the pull requests opened from the work branch.
-    """
-
-    stacks: StackReader
-    """
-    Reads whether one is in a stack.
+    Finds the pull requests opened from the work branch, and whether one is in a stack.
     """
 
     def run(self) -> str:
         branch = self.policy.work_branch()
         owner = self.policy.remote.repository.owner
-        for pull_request in self.pull_requests.pull_requests_from(owner, branch):
-            stacked = self.stacks.stack_of(pull_request.number) is not None
+        for pull_request in self.branches.pull_requests_from(owner, branch):
+            stacked = self.branches.stack_of(pull_request.number) is not None
             above = pull_request.base != self.policy.default_branch
             if pull_request.state is PullRequestState.OPEN and stacked and above:
                 raise StackedBranchMergeError(branch, pull_request.number)

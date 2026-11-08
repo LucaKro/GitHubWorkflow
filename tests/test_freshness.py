@@ -25,7 +25,6 @@ from .repositories_by_owner import RepositoriesByOwner
 from .test_commands import github, run  # noqa: F401
 from .test_upstream import (
     ForkInMemory,
-    ForkOfTheUpstream,
     default_branch_tips,
     with_upstream,
 )
@@ -63,9 +62,7 @@ def freshening(work: WritePolicy, base: str | None = None) -> BranchFreshening:
     :return: Brings its branches up to date, the repository being no fork.
     """
     pulls = [] if base is None else [pull_request(1, "feature", base=base)]
-    return BranchFreshening(
-        work, ForkOfTheUpstream(forked_from=None), ForkInMemory(pulls)
-    )
+    return BranchFreshening(work, ForkInMemory(pulls, forked_from=None))
 
 
 @dataclass(frozen=True)
@@ -158,7 +155,7 @@ def test_a_fork_s_main_behind_its_upstream_is_fast_forwarded(
 ) -> None:
     with_upstream(work, repositories, ahead=2, own=0)
 
-    BranchFreshening(work, ForkOfTheUpstream(), ForkInMemory()).fork_lines()
+    BranchFreshening(work, ForkInMemory()).fork_lines()
 
     fork, upstream = default_branch_tips(work, repositories)
     assert fork == upstream
@@ -170,7 +167,7 @@ def test_a_fork_s_main_with_commits_of_its_own_is_left_for_the_person(
     with_upstream(work, repositories, ahead=1, own=1)
     before = default_branch_tips(work, repositories)
 
-    [line] = BranchFreshening(work, ForkOfTheUpstream(), ForkInMemory()).fork_lines()
+    [line] = BranchFreshening(work, ForkInMemory()).fork_lines()
 
     assert default_branch_tips(work, repositories) == before
     assert line.tone is Tone.ACTION

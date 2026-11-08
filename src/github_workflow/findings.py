@@ -18,10 +18,10 @@ from basstler_domain_model.github.closing_lines import ClosingLines
 from basstler_domain_model.github.issue_models import Issue
 from basstler_domain_model.github.number_links import NumberLink
 from basstler_domain_model.github.repository_client import (
+    ClosablePullRequests,
+    IssueAndPullRequestTracker,
     IssueBoard,
     IssueTracker,
-    PullRequestCloser,
-    PullRequestReader,
 )
 from basstler_domain_model.github.vocabulary import (
     ClosingKeyword,
@@ -567,9 +567,10 @@ class FindingClosing(FindingChange):
     :raises BrokenTestError: If its proof test did not run.
     """
 
-    pull_requests: PullRequestReader
+    issues: IssueAndPullRequestTracker
     """
-    Reads the pull request named as the fix.
+    Unlike :attr:`FindingLabelling.issues`, also reads the pull request named as the
+    fix.
     """
 
     runner: ProofRunner
@@ -605,7 +606,7 @@ class FindingClosing(FindingChange):
         proof = Proof.posted_in(self.issues.comments(self.number), self.authors)
         if Evidence.from_issue(issue) is not Evidence.PROVEN or proof is None:
             raise UnprovenFindingCloseError(self.number)
-        fix = self.pull_requests.pull_request(self.fixed_by)
+        fix = self.issues.pull_request(self.fixed_by)
         if not fix.merged or fix.base != self.default_branch:
             raise FixNotMergedError(self.fixed_by, self.default_branch)
         attempt = self.runner.attempt(proof.test)
@@ -641,14 +642,9 @@ class SessionPullRequestClosing(PullRequestRetirement):
     the issues it closes lose :attr:`IssueLabel.PULL_REQUEST_OPENED`.
     """
 
-    issues: IssueTracker
+    pull_requests: ClosablePullRequests
     """
-    The issues, and the labels they are given.
-    """
-
-    closer: PullRequestCloser
-    """
-    Closes it.
+    Reads and closes it, labels and comments on it, and on the issues it closes.
     """
 
     log: SessionLog
@@ -656,22 +652,13 @@ class SessionPullRequestClosing(PullRequestRetirement):
     Where the close is entered.
     """
 
-    pull_requests: PullRequestReader
-    """
-    Reads its description.
-    """
-
-    issue_labels: PullRequestOpenedLabelling
-    """
-    Takes the label saying a pull request is open off the issues it closes.
-    """
-
     def retire(self, number: int, reason: str) -> None:
-        self.issues.create_missing_labels([ClosedBy.SESSION])
-        self.issues.add_labels(number, [ClosedBy.SESSION])
-        self.issues.add_comment(number, f"{reason} {ClosedBy.closing_note}")
-        self.closer.close_pull_request(number)
-        self.issue_labels.unlabel(self.pull_requests.pull_request(number).body or "")
+        self.pull_requests.create_missing_labels([ClosedBy.SESSION])
+        self.pull_requests.add_labels(number, [ClosedBy.SESSION])
+        self.pull_requests.add_comment(number, f"{reason} {ClosedBy.closing_note}")
+        self.pull_requests.close_pull_request(number)
+        description = self.pull_requests.pull_request(number).body or ""
+        PullRequestOpenedLabelling(self.pull_requests).unlabel(description)
         self.log.enter(f"closed pull request #{number}: {reason}")
 
 

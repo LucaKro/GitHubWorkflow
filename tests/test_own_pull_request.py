@@ -10,7 +10,7 @@ from dataclasses import dataclass, field, replace
 import pytest
 from basstler_domain_model.github.pull_request_models import UpstreamPullRequestSnapshot
 from basstler_domain_model.github.readers import PullRequestSource
-from basstler_domain_model.github.repository_client import Commenter, ForkDetails
+from basstler_domain_model.github.repository_client import ForkCommenter, ForkDetails
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.review_models import (
     Author,
@@ -383,15 +383,24 @@ def test_a_pull_request_not_opened_upstream_reads_nothing_upstream(
 
 
 @dataclass(frozen=True)
-class CommentsInMemory(Commenter):
+class ForkCommentsInMemory(ForkCommenter):
     """
-    Records every comment written.
+    The owner's repository, forked from the repository given, recording every comment
+    written.
+    """
+
+    forked_from: Repository | None
+    """
+    The upstream, ``None`` for a repository that is no fork.
     """
 
     comments: list[tuple[int, str]] = field(default_factory=list)
     """
     Each comment's pull request and text.
     """
+
+    def upstream(self) -> Repository | None:
+        return self.forked_from
 
     def add_comment(self, number: int, body: str) -> str:
         self.comments.append((number, body))
@@ -401,12 +410,11 @@ class CommentsInMemory(Commenter):
 def test_an_addressed_upstream_comment_is_linked_on_the_own_pull_request(
     work: WritePolicy,  # noqa: F811
 ) -> None:
-    comments = CommentsInMemory()
+    comments = ForkCommentsInMemory(ScratchGitHub.upstream)
     address = f"{ScratchGitHub.upstream.pull_request_url(9)}#discussion_r77"
 
     ReviewAddressing(
         own(work, opened_upstream(3)),
-        ForkOf(ScratchGitHub.upstream),
         comments,
         address,
         "Renamed it.",
@@ -429,12 +437,10 @@ def test_an_addressed_upstream_comment_is_linked_on_the_own_pull_request(
 def test_an_address_not_upstream_is_refused(
     work: WritePolicy, forked_from: Repository | None, address: str  # noqa: F811
 ) -> None:
-    comments = CommentsInMemory()
+    comments = ForkCommentsInMemory(forked_from)
 
     with pytest.raises(ForeignReviewAddressError):
-        ReviewAddressing(
-            own(work, opened_upstream(3)), ForkOf(forked_from), comments, address, "x"
-        ).run()
+        ReviewAddressing(own(work, opened_upstream(3)), comments, address, "x").run()
 
     assert comments.comments == []
 

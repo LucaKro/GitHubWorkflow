@@ -442,7 +442,24 @@ class RepositorySettings(ABC):
 
 
 @dataclass(frozen=True)
-class IssueBoard(LabelWriter, Commenter, ABC):
+class IssueTitleWriter(ABC):
+    """
+    Rewriting the title of an issue or pull request, a pull request being an issue to
+    GitHub too.
+    """
+
+    @abstractmethod
+    def set_issue_title(self, number: int, title: str) -> None:
+        """
+        Rewrite an issue's title and nothing else.
+
+        :param number: The issue to write.
+        :param title: The new title.
+        """
+
+
+@dataclass(frozen=True)
+class IssueBoard(LabelWriter, Commenter, IssueTitleWriter, ABC):
     """
     Filing, listing, labelling, rewriting and closing a repository's issues.
     """
@@ -502,15 +519,6 @@ class IssueBoard(LabelWriter, Commenter, ABC):
         """
         :param number: The issue to close.
         :param reason: Why it is closed.
-        """
-
-    @abstractmethod
-    def set_issue_title(self, number: int, title: str) -> None:
-        """
-        Rewrite an issue's title and nothing else.
-
-        :param number: The issue to write.
-        :param title: The new title.
         """
 
     @abstractmethod
@@ -627,6 +635,48 @@ class IssueLabelTracker(IssueTracker, IssueLabelHistory, ABC):
 
 
 @dataclass(frozen=True)
+class IssueAndPullRequestTracker(PullRequestReader, IssueTracker, ABC):
+    """
+    A repository's issues and labels, and reading its pull requests.
+    """
+
+
+@dataclass(frozen=True)
+class ClosablePullRequests(IssueAndPullRequestTracker, PullRequestCloser, ABC):
+    """
+    A repository's pull requests as far as closing them with a comment and a label goes:
+    reading and closing them, and its issues and labels, a pull request being an issue
+    to GitHub too.
+    """
+
+
+@dataclass(frozen=True)
+class RewritablePullRequests(
+    PullRequestReader, RepositoryDetails, PullRequestWriter, IssueTitleWriter, ABC
+):
+    """
+    A repository's pull requests as far as rewriting their description and title goes,
+    and the default branch they may target.
+    """
+
+
+@dataclass(frozen=True)
+class PullRequestTracker(PullRequestReader, RepositoryLabels, ReviewRequests, ABC):
+    """
+    A repository's pull requests, the labels it can give them, and how many wait on the
+    credential's account for review.
+    """
+
+
+@dataclass(frozen=True)
+class BranchStacks(PullRequestsFromForks, StackReader, ABC):
+    """
+    The pull requests opened from a repository's branches, and the native stacks
+    holding them.
+    """
+
+
+@dataclass(frozen=True)
 class StackHost(
     PullRequestReader, PullRequestBaseWriter, StackReader, StackWriter, ABC
 ):
@@ -655,6 +705,22 @@ class FollowedFork(PullRequestReader, RepositoryDetails, ForkDetails, ABC):
 
 
 @dataclass(frozen=True)
+class ForkedRepository(PullRequestsFromForks, ForkDetails, ABC):
+    """
+    A repository that may be a fork: what it was forked from, and the pull requests
+    opened from its branches.
+    """
+
+
+@dataclass(frozen=True)
+class ForkCommenter(ForkDetails, Commenter, ABC):
+    """
+    A fork, as far as commenting on its pull requests about the repository it was
+    forked from goes.
+    """
+
+
+@dataclass(frozen=True)
 class UpstreamRepository(PullRequestsFromForks, RepositoryDetails, ABC):
     """
     The repository a fork was forked from, as far as proposing a fork's pull request
@@ -664,7 +730,12 @@ class UpstreamRepository(PullRequestsFromForks, RepositoryDetails, ABC):
 
 @dataclass(frozen=True)
 class ProposingFork(
-    UpstreamRepository, ForkDetails, LabelWriter, Commenter, RepositoryLabels, ABC
+    UpstreamRepository,
+    ForkedRepository,
+    LabelWriter,
+    ForkCommenter,
+    RepositoryLabels,
+    ABC,
 ):
     """
     A fork, as far as proposing its pull requests upstream goes: its pull requests and
@@ -677,19 +748,21 @@ class ProposingFork(
 
 @dataclass(frozen=True)
 class GitHubRepository(
-    ForkPullRequests,
-    ProposingFork,
-    FollowedFork,
-    ForkSync,
-    PullRequestCloser,
-    PullRequestOpener,
-    RepositoryFeatures,
-    IssueLabelTracker,
-    StackHost,
-    ReviewRequests,
-    CommitChecks,
-    PullRequestSearch,
     CredentialHolder,
+    PullRequestSearch,
+    CommitChecks,
+    StackHost,
+    IssueLabelTracker,
+    RepositoryFeatures,
+    PullRequestOpener,
+    ForkSync,
+    BranchStacks,
+    PullRequestTracker,
+    ClosablePullRequests,
+    FollowedFork,
+    ProposingFork,
+    ForkPullRequests,
+    RewritablePullRequests,
 ):
     """
     Every pull-request, stack and label call this tooling makes, against one repository.

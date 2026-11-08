@@ -313,7 +313,7 @@ class SyncStep(CommandStep):
         if arguments.upstream:
             return ForkMainSync(session.policy, session.github)
         if arguments.base:
-            return BaseMerge(session.policy, session.github, session.github)
+            return BaseMerge(session.policy, session.github)
         if arguments.on is not None:
             return PullRequestMerge(session.policy, session.github, arguments.on)
         if arguments.resolved:
@@ -368,9 +368,6 @@ class DescribeStep(FreshenedCommandStep):
         if number is None:
             number = session.work_branch_pull_request.find().number
         return DescriptionRewrite(
-            session.github,
-            session.github,
-            session.github,
             session.github,
             number,
             self.body,
@@ -638,7 +635,6 @@ class FindingCloseStep(CommandStep):
         return FindingClosing(
             session.github,
             arguments.number,
-            session.github,
             session.proof_runner(arguments.python, default_branch),
             session.trusted_authors,
             default_branch,
@@ -790,7 +786,6 @@ class ReviewAddressedStep(CommandStep):
         session = self.session
         return ReviewAddressing(
             session.work_branch_pull_request,
-            session.github,
             session.github,
             self.arguments.address,
             self.body,

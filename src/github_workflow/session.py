@@ -116,7 +116,7 @@ class WorkflowSession(RepositoryDetails):
     @property
     def freshening(self) -> BranchFreshening:
         """:return: Brings the fork's default branch and the work branch up to date."""
-        return BranchFreshening(self.policy, self.github, self.github)
+        return BranchFreshening(self.policy, self.github)
 
     @property
     def session_log(self) -> DiscussionSessionLog:
@@ -128,9 +128,7 @@ class WorkflowSession(RepositoryDetails):
     @property
     def session_closing(self) -> SessionPullRequestClosing:
         """:return: Closes a pull request a session no longer needs, marked so."""
-        return SessionPullRequestClosing(
-            self.github, self.github, self.session_log, self.github, self.issue_labels
-        )
+        return SessionPullRequestClosing(self.github, self.session_log)
 
     @property
     def issue_labels(self) -> PullRequestOpenedLabelling:

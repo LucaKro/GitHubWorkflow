@@ -10,7 +10,7 @@ from dataclasses import dataclass, field, replace
 
 from basstler_domain_model.github.repository_client import (
     PullRequestOpener,
-    PullRequestWriter,
+    RewritablePullRequests,
     StackHost,
 )
 from basstler_domain_model.github.rest_models import RestPullRequest
@@ -18,6 +18,7 @@ from basstler_domain_model.github.stack_models import Stack, StackedPullRequest
 from basstler_domain_model.github.vocabulary import PullRequestState
 
 from .pull_requests import pull_request
+from .repositories_by_owner import RepositoriesByOwner
 
 # %% the stand-in
 
@@ -125,10 +126,11 @@ class DraftsAndStacksInMemory(StackedPullRequestsInMemory, PullRequestOpener):
 
 
 @dataclass(frozen=True)
-class DraftsInMemory(DraftsAndStacksInMemory, PullRequestWriter):
+class DraftsInMemory(DraftsAndStacksInMemory, RewritablePullRequests):
     """
     The stand-in, with pull requests that are drafts or not, open or closed, whose
-    descriptions can be rewritten.
+    descriptions and titles can be rewritten, on a repository whose default branch is
+    the scratch repositories'.
     """
 
     drafts: frozenset[int] = frozenset()
@@ -158,3 +160,9 @@ class DraftsInMemory(DraftsAndStacksInMemory, PullRequestWriter):
 
     def set_description(self, number: int, body: str) -> None:
         self.writes.append(f"set_description {number} {body}")
+
+    def set_issue_title(self, number: int, title: str) -> None:
+        self.writes.append(f"set_issue_title {number} {title}")
+
+    def default_branch(self) -> str:
+        return RepositoriesByOwner.default_branch

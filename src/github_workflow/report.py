@@ -20,10 +20,7 @@ from github_workflow.cleanup import CleanupReminder
 from github_workflow.findings import FindingsSummary
 from github_workflow.freshness import FreshnessReport
 from github_workflow.label_events import LabelsCompletedReport
-from github_workflow.pull_request_overview import (
-    PullRequestOverview,
-    PullRequestSignalReader,
-)
+from github_workflow.pull_request_overview import PullRequestOverview
 from github_workflow.report_section import ReportSection
 from github_workflow.repository_setup import RepositorySetup
 from github_workflow.session import WorkflowSession
@@ -134,9 +131,8 @@ class PullRequestsBuilder(SectionBuilder):
     def section(self) -> ReportSection:
         github = self.session.github
         return PullRequestOverview(
-            PullRequestSignalReader(github, self.session.thread_source),
             github,
-            github,
+            self.session.thread_source,
             self.session.checkout.git.checked_out_branch(),
         )
 

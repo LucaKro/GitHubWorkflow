@@ -176,7 +176,7 @@ def completion(
             board.posted,
             board.author,
             board.writes,
-            added,
+            added=added,
         )
     )
 

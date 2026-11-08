@@ -16,11 +16,7 @@ from basstler_domain_model.github.pull_request_models import (
     UpstreamPullRequestSnapshot,
 )
 from basstler_domain_model.github.readers import PullRequestSource
-from basstler_domain_model.github.repository_client import (
-    PullRequestReader,
-    RepositoryLabels,
-    ReviewRequests,
-)
+from basstler_domain_model.github.repository_client import PullRequestTracker
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.review_models import (
     Author,
@@ -71,9 +67,7 @@ def thread(resolved: bool) -> ReviewThread:
 
 
 @dataclass(frozen=True)
-class PullRequestsWithSignals(
-    PullRequestReader, PullRequestSource, ReviewRequests, RepositoryLabels
-):
+class PullRequestsWithSignals(PullRequestTracker, PullRequestSource):
     """
     Open pull requests with their merge state, checks, threads and labels, how many wait
     on the person's review, and the repository's labels.
@@ -163,9 +157,7 @@ class PullRequestsWithSignals(
     def overview(self, checked_out: str = "elsewhere") -> PullRequestOverview:
         """:param checked_out: The branch the session works on.
         :return: The section over these pull requests."""
-        return PullRequestOverview(
-            PullRequestSignalReader(self, self), self, self, checked_out
-        )
+        return PullRequestOverview(self, self, checked_out)
 
 
 def failing_checks() -> CheckStatus:

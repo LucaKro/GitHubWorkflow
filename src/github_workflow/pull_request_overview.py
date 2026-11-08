@@ -19,8 +19,7 @@ from basstler_domain_model.github.pull_request_models import (
 from basstler_domain_model.github.readers import PullRequestSource
 from basstler_domain_model.github.repository_client import (
     PullRequestReader,
-    RepositoryLabels,
-    ReviewRequests,
+    PullRequestTracker,
 )
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import MergeableState
@@ -209,20 +208,15 @@ class PullRequestOverview(ReportSection):
     :class:`PullRequestGroup`, and how many wait on the person's review.
     """
 
-    reader: PullRequestSignalReader
+    pull_requests: PullRequestTracker
     """
-    Reads the pull requests' signals.
-    """
-
-    labels: RepositoryLabels
-    """
-    Lists the repository's labels, and creates the shelving label for the person to pick
-    where it lacks it.
+    Lists and reads the pull requests, creates the shelving label for the person to pick
+    where the repository lacks it, and counts those waiting on the person's review.
     """
 
-    requests: ReviewRequests
+    reviews: PullRequestSource
     """
-    Counts the pull requests waiting on the person's review.
+    Reads the pull requests' checks and review threads.
     """
 
     checked_out: str
@@ -232,16 +226,17 @@ class PullRequestOverview(ReportSection):
 
     def lines(self) -> list[ReportLine]:
         with ThreadPoolExecutor() as pool:
-            counted = pool.submit(self.requests.awaiting_my_review)
+            counted = pool.submit(self.pull_requests.awaiting_my_review)
             created = pool.submit(
-                self.labels.create_missing_labels, [PullRequestLabel.SHELVED]
+                self.pull_requests.create_missing_labels, [PullRequestLabel.SHELVED]
             )
             numbers = [
                 pull_request.number
-                for pull_request in self.reader.pull_requests.open_pull_requests()
+                for pull_request in self.pull_requests.open_pull_requests()
                 if PullRequestLabel.SHELVED not in pull_request.labels
             ]
-            read = list(pool.map(self.reader.signals, numbers))
+            reader = PullRequestSignalReader(self.pull_requests, self.reviews)
+            read = list(pool.map(reader.signals, numbers))
         created.result()
         grouped: dict[PullRequestGroup, list[ReportLine]] = {
             group: [] for group in PullRequestGroup

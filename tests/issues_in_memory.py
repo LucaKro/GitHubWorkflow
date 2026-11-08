@@ -1,6 +1,6 @@
 """
-A repository's issues, their comments and labels in memory, for the tests of what the
-workflow writes to them, and a stand-in for running a finding's test.
+A repository's issues and pull requests, their comments and labels in memory, for the
+tests of what the workflow writes to them, and a stand-in for running a finding's test.
 """
 
 from __future__ import annotations
@@ -10,7 +10,8 @@ from dataclasses import dataclass, field, replace
 
 from basstler_domain_model.github.issue_models import Issue, IssueComment
 from basstler_domain_model.github.labels import GitHubLabel
-from basstler_domain_model.github.repository_client import IssueTracker
+from basstler_domain_model.github.repository_client import ClosablePullRequests
+from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import IssueState, IssueStateReason
 
 from github_workflow.findings import FindingLabel, FindingStage, Priority
@@ -21,9 +22,9 @@ from github_workflow.settings import WorkflowSettings
 
 
 @dataclass(frozen=True)
-class IssuesInMemory(IssueTracker):
+class IssuesInMemory(ClosablePullRequests):
     """
-    A repository's issues and labels, recording every write.
+    A repository's issues, pull requests and labels, recording every write.
     """
 
     open_issues: dict[int, Issue] = field(default_factory=dict)
@@ -48,8 +49,27 @@ class IssuesInMemory(IssueTracker):
 
     writes: list[str] = field(default_factory=list)
     """
-    Every write, in a word and its arguments.
+    Every write to an issue or label, in a word and its arguments.
     """
+
+    pull_requests: dict[int, RestPullRequest] = field(default_factory=dict)
+    """
+    The pull requests, by number.
+    """
+
+    closed_pull_requests: list[int] = field(default_factory=list)
+    """
+    The pull requests closed, in order.
+    """
+
+    def open_pull_requests(self) -> list[RestPullRequest]:
+        return list(self.pull_requests.values())
+
+    def pull_request(self, number: int) -> RestPullRequest:
+        return self.pull_requests[number]
+
+    def close_pull_request(self, number: int) -> None:
+        self.closed_pull_requests.append(number)
 
     def labels(self) -> set[str]:
         return set(self.present_labels)

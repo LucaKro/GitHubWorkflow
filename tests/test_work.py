@@ -18,6 +18,7 @@ from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
 from basstler_domain_model.git.exceptions import GitCommandFailed
 from basstler_domain_model.github.exceptions import StackContinuesAboveError
 from basstler_domain_model.github.repository_client import (
+    BranchStacks,
     PullRequestReader,
     PullRequestsFromForks,
     RepositoryDetails,
@@ -824,6 +825,15 @@ class PullRequestsFromBranchesInMemory(PullRequestsFromForks):
         raise NotImplementedError
 
 
+@dataclass(frozen=True)
+class BranchStacksInMemory(
+    PullRequestsFromBranchesInMemory, StackedPullRequestsInMemory, BranchStacks
+):
+    """
+    The pull requests opened from each branch, as given, and the stacks holding them.
+    """
+
+
 def default_branch_moved_on(
     repositories: RepositoriesByOwner, owned_url: str, name: str = "moved.txt"
 ) -> GitCommandRunner:
@@ -849,8 +859,7 @@ def base_merge(
     :param opened: The pull requests opened from its branches.
     :return: The merge of the default branch into the work branch.
     """
-    stacks = StackedPullRequestsInMemory({})
-    return BaseMerge(work, PullRequestsFromBranchesInMemory(opened or []), stacks)
+    return BaseMerge(work, BranchStacksInMemory({}, opened=opened or []))
 
 
 def test_the_default_branch_s_new_commits_are_merged_into_the_work_branch(
@@ -978,14 +987,14 @@ def test_a_branch_higher_in_a_stack_does_not_take_in_the_default_branch(
     It targets the branch below it, not the default branch.
     """
     default_branch_moved_on(repositories, owned_url)
-    stacks = StackedPullRequestsInMemory({})
-    stacks.existing_stacks.append(Stack(1, "main", True, stacks.stacked([3, 4])))
-    above = pull_request(4, "feature", base=stacks.branch_of(3))
+    above = pull_request(4, "feature", base=StackedPullRequestsInMemory.branch_of(3))
+    branches = BranchStacksInMemory({}, opened=[above])
+    branches.existing_stacks.append(Stack(1, "main", True, branches.stacked([3, 4])))
     git = work.checkout.git
     before = git.commit_at("HEAD")
 
     with pytest.raises(StackedBranchMergeError):
-        BaseMerge(work, PullRequestsFromBranchesInMemory([above]), stacks).run()
+        BaseMerge(work, branches).run()
 
     assert git.commit_at("HEAD") == before
 
@@ -994,12 +1003,10 @@ def test_the_bottom_of_a_stack_takes_in_the_default_branch(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
 ) -> None:
     other = default_branch_moved_on(repositories, owned_url)
-    stacks = StackedPullRequestsInMemory({})
-    stacks.existing_stacks.append(Stack(1, "main", True, stacks.stacked([3, 4])))
+    branches = BranchStacksInMemory({}, opened=[pull_request(3, "feature")])
+    branches.existing_stacks.append(Stack(1, "main", True, branches.stacked([3, 4])))
 
-    BaseMerge(
-        work, PullRequestsFromBranchesInMemory([pull_request(3, "feature")]), stacks
-    ).run()
+    BaseMerge(work, branches).run()
 
     git = work.checkout.git
     assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
@@ -1124,18 +1131,14 @@ def test_the_default_branch_builds_on_no_pull_request(
 
 def rewrite(
     github: DraftsInMemory, body: str | None, title: str | None = None
-) -> tuple[DescriptionRewrite, IssuesInMemory]:
+) -> DescriptionRewrite:
     """
     :param github: The pull requests.
     :param body: The new description, ``None`` to keep it.
     :param title: The new title, ``None`` to keep it.
-    :return: The rewrite of pull request 1, and the board its title is written on.
+    :return: The rewrite of pull request 1.
     """
-    board = IssuesInMemory({})
-    rewrite = DescriptionRewrite(
-        github, github, board, DefaultBranchOfTheScratchRepositories(), 1, body, title
-    )
-    return rewrite, board
+    return DescriptionRewrite(github, 1, body, title)
 
 
 @pytest.mark.parametrize(
@@ -1148,16 +1151,16 @@ def test_an_open_pull_request_s_description_is_rewritten(
     Its description follows the pushed commits, ready for review or not.
     """
     github = DraftsInMemory({1: RepositoriesByOwner.default_branch}, drafts=drafts)
-    step, board = rewrite(github, "A new body")
+    step = rewrite(github, "A new body")
 
     step.run()
 
-    assert (github.writes, board.writes) == (["set_description 1 A new body"], [])
+    assert github.writes == ["set_description 1 A new body"]
 
 
 def test_a_new_description_onto_the_default_branch_ends_as_a_draft_s_does() -> None:
     github = DraftsInMemory({1: RepositoriesByOwner.default_branch})
-    step, _ = rewrite(github, "A new body")
+    step = rewrite(github, "A new body")
     ending = EndingNamingTheBranch()
 
     replace(step, ending=ending).run()
@@ -1168,7 +1171,7 @@ def test_a_new_description_onto_the_default_branch_ends_as_a_draft_s_does() -> N
 
 def test_a_new_description_of_a_stacked_pull_request_is_kept_as_given() -> None:
     github = DraftsInMemory({1: RepositoriesByOwner.default_branch, 2: "branch-1"})
-    step, _ = rewrite(github, "A new body")
+    step = rewrite(github, "A new body")
 
     replace(step, number=2, ending=EndingNamingTheBranch()).run()
 
@@ -1193,33 +1196,33 @@ def test_a_closing_line_the_new_description_has_is_not_repeated() -> None:
 
 def test_an_open_pull_request_s_title_is_rewritten() -> None:
     github = DraftsInMemory({1: RepositoriesByOwner.default_branch})
-    step, board = rewrite(github, None, "A sharper title")
+    step = rewrite(github, None, "A sharper title")
 
     step.run()
 
-    assert (github.writes, board.writes) == ([], ["set_issue_title 1 A sharper title"])
+    assert github.writes == ["set_issue_title 1 A sharper title"]
 
 
 def test_a_closed_pull_request_keeps_its_description_and_title() -> None:
     github = DraftsInMemory(
         {1: RepositoriesByOwner.default_branch}, closed=frozenset({1})
     )
-    step, board = rewrite(github, "A new body", "A sharper title")
+    step = rewrite(github, "A new body", "A sharper title")
 
     with pytest.raises(PullRequestNotOpenError):
         step.run()
 
-    assert (github.writes, board.writes) == ([], [])
+    assert github.writes == []
 
 
 def test_a_rewrite_changing_nothing_is_refused() -> None:
     github = DraftsInMemory({1: RepositoriesByOwner.default_branch})
-    step, board = rewrite(github, None)
+    step = rewrite(github, None)
 
     with pytest.raises(NothingToDescribeError):
         step.run()
 
-    assert (github.writes, board.writes) == ([], [])
+    assert github.writes == []
 
 
 # %% cloning

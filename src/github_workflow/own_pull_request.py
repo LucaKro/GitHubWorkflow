@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 from basstler_domain_model.github.readers import PullRequestSource
 from basstler_domain_model.github.repository_client import (
-    Commenter,
+    ForkCommenter,
     ForkDetails,
     IssueTracker,
     PullRequestsFromForks,
@@ -378,14 +378,9 @@ class ReviewAddressing(WorkflowStep):
     The work branch's pull request.
     """
 
-    fork: ForkDetails
+    fork: ForkCommenter
     """
-    Reads which repository the owner's was forked from.
-    """
-
-    commenter: Commenter
-    """
-    Writes the comment.
+    Reads which repository the owner's was forked from, and writes the comment.
     """
 
     address: str
@@ -403,7 +398,7 @@ class ReviewAddressing(WorkflowStep):
         if upstream is None or not upstream.is_pull_request_page(self.address):
             raise ForeignReviewAddressError(self.address, upstream)
         found = self.pull_request.find()
-        url = self.commenter.add_comment(
+        url = self.fork.add_comment(
             found.number, f"Addressed upstream: {self.address}\n\n{self.body}"
         )
         return f"commented on #{found.number}: {url}"

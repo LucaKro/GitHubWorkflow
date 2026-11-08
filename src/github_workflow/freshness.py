@@ -10,8 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from basstler_domain_model.github.repository_client import (
-    ForkDetails,
-    PullRequestsFromForks,
+    ForkedRepository,
 )
 
 from github_workflow.command_line import CommandOption, RunnableCommand
@@ -38,14 +37,10 @@ class BranchFreshening:
     The checkout, its work branch, the owner's remote and the default branch.
     """
 
-    fork_details: ForkDetails
+    fork: ForkedRepository
     """
-    Reads which repository the fork was forked from, if any.
-    """
-
-    pull_requests: PullRequestsFromForks
-    """
-    Finds the work branch's pull request.
+    Reads which repository the fork was forked from, if any, and finds the work branch's
+    pull request.
     """
 
     def lines(self) -> list[ReportLine]:
@@ -59,10 +54,10 @@ class BranchFreshening:
         :return: The fork's default branch fast-forwarded, or why it was not; nothing
             on a repository that is no fork, or a fork up to date.
         """
-        upstream = self.fork_details.upstream()
+        upstream = self.fork.upstream()
         if upstream is None:
             return []
-        sync = ForkMainSync(self.policy, self.fork_details)
+        sync = ForkMainSync(self.policy, self.fork)
         tips = sync.tips(upstream)
         if tips.behind == 0:
             return []
@@ -134,9 +129,7 @@ class BranchFreshening:
         owner = self.policy.remote.repository.owner
         targets = [
             pull_request.base
-            for pull_request in self.pull_requests.pull_requests_open_from(
-                owner, branch
-            )
+            for pull_request in self.fork.pull_requests_open_from(owner, branch)
         ]
         return targets[0] if targets else self.policy.default_branch
 

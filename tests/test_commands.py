@@ -868,7 +868,6 @@ def test_a_fixed_finding_is_closed_through_the_command_line(
     assert step == FindingClosing(
         github,
         3,
-        github,
         runner_in(finding_checkout),
         {settings.owner, signed_in},
         RepositoriesByOwner.default_branch,
