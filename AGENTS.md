@@ -153,7 +153,7 @@
 - Each package depends only on the libraries its `pyproject.toml` lists
 
 ## The Guard
-- `github_workflow.guard`, `github_workflow.coarse_guard` and `github_workflow.approval`, and every module they import, run on the standard library and the plugin's own source alone - the workflow's and the domain model's - so the hooks can run them when the runtime cannot
+- `github_workflow.guard`, `github_workflow.coarse_guard`, `github_workflow.approval` and `github_workflow.install`, and every module they import, run on the standard library and the plugin's own source alone - the workflow's and the domain model's - so the hooks can run them when the runtime cannot, and the installer can build the runtime
 - `basstler_domain_model` depends on nothing but the standard library, so the guard can import it from the plugin's source
 
 ## Releases

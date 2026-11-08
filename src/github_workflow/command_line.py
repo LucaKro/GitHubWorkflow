@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import github_workflow
-from github_workflow.install import Launcher, LauncherInstallation, ToolRepository
+from github_workflow.plugin import Launcher, LauncherInstallation, ToolRepository
 
 # %% the words
 

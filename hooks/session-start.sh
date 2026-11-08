@@ -55,7 +55,7 @@ ERRORS="$(mktemp)"
 trap 'rm -f "${ERRORS}"' EXIT
 
 if [ -z "${GITHUB_WORKFLOW_PYTHON:-}" ]; then
-  INSTALL=(python3 -I "${INSTALLER}")
+  INSTALL=(install_runtime)
   if [ "${EVENT}" = "SessionStart" ]; then
     INSTALL+=(--background)
   fi

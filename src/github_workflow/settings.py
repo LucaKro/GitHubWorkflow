@@ -7,7 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from github_workflow.install import Distribution, ToolRepository
+from github_workflow.plugin import Distribution, ToolRepository
 
 if TYPE_CHECKING:
     from basstler_domain_model.repository import Repository

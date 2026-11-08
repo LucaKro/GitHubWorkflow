@@ -45,7 +45,7 @@ coarse() {
 # A plugin synced from the claude.ai account can arrive after the session started, and
 # with it this guard before the runtime it runs: install the runtime first then.
 if [ -z "${GITHUB_WORKFLOW_PYTHON:-}" ] && [ ! -x "${PYTHON}" ] &&
-  ! INSTALLED="$(python3 -I "${INSTALLER}" "${PLUGIN_ROOT}" "${RUNTIME}" 2>&1)"; then
+  ! INSTALLED="$(install_runtime "${PLUGIN_ROOT}" "${RUNTIME}" 2>&1)"; then
   from_source "could not install the runtime: $(printf '%s\n' "${INSTALLED}" | tail -n 1)"
 fi
 if [ ! -x "${PYTHON}" ]; then

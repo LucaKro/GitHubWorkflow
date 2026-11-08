@@ -22,7 +22,7 @@ from basstler_domain_model.shell import CommandLine, SimpleCommand
 
 from github_workflow.command_line import RunnableCommand
 from github_workflow.guard import CommandGuard, WorkflowInvocation
-from github_workflow.install import Launcher
+from github_workflow.plugin import Launcher
 
 # %% what a line may run besides
 

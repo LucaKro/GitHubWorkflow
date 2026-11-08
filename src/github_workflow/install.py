@@ -2,11 +2,14 @@
 Install the runtime the plugin's hooks run: a virtual environment holding a copy of this
 plugin's workflow and domain model source, switched over to once its guard denies a push
 and its commands load; one install at a time, a runtime built from this plugin as it is
-now left alone. Runs on the standard library, and downloads nothing.
+now left alone. Runs with the system's interpreter on the plugin's own source, and
+downloads nothing.
 
-Usage: ``python3 install.py [--background] <plugin directory> <runtime path>``; prints
-one line when it installed, or started installing in a process of its own, nothing when
-the runtime already came from this plugin.
+Usage: ``python3 -I -c 'import sys; sys.path[:0] = sys.argv.pop(1).split(":"); from
+github_workflow.install import main; main()' <source directories> [--background]
+<plugin directory> <runtime path>``; prints one line when it installed, or started
+installing in a process of its own, nothing when the runtime already came from this
+plugin.
 """
 
 from __future__ import annotations
@@ -21,151 +24,22 @@ import sys
 import sysconfig
 import tempfile
 from dataclasses import dataclass, field
-from enum import Enum, IntEnum, StrEnum
+from enum import StrEnum
 from pathlib import Path
 
-# %% vocabulary
+from basstler_domain_model.commands import CommandResult, CommandRunner
 
+from github_workflow.exceptions import RuntimeInstallError
+from github_workflow.locations import (
+    HomeDirectory,
+    RuntimeLocation,
+    SitePackagesFile,
+    UnstampedDirectory,
+)
+from github_workflow.plugin import LauncherInstallation, PluginSource, RuntimeModule
+from github_workflow.report_lines import FailureReport, Speaker
 
-class RuntimeFile(StrEnum):
-    """
-    The file inside a runtime that says which plugin it was built from.
-    """
-
-    PLUGIN = "github-workflow-plugin"
-    """
-    Holds the directory of the plugin the runtime was built from, and a digest of its
-    content.
-    """
-
-    SOURCE_PATHS = "github-workflow.pth"
-    """
-    Lists the source directories the runtime's interpreter imports from, in its
-    site-packages.
-    """
-
-    INTERPRETER = "bin/python"
-    """
-    The runtime's interpreter.
-    """
-
-
-class Distribution(StrEnum):
-    """
-    The distributions the workflow runs, by the names ``pip`` installs them under.
-    """
-
-    WORKFLOW = "github-workflow"
-    """
-    The workflow itself.
-    """
-
-    DOMAIN_MODEL = "basstler-domain-model"
-    """
-    The model of git and GitHub the workflow is built on.
-    """
-
-
-class PluginSource(Enum):
-    """
-    The source directories in the plugin a runtime runs, each copied into the runtime
-    under its distribution's name.
-    """
-
-    WORKFLOW = ("src", Distribution.WORKFLOW)
-    """
-    The workflow's own source.
-    """
-
-    DOMAIN_MODEL = ("domain_model/src", Distribution.DOMAIN_MODEL)
-    """
-    The domain model's source, shipped with the plugin.
-    """
-
-    def __init__(self, path: str, distribution: Distribution) -> None:
-        """
-        :param path: The directory, relative to the plugin's.
-        :param distribution: The distribution it holds, which names its copy.
-        """
-        self.path = path
-        self.distribution = distribution
-
-
-class RuntimeModule(StrEnum):
-    """
-    The modules a runtime's interpreter runs.
-    """
-
-    COMMANDS = "github_workflow"
-    """
-    The workflow's commands.
-    """
-
-    RUNTIME_CHECK = "github_workflow.runtime_check"
-    """
-    The check a new runtime passes before it is switched over to.
-    """
-
-
-class FileMode(IntEnum):
-    """
-    The modes the workflow writes a file it runs with.
-    """
-
-    RUNNABLE = 0o755
-    """
-    Readable and runnable by everyone, writable by its owner.
-    """
-
-
-class RuntimeDirectory(StrEnum):
-    """
-    The directories inside a runtime the installer creates.
-    """
-
-    SOURCES = "sources"
-    """
-    Holds the copy of every :class:`PluginSource`.
-    """
-
-
-class UnstampedDirectory(StrEnum):
-    """
-    The directories in a plugin whose content is not part of what a runtime is built
-    from.
-    """
-
-    GIT = ".git"
-    """
-    The plugin's history, when it is a checkout.
-    """
-
-    BYTECODE = "__pycache__"
-    """
-    Compiled modules, written as the plugin's code runs.
-    """
-
-
-class ToolRepository(StrEnum):
-    """
-    The repositories the workflow is built from, as ``owner/name``; the domain model is
-    shipped in the workflow's.
-    """
-
-    WORKFLOW = "LucaKro/GitHubWorkflow"
-    """
-    The workflow itself: the guard, the hooks and the commands.
-    """
-
-    @property
-    def owner(self) -> str:
-        """:return: The account the repository belongs to."""
-        return self.partition("/")[0]
-
-    @property
-    def url(self) -> str:
-        """:return: The repository's page on GitHub, which git also fetches from."""
-        return f"https://github.com/{self}"
+# %% the command line
 
 
 class InstallOption(StrEnum):
@@ -177,77 +51,6 @@ class InstallOption(StrEnum):
     """
     Install in a process of its own and return at once.
     """
-
-
-# %% the launcher
-
-
-class Launcher(StrEnum):
-    """
-    The command running the workflow from its runtime, on the person's path.
-    """
-
-    COMMAND = Distribution.WORKFLOW.value
-    """
-    The command's name, as the person types it: the workflow's own.
-    """
-
-    DIRECTORY = ".local/bin"
-    """
-    Where it is written, under the home directory: the usual place for one's own
-    commands.
-    """
-
-    MARKER = "# Written by github-workflow's runtime install."
-    """
-    The line marking a launcher as the workflow's own.
-    """
-
-
-@dataclass(frozen=True)
-class LauncherInstallation:
-    """
-    The launcher, running the workflow with one runtime's interpreter.
-    """
-
-    directory: Path
-    """
-    Where the launcher is written.
-    """
-
-    runtime: Path
-    """
-    The runtime it runs the workflow with.
-    """
-
-    @property
-    def script(self) -> str:
-        """
-        The launcher, as written.
-        """
-        interpreter = self.runtime / RuntimeFile.INTERPRETER
-        return (
-            f"#!/bin/sh\n{Launcher.MARKER}\n"
-            f'exec "{interpreter}" -I -m {RuntimeModule.COMMANDS} "$@"\n'
-        )
-
-    def install(self) -> str | None:
-        """
-        Write the launcher, replacing an earlier one of the workflow's, but never a file
-        of the same name that is not.
-
-        :return: Why the person cannot run it yet, ``None`` when they can.
-        """
-        path = self.directory / Launcher.COMMAND
-        if path.exists() and Launcher.MARKER not in path.read_text():
-            return f"left {path} alone, which is not the workflow's"
-        self.directory.mkdir(parents=True, exist_ok=True)
-        path.write_text(self.script)
-        path.chmod(FileMode.RUNNABLE)
-        searched = os.environ.get("PATH", "").split(os.pathsep)
-        if str(self.directory) not in searched:
-            return f"add {self.directory} to PATH to run {Launcher.COMMAND}"
-        return None
 
 
 # %% switching over
@@ -326,7 +129,7 @@ class RuntimeInstallation:
 
     plugin: Path
     """
-    The plugin's directory, which is also the workflow's source.
+    The plugin's directory, which holds the source the runtime is built from.
     """
 
     location: Path
@@ -335,7 +138,7 @@ class RuntimeInstallation:
     """
 
     launcher_directory: Path = field(
-        default_factory=lambda: Path.home() / Launcher.DIRECTORY
+        default_factory=lambda: Path.home() / HomeDirectory.LAUNCHERS
     )
     """
     Where the launcher running the workflow from the runtime is written.
@@ -365,28 +168,39 @@ class RuntimeInstallation:
         :return: Whether the runtime in use was built from this plugin, as its content
             is now.
         """
-        stamp = self.location / RuntimeFile.PLUGIN
+        stamp = self.location / RuntimeLocation.PLUGIN_STAMP
         return stamp.exists() and stamp.read_text() == self.stamp
 
     def start(self) -> str | None:
         """
-        Start :meth:`install` in a process of its own that outlives this one, unless the
-        runtime already came from this plugin.
+        Start :meth:`install` in a process of its own that outlives this one, run on
+        the plugin's own source, unless the runtime already came from this plugin.
 
         :return: What is being installed, ``None`` when nothing is.
         """
         if self.current:
             return None
+        code = (
+            f"import sys; sys.path[:0] = sys.argv.pop(1).split({os.pathsep!r}); "
+            f"from {__name__} import main; main()"
+        )
         subprocess.Popen(
-            [sys.executable, "-I", __file__, str(self.plugin), str(self.location)],
+            [
+                sys.executable,
+                "-I",
+                "-c",
+                code,
+                PluginSource.search_path(self.plugin),
+                str(self.plugin),
+                str(self.location),
+            ],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
-        return (
-            f"{Distribution.WORKFLOW}: installing the runtime from the plugin at "
-            f"{self.plugin}"
+        return Speaker.WORKFLOW.says(
+            f"installing the runtime from the plugin at {self.plugin}"
         )
 
     def install(self) -> str | None:
@@ -395,33 +209,43 @@ class RuntimeInstallation:
         from this plugin, once no other install runs.
 
         :return: What was installed, ``None`` when nothing was.
+        :raises RuntimeInstallError: If a step of the build fails; the runtime in use
+            is left alone.
         """
         self.location.parent.mkdir(parents=True, exist_ok=True)
         with DirectoryLock(self.location.parent):
             if self.current:
                 return None
-            return self._build()
+            return self.build()
 
-    def _build(self) -> str:
+    def build(self) -> str:
         """
         Build the runtime from this plugin and switch over to it.
 
         :return: What was installed.
+        :raises RuntimeInstallError: If a step of the build fails.
         """
         stamp = self.stamp
         build = Path(
             tempfile.mkdtemp(prefix=f".{self.location.name}-", dir=self.location.parent)
         )
-        python = build / RuntimeFile.INTERPRETER
-        created = self._ran([sys.executable, "-m", "venv", "--without-pip", str(build)])
-        if created is None or created.returncode != 0:
+        runner = CommandRunner(self.location.parent)
+        created = runner.run(sys.executable, "-m", "venv", "--without-pip", str(build))
+        if not created.succeeded:
             shutil.rmtree(build)
             build.mkdir()
-            self._run(
-                ["virtualenv", "--quiet", "--no-pip", "-p", sys.executable, str(build)],
+            self.raise_if_failed(
+                runner.run(
+                    "virtualenv",
+                    "--quiet",
+                    "--no-pip",
+                    "-p",
+                    sys.executable,
+                    str(build),
+                ),
                 build,
             )
-        sources = build / RuntimeDirectory.SOURCES
+        sources = build / RuntimeLocation.SOURCES
         copies = [sources / source.distribution for source in PluginSource]
         for source, copy in zip(PluginSource, copies):
             shutil.copytree(
@@ -435,61 +259,38 @@ class RuntimeInstallation:
             )
         )
         site_packages.mkdir(parents=True, exist_ok=True)
-        (site_packages / RuntimeFile.SOURCE_PATHS).write_text(
+        (site_packages / SitePackagesFile.SOURCE_PATHS).write_text(
             "".join(f"{copy}\n" for copy in copies)
         )
-        checked = subprocess.run(
-            [str(python), "-I", "-m", RuntimeModule.RUNTIME_CHECK],
-            capture_output=True,
-            text=True,
-        )
-        if checked.returncode != 0:
-            self._fail("checking the new runtime", checked, build)
-        (build / RuntimeFile.PLUGIN).write_text(stamp)
+        interpreter = build / RuntimeLocation.INTERPRETER
+        checked = runner.run(str(interpreter), "-I", "-m", RuntimeModule.RUNTIME_CHECK)
+        self.raise_if_failed(checked, build, "checking the new runtime")
+        (build / RuntimeLocation.PLUGIN_STAMP).write_text(stamp)
         RuntimeSwitch(self.location).to(build)
-        installed = (
-            f"{Distribution.WORKFLOW}: runtime installed from the plugin at "
-            f"{self.plugin}"
+        installed = Speaker.WORKFLOW.says(
+            f"runtime installed from the plugin at {self.plugin}"
         )
         launcher = LauncherInstallation(
             self.launcher_directory, self.location
         ).install()
         return installed if launcher is None else f"{installed}; {launcher}"
 
-    def _run(self, command: list[str], build: Path) -> None:
-        """
-        :param command: One step of the build.
-        :param build: The build, removed when the step fails.
-        """
-        finished = self._ran(command)
-        if finished is None or finished.returncode != 0:
-            self._fail(" ".join(command[:4]), finished, build)
-
     @staticmethod
-    def _ran(command: list[str]) -> subprocess.CompletedProcess[str] | None:
-        """
-        :param command: One step of the build.
-        :return: The finished step, its output kept, ``None`` when its program is not
-            there.
-        """
-        if shutil.which(command[0]) is None:
-            return None
-        return subprocess.run(command, capture_output=True, text=True)
-
-    @staticmethod
-    def _fail(
-        step: str, finished: subprocess.CompletedProcess[str] | None, build: Path
+    def raise_if_failed(
+        finished: CommandResult, build: Path, step: str | None = None
     ) -> None:
         """
-        :param step: The step that failed.
-        :param finished: What it said, ``None`` when its program is not there.
-        :param build: The build, removed.
-        :raises SystemExit: Always, with the step and the last line it said.
+        :param finished: One step of the build.
+        :param build: The build, removed when the step failed.
+        :param step: The step, as the refusal names it; its first words when ``None``.
+        :raises RuntimeInstallError: If the step failed.
         """
+        if finished.succeeded:
+            return
         shutil.rmtree(build, ignore_errors=True)
-        said = (finished.stderr or finished.stdout).splitlines() if finished else []
-        raise SystemExit(
-            f"installing the runtime failed at {step}: {''.join(said[-1:])}"
+        said = (finished.error_output or finished.output).splitlines()
+        raise RuntimeInstallError(
+            step or " ".join(finished.arguments[:4]), "".join(said[-1:])
         )
 
 
@@ -500,6 +301,7 @@ def main() -> None:
     """
     Install the runtime the command line names from the plugin it names.
     """
+    sys.excepthook = FailureReport(speaker=None).report
     parser = argparse.ArgumentParser()
     parser.add_argument(InstallOption.BACKGROUND, action="store_true")
     parser.add_argument("plugin", type=Path)
@@ -509,7 +311,3 @@ def main() -> None:
     installed = installation.start() if arguments.background else installation.install()
     if installed is not None:
         print(installed)
-
-
-if __name__ == "__main__":
-    main()

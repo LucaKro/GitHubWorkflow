@@ -14,8 +14,8 @@ from pathlib import Path, PurePath
 from basstler_domain_model.repository import Repository
 from basstler_domain_model.templates import Placeholder
 
-from github_workflow.install import Distribution, PluginSource, ToolRepository
 from github_workflow.locations import NotesFile, WorkflowTemplate
+from github_workflow.plugin import Distribution, PluginSource, ToolRepository
 
 # %% the names the templates leave to be filled in
 

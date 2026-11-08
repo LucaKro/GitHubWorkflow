@@ -1254,3 +1254,30 @@ class UpstreamReadUnanswered(UpstreamReviewsUnavailable):
 
     def suggest_correction(self) -> str:
         return "List the reviews again; the run reading them may still be going"
+
+
+# %% installing the runtime
+
+
+@dataclass
+class RuntimeInstallError(DataclassException, RuntimeError):
+    """
+    Raised when a step building the runtime fails; the build is removed, and the runtime
+    in use left alone.
+    """
+
+    step: str
+    """
+    The step that failed.
+    """
+
+    said: str
+    """
+    The last line the step wrote, on its error output or else its output.
+    """
+
+    def error_message(self) -> str:
+        return f"installing the runtime failed at {self.step}: {self.said}"
+
+    def suggest_correction(self) -> str:
+        return ""

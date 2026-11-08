@@ -31,8 +31,8 @@ from github_workflow.exceptions import (
     ForeignPushError,
     UnknownDefaultBranchError,
 )
-from github_workflow.install import FileMode
 from github_workflow.locations import WorkflowTemplate
+from github_workflow.plugin import FileMode
 from github_workflow.report_lines import ReportLine, Speaker, Tone
 from github_workflow.settings import WorkflowSettings
 

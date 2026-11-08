@@ -12,13 +12,13 @@ from github_workflow.command_line import (
     RefusalAdvice,
     WorkflowCommand,
 )
-from github_workflow.install import ToolRepository
 from github_workflow.notes.document import (
     ArgumentReference,
     CommandReference,
     NotesBlock,
     NotesSection,
 )
+from github_workflow.plugin import ToolRepository
 from github_workflow.policy import Attribution
 
 # %% helpers

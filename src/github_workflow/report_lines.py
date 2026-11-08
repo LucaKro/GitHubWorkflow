@@ -6,13 +6,16 @@ session start's answer made of them.
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass
 from enum import Enum, StrEnum
+from types import TracebackType
 
 from basstler_domain_model.claude_code.hooks import HookKey, HookValue
 from basstler_domain_model.counted_noun import CountedNoun
+from basstler_domain_model.exceptions import DataclassException
 
-from github_workflow.install import Distribution
+from github_workflow.plugin import Distribution
 
 # %% who speaks
 
@@ -33,6 +36,41 @@ class Speaker(StrEnum):
         :return: It, opened by who says it.
         """
         return f"{self}: {text}"
+
+
+@dataclass(frozen=True)
+class FailureReport:
+    """
+    How a command line of the workflow's reports an error it raised: a refusal of the
+    workflow's as its reason and what to do instead, nothing more, and any other error
+    as Python would.
+    """
+
+    speaker: Speaker | None = Speaker.WORKFLOW
+    """
+    Who the refusal is said by, ``None`` for the refusal alone, where whoever reads the
+    output says who it comes from.
+    """
+
+    def report(
+        self,
+        kind: type[BaseException],
+        raised: BaseException,
+        traceback: TracebackType | None,
+    ) -> None:
+        """
+        Print the error on standard error, in place of :func:`sys.excepthook`.
+
+        :param kind: The error's type.
+        :param raised: The error.
+        :param traceback: Where it was raised.
+        """
+        if not isinstance(raised, DataclassException):
+            sys.__excepthook__(kind, raised, traceback)
+            return
+        refusal = str(raised)
+        said = refusal if self.speaker is None else self.speaker.says(refusal)
+        print(said, file=sys.stderr)
 
 
 # %% counted things

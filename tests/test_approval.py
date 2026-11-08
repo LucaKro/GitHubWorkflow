@@ -15,7 +15,7 @@ from basstler_domain_model.locations import PathEnumeration
 
 from github_workflow import approval
 from github_workflow.approval import ApprovalStatus, SessionCommandApproval
-from github_workflow.install import Launcher
+from github_workflow.plugin import Launcher
 
 # %% the command lines
 

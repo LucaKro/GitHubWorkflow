@@ -32,8 +32,8 @@ from github_workflow.exceptions import (
     PersonOnlyCommandError,
     PullRequestNotProposableError,
 )
-from github_workflow.install import Launcher
 from github_workflow.labels import UpstreamLabel
+from github_workflow.plugin import Launcher
 from github_workflow.policy import WritePolicy
 from github_workflow.report_lines import CountedThing, ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportSection

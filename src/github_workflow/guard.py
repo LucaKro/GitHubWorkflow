@@ -56,7 +56,7 @@ from github_workflow.command_line import (
     RefusalAdvice,
     RunnableCommand,
 )
-from github_workflow.install import Launcher
+from github_workflow.plugin import Launcher
 from github_workflow.report_lines import Speaker
 
 # %% what to do instead

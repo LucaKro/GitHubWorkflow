@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from github_workflow.install import Distribution
+from github_workflow.plugin import Distribution
 
 # %% a marker
 

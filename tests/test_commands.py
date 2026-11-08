@@ -72,10 +72,10 @@ from github_workflow.findings import (
     Priority,
     ProvenFindingFiling,
 )
-from github_workflow.install import ToolRepository
-from github_workflow.locations import NotesFile, ProjectFile
+from github_workflow.locations import NotesFile, PluginDirectory, ProjectFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection
+from github_workflow.plugin import ToolRepository
 from github_workflow.proofs import BranchProofRunner, FindingTest
 from github_workflow.pull_request_overview import PullRequestLabel
 from github_workflow.remotes import OwnedRemotes
@@ -434,9 +434,9 @@ def installation_still_running(tmp_path: Path) -> Path:
     :return: A plugin whose installer is still installing, and a home whose runtime is
         the test's virtual environment.
     """
-    installer = tmp_path / "plugin" / "src" / "github_workflow" / "install.py"
-    installer.parent.mkdir(parents=True)
-    shutil.copy(SessionDataset.INSTALLER_STILL_INSTALLING.value, installer)
+    package = tmp_path / "plugin" / PluginDirectory.WORKFLOW_SOURCE / "github_workflow"
+    package.mkdir(parents=True)
+    shutil.copy(SessionDataset.INSTALLER_STILL_INSTALLING, package / "install.py")
     runtime = tmp_path / "home" / ".virtualenvs" / "githubworkflow-runtime"
     runtime.parent.mkdir(parents=True)
     runtime.symlink_to(sys.prefix)

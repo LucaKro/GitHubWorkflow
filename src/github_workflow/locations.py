@@ -4,6 +4,7 @@ Every file and directory this package names, each written once.
 
 from __future__ import annotations
 
+from enum import StrEnum
 from pathlib import Path
 
 from basstler_domain_model.locations import GitHubRepositoryFile, PathEnumeration
@@ -312,4 +313,84 @@ class PluginDataDirectory(PathEnumeration):
     CLONES = Path("clones")
     """
     The clones of somebody else's repositories, as ``<owner>/<name>``.
+    """
+
+
+# %% the plugin and its runtime
+
+
+class PluginDirectory(PathEnumeration):
+    """
+    The directories of the plugin a runtime is built from, relative to the plugin's.
+    """
+
+    WORKFLOW_SOURCE = Path("src")
+    """
+    The workflow's source.
+    """
+
+    DOMAIN_MODEL_SOURCE = Path("domain_model/src")
+    """
+    The domain model's source, shipped with the plugin.
+    """
+
+
+class UnstampedDirectory(StrEnum):
+    """
+    The directories in a plugin whose content is not part of what a runtime is built
+    from, by name.
+    """
+
+    GIT = ".git"
+    """
+    The plugin's history, when it is a checkout.
+    """
+
+    BYTECODE = "__pycache__"
+    """
+    Compiled modules, written as the plugin's code runs.
+    """
+
+
+class RuntimeLocation(PathEnumeration):
+    """
+    The files and directories inside a runtime the installer writes, relative to it.
+    """
+
+    PLUGIN_STAMP = Path("github-workflow-plugin")
+    """
+    Holds the directory of the plugin the runtime was built from, and a digest of its
+    content.
+    """
+
+    INTERPRETER = Path("bin/python")
+    """
+    The runtime's interpreter.
+    """
+
+    SOURCES = Path("sources")
+    """
+    Holds the copy of every source directory of the plugin.
+    """
+
+
+class SitePackagesFile(PathEnumeration):
+    """
+    The files the installer writes into a runtime's site-packages, relative to it.
+    """
+
+    SOURCE_PATHS = Path("github-workflow.pth")
+    """
+    Lists the source directories the runtime's interpreter imports from.
+    """
+
+
+class HomeDirectory(PathEnumeration):
+    """
+    The directories under the person's home directory the workflow writes to.
+    """
+
+    LAUNCHERS = Path(".local/bin")
+    """
+    Where the launcher is written: the usual place for one's own commands.
     """

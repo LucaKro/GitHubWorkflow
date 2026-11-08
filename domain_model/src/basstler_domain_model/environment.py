@@ -182,6 +182,20 @@ class GitIdentityVariable(EnvironmentVariable):
     """
 
 
+# %% the shell
+
+
+class ShellVariable(EnvironmentVariable):
+    """
+    The variables every shell and program it starts read.
+    """
+
+    COMMAND_SEARCH_PATH = "PATH"
+    """
+    The directories a command named without a path is looked for in.
+    """
+
+
 # %% Python
 
 
