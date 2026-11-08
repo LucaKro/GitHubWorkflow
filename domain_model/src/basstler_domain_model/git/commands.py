@@ -195,6 +195,13 @@ class Remote:
     The repository the push URL names, ``None`` when it names none.
     """
 
+    def branch(self, name: str) -> RemoteBranch:
+        """
+        :param name: A branch's name.
+        :return: The branch of that name on this remote.
+        """
+        return RemoteBranch(self.name, name)
+
 
 # %% what a push is allowed to overwrite
 

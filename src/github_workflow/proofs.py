@@ -201,6 +201,13 @@ class ProofAttempt:
             return cls(test, tip, ProofOutcome.BROKEN, "no test ran")
         return cls(test, tip, ProofOutcome.PASSES, "")
 
+    def raise_if_broken(self) -> None:
+        """
+        :raises BrokenTestError: If the test is broken.
+        """
+        if self.outcome is ProofOutcome.BROKEN:
+            raise BrokenTestError(str(self.test.path), self.message)
+
     def proof(self) -> Proof:
         """
         :return: The proof the attempt makes.
@@ -209,8 +216,7 @@ class ProofAttempt:
         """
         if self.outcome is ProofOutcome.PASSES:
             raise PassingTestError(str(self.test.path), self.tip)
-        if self.outcome is ProofOutcome.BROKEN:
-            raise BrokenTestError(str(self.test.path), self.message)
+        self.raise_if_broken()
         return Proof(self.test, self.tip, self.message)
 
 

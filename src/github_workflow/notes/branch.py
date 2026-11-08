@@ -8,7 +8,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
-from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
+from basstler_domain_model.git.commands import GitCommandRunner
 from basstler_domain_model.git.storage_branch import StorageBranch
 
 from github_workflow.remotes import OwnedRemote
@@ -34,7 +34,7 @@ class NotesBranch(StorageBranch):
         :param settings: The branch's name.
         :return: The notes branch.
         """
-        return cls(git, RemoteBranch(remote.name, settings.notes_branch))
+        return cls(git, remote.branch(settings.notes_branch))
 
     @staticmethod
     def queued_file_name() -> str:

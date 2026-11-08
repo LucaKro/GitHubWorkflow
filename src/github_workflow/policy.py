@@ -19,6 +19,7 @@ from github_workflow.exceptions import (
     DefaultBranchWriteError,
     DetachedHeadError,
     MergeInProgressError,
+    NoMergeInProgressError,
 )
 from github_workflow.remotes import OwnedRemote
 
@@ -120,6 +121,18 @@ class WritePolicy:
         """
         if self.checkout.git.merge_in_progress():
             raise MergeInProgressError(branch)
+
+    def branch_being_merged(self) -> str:
+        """
+        :return: The work branch, which a merge is in progress on.
+        :raises DetachedHeadError: If no branch is checked out.
+        :raises DefaultBranchWriteError: If it is the default branch.
+        :raises NoMergeInProgressError: If no merge is in progress.
+        """
+        branch = self.work_branch()
+        if not self.checkout.git.merge_in_progress():
+            raise NoMergeInProgressError(branch)
+        return branch
 
     def commit_message(self, message: str) -> str:
         """

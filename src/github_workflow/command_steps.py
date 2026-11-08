@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from inspect import isabstract
 from typing import TYPE_CHECKING
 
 from basstler_domain_model.class_property import classproperty
@@ -133,8 +134,13 @@ class CommandStep(ABC):
         """
         words = [word for word in (arguments.command, arguments.action) if word]
         command = RunnableCommand.run_by(words)
+        builders = [cls]
+        for builder in builders:
+            builders += builder.__subclasses__()
         return next(
-            builder for builder in cls.__subclasses__() if builder.command is command
+            builder
+            for builder in builders
+            if not isabstract(builder) and builder.command is command
         )
 
     @property
@@ -147,6 +153,22 @@ class CommandStep(ABC):
     def priority(self) -> Priority:
         """:return: The priority ``--priority`` names."""
         return Priority.at_level(PriorityLevel(self.arguments.priority))
+
+
+# %% steps run once the branches are up to date
+
+
+@dataclass(frozen=True)
+class FreshenedCommandStep(CommandStep, ABC):
+    """
+    Builds a step run once the branches are brought up to date.
+    """
+
+    def prepared(self) -> WorkflowStep:
+        """
+        Unlike :meth:`CommandStep.prepared`, runs once the branches are up to date.
+        """
+        return FreshenedStep(self.session.freshening, self.step())
 
 
 # %% branches
@@ -221,7 +243,7 @@ class CommitStep(CommandStep):
 
 
 @dataclass(frozen=True)
-class PushStep(CommandStep):
+class PushStep(FreshenedCommandStep):
     """
     Builds the step ``push`` asks for.
     """
@@ -233,15 +255,9 @@ class PushStep(CommandStep):
     def step(self) -> WorkflowStep:
         return PushWork(self.session.policy)
 
-    def prepared(self) -> WorkflowStep:
-        """
-        Unlike :meth:`CommandStep.prepared`, runs once the branches are up to date.
-        """
-        return FreshenedStep(self.session.freshening, self.step())
-
 
 @dataclass(frozen=True)
-class DraftStep(CommandStep):
+class DraftStep(FreshenedCommandStep):
     """
     Builds the step ``draft`` asks for.
     """
@@ -280,12 +296,6 @@ class DraftStep(CommandStep):
             arguments.finding,
         )
         return FindingDraftOpening(recheck, draft)
-
-    def prepared(self) -> WorkflowStep:
-        """
-        Unlike :meth:`CommandStep.prepared`, runs once the branches are up to date.
-        """
-        return FreshenedStep(self.session.freshening, self.step())
 
 
 @dataclass(frozen=True)
@@ -344,7 +354,7 @@ class NotesSaveStep(CommandStep):
 
 
 @dataclass(frozen=True)
-class DescribeStep(CommandStep):
+class DescribeStep(FreshenedCommandStep):
     """
     Builds the step ``describe`` asks for.
     """
@@ -370,12 +380,12 @@ class DescribeStep(CommandStep):
 
     def prepared(self) -> WorkflowStep:
         """
-        Unlike :meth:`CommandStep.prepared`, runs once the branches are up to date when
-        it rewrites the work branch's own pull request.
+        Unlike :meth:`FreshenedCommandStep.prepared`, freshens the branches only when it
+        rewrites the work branch's own pull request.
         """
         if self.arguments.number is not None:
             return self.step()
-        return FreshenedStep(self.session.freshening, self.step())
+        return super().prepared()
 
 
 @dataclass(frozen=True)

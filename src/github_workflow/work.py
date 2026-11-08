@@ -43,7 +43,6 @@ from github_workflow.exceptions import (
     DetachedHeadError,
     DraftUnfinishedError,
     MergeConflictError,
-    NoMergeInProgressError,
     NothingToDescribeError,
     PullRequestNotOpenError,
     PushRefusedError,
@@ -135,9 +134,7 @@ class BranchStart(WorkflowStep):
     """
 
     def run(self) -> str:
-        base = RemoteBranch(
-            self.policy.remote.name, self.base or self.policy.default_branch
-        )
+        base = self.policy.remote.branch(self.base or self.policy.default_branch)
         git = self.policy.checkout.git
         fetched = git.fetch_branch(base)
         if fetched.succeeded:
@@ -170,7 +167,7 @@ class BranchSwitch(WorkflowStep):
 
     def run(self) -> str:
         git = self.policy.checkout.git
-        git.fetch_branch(RemoteBranch(self.policy.remote.name, self.name))
+        git.fetch_branch(self.policy.remote.branch(self.name))
         git.switch_to(self.name)
         return f"on {self.name}"
 
@@ -227,7 +224,7 @@ class PushWork(WorkflowStep):
         """
         :raises MergeInProgressError: If a merge is in progress.
         """
-        branch = RemoteBranch(self.policy.remote.name, self.policy.work_branch())
+        branch = self.policy.remote.branch(self.policy.work_branch())
         self.policy.refuse_while_merging(branch.name)
         pushed = self.policy.checkout.git.push(
             ProposedPush(
@@ -364,7 +361,7 @@ class DraftOpening(WorkflowStep):
         :raises DraftUnfinishedError: If closing the replaced pull request, labelling
             the issues or stacking the draft fails once it is opened.
         """
-        branch = RemoteBranch(self.policy.remote.name, self.policy.work_branch())
+        branch = self.policy.remote.branch(self.policy.work_branch())
         if not self.policy.checkout.git.has_remote_branch(branch):
             raise BranchNotPushedError(branch.name)
         if self.replacement is not None:
@@ -579,7 +576,7 @@ class BranchSync(WorkflowStep):
         name = git.checked_out_branch()
         if not name:
             raise DetachedHeadError()
-        branch = RemoteBranch(self.policy.remote.name, name)
+        branch = self.policy.remote.branch(name)
         last_seen = git.commit_or_none(branch.tracking_reference)
         fetched = git.fetch_branch(branch)
         if not fetched.succeeded and git.has_remote_branch(branch):
@@ -687,10 +684,8 @@ class MergeCompletion(WorkflowStep):
     """
 
     def run(self) -> str:
-        branch = self.policy.work_branch()
+        branch = self.policy.branch_being_merged()
         git = self.policy.checkout.git
-        if not git.merge_in_progress():
-            raise NoMergeInProgressError(branch)
         marked = [
             str(path)
             for path in self.resolved
@@ -725,10 +720,8 @@ class MergeAbort(WorkflowStep):
     """
 
     def run(self) -> str:
-        branch = self.policy.work_branch()
+        branch = self.policy.branch_being_merged()
         git = self.policy.checkout.git
-        if not git.merge_in_progress():
-            raise NoMergeInProgressError(branch)
         git.abort_merge()
         return f"undid the merge on {branch}; it is as it was before"
 
@@ -768,7 +761,7 @@ class BaseMerge(WorkflowStep):
             above = pull_request.base != self.policy.default_branch
             if pull_request.state is PullRequestState.OPEN and stacked and above:
                 raise StackedBranchMergeError(branch, pull_request.number)
-        default = RemoteBranch(self.policy.remote.name, self.policy.default_branch)
+        default = self.policy.remote.branch(self.policy.default_branch)
         return WorkBranchMerge(self.policy).merge(default, default.name)
 
 
@@ -841,7 +834,7 @@ class PullRequestMerge(WorkflowStep):
         branch = OpenPullRequestBranch(
             self.pull_requests, self.policy.remote.repository
         ).branch(self.number)
-        merged = RemoteBranch(self.policy.remote.name, branch)
+        merged = self.policy.remote.branch(branch)
         described = f"#{self.number}'s branch {branch}"
         return WorkBranchMerge(self.policy).merge(merged, described)
 

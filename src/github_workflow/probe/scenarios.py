@@ -260,7 +260,7 @@ class Probe:
         :param shape: The name shape.
         :return: This run's branch of that shape, on the repository's remote.
         """
-        return RemoteBranch(self.remote.name, f"{shape}{self.stamp}")
+        return self.remote.branch(f"{shape}{self.stamp}")
 
     @classmethod
     def describe_environment(cls, git: GitCommandRunner) -> dict[str, str]:
@@ -534,7 +534,7 @@ class Probe:
         :param default_branch: The branch the pull request targets.
         """
         self.git.fetch(self.remote.name, default_branch)
-        base = RemoteBranch(self.remote.name, default_branch).tracking_reference
+        base = self.remote.branch(default_branch).tracking_reference
         commit = self.git.commit_files(base, {}, ProbeText.COMMIT_MESSAGE)
         branch = self.branch(BranchName.PULL_REQUEST)
         pushed = self.git.push(
@@ -647,7 +647,7 @@ class Probe:
         :param default_branch: The branch the lower pull request targets.
         """
         self.git.fetch(self.remote.name, default_branch)
-        base = RemoteBranch(self.remote.name, default_branch).tracking_reference
+        base = self.remote.branch(default_branch).tracking_reference
         lower_commit = self.git.commit_files(base, {}, ProbeText.STACK_LOWER_TITLE)
         upper_commit = self.git.commit_files(
             lower_commit, {}, ProbeText.STACK_UPPER_TITLE

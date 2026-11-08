@@ -33,7 +33,6 @@ from basstler_domain_model.repository import Repository
 from github_workflow.command_line import PriorityLevel
 from github_workflow.exceptions import (
     AlreadyProvenError,
-    BrokenTestError,
     FindingNotAcceptedError,
     FindingStillFailsError,
     FixNotMergedError,
@@ -244,6 +243,13 @@ class ClosedBy(FindingLabel):
     """
     Closed by a session.
     """
+
+    @classproperty
+    def closing_note(cls) -> str:
+        """
+        The sentence ending a session's comment on what it closed on its own.
+        """
+        return "Closed by a session on its own."
 
 
 class Evidence(FindingLabel):
@@ -603,8 +609,7 @@ class FindingClosing(FindingChange):
         if not fix.merged or fix.base != self.default_branch:
             raise FixNotMergedError(self.fixed_by, self.default_branch)
         attempt = self.runner.attempt(proof.test)
-        if attempt.outcome is ProofOutcome.BROKEN:
-            raise BrokenTestError(str(proof.test.path), attempt.message)
+        attempt.raise_if_broken()
         if attempt.outcome is ProofOutcome.FAILS:
             raise FindingStillFailsError(self.number, attempt.tip, attempt.message)
         self.create_missing_labels()
@@ -612,7 +617,7 @@ class FindingClosing(FindingChange):
         self.issues.add_comment(
             self.number,
             f"Fixed by #{self.fixed_by}: its proof test passes on {attempt.tip}. "
-            f"Closed by a session on its own.",
+            f"{ClosedBy.closing_note}",
         )
         self.issues.close_issue(self.number, IssueStateReason.COMPLETED)
         self.log.enter(
@@ -664,7 +669,7 @@ class SessionPullRequestClosing(PullRequestRetirement):
     def retire(self, number: int, reason: str) -> None:
         self.issues.create_missing_labels([ClosedBy.SESSION])
         self.issues.add_labels(number, [ClosedBy.SESSION])
-        self.issues.add_comment(number, f"{reason} Closed by a session on its own.")
+        self.issues.add_comment(number, f"{reason} {ClosedBy.closing_note}")
         self.closer.close_pull_request(number)
         self.issue_labels.unlabel(self.pull_requests.pull_request(number).body or "")
         self.log.enter(f"closed pull request #{number}: {reason}")
@@ -825,8 +830,7 @@ class FindingRecheck(WorkflowStep):
         if Evidence.from_issue(issue) is not Evidence.PROVEN or proof is None:
             raise MissingProofError(self.number)
         attempt = self.runner.attempt(proof.test)
-        if attempt.outcome is ProofOutcome.BROKEN:
-            raise BrokenTestError(str(proof.test.path), attempt.message)
+        attempt.raise_if_broken()
         if attempt.outcome is ProofOutcome.PASSES:
             raise ProofNoLongerHoldsError(self.number, attempt.tip)
         return f"#{self.number} still fails on {attempt.tip}: {attempt.message}"

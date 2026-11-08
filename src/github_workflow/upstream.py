@@ -229,7 +229,7 @@ class ForkMainSync(WorkflowStep):
     @property
     def fork_branch(self) -> RemoteBranch:
         """:return: The fork's default branch, on the owner's remote."""
-        return RemoteBranch(self.policy.remote.name, self.policy.default_branch)
+        return self.policy.remote.branch(self.policy.default_branch)
 
     def tips(self, upstream: Repository) -> ForkTips:
         """

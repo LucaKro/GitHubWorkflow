@@ -8,7 +8,6 @@ from __future__ import annotations
 from abc import ABC
 from dataclasses import dataclass
 
-from basstler_domain_model.git.commands import RemoteBranch
 from basstler_domain_model.github.readers import PullRequestSource
 from basstler_domain_model.github.repository_client import (
     Commenter,
@@ -349,7 +348,7 @@ class ReviewResolution(ReviewThreadWrite):
 
     def run(self) -> str:
         policy = self.pull_request.policy
-        branch = RemoteBranch(policy.remote.name, policy.work_branch())
+        branch = policy.remote.branch(policy.work_branch())
         git = policy.checkout.git
         fetched = git.fetch_branch(branch)
         pushed = fetched.succeeded and git.contains("HEAD", branch.tracking_reference)

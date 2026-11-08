@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
+from basstler_domain_model.git.commands import GitCommandRunner
 from basstler_domain_model.git.storage_branch import StorageBranch
 
 from github_workflow.install import Distribution
@@ -60,9 +60,7 @@ class ResultsPublication:
         """
         :return: Where the results were published, in one line.
         """
-        results = StorageBranch(
-            self.git, RemoteBranch(self.remote.name, ResultsBranch.NAME)
-        )
+        results = StorageBranch(self.git, self.remote.branch(ResultsBranch.NAME))
         results.fetch()
         results.write(
             {

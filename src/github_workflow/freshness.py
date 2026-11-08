@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from basstler_domain_model.git.commands import RemoteBranch
 from basstler_domain_model.github.repository_client import (
     ForkDetails,
     PullRequestsFromForks,
@@ -98,7 +97,7 @@ class BranchFreshening:
                 values={CommandOption.ON: "<the number of the pull request below>"},
             )
         )
-        merged = RemoteBranch(self.policy.remote.name, base)
+        merged = self.policy.remote.branch(base)
         git.fetch_branch(merged).raise_if_failed()
         if git.contains(merged.tracking_reference, "HEAD"):
             return []

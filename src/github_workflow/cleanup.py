@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Self
 
 from basstler_domain_model.git.branch_tips import BranchTip
-from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
+from basstler_domain_model.git.commands import GitCommandRunner
 from basstler_domain_model.github.repository_client import (
     GitHubRepository,
     PullRequestsFromForks,
@@ -129,7 +129,7 @@ class BranchDiscard(WorkflowStep):
             raise DetachedHeadError()
         if branch in {self.policy.default_branch, self.notes.branch.name}:
             raise UndiscardableBranchError(branch)
-        tip = git.remote_branch_tip(RemoteBranch(self.policy.remote.name, branch))
+        tip = git.remote_branch_tip(self.policy.remote.branch(branch))
         if tip is None:
             raise NothingToDiscardError(branch)
         self.notes.fetch()
