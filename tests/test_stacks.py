@@ -10,17 +10,17 @@ import sys
 
 import pytest
 from basstler_domain_model.git.commands import RemoteName
+from basstler_domain_model.github.exceptions import StackContinuesAboveError
 from basstler_domain_model.github.stack_models import Stack
+from basstler_domain_model.github.stack_placement import StackPlacement
 
 import github_workflow
-from github_workflow.exceptions import NoOwnedRemoteError
 from github_workflow.command_line import (
     StackSubcommand,
     WorkflowCommand,
 )
+from github_workflow.exceptions import NoOwnedRemoteError
 from github_workflow.settings import WorkflowSettings
-from basstler_domain_model.github.exceptions import StackContinuesAboveError
-from basstler_domain_model.github.stack_placement import StackPlacement
 
 from .repositories_by_owner import RepositoriesByOwner
 from .stacked_pull_requests import DraftsInMemory, StackedPullRequestsInMemory
@@ -48,7 +48,7 @@ def existing_stack(repository: StackedPullRequestsInMemory, *numbers: int) -> St
 # %% retargeting
 
 
-def test_a_pull_request_is_retargeted_at_the_branch_below():
+def test_a_pull_request_is_retargeted_at_the_branch_below() -> None:
     repository = StackedPullRequestsInMemory({1: "main", 2: "main"})
 
     placement(repository).place(1, 2)
@@ -56,7 +56,7 @@ def test_a_pull_request_is_retargeted_at_the_branch_below():
     assert repository.bases[2] == repository.branch_of(1)
 
 
-def test_a_pull_request_already_targeting_the_branch_below_is_left_alone():
+def test_a_pull_request_already_targeting_the_branch_below_is_left_alone() -> None:
     repository = StackedPullRequestsInMemory(
         {1: "main", 2: StackedPullRequestsInMemory.branch_of(1)}
     )
@@ -69,7 +69,7 @@ def test_a_pull_request_already_targeting_the_branch_below_is_left_alone():
 # %% the stack
 
 
-def test_two_pull_requests_in_no_stack_form_a_new_one():
+def test_two_pull_requests_in_no_stack_form_a_new_one() -> None:
     repository = StackedPullRequestsInMemory({1: "main", 2: "main"})
 
     stack = placement(repository).place(1, 2)
@@ -77,7 +77,7 @@ def test_two_pull_requests_in_no_stack_form_a_new_one():
     assert stack.numbers == [1, 2]
 
 
-def test_a_pull_request_goes_on_top_of_the_stack_whose_top_it_builds_on():
+def test_a_pull_request_goes_on_top_of_the_stack_whose_top_it_builds_on() -> None:
     repository = StackedPullRequestsInMemory({1: "main", 2: "main", 3: "main"})
     existing_stack(repository, 1, 2)
 
@@ -86,7 +86,7 @@ def test_a_pull_request_goes_on_top_of_the_stack_whose_top_it_builds_on():
     assert stack.numbers == [1, 2, 3]
 
 
-def test_placing_a_pull_request_where_it_already_is_writes_nothing():
+def test_placing_a_pull_request_where_it_already_is_writes_nothing() -> None:
     repository = StackedPullRequestsInMemory(
         {1: "main", 2: StackedPullRequestsInMemory.branch_of(1)}
     )
@@ -96,7 +96,7 @@ def test_placing_a_pull_request_where_it_already_is_writes_nothing():
     assert repository.writes == []
 
 
-def test_a_stack_held_above_only_by_closed_pull_requests_is_made_again():
+def test_a_stack_held_above_only_by_closed_pull_requests_is_made_again() -> None:
     """
     GitHub keeps closed pull requests in their stack, so the replacement of one takes
     its place in a stack made from the open ones.
@@ -113,7 +113,7 @@ def test_a_stack_held_above_only_by_closed_pull_requests_is_made_again():
     assert f"unstack {existing.number}" in repository.writes
 
 
-def test_a_pull_request_others_already_build_on_is_not_built_on_again():
+def test_a_pull_request_others_already_build_on_is_not_built_on_again() -> None:
     repository = StackedPullRequestsInMemory({1: "main", 2: "main", 3: "main"})
     existing_stack(repository, 1, 2)
 
@@ -121,7 +121,7 @@ def test_a_pull_request_others_already_build_on_is_not_built_on_again():
         placement(repository).place(1, 3)
 
 
-def test_a_pull_request_others_already_build_on_is_found_unplaceable_first():
+def test_a_pull_request_others_already_build_on_is_found_unplaceable_first() -> None:
     repository = StackedPullRequestsInMemory({1: "main", 2: "main"})
     existing_stack(repository, 1, 2)
 
@@ -131,7 +131,7 @@ def test_a_pull_request_others_already_build_on_is_found_unplaceable_first():
     assert repository.writes == []
 
 
-def test_the_top_of_a_stack_is_placeable():
+def test_the_top_of_a_stack_is_placeable() -> None:
     repository = StackedPullRequestsInMemory({1: "main", 2: "main"})
     existing_stack(repository, 1, 2)
 
@@ -146,7 +146,7 @@ def test_the_top_of_a_stack_is_placeable():
 # %% moving a stack off a pull request whose work landed
 
 
-def test_the_pull_request_above_a_done_one_moves_onto_the_default_branch():
+def test_the_pull_request_above_a_done_one_moves_onto_the_default_branch() -> None:
     repository = StackedPullRequestsInMemory(
         {1: "main", 2: StackedPullRequestsInMemory.branch_of(1), 3: "branch-2"}
     )
@@ -160,7 +160,7 @@ def test_the_pull_request_above_a_done_one_moves_onto_the_default_branch():
     )
 
 
-def test_a_single_pull_request_left_above_forms_no_stack():
+def test_a_single_pull_request_left_above_forms_no_stack() -> None:
     repository = StackedPullRequestsInMemory(
         {1: "main", 2: StackedPullRequestsInMemory.branch_of(1)}
     )
@@ -174,7 +174,7 @@ def test_a_single_pull_request_left_above_forms_no_stack():
     )
 
 
-def test_a_done_pull_request_in_no_stack_moves_nothing():
+def test_a_done_pull_request_in_no_stack_moves_nothing() -> None:
     repository = StackedPullRequestsInMemory({1: "main"})
 
     assert (placement(repository).move_off(1, "main"), repository.writes) == (None, [])
@@ -182,7 +182,7 @@ def test_a_done_pull_request_in_no_stack_moves_nothing():
 
 def test_stacking_in_somebody_else_s_repository_is_refused_before_any_call(
     repositories: RepositoriesByOwner, foreign_url: str
-):
+) -> None:
     checkout = repositories.clone(foreign_url, "theirs")
 
     finished = subprocess.run(

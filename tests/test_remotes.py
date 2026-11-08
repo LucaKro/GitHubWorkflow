@@ -5,10 +5,9 @@ Tests for :mod:`github_workflow.remotes`: writes go only to the owner's reposito
 from __future__ import annotations
 
 import pytest
-
-from github_workflow.exceptions import AmbiguousOwnedRemoteError, NoOwnedRemoteError
 from basstler_domain_model.git.commands import RemoteName
 
+from github_workflow.exceptions import AmbiguousOwnedRemoteError, NoOwnedRemoteError
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.settings import WorkflowSettings
 
@@ -19,7 +18,7 @@ from .repositories_by_owner import RepositoriesByOwner
 
 def test_an_owned_origin_is_chosen(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     checkout = repositories.clone(owned_url, "mine")
 
     chosen = OwnedRemotes.read(checkout.git, settings).chosen
@@ -33,7 +32,7 @@ def test_in_a_clone_of_the_upstream_the_owner_s_fork_is_chosen(
     owned_url: str,
     foreign_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     checkout = repositories.clone(foreign_url, "upstream-clone")
     checkout.git.run("remote", "add", "fork", owned_url)
 
@@ -42,7 +41,7 @@ def test_in_a_clone_of_the_upstream_the_owner_s_fork_is_chosen(
 
 def test_a_clone_of_somebody_else_s_repository_has_nothing_to_write_to(
     repositories: RepositoriesByOwner, foreign_url: str, settings: WorkflowSettings
-):
+) -> None:
     checkout = repositories.clone(foreign_url, "theirs")
 
     with pytest.raises(NoOwnedRemoteError):
@@ -51,7 +50,7 @@ def test_a_clone_of_somebody_else_s_repository_has_nothing_to_write_to(
 
 def test_two_owned_remotes_without_origin_are_not_guessed_between(
     repositories: RepositoriesByOwner, foreign_url: str, settings: WorkflowSettings
-):
+) -> None:
     checkout = repositories.clone(foreign_url, "upstream-clone")
     checkout.git.run(
         "remote", "add", "first", repositories.create(settings.owner, "one")
@@ -80,7 +79,7 @@ def test_a_remote_off_github_is_not_owned_whatever_its_path(
     owned_url: str,
     settings: WorkflowSettings,
     path: str,
-):
+) -> None:
     checkout = repositories.clone(owned_url, "mine")
     checkout.git.run("remote", "add", "elsewhere", path.format(owner=settings.owner))
 
@@ -102,7 +101,7 @@ def test_a_remote_on_github_or_the_cloud_proxy_is_owned(
     foreign_url: str,
     settings: WorkflowSettings,
     path: str,
-):
+) -> None:
     checkout = repositories.clone(foreign_url, "theirs")
     checkout.git.run("remote", "add", "fork", path.format(owner=settings.owner))
 

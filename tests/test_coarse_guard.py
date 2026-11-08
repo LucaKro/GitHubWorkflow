@@ -8,16 +8,15 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
-from basstler_domain_model.locations import PathEnumeration
-
-from github_workflow.coarse_guard import CoarseGuard
 from basstler_domain_model.claude_code.hooks import (
     FileWritingTool,
     HookInput,
     HookKey,
     HookValue,
 )
+from basstler_domain_model.locations import PathEnumeration
+
+from github_workflow.coarse_guard import CoarseGuard
 
 # %% the dataset
 
@@ -62,7 +61,7 @@ def guard(tool: str, tool_input: dict[str, str]) -> CoarseGuard:
 
 
 @pytest.mark.parametrize("command", CoarseGuardDataset.DENIED.lines())
-def test_a_command_naming_git_or_github_s_clients_is_denied(command: str):
+def test_a_command_naming_git_or_github_s_clients_is_denied(command: str) -> None:
     output = guard(HookValue.BASH_TOOL, {HookKey.COMMAND: command}).output()
 
     assert output[HookKey.HOOK_SPECIFIC_OUTPUT][HookKey.PERMISSION_DECISION] == (
@@ -71,11 +70,11 @@ def test_a_command_naming_git_or_github_s_clients_is_denied(command: str):
 
 
 @pytest.mark.parametrize("command", CoarseGuardDataset.ALLOWED.lines())
-def test_a_command_naming_none_of_them_runs(command: str):
+def test_a_command_naming_none_of_them_runs(command: str) -> None:
     assert guard(HookValue.BASH_TOOL, {HookKey.COMMAND: command}).output() is None
 
 
-def test_a_denial_says_why_the_guard_could_not_run():
+def test_a_denial_says_why_the_guard_could_not_run() -> None:
     coarse = guard(HookValue.BASH_TOOL, {HookKey.COMMAND: "git status"})
 
     output = coarse.output()[HookKey.HOOK_SPECIFIC_OUTPUT]
@@ -87,12 +86,14 @@ def test_a_denial_says_why_the_guard_could_not_run():
 
 
 @pytest.mark.parametrize("tool", list(FileWritingTool))
-def test_a_file_outside_git_s_configuration_may_be_written(tool: FileWritingTool):
+def test_a_file_outside_git_s_configuration_may_be_written(
+    tool: FileWritingTool,
+) -> None:
     assert guard(tool, {HookKey.FILE_PATH: "/project/src/module.py"}).output() is None
 
 
 @pytest.mark.parametrize("path", ["/project/.git/hooks/pre-push", "/home/.gitconfig"])
-def test_git_s_configuration_may_not_be_written(path: str):
+def test_git_s_configuration_may_not_be_written(path: str) -> None:
     output = guard(FileWritingTool.EDIT, {HookKey.FILE_PATH: path}).output()
 
     assert output[HookKey.HOOK_SPECIFIC_OUTPUT][HookKey.PERMISSION_DECISION] == (
@@ -100,7 +101,7 @@ def test_git_s_configuration_may_not_be_written(path: str):
     )
 
 
-def test_a_github_tool_is_denied_even_when_it_reads():
+def test_a_github_tool_is_denied_even_when_it_reads() -> None:
     output = guard(f"{HookValue.MCP_TOOL_PREFIX}github__get_issue", {}).output()
 
     assert output[HookKey.HOOK_SPECIFIC_OUTPUT][HookKey.PERMISSION_DECISION] == (
@@ -108,5 +109,5 @@ def test_a_github_tool_is_denied_even_when_it_reads():
     )
 
 
-def test_another_tool_runs():
+def test_another_tool_runs() -> None:
     assert guard("Read", {HookKey.FILE_PATH: "/project/.git/config"}).output() is None

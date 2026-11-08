@@ -68,7 +68,7 @@ def run_hook(checkout: ProjectCheckout) -> subprocess.CompletedProcess[str]:
 
 def test_edited_notes_are_saved(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
     SessionStart(checkout, settings).load_notes()
     edit(checkout, NotesSection.STANDING_NOTES, "a note")
@@ -81,7 +81,7 @@ def test_edited_notes_are_saved(
 
 def test_saved_notes_are_no_longer_unsaved(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
     SessionStart(checkout, settings).load_notes()
     edit(checkout, NotesSection.STANDING_NOTES, "a note")
@@ -92,7 +92,7 @@ def test_saved_notes_are_no_longer_unsaved(
 
 def test_notes_without_edits_are_left_alone(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
     SessionStart(checkout, settings).load_notes()
 
@@ -101,7 +101,7 @@ def test_notes_without_edits_are_left_alone(
 
 def test_a_checkout_without_notes_is_left_alone(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
 
     assert UnsavedNotes(checkout, settings).save() is None
@@ -110,7 +110,7 @@ def test_a_checkout_without_notes_is_left_alone(
 # %% the hook
 
 
-def test_the_notes_are_saved_at_the_end_of_every_turn_and_of_the_session():
+def test_the_notes_are_saved_at_the_end_of_every_turn_and_of_the_session() -> None:
     """
     A cloud session's container can be reclaimed without the session ending, so the end
     of a turn is the last moment sure to come.
@@ -126,7 +126,7 @@ def test_the_notes_are_saved_at_the_end_of_every_turn_and_of_the_session():
 
 def test_the_hook_shows_the_person_what_it_saved(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
     SessionStart(checkout, settings).load_notes()
     edit(checkout, NotesSection.STANDING_NOTES, "a note")
@@ -142,7 +142,7 @@ def test_the_hook_shows_the_person_what_it_saved(
 
 def test_a_failed_save_keeps_the_edits_and_ends_the_turn_normally(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     """
     Without an owned remote the save fails; the turn must not, and the edits wait in
     ``CLAUDE.local.md`` for the next try.
@@ -164,7 +164,7 @@ def test_a_hook_runs_the_plugin_s_own_code_over_an_older_runtime(
     owned_url: str,
     settings: WorkflowSettings,
     tmp_path: Path,
-):
+) -> None:
     plugin = PluginFile.NOTES_SAVE_HOOK.value.parents[1]
     runtime = tmp_path / "home" / ".virtualenvs" / "githubworkflow-runtime" / "bin"
     runtime.mkdir(parents=True)

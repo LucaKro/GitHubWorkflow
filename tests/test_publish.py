@@ -24,7 +24,7 @@ def test_results_land_on_the_results_branch_under_their_directory_s_name(
     owned_url: str,
     settings: WorkflowSettings,
     tmp_path: Path,
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
     directory = tmp_path / "check-1"
     directory.mkdir()

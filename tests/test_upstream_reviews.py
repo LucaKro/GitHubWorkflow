@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from basstler_domain_model.github.clients import GraphQLClient, ReplayingGraphQLClient
 from basstler_domain_model.github.repository_client import RepositoryWorkflows
 from basstler_domain_model.github.rest_models import Workflow, WorkflowRun
@@ -23,11 +22,6 @@ from basstler_domain_model.github.vocabulary import (
 from basstler_domain_model.locations import PathEnumeration
 from basstler_domain_model.repository import Repository
 
-from github_workflow.workflow_templates import (
-    ActionPlaceholder,
-    NotesBranchPlaceholder,
-    UpstreamReviewPlaceholder,
-)
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.settings import WorkflowSettings
@@ -40,6 +34,11 @@ from github_workflow.upstream_reviews import (
     UpstreamReviewAnswering,
     UpstreamReviewKey,
     UpstreamReviewRequest,
+)
+from github_workflow.workflow_templates import (
+    ActionPlaceholder,
+    NotesBranchPlaceholder,
+    UpstreamReviewPlaceholder,
 )
 
 from .repositories_by_owner import RepositoriesByOwner
@@ -97,7 +96,7 @@ def request(name: str = "1.json") -> UpstreamReviewRequest:
 # %% reading directly
 
 
-def test_a_direct_read_finds_the_branch_s_pull_request_upstream():
+def test_a_direct_read_finds_the_branch_s_pull_request_upstream() -> None:
     snapshot = DirectUpstreamReviews(
         AnswersInOrder(UpstreamReviewDataset.ANSWERS.answers())
     ).snapshot(request())
@@ -111,7 +110,9 @@ def test_a_direct_read_finds_the_branch_s_pull_request_upstream():
 # %% answering on the runner
 
 
-def test_a_request_is_answered_with_github_s_answers_and_removed(tmp_path: Path):
+def test_a_request_is_answered_with_github_s_answers_and_removed(
+    tmp_path: Path,
+) -> None:
     requests, answers = tmp_path / "requests", tmp_path / "answers"
     requests.mkdir()
     (requests / "1.json").write_text(request().to_json())
@@ -129,7 +130,7 @@ def test_a_request_is_answered_with_github_s_answers_and_removed(tmp_path: Path)
     )
 
 
-def test_the_answers_of_an_earlier_run_are_removed(tmp_path: Path):
+def test_the_answers_of_an_earlier_run_are_removed(tmp_path: Path) -> None:
     requests, answers = tmp_path / "requests", tmp_path / "answers"
     requests.mkdir()
     answers.mkdir()
@@ -140,7 +141,7 @@ def test_the_answers_of_an_earlier_run_are_removed(tmp_path: Path):
     assert list(answers.iterdir()) == []
 
 
-def test_an_answer_read_again_gives_what_github_answered():
+def test_an_answer_read_again_gives_what_github_answered() -> None:
     recorded = UpstreamReviewDataset.ANSWERS.answers()
 
     replayed = request().snapshot(ReplayingGraphQLClient(recorded))
@@ -236,7 +237,7 @@ def answered(notes: NotesBranch, name: str) -> None:
 
 def test_a_forwarded_request_is_queued_with_its_workflow(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     notes = notes_in(repositories, owned_url, settings)
     answered(notes, request().name)
 
@@ -265,7 +266,7 @@ def test_a_forwarded_request_is_queued_with_its_workflow(
 
 def test_a_forwarded_request_reads_the_saved_answer(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     notes = notes_in(repositories, owned_url, settings)
     answered(notes, request().name)
 
@@ -290,7 +291,7 @@ def queued_requests(notes: NotesBranch) -> list[str]:
 
 def test_a_request_no_run_started_for_is_asked_again_then_given_up_on(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     notes = notes_in(repositories, owned_url, settings)
 
     unavailable = forwarded(notes).snapshot(request())
@@ -303,7 +304,7 @@ def test_a_request_no_run_started_for_is_asked_again_then_given_up_on(
 
 def test_a_request_whose_run_failed_is_given_up_on(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     notes = notes_in(repositories, owned_url, settings)
     failed = RunsOfTheQueuedRequest(
         notes, WorkflowRunStatus.COMPLETED, WorkflowRunConclusion.FAILURE
@@ -318,7 +319,7 @@ def test_a_request_whose_run_failed_is_given_up_on(
 
 def test_a_request_whose_run_is_still_going_is_left_unanswered_in_time(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     notes = notes_in(repositories, owned_url, settings)
     going = RunsOfTheQueuedRequest(notes, WorkflowRunStatus.IN_PROGRESS)
 

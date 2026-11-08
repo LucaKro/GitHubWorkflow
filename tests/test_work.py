@@ -147,7 +147,7 @@ def work(
 
 def test_a_work_branch_starts_from_github_s_default_branch(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     policy = policy_in(repositories.clone(owned_url, "work"), settings)
 
     BranchStart(policy, "feature").run()
@@ -159,7 +159,7 @@ def test_a_work_branch_starts_from_github_s_default_branch(
     )
 
 
-def test_a_work_branch_starts_on_another_branch_when_asked(work: WritePolicy):
+def test_a_work_branch_starts_on_another_branch_when_asked(work: WritePolicy) -> None:
     git = work.checkout.git
 
     BranchStart(work, "upper", "feature").run()
@@ -169,7 +169,7 @@ def test_a_work_branch_starts_on_another_branch_when_asked(work: WritePolicy):
 
 def test_a_work_branch_starts_on_a_local_branch_github_does_not_have(
     work: WritePolicy,
-):
+) -> None:
     git = work.checkout.git
     BranchStart(work, "unpushed").run()
     CommitWork(work, "Add b", [write(work.checkout, "b.txt")]).run()
@@ -196,7 +196,7 @@ def github_s_default_branch_moved_on(
 
 def test_starting_from_the_default_branch_fast_forwards_the_local_one(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     policy = policy_in(repositories.clone(owned_url, "work"), settings)
     moved = github_s_default_branch_moved_on(repositories, owned_url, settings)
 
@@ -207,7 +207,7 @@ def test_starting_from_the_default_branch_fast_forwards_the_local_one(
 
 def test_a_local_default_branch_with_commits_of_its_own_is_kept(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     policy = policy_in(repositories.clone(owned_url, "work"), settings)
     git = policy.checkout.git
     write(policy.checkout, "own.txt")
@@ -226,7 +226,7 @@ def test_starting_from_another_branch_leaves_the_local_default_branch_alone(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     git = work.checkout.git
     before = git.commit_at(work.default_branch)
     github_s_default_branch_moved_on(repositories, owned_url, settings)
@@ -236,7 +236,7 @@ def test_starting_from_another_branch_leaves_the_local_default_branch_alone(
     assert git.commit_at(work.default_branch) == before
 
 
-def test_switching_checks_out_the_branch(work: WritePolicy):
+def test_switching_checks_out_the_branch(work: WritePolicy) -> None:
     BranchSwitch(work, RepositoriesByOwner.default_branch).run()
 
     assert work.checkout.git.checked_out_branch() == RepositoriesByOwner.default_branch
@@ -244,7 +244,7 @@ def test_switching_checks_out_the_branch(work: WritePolicy):
 
 def test_switching_to_a_branch_only_github_has_checks_it_out(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     session = policy_in(repositories.clone(owned_url, "session"), settings)
     elsewhere = policy_in(repositories.clone(owned_url, "elsewhere"), settings)
     BranchStart(elsewhere, "pushed-elsewhere").run()
@@ -262,7 +262,7 @@ def test_switching_to_a_branch_only_github_has_checks_it_out(
 
 def test_switching_to_a_branch_github_lacks_checks_out_the_local_one(
     work: WritePolicy,
-):
+) -> None:
     BranchStart(work, "unpushed").run()
     BranchSwitch(work, RepositoriesByOwner.default_branch).run()
 
@@ -274,13 +274,13 @@ def test_switching_to_a_branch_github_lacks_checks_out_the_local_one(
 # %% committing
 
 
-def test_a_commit_acknowledges_the_assistant_s_help(work: WritePolicy):
+def test_a_commit_acknowledges_the_assistant_s_help(work: WritePolicy) -> None:
     CommitWork(work, "Add b", [write(work.checkout, "b.txt")]).run()
 
     assert last_message(work.checkout.git) == f"Add b\n\n{Attribution.ACKNOWLEDGEMENT}"
 
 
-def test_a_commit_already_acknowledging_it_is_left_as_it_is(work: WritePolicy):
+def test_a_commit_already_acknowledging_it_is_left_as_it_is(work: WritePolicy) -> None:
     message = f"Add b\n\n{Attribution.ACKNOWLEDGEMENT}"
 
     CommitWork(work, message, [write(work.checkout, "b.txt")]).run()
@@ -288,7 +288,9 @@ def test_a_commit_already_acknowledging_it_is_left_as_it_is(work: WritePolicy):
     assert last_message(work.checkout.git) == message
 
 
-def test_a_commit_crediting_an_assistant_as_co_author_is_refused(work: WritePolicy):
+def test_a_commit_crediting_an_assistant_as_co_author_is_refused(
+    work: WritePolicy,
+) -> None:
     message = "Add b\n\nCo-Authored-By: Claude <noreply@anthropic.com>"
     before = work.checkout.git.commit_at("HEAD")
 
@@ -298,7 +300,7 @@ def test_a_commit_crediting_an_assistant_as_co_author_is_refused(work: WritePoli
     assert work.checkout.git.commit_at("HEAD") == before
 
 
-def test_a_commit_authored_as_an_assistant_is_refused(work: WritePolicy):
+def test_a_commit_authored_as_an_assistant_is_refused(work: WritePolicy) -> None:
     work.checkout.git.run("config", "user.email", "noreply@anthropic.com")
 
     with pytest.raises(AssistantCreditError):
@@ -307,7 +309,7 @@ def test_a_commit_authored_as_an_assistant_is_refused(work: WritePolicy):
 
 def test_a_commit_committed_as_an_assistant_is_refused(
     work: WritePolicy, monkeypatch: pytest.MonkeyPatch
-):
+) -> None:
     monkeypatch.setenv(GitIdentityVariable.COMMITTER_EMAIL, "noreply@anthropic.com")
     before = work.checkout.git.commit_at("HEAD")
 
@@ -317,7 +319,7 @@ def test_a_commit_committed_as_an_assistant_is_refused(
     assert work.checkout.git.commit_at("HEAD") == before
 
 
-def test_a_person_named_like_the_assistant_may_commit(work: WritePolicy):
+def test_a_person_named_like_the_assistant_may_commit(work: WritePolicy) -> None:
     work.checkout.git.run("config", "user.name", "Claude Monet")
     work.checkout.git.run("config", "user.email", "claude.monet@example.com")
 
@@ -326,7 +328,7 @@ def test_a_person_named_like_the_assistant_may_commit(work: WritePolicy):
     assert work.checkout.git.run("log", "-1", "--format=%an") == "Claude Monet"
 
 
-def test_a_commit_needs_no_access_to_github(work: WritePolicy, tmp_path: Path):
+def test_a_commit_needs_no_access_to_github(work: WritePolicy, tmp_path: Path) -> None:
     """
     Committing is local: without a token, and so without GitHub's API, it still runs.
     """
@@ -345,14 +347,14 @@ def test_a_commit_needs_no_access_to_github(work: WritePolicy, tmp_path: Path):
     assert work.checkout.git.run("log", "-1", "--format=%s") == "Add b"
 
 
-def test_a_commit_on_the_default_branch_is_refused(work: WritePolicy):
+def test_a_commit_on_the_default_branch_is_refused(work: WritePolicy) -> None:
     BranchSwitch(work, RepositoriesByOwner.default_branch).run()
 
     with pytest.raises(DefaultBranchWriteError):
         CommitWork(work, "Add b", [write(work.checkout, "b.txt")]).run()
 
 
-def test_a_commit_without_a_branch_is_refused(work: WritePolicy):
+def test_a_commit_without_a_branch_is_refused(work: WritePolicy) -> None:
     work.checkout.git.run("switch", "--quiet", "--detach")
 
     with pytest.raises(DetachedHeadError):
@@ -362,7 +364,7 @@ def test_a_commit_without_a_branch_is_refused(work: WritePolicy):
 # %% pushing
 
 
-def test_a_pushed_branch_is_on_the_owner_s_repository(work: WritePolicy):
+def test_a_pushed_branch_is_on_the_owner_s_repository(work: WritePolicy) -> None:
     branch = RemoteBranch(work.remote.name, "feature")
 
     assert work.checkout.git.has_remote_branch(branch)
@@ -370,13 +372,13 @@ def test_a_pushed_branch_is_on_the_owner_s_repository(work: WritePolicy):
 
 def test_a_pushed_branch_tracks_its_copy_on_the_owner_s_repository(
     work: WritePolicy,
-):
+) -> None:
     tracked = work.checkout.git.run("rev-parse", "--abbrev-ref", "feature@{upstream}")
 
     assert tracked == f"{work.remote.name}/feature"
 
 
-def test_pushing_the_default_branch_is_refused(work: WritePolicy):
+def test_pushing_the_default_branch_is_refused(work: WritePolicy) -> None:
     BranchSwitch(work, RepositoriesByOwner.default_branch).run()
 
     with pytest.raises(DefaultBranchWriteError):
@@ -388,7 +390,7 @@ def test_a_push_github_would_have_to_be_forced_to_take_is_refused(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     other_clone_pushing(repositories, owned_url, settings)
     CommitWork(work, "Add b", [write(work.checkout, "b.txt")]).run()
 
@@ -398,7 +400,7 @@ def test_a_push_github_would_have_to_be_forced_to_take_is_refused(
 
 def test_a_push_from_somebody_else_s_repository_is_refused_before_it_is_tried(
     repositories: RepositoriesByOwner, foreign_url: str
-):
+) -> None:
     checkout = repositories.clone(foreign_url, "theirs")
     before = repositories.branches(foreign_url)
 
@@ -466,7 +468,7 @@ def draft(
     )
 
 
-def test_a_draft_targets_the_default_branch(work: WritePolicy):
+def test_a_draft_targets_the_default_branch(work: WritePolicy) -> None:
     github = DraftsAndStacksInMemory({})
 
     draft(work, github, None).run()
@@ -476,7 +478,7 @@ def test_a_draft_targets_the_default_branch(work: WritePolicy):
 
 def test_a_draft_stacked_on_a_pull_request_targets_its_branch_and_joins_its_stack(
     work: WritePolicy,
-):
+) -> None:
     github = DraftsAndStacksInMemory({1: RepositoriesByOwner.default_branch})
 
     draft(work, github, 1).run()
@@ -489,7 +491,7 @@ def test_a_draft_stacked_on_a_pull_request_targets_its_branch_and_joins_its_stac
 
 def test_a_draft_onto_a_pull_request_others_build_on_opens_nothing(
     work: WritePolicy,
-):
+) -> None:
     default = RepositoriesByOwner.default_branch
     github = DraftsAndStacksInMemory({1: default, 2: default})
     github.existing_stacks.append(Stack(7, default, True, github.stacked((1, 2))))
@@ -510,7 +512,9 @@ class EndingNamingTheBranch(DescriptionEnding):
         return f"{body} | {branch}"
 
 
-def test_a_draft_onto_the_default_branch_ends_its_description(work: WritePolicy):
+def test_a_draft_onto_the_default_branch_ends_its_description(
+    work: WritePolicy,
+) -> None:
     github = DraftsAndStacksInMemory({})
     ending = EndingNamingTheBranch()
 
@@ -536,7 +540,9 @@ class ReplacedPullRequestInMemory(DraftsAndStacksInMemory):
         return super().pull_request(number)
 
 
-def test_a_replaced_pull_request_is_closed_once_its_draft_is_open(work: WritePolicy):
+def test_a_replaced_pull_request_is_closed_once_its_draft_is_open(
+    work: WritePolicy,
+) -> None:
     github = DraftsAndStacksInMemory({4: RepositoriesByOwner.default_branch})
     retired = RetiredInMemory()
 
@@ -557,7 +563,7 @@ def test_a_replaced_pull_request_is_closed_once_its_draft_is_open(work: WritePol
 )
 def test_a_pull_request_a_session_may_not_close_is_not_replaced(
     work: WritePolicy, replaced: RestPullRequest
-):
+) -> None:
     github = ReplacedPullRequestInMemory({}, replaced=replaced)
     retired = RetiredInMemory()
 
@@ -587,7 +593,7 @@ class ClosingRefused(PullRequestRetirement):
         raise RuntimeError("GitHub refused to close it")
 
 
-def test_a_draft_whose_stacking_fails_is_reported_as_opened(work: WritePolicy):
+def test_a_draft_whose_stacking_fails_is_reported_as_opened(work: WritePolicy) -> None:
     github = StackingRefusedInMemory({1: RepositoriesByOwner.default_branch})
 
     with pytest.raises(DraftUnfinishedError) as raised:
@@ -598,7 +604,7 @@ def test_a_draft_whose_stacking_fails_is_reported_as_opened(work: WritePolicy):
 
 def test_a_draft_whose_replaced_pull_request_stays_open_is_reported_as_opened(
     work: WritePolicy,
-):
+) -> None:
     github = DraftsAndStacksInMemory({4: RepositoriesByOwner.default_branch})
 
     with pytest.raises(DraftUnfinishedError) as raised:
@@ -609,7 +615,7 @@ def test_a_draft_whose_replaced_pull_request_stays_open_is_reported_as_opened(
     assert raised.value.number == 5
 
 
-def test_a_stacked_draft_keeps_its_description_as_given(work: WritePolicy):
+def test_a_stacked_draft_keeps_its_description_as_given(work: WritePolicy) -> None:
     github = DraftsAndStacksInMemory({1: RepositoriesByOwner.default_branch})
 
     replace(draft(work, github, 1), ending=EndingNamingTheBranch()).run()
@@ -617,7 +623,7 @@ def test_a_stacked_draft_keeps_its_description_as_given(work: WritePolicy):
     assert github.bodies == {2: "A body"}
 
 
-def test_a_draft_for_a_branch_github_lacks_is_refused(work: WritePolicy):
+def test_a_draft_for_a_branch_github_lacks_is_refused(work: WritePolicy) -> None:
     BranchStart(work, "unpushed").run()
     github = DraftsAndStacksInMemory({})
 
@@ -629,7 +635,7 @@ def test_a_draft_for_a_branch_github_lacks_is_refused(work: WritePolicy):
 
 def test_a_checked_out_default_branch_behind_github_s_is_fast_forwarded(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
-):
+) -> None:
     """
     A cloud session often starts on the default branch.
     """
@@ -665,7 +671,7 @@ def test_a_branch_github_moved_on_is_fast_forwarded(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     other = other_clone_pushing(repositories, owned_url, settings)
 
     BranchSync(work, PullRequestsFromBranchesInMemory()).run()
@@ -678,7 +684,7 @@ def test_a_branch_github_rebased_is_moved_to_github_s(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     """
     GitHub's *Rebase stack* rewrites the branch; every local commit had been pushed.
     """
@@ -697,7 +703,7 @@ def test_a_branch_with_unpushed_commits_github_diverged_from_is_left_alone(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     other_clone_pushing(repositories, owned_url, settings)
     CommitWork(work, "Add b", [write(work.checkout, "b.txt")]).run()
     before = work.checkout.git.commit_at("HEAD")
@@ -710,7 +716,7 @@ def test_a_branch_with_unpushed_commits_github_diverged_from_is_left_alone(
 
 def test_a_branch_deleted_from_github_is_not_reported_as_never_pushed(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
-):
+) -> None:
     """
     GitHub deletes a branch once its pull request is merged; pushing it again would
     bring it back.
@@ -724,7 +730,7 @@ def test_a_branch_deleted_from_github_is_not_reported_as_never_pushed(
 
 def test_a_branch_the_sandbox_tracks_but_never_pushed_is_not_reported_deleted(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     """
     A cloud session's sandbox creates the remote-tracking reference of the session's
     branch at setup, without pushing the branch.
@@ -742,7 +748,7 @@ def test_a_cloned_branch_deleted_after_its_pull_request_is_reported_deleted(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     """
     A clone writes no reflog entry for the branches it tracks, so the pull request
     opened from the branch shows it was on GitHub.
@@ -849,7 +855,7 @@ def base_merge(
 
 def test_the_default_branch_s_new_commits_are_merged_into_the_work_branch(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
-):
+) -> None:
     other = default_branch_moved_on(repositories, owned_url)
 
     base_merge(work).run()
@@ -861,7 +867,7 @@ def test_the_default_branch_s_new_commits_are_merged_into_the_work_branch(
 
 def test_a_conflicting_merge_is_left_in_progress_naming_its_files(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
-):
+) -> None:
     default_branch_moved_on(repositories, owned_url, "a.txt")
     git = work.checkout.git
 
@@ -895,7 +901,7 @@ def conflicted(
 
 def test_a_resolved_merge_is_committed_as_the_person(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
-):
+) -> None:
     other = conflicted(work, repositories, owned_url)
     (work.checkout.root / "a.txt").write_text("both sides\n")
 
@@ -910,7 +916,7 @@ def test_a_resolved_merge_is_committed_as_the_person(
 
 def test_a_file_still_marking_a_conflict_is_refused(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
-):
+) -> None:
     conflicted(work, repositories, owned_url)
 
     with pytest.raises(ConflictMarkersLeftError):
@@ -921,7 +927,7 @@ def test_a_file_still_marking_a_conflict_is_refused(
 
 def test_a_conflicting_file_left_out_is_refused(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
-):
+) -> None:
     conflicted(work, repositories, owned_url)
     (work.checkout.root / "b.txt").write_text("unrelated\n")
 
@@ -933,7 +939,7 @@ def test_a_conflicting_file_left_out_is_refused(
 
 def test_an_undone_merge_leaves_the_branch_as_it_was(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
-):
+) -> None:
     git = work.checkout.git
     before = git.commit_at("HEAD")
     conflicted(work, repositories, owned_url)
@@ -943,19 +949,19 @@ def test_an_undone_merge_leaves_the_branch_as_it_was(
     assert (git.commit_at("HEAD"), git.run("status", "--porcelain")) == (before, "")
 
 
-def test_no_merge_in_progress_has_nothing_to_finish(work: WritePolicy):
+def test_no_merge_in_progress_has_nothing_to_finish(work: WritePolicy) -> None:
     with pytest.raises(NoMergeInProgressError):
         MergeCompletion(work, [Path("a.txt")]).run()
 
 
-def test_no_merge_in_progress_has_nothing_to_undo(work: WritePolicy):
+def test_no_merge_in_progress_has_nothing_to_undo(work: WritePolicy) -> None:
     with pytest.raises(NoMergeInProgressError):
         MergeAbort(work).run()
 
 
 def test_a_branch_mid_merge_is_neither_committed_to_nor_pushed(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
-):
+) -> None:
     conflicted(work, repositories, owned_url)
     path = write(work.checkout, "c.txt")
 
@@ -967,7 +973,7 @@ def test_a_branch_mid_merge_is_neither_committed_to_nor_pushed(
 
 def test_a_branch_higher_in_a_stack_does_not_take_in_the_default_branch(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
-):
+) -> None:
     """
     It targets the branch below it, not the default branch.
     """
@@ -986,7 +992,7 @@ def test_a_branch_higher_in_a_stack_does_not_take_in_the_default_branch(
 
 def test_the_bottom_of_a_stack_takes_in_the_default_branch(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
-):
+) -> None:
     other = default_branch_moved_on(repositories, owned_url)
     stacks = StackedPullRequestsInMemory({})
     stacks.existing_stacks.append(Stack(1, "main", True, stacks.stacked([3, 4])))
@@ -1001,7 +1007,7 @@ def test_the_bottom_of_a_stack_takes_in_the_default_branch(
 
 def test_the_default_branch_takes_in_nothing(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     policy = policy_in(repositories.clone(owned_url, "on-default"), settings)
 
     with pytest.raises(DefaultBranchWriteError):
@@ -1010,7 +1016,7 @@ def test_the_default_branch_takes_in_nothing(
 
 def test_a_branch_that_has_the_default_branch_s_commits_is_left_alone(
     work: WritePolicy,
-):
+) -> None:
     git = work.checkout.git
     before = git.commit_at("HEAD")
 
@@ -1071,7 +1077,7 @@ def pushed_below(
 
 def test_another_pull_request_s_branch_is_merged_into_the_work_branch(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
-):
+) -> None:
     merge, other = pushed_below(work, repositories, owned_url)
 
     merge.run()
@@ -1092,7 +1098,7 @@ def test_a_pull_request_that_cannot_be_built_on_is_refused(
     owned_url: str,
     state: PullRequestState,
     repository: str | None,
-):
+) -> None:
     merge, _ = pushed_below(work, repositories, owned_url, state, repository)
     git = work.checkout.git
     before = git.commit_at("HEAD")
@@ -1105,7 +1111,7 @@ def test_a_pull_request_that_cannot_be_built_on_is_refused(
 
 def test_the_default_branch_builds_on_no_pull_request(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     policy = policy_in(repositories.clone(owned_url, "on-default"), settings)
     below = pull_request(56, "below", repository=policy.remote.repository.full_name)
 
@@ -1135,7 +1141,9 @@ def rewrite(
 @pytest.mark.parametrize(
     "drafts", [frozenset({1}), frozenset()], ids=["draft", "ready for review"]
 )
-def test_an_open_pull_request_s_description_is_rewritten(drafts: frozenset[int]):
+def test_an_open_pull_request_s_description_is_rewritten(
+    drafts: frozenset[int],
+) -> None:
     """
     Its description follows the pushed commits, ready for review or not.
     """
@@ -1147,7 +1155,7 @@ def test_an_open_pull_request_s_description_is_rewritten(drafts: frozenset[int])
     assert (github.writes, board.writes) == (["set_description 1 A new body"], [])
 
 
-def test_a_new_description_onto_the_default_branch_ends_as_a_draft_s_does():
+def test_a_new_description_onto_the_default_branch_ends_as_a_draft_s_does() -> None:
     github = DraftsInMemory({1: RepositoriesByOwner.default_branch})
     step, _ = rewrite(github, "A new body")
     ending = EndingNamingTheBranch()
@@ -1158,7 +1166,7 @@ def test_a_new_description_onto_the_default_branch_ends_as_a_draft_s_does():
     assert github.writes == [f"set_description 1 {described}"]
 
 
-def test_a_new_description_of_a_stacked_pull_request_is_kept_as_given():
+def test_a_new_description_of_a_stacked_pull_request_is_kept_as_given() -> None:
     github = DraftsInMemory({1: RepositoriesByOwner.default_branch, 2: "branch-1"})
     step, _ = rewrite(github, "A new body")
 
@@ -1167,7 +1175,7 @@ def test_a_new_description_of_a_stacked_pull_request_is_kept_as_given():
     assert github.writes == ["set_description 2 A new body"]
 
 
-def test_a_new_description_keeps_the_old_one_s_closing_lines():
+def test_a_new_description_keeps_the_old_one_s_closing_lines() -> None:
     closing = ClosingKeyword.FIXES.reference(148)
     old = f"What it did.\n\n{closing}\n"
 
@@ -1176,14 +1184,14 @@ def test_a_new_description_keeps_the_old_one_s_closing_lines():
     assert kept == f"What it does now.\n\n{closing}\n"
 
 
-def test_a_closing_line_the_new_description_has_is_not_repeated():
+def test_a_closing_line_the_new_description_has_is_not_repeated() -> None:
     closing = ClosingKeyword.FIXES.reference(148)
     rewritten = f"What it does now.\n\n{closing}\n"
 
     assert ClosingLines(f"What it did.\n\n{closing}\n").kept_in(rewritten) == rewritten
 
 
-def test_an_open_pull_request_s_title_is_rewritten():
+def test_an_open_pull_request_s_title_is_rewritten() -> None:
     github = DraftsInMemory({1: RepositoriesByOwner.default_branch})
     step, board = rewrite(github, None, "A sharper title")
 
@@ -1192,7 +1200,7 @@ def test_an_open_pull_request_s_title_is_rewritten():
     assert (github.writes, board.writes) == ([], ["set_issue_title 1 A sharper title"])
 
 
-def test_a_closed_pull_request_keeps_its_description_and_title():
+def test_a_closed_pull_request_keeps_its_description_and_title() -> None:
     github = DraftsInMemory(
         {1: RepositoriesByOwner.default_branch}, closed=frozenset({1})
     )
@@ -1204,7 +1212,7 @@ def test_a_closed_pull_request_keeps_its_description_and_title():
     assert (github.writes, board.writes) == ([], [])
 
 
-def test_a_rewrite_changing_nothing_is_refused():
+def test_a_rewrite_changing_nothing_is_refused() -> None:
     github = DraftsInMemory({1: RepositoriesByOwner.default_branch})
     step, board = rewrite(github, None)
 
@@ -1219,7 +1227,7 @@ def test_a_rewrite_changing_nothing_is_refused():
 
 def test_a_repository_of_the_owner_s_is_cloned_into_the_directory(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     repository = Repository(settings.owner, RepositoriesByOwner.repository_name)
     directory = repositories.root / "session"
 
@@ -1234,7 +1242,7 @@ def test_a_repository_of_the_owner_s_is_cloned_into_the_directory(
 
 def test_somebody_else_s_repository_is_cloned_to_be_read(
     repositories: RepositoriesByOwner, foreign_url: str, settings: WorkflowSettings
-):
+) -> None:
     repository = Repository(
         RepositoriesByOwner.foreign_owner, RepositoriesByOwner.repository_name
     )
@@ -1251,7 +1259,7 @@ def test_somebody_else_s_repository_is_cloned_to_be_read(
 
 def test_a_clone_carries_the_workflow_s_push_hook(
     repositories: RepositoriesByOwner, foreign_url: str, settings: WorkflowSettings
-):
+) -> None:
     repository = Repository(
         RepositoriesByOwner.foreign_owner, RepositoriesByOwner.repository_name
     )
@@ -1271,7 +1279,7 @@ def test_a_session_s_push_from_a_clone_of_somebody_else_s_repository_is_refused(
     foreign_url: str,
     settings: WorkflowSettings,
     in_claude_code: None,
-):
+) -> None:
     """
     A push run outside the workflow's commands, by a script, still meets the hook.
     """
@@ -1293,7 +1301,7 @@ def test_a_session_s_push_from_a_clone_of_somebody_else_s_repository_is_refused(
 
 def test_a_clone_from_inside_a_checkout_goes_next_to_it(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     checkout = repositories.clone(owned_url, "mine")
     repository = Repository(settings.owner, "another")
     arguments = RunnableCommand.parser().parse_args(
@@ -1311,7 +1319,7 @@ def test_somebody_else_s_repository_is_cloned_into_the_plugin_s_data(
     settings: WorkflowSettings,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     data = tmp_path / "plugin-data"
     monkeypatch.setenv(WorkflowVariable.PLUGIN_DATA, str(data))
     checkout = repositories.clone(owned_url, RepositoriesByOwner.repository_name)
@@ -1334,7 +1342,7 @@ def test_somebody_else_s_repository_is_not_cloned_without_the_plugin_s_data(
     owned_url: str,
     settings: WorkflowSettings,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     monkeypatch.delenv(WorkflowVariable.PLUGIN_DATA, raising=False)
     checkout = repositories.clone(owned_url, RepositoriesByOwner.repository_name)
     upstream = Repository(
@@ -1350,7 +1358,7 @@ def test_somebody_else_s_repository_is_not_cloned_without_the_plugin_s_data(
 
 def test_a_repository_cloned_before_is_reused(
     repositories: RepositoriesByOwner, foreign_url: str, settings: WorkflowSettings
-):
+) -> None:
     repository = Repository(
         RepositoriesByOwner.foreign_owner, RepositoriesByOwner.repository_name
     )
@@ -1372,7 +1380,7 @@ def test_a_repository_cloned_before_is_reused(
 
 def test_a_clone_from_outside_a_checkout_goes_into_the_directory(
     tmp_path: Path, settings: WorkflowSettings
-):
+) -> None:
     repository = Repository(settings.owner, "another")
     arguments = RunnableCommand.parser().parse_args(
         [WorkflowCommand.CLONE, repository.full_name]

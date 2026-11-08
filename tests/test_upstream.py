@@ -165,7 +165,7 @@ def proposal(
 # %% proposing
 
 
-def test_the_fork_s_pull_request_is_opened_upstream_linking_back_to_it():
+def test_the_fork_s_pull_request_is_opened_upstream_linking_back_to_it() -> None:
     local = pull_request(3, "feature", title="Add the thing")
     fork = ForkInMemory([local])
     upstream = ForkInMemory(forked_from=None, trunk="develop")
@@ -178,7 +178,7 @@ def test_the_fork_s_pull_request_is_opened_upstream_linking_back_to_it():
     ]
 
 
-def test_the_fork_s_pull_request_is_given_the_upstream_link():
+def test_the_fork_s_pull_request_is_given_the_upstream_link() -> None:
     fork = ForkInMemory([pull_request(3, "feature")])
     upstream = ForkInMemory(forked_from=None)
 
@@ -190,7 +190,7 @@ def test_the_fork_s_pull_request_is_given_the_upstream_link():
     ]
 
 
-def test_the_fork_s_pull_request_is_labelled_as_opened_upstream():
+def test_the_fork_s_pull_request_is_labelled_as_opened_upstream() -> None:
     fork = ForkInMemory([pull_request(3, "feature")])
     upstream = ForkInMemory(forked_from=None)
 
@@ -199,7 +199,7 @@ def test_the_fork_s_pull_request_is_labelled_as_opened_upstream():
     assert fork.label_sets == [(3, [UpstreamLabel.OPENED_UPSTREAM])]
 
 
-def test_the_fork_s_other_labels_are_kept():
+def test_the_fork_s_other_labels_are_kept() -> None:
     local = replace(pull_request(3, "feature"), labels=("ready",))
     fork = ForkInMemory([local])
     upstream = ForkInMemory(forked_from=None)
@@ -210,7 +210,7 @@ def test_the_fork_s_other_labels_are_kept():
 
 
 @pytest.mark.parametrize("carried", [True, False], ids=["label there", "label made"])
-def test_the_label_is_made_only_where_the_fork_lacks_it(carried: bool):
+def test_the_label_is_made_only_where_the_fork_lacks_it(carried: bool) -> None:
     fork = ForkInMemory(
         [pull_request(3, "feature")],
         carried={UpstreamLabel.OPENED_UPSTREAM} if carried else set(),
@@ -222,7 +222,7 @@ def test_the_label_is_made_only_where_the_fork_lacks_it(carried: bool):
     assert fork.carried == {UpstreamLabel.OPENED_UPSTREAM}
 
 
-def test_a_refused_proposal_labels_nothing():
+def test_a_refused_proposal_labels_nothing() -> None:
     fork = ForkInMemory([pull_request(3, "feature", state=PullRequestState.CLOSED)])
     upstream = ForkInMemory(forked_from=None)
 
@@ -232,7 +232,7 @@ def test_a_refused_proposal_labels_nothing():
     assert (fork.label_sets, fork.carried) == ([], set())
 
 
-def test_a_claude_code_session_may_not_propose():
+def test_a_claude_code_session_may_not_propose() -> None:
     fork = ForkInMemory([pull_request(3, "feature")])
     upstream = ForkInMemory(forked_from=None)
 
@@ -242,7 +242,7 @@ def test_a_claude_code_session_may_not_propose():
     assert (fork.written, upstream.written) == ([], [])
 
 
-def test_somebody_else_s_repository_is_not_proposed_from():
+def test_somebody_else_s_repository_is_not_proposed_from() -> None:
     fork = ForkInMemory([pull_request(3, "feature")])
     upstream = ForkInMemory(forked_from=None)
 
@@ -252,7 +252,7 @@ def test_somebody_else_s_repository_is_not_proposed_from():
     assert upstream.written == []
 
 
-def test_a_repository_that_is_no_fork_is_not_proposed_from():
+def test_a_repository_that_is_no_fork_is_not_proposed_from() -> None:
     fork = ForkInMemory([pull_request(3, "feature")], forked_from=None)
     upstream = ForkInMemory(forked_from=None)
 
@@ -276,7 +276,7 @@ def test_a_repository_that_is_no_fork_is_not_proposed_from():
 def test_a_pull_request_that_cannot_go_upstream_is_refused(
     fork_pull_requests: list[RestPullRequest],
     upstream_pull_requests: list[RestPullRequest],
-):
+) -> None:
     fork = ForkInMemory(fork_pull_requests)
     upstream = ForkInMemory(upstream_pull_requests, forked_from=None)
 
@@ -289,7 +289,7 @@ def test_a_pull_request_that_cannot_go_upstream_is_refused(
 # %% the suggestion in a draft's description
 
 
-def test_a_draft_on_a_fork_suggests_the_command_to_the_person():
+def test_a_draft_on_a_fork_suggests_the_command_to_the_person() -> None:
     suggestion = UpstreamSuggestion(ForkInMemory(), FORK)
 
     described = suggestion.appended_to("What the change does.", "feature")
@@ -298,14 +298,14 @@ def test_a_draft_on_a_fork_suggests_the_command_to_the_person():
     assert UpstreamSuggestion.opening_command(FORK, "feature") in described
 
 
-def test_a_description_ending_with_the_suggestion_keeps_it_once():
+def test_a_description_ending_with_the_suggestion_keeps_it_once() -> None:
     suggestion = UpstreamSuggestion(ForkInMemory(), FORK)
     described = suggestion.appended_to("What the change does.", "feature")
 
     assert suggestion.appended_to(described, "feature") == described
 
 
-def test_a_suggestion_amid_a_description_moves_to_its_end():
+def test_a_suggestion_amid_a_description_moves_to_its_end() -> None:
     suggestion = UpstreamSuggestion(ForkInMemory(), FORK)
     described = suggestion.appended_to("What the change does.", "feature")
 
@@ -316,7 +316,7 @@ def test_a_suggestion_amid_a_description_moves_to_its_end():
     assert rewritten.index("After the review.") < rewritten.index(command)
 
 
-def test_a_draft_on_a_repository_that_is_no_fork_suggests_nothing():
+def test_a_draft_on_a_repository_that_is_no_fork_suggests_nothing() -> None:
     suggestion = UpstreamSuggestion(ForkInMemory(forked_from=None), FORK)
 
     described = suggestion.appended_to("What the change does.", "feature")
@@ -400,7 +400,7 @@ def default_branch_tips(
 
 def test_a_fork_s_main_behind_its_upstream_is_fast_forwarded(
     work: WritePolicy, repositories: RepositoriesByOwner
-):
+) -> None:
     """
     Through git alone, as where the proxy refuses GitHub's compares and merge-upstream.
     """
@@ -417,7 +417,7 @@ def test_a_fork_s_main_is_fast_forwarded_past_the_checkout_s_push_hook(
     work: WritePolicy,
     repositories: RepositoriesByOwner,
     in_claude_code: None,  # noqa: F811
-):
+) -> None:
     """
     The hook refuses every change to the default branch a session would push.
     """
@@ -432,7 +432,7 @@ def test_a_fork_s_main_is_fast_forwarded_past_the_checkout_s_push_hook(
 
 def test_a_fork_s_main_up_to_date_is_left_alone(
     work: WritePolicy, repositories: RepositoriesByOwner
-):
+) -> None:
     with_upstream(work, repositories, ahead=0, own=0)
     before, _ = default_branch_tips(work, repositories)
 
@@ -443,7 +443,7 @@ def test_a_fork_s_main_up_to_date_is_left_alone(
 
 def test_a_fork_s_main_with_commits_of_its_own_is_refused(
     work: WritePolicy, repositories: RepositoriesByOwner
-):
+) -> None:
     """
     It is only ever fast-forwarded: never merged, never forced.
     """
@@ -456,7 +456,7 @@ def test_a_fork_s_main_with_commits_of_its_own_is_refused(
     assert default_branch_tips(work, repositories)[0] == before
 
 
-def test_a_repository_that_is_no_fork_follows_no_upstream(work: WritePolicy):
+def test_a_repository_that_is_no_fork_follows_no_upstream(work: WritePolicy) -> None:
     with pytest.raises(NotAForkError):
         ForkMainSync(work, ForkOfTheUpstream(forked_from=None)).run()
 
@@ -536,7 +536,7 @@ def following(
     return section, fork, retired
 
 
-def test_a_pull_request_merged_upstream_is_closed_and_its_stack_moved_on():
+def test_a_pull_request_merged_upstream_is_closed_and_its_stack_moved_on() -> None:
     merged = SearchedPullRequest(9, UPSTREAM_PULL_REQUEST, "2026-11-07T10:00:00Z")
     section, fork, retired = following({"branch-1": [merged]})
 
@@ -549,7 +549,7 @@ def test_a_pull_request_merged_upstream_is_closed_and_its_stack_moved_on():
     )
 
 
-def test_a_pull_request_still_open_upstream_is_left_alone():
+def test_a_pull_request_still_open_upstream_is_left_alone() -> None:
     open_upstream = SearchedPullRequest(9, UPSTREAM_PULL_REQUEST, None)
     section, fork, retired = following({"branch-1": [open_upstream]})
 

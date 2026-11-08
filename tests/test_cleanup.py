@@ -13,15 +13,12 @@ import time
 from pathlib import Path
 
 import pytest
-
-import github_workflow
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
 from basstler_domain_model.github.replayed_api import ReplayedApi
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import PullRequestState
 
-from github_workflow.command_line import RunnableCommand
-from github_workflow.session import WorkflowSession
+import github_workflow
 from github_workflow.cleanup import (
     BranchCleanup,
     BranchDiscard,
@@ -31,14 +28,15 @@ from github_workflow.cleanup import (
     KeptBranches,
     UnusedCloneRemoval,
 )
-from github_workflow.command_line import WorkflowCommand
+from github_workflow.command_line import RunnableCommand, WorkflowCommand
 from github_workflow.environment import WorkflowVariable
 from github_workflow.exceptions import NothingToDiscardError, UndiscardableBranchError
-from github_workflow.report_lines import Tone
 from github_workflow.locations import NotesFile, PluginDataDirectory
 from github_workflow.notes.branch import NotesBranch
-from github_workflow.remotes import OwnedRemotes
 from github_workflow.policy import WritePolicy
+from github_workflow.remotes import OwnedRemotes
+from github_workflow.report_lines import Tone
+from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
 from github_workflow.work import BranchStart, CommitWork, PushWork
 
@@ -68,7 +66,7 @@ def kept(tips: dict[str, str], *pull_requests: RestPullRequest) -> KeptBranches:
 # %% which branches are ready
 
 
-def test_a_closed_pull_request_s_branch_is_ready():
+def test_a_closed_pull_request_s_branch_is_ready() -> None:
     branches = kept(
         {"done": "a1"}, pull_request(1, "done", "a1", PullRequestState.CLOSED)
     )
@@ -76,7 +74,7 @@ def test_a_closed_pull_request_s_branch_is_ready():
     assert branches.ready() == ["done"]
 
 
-def test_a_branch_with_new_commits_since_closing_is_kept():
+def test_a_branch_with_new_commits_since_closing_is_kept() -> None:
     branches = kept(
         {"reused": "b2"}, pull_request(1, "reused", "b1", PullRequestState.CLOSED)
     )
@@ -84,7 +82,7 @@ def test_a_branch_with_new_commits_since_closing_is_kept():
     assert branches.ready() == []
 
 
-def test_a_branch_with_an_open_pull_request_is_kept():
+def test_a_branch_with_an_open_pull_request_is_kept() -> None:
     branches = kept(
         {"again": "c1"},
         pull_request(1, "again", "c1", PullRequestState.CLOSED),
@@ -94,7 +92,7 @@ def test_a_branch_with_an_open_pull_request_is_kept():
     assert branches.ready() == []
 
 
-def test_the_base_of_an_open_pull_request_is_kept():
+def test_the_base_of_an_open_pull_request_is_kept() -> None:
     """
     Deleting the branch of a closed, unmerged lower pull request would close the open
     one stacked on it, for good.
@@ -108,11 +106,11 @@ def test_the_base_of_an_open_pull_request_is_kept():
     assert branches.ready() == []
 
 
-def test_a_branch_that_never_had_a_pull_request_is_kept():
+def test_a_branch_that_never_had_a_pull_request_is_kept() -> None:
     assert kept({"work": "d1"}).ready() == []
 
 
-def test_a_protected_branch_is_never_ready():
+def test_a_protected_branch_is_never_ready() -> None:
     branches = kept(
         {"main": "e1", "notes": "e2"},
         pull_request(1, "main", "e1", PullRequestState.CLOSED),
@@ -122,7 +120,7 @@ def test_a_protected_branch_is_never_ready():
     assert branches.ready() == []
 
 
-def test_a_pull_request_from_another_repository_says_nothing_about_this_one():
+def test_a_pull_request_from_another_repository_says_nothing_about_this_one() -> None:
     branches = kept(
         {"same-name": "f1"},
         pull_request(1, "same-name", "f1", PullRequestState.CLOSED, "someone/fork"),
@@ -131,7 +129,7 @@ def test_a_pull_request_from_another_repository_says_nothing_about_this_one():
     assert branches.ready() == []
 
 
-def test_a_discarded_branch_still_at_its_commit_is_ready():
+def test_a_discarded_branch_still_at_its_commit_is_ready() -> None:
     branches = KeptBranches(
         {"tried": "g1"},
         [],
@@ -143,7 +141,7 @@ def test_a_discarded_branch_still_at_its_commit_is_ready():
     assert branches.ready() == ["tried"]
 
 
-def test_a_discarded_branch_with_new_commits_is_kept():
+def test_a_discarded_branch_with_new_commits_is_kept() -> None:
     branches = KeptBranches(
         {"tried": "g2"},
         [],
@@ -155,13 +153,13 @@ def test_a_discarded_branch_with_new_commits_is_kept():
     assert branches.ready() == []
 
 
-def test_the_discarded_list_reads_back_what_it_wrote():
+def test_the_discarded_list_reads_back_what_it_wrote() -> None:
     discarded = DiscardedBranches({"one": "a1", "two": "b2"})
 
     assert DiscardedBranches.from_text(discarded.to_text()) == discarded
 
 
-def test_the_reminder_names_how_many_and_the_command():
+def test_the_reminder_names_how_many_and_the_command() -> None:
     branches = kept(
         {"one": "a", "two": "b"},
         pull_request(1, "one", "a", PullRequestState.CLOSED),
@@ -212,7 +210,7 @@ def cleanup_in(
 
 def test_a_ready_branch_is_deleted(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     cleanup, git = cleanup_in(repositories, owned_url, settings)
 
     cleanup.run()
@@ -222,7 +220,7 @@ def test_a_ready_branch_is_deleted(
 
 def test_a_deleted_branch_is_entered_in_the_session_log(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     cleanup, _ = cleanup_in(repositories, owned_url, settings)
 
     cleanup.run()
@@ -233,7 +231,7 @@ def test_a_deleted_branch_is_entered_in_the_session_log(
 
 def test_a_branch_the_session_may_not_delete_is_listed_for_the_workflow(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     bare = Path(owned_url.removeprefix("file://"))
     GitCommandRunner(bare).run("config", "receive.denyDeletes", "true")
     cleanup, git = cleanup_in(repositories, owned_url, settings)
@@ -297,7 +295,7 @@ def run_deletion_workflow(
 
 def test_the_workflow_deletes_a_listed_branch_still_at_its_commit(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     listed_for_the_workflow(repositories, owned_url, settings)
 
     run_deletion_workflow(repositories, owned_url, settings)
@@ -307,7 +305,7 @@ def test_the_workflow_deletes_a_listed_branch_still_at_its_commit(
 
 def test_the_workflow_empties_the_list_it_handled(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     cleanup = listed_for_the_workflow(repositories, owned_url, settings)
 
     run_deletion_workflow(repositories, owned_url, settings)
@@ -318,7 +316,7 @@ def test_the_workflow_empties_the_list_it_handled(
 
 def test_the_workflow_keeps_a_listed_branch_that_moved_since(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     listed_for_the_workflow(repositories, owned_url, settings)
     reused = repositories.clone(owned_url, "reuser").git
     reused.run("commit", "--quiet", "--allow-empty", "--message", "New work")
@@ -377,7 +375,7 @@ def discard(
 
 def test_a_discarded_branch_s_open_pull_request_is_closed(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     policy, notes = pushed_work(repositories, owned_url, settings)
     retired = RetiredInMemory()
     opened = [
@@ -393,7 +391,7 @@ def test_a_discarded_branch_s_open_pull_request_is_closed(
 
 def test_a_discarded_branch_is_listed_with_its_commit(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     policy, notes = pushed_work(repositories, owned_url, settings)
 
     discard(policy, notes).run()
@@ -406,7 +404,7 @@ def test_a_discarded_branch_is_listed_with_its_commit(
 
 def test_discarding_the_default_branch_is_refused(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     policy, notes = pushed_work(repositories, owned_url, settings)
 
     with pytest.raises(UndiscardableBranchError):
@@ -415,7 +413,7 @@ def test_discarding_the_default_branch_is_refused(
 
 def test_discarding_a_branch_github_lacks_is_refused(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     policy, notes = pushed_work(repositories, owned_url, settings)
     BranchStart(policy, "never-pushed").run()
 
@@ -458,7 +456,7 @@ def test_a_clone_no_session_used_for_a_month_is_removed(
     foreign_url: str,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     data = tmp_path / "plugin-data"
     monkeypatch.setenv(WorkflowVariable.PLUGIN_DATA, str(data))
     checkout = repositories.clone(owned_url, "session")
@@ -470,7 +468,7 @@ def test_a_clone_no_session_used_for_a_month_is_removed(
     assert not clone.exists()
 
 
-def test_a_clone_used_within_the_week_is_kept(foreign_url: str, tmp_path: Path):
+def test_a_clone_used_within_the_week_is_kept(foreign_url: str, tmp_path: Path) -> None:
     removal = UnusedCloneRemoval(tmp_path / "clones")
     clone = foreign_clone(removal.clones, foreign_url)
     clone_used(clone, removal.unused_for.total_seconds() / 2)
@@ -480,7 +478,9 @@ def test_a_clone_used_within_the_week_is_kept(foreign_url: str, tmp_path: Path):
     assert clone.exists()
 
 
-def test_a_fetch_into_an_old_clone_counts_as_using_it(foreign_url: str, tmp_path: Path):
+def test_a_fetch_into_an_old_clone_counts_as_using_it(
+    foreign_url: str, tmp_path: Path
+) -> None:
     removal = UnusedCloneRemoval(tmp_path / "clones")
     clone = foreign_clone(removal.clones, foreign_url)
     clone_used(clone, 2 * removal.unused_for.total_seconds())
@@ -492,7 +492,9 @@ def test_a_fetch_into_an_old_clone_counts_as_using_it(foreign_url: str, tmp_path
     assert clone.exists()
 
 
-def test_an_owner_s_directory_left_empty_is_removed(foreign_url: str, tmp_path: Path):
+def test_an_owner_s_directory_left_empty_is_removed(
+    foreign_url: str, tmp_path: Path
+) -> None:
     removal = UnusedCloneRemoval(tmp_path / "clones")
     clone = foreign_clone(removal.clones, foreign_url)
     clone_used(clone, 2 * removal.unused_for.total_seconds())
@@ -508,7 +510,7 @@ def test_without_the_plugin_s_data_no_clone_is_looked_at(
     owned_url: str,
     settings: WorkflowSettings,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     monkeypatch.delenv(WorkflowVariable.PLUGIN_DATA, raising=False)
     checkout = repositories.clone(owned_url, "session")
     arguments = RunnableCommand.parser().parse_args([WorkflowCommand.CLEANUP])

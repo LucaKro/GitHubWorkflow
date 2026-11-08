@@ -8,15 +8,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from http import HTTPStatus
 
-import github_workflow
 from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
 from basstler_domain_model.github.routes import RepositoryRoute
 from basstler_domain_model.repository import Repository
 
+import github_workflow
 from github_workflow.command_line import WorkflowCommand
 from github_workflow.freshness import BranchFreshening, FreshenedStep
-from github_workflow.report_lines import Tone
 from github_workflow.policy import WritePolicy
+from github_workflow.report_lines import Tone
 from github_workflow.settings import WorkflowSettings
 from github_workflow.work import BranchSwitch, WorkflowStep
 
@@ -83,7 +83,7 @@ class Done(WorkflowStep):
 
 def test_a_work_branch_behind_its_base_is_merged_with_it(
     work: WritePolicy, repositories: RepositoriesByOwner
-):
+) -> None:
     changed = change_on_github(
         work, repositories, RepositoriesByOwner.default_branch, "b.txt"
     )
@@ -96,7 +96,7 @@ def test_a_work_branch_behind_its_base_is_merged_with_it(
 
 def test_a_conflicting_merge_is_left_for_the_session(
     work: WritePolicy, repositories: RepositoriesByOwner
-):
+) -> None:
     head = work.checkout.git.commit_at("HEAD")
     change_on_github(work, repositories, RepositoriesByOwner.default_branch, "a.txt")
 
@@ -108,7 +108,7 @@ def test_a_conflicting_merge_is_left_for_the_session(
 
 def test_changes_in_the_working_tree_keep_the_merge_off(
     work: WritePolicy, repositories: RepositoriesByOwner
-):
+) -> None:
     head = work.checkout.git.commit_at("HEAD")
     change_on_github(work, repositories, RepositoriesByOwner.default_branch, "b.txt")
     (work.checkout.root / "a.txt").write_text("changed, not committed\n")
@@ -121,7 +121,7 @@ def test_changes_in_the_working_tree_keep_the_merge_off(
 
 def test_a_stacked_branch_is_merged_with_the_branch_below(
     work: WritePolicy, repositories: RepositoriesByOwner
-):
+) -> None:
     git = work.checkout.git
     git.run("push", "--quiet", "origin", f"{RepositoriesByOwner.default_branch}:below")
     below = change_on_github(work, repositories, "below", "b.txt")
@@ -135,13 +135,13 @@ def test_a_stacked_branch_is_merged_with_the_branch_below(
     assert not git.contains(elsewhere, "HEAD")
 
 
-def test_an_up_to_date_work_branch_says_nothing(work: WritePolicy):
+def test_an_up_to_date_work_branch_says_nothing(work: WritePolicy) -> None:
     assert freshening(work).lines() == []
 
 
 def test_the_default_branch_checked_out_is_left_alone(
     work: WritePolicy, repositories: RepositoriesByOwner
-):
+) -> None:
     BranchSwitch(work, RepositoriesByOwner.default_branch).run()
     head = work.checkout.git.commit_at("HEAD")
     change_on_github(work, repositories, RepositoriesByOwner.default_branch, "b.txt")
@@ -155,7 +155,7 @@ def test_the_default_branch_checked_out_is_left_alone(
 
 def test_a_fork_s_main_behind_its_upstream_is_fast_forwarded(
     work: WritePolicy, repositories: RepositoriesByOwner
-):
+) -> None:
     with_upstream(work, repositories, ahead=2, own=0)
 
     BranchFreshening(work, ForkOfTheUpstream(), ForkInMemory()).fork_lines()
@@ -166,7 +166,7 @@ def test_a_fork_s_main_behind_its_upstream_is_fast_forwarded(
 
 def test_a_fork_s_main_with_commits_of_its_own_is_left_for_the_person(
     work: WritePolicy, repositories: RepositoriesByOwner
-):
+) -> None:
     with_upstream(work, repositories, ahead=1, own=1)
     before = default_branch_tips(work, repositories)
 
@@ -181,7 +181,7 @@ def test_a_fork_s_main_with_commits_of_its_own_is_left_for_the_person(
 
 def test_a_command_says_what_was_brought_up_to_date_first(
     work: WritePolicy, repositories: RepositoriesByOwner
-):
+) -> None:
     change_on_github(work, repositories, RepositoriesByOwner.default_branch, "b.txt")
     step = FreshenedStep(freshening(work), Done())
 
@@ -195,7 +195,7 @@ def test_a_push_brings_the_work_branch_up_to_the_default_branch(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     route = RepositoryRoute(
         Repository(settings.owner, RepositoriesByOwner.repository_name)
     )

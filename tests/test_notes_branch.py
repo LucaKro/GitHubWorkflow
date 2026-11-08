@@ -24,7 +24,7 @@ def test_notes_are_saved_to_the_settings_branch_on_the_owner_s_remote(
     owned_url: str,
     foreign_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     checkout = repositories.clone(foreign_url, "upstream-clone")
     checkout.git.run("remote", "add", "fork", owned_url)
     notes = NotesBranch.from_settings(

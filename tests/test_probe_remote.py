@@ -9,7 +9,6 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-
 from basstler_domain_model.git.commands import RemoteBranch
 from basstler_domain_model.git.storage_branch import StorageBranch
 from basstler_domain_model.github.clients import GitHubApi
@@ -46,7 +45,7 @@ def test_a_foreign_origin_is_refused_before_anything_is_written(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     entry_point: Callable[[], None],
-):
+) -> None:
     checkout = repositories.clone(foreign_url, "upstream-clone")
     output = tmp_path / "check-1"
     output.mkdir()
@@ -67,7 +66,7 @@ def test_results_go_to_the_owned_remote_when_origin_is_foreign(
     owned_url: str,
     settings: WorkflowSettings,
     tmp_path: Path,
-):
+) -> None:
     checkout = repositories.clone(foreign_url, "upstream-clone")
     checkout.git.run("remote", "add", "fork", owned_url)
     directory = tmp_path / "check-1"

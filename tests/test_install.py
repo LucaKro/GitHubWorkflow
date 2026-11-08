@@ -46,7 +46,7 @@ class RuntimeDataset(PathEnumeration):
 
 def test_a_runtime_built_from_a_plugin_whose_content_changed_since_is_not_current(
     tmp_path: Path,
-):
+) -> None:
     plugin = tmp_path / "plugin"
     plugin.mkdir()
     (plugin / "module.py").write_text("before\n")
@@ -59,7 +59,7 @@ def test_a_runtime_built_from_a_plugin_whose_content_changed_since_is_not_curren
 @pytest.mark.parametrize("directory", list(UnstampedDirectory))
 def test_a_change_outside_what_the_runtime_is_built_from_keeps_it_current(
     tmp_path: Path, directory: UnstampedDirectory
-):
+) -> None:
     plugin = tmp_path / "plugin"
     (plugin / directory).mkdir(parents=True)
     runtime = built_from(tmp_path / "environments" / "runtime", plugin)
@@ -79,24 +79,24 @@ def built_from(location: Path, plugin: Path) -> Path:
     return location
 
 
-def test_a_runtime_built_from_this_plugin_is_current(tmp_path: Path):
+def test_a_runtime_built_from_this_plugin_is_current(tmp_path: Path) -> None:
     plugin = tmp_path / "plugin"
     runtime = built_from(tmp_path / "runtime", plugin)
 
     assert RuntimeInstallation(plugin, runtime).current
 
 
-def test_a_runtime_built_from_another_plugin_is_not(tmp_path: Path):
+def test_a_runtime_built_from_another_plugin_is_not(tmp_path: Path) -> None:
     runtime = built_from(tmp_path / "runtime", tmp_path / "old-plugin")
 
     assert not RuntimeInstallation(tmp_path / "new-plugin", runtime).current
 
 
-def test_no_runtime_is_not_current(tmp_path: Path):
+def test_no_runtime_is_not_current(tmp_path: Path) -> None:
     assert not RuntimeInstallation(tmp_path / "plugin", tmp_path / "runtime").current
 
 
-def test_a_current_runtime_is_not_built_again(tmp_path: Path):
+def test_a_current_runtime_is_not_built_again(tmp_path: Path) -> None:
     plugin = tmp_path / "plugin"
     runtime = built_from(tmp_path / "environments" / "runtime", plugin)
 
@@ -109,7 +109,7 @@ def test_a_current_runtime_is_not_built_again(tmp_path: Path):
 
 def test_a_failing_build_leaves_the_runtime_in_use_alone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+) -> None:
     """
     An interpreter that does not exist fails the very first step, before any download.
     """
@@ -127,7 +127,7 @@ def test_a_failing_build_leaves_the_runtime_in_use_alone(
 
 def test_a_failing_step_is_reported_with_what_it_said_on_its_error_output(
     tmp_path: Path,
-):
+) -> None:
     build = tmp_path / "build"
     build.mkdir()
 
@@ -144,7 +144,7 @@ def test_a_failing_step_is_reported_with_what_it_said_on_its_error_output(
 
 def test_a_runtime_is_built_without_pip(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+) -> None:
     """
     pip reaches a package index for the build tools of both packages, which a session's
     network may not allow. Every command a build starts is recorded and succeeds;
@@ -174,7 +174,7 @@ def test_a_runtime_is_built_without_pip(
 
 def test_a_runtime_is_built_without_downloading_the_domain_model(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+) -> None:
     """
     The domain model is shipped with the plugin, so a build runs no git command, which
     a session's network or a commit gone from GitHub would make fail.
@@ -224,7 +224,7 @@ def builds_commands_check_fails(
 
 def test_a_runtime_whose_commands_do_not_load_is_not_switched_to(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+) -> None:
     monkeypatch.setattr(
         github_workflow.install.subprocess, "run", builds_commands_check_fails
     )
@@ -245,7 +245,7 @@ def test_a_runtime_whose_commands_do_not_load_is_not_switched_to(
 )
 def test_a_runtime_built_with_the_pinned_domain_model_runs_its_commands(
     tmp_path: Path,
-):
+) -> None:
     """
     Builds a runtime for real, so a pin too old for the workflow's code fails here
     rather than in a session.
@@ -274,7 +274,7 @@ def test_a_runtime_built_with_the_pinned_domain_model_runs_its_commands(
 # %% the launcher
 
 
-def test_the_launcher_runs_the_workflow_from_the_runtime(tmp_path: Path):
+def test_the_launcher_runs_the_workflow_from_the_runtime(tmp_path: Path) -> None:
     """
     A runtime whose interpreter hands over to this one, which has the workflow
     installed.
@@ -297,7 +297,7 @@ def test_the_launcher_runs_the_workflow_from_the_runtime(tmp_path: Path):
 
 def test_a_file_of_the_launcher_s_name_that_is_not_the_workflow_s_is_left_alone(
     tmp_path: Path,
-):
+) -> None:
     (tmp_path / "bin").mkdir()
     own = tmp_path / "bin" / Launcher.COMMAND
     own.write_text("#!/bin/sh\necho mine\n")
@@ -307,7 +307,7 @@ def test_a_file_of_the_launcher_s_name_that_is_not_the_workflow_s_is_left_alone(
     assert own.read_text() == "#!/bin/sh\necho mine\n"
 
 
-def test_an_earlier_launcher_of_the_workflow_s_is_replaced(tmp_path: Path):
+def test_an_earlier_launcher_of_the_workflow_s_is_replaced(tmp_path: Path) -> None:
     LauncherInstallation(tmp_path / "bin", tmp_path / "old").install()
     newer = LauncherInstallation(tmp_path / "bin", tmp_path / "new")
 
@@ -319,7 +319,7 @@ def test_an_earlier_launcher_of_the_workflow_s_is_replaced(tmp_path: Path):
 @pytest.mark.parametrize("on_path", [True, False])
 def test_a_launcher_outside_the_path_says_so(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, on_path: bool
-):
+) -> None:
     directory = tmp_path / "bin"
     monkeypatch.setenv("PATH", str(directory) if on_path else "/usr/bin")
 
@@ -333,7 +333,7 @@ def test_a_launcher_outside_the_path_says_so(
 
 def test_an_install_waits_for_the_one_running_and_takes_its_runtime(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+) -> None:
     """
     An interpreter that does not exist makes an install that does not wait fail at once,
     so a running install is what keeps it waiting.
@@ -357,7 +357,7 @@ def test_an_install_waits_for_the_one_running_and_takes_its_runtime(
     assert installed == [None]
 
 
-def test_a_current_runtime_is_not_started_again(tmp_path: Path):
+def test_a_current_runtime_is_not_started_again(tmp_path: Path) -> None:
     plugin = tmp_path / "plugin"
     runtime = built_from(tmp_path / "environments" / "runtime", plugin)
 
@@ -366,7 +366,7 @@ def test_a_current_runtime_is_not_started_again(tmp_path: Path):
 
 def test_a_started_install_runs_this_installer_on_its_own(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+) -> None:
     plugin = tmp_path / "plugin"
     runtime = tmp_path / "runtime"
     started: list[list[str]] = []
@@ -390,7 +390,9 @@ def test_a_started_install_runs_this_installer_on_its_own(
 # %% switching over
 
 
-def test_the_first_switch_turns_the_runtime_into_a_link_to_the_build(tmp_path: Path):
+def test_the_first_switch_turns_the_runtime_into_a_link_to_the_build(
+    tmp_path: Path,
+) -> None:
     location = tmp_path / "runtime"
     location.mkdir()
     build = tmp_path / ".runtime-build"
@@ -405,7 +407,9 @@ def test_the_first_switch_turns_the_runtime_into_a_link_to_the_build(tmp_path: P
     ]
 
 
-def test_a_later_switch_moves_the_link_and_removes_the_build_before(tmp_path: Path):
+def test_a_later_switch_moves_the_link_and_removes_the_build_before(
+    tmp_path: Path,
+) -> None:
     location = tmp_path / "runtime"
     first = tmp_path / ".runtime-first"
     second = tmp_path / ".runtime-second"
@@ -419,7 +423,7 @@ def test_a_later_switch_moves_the_link_and_removes_the_build_before(tmp_path: Pa
     assert not first.exists()
 
 
-def test_a_switch_where_no_runtime_was_creates_the_link(tmp_path: Path):
+def test_a_switch_where_no_runtime_was_creates_the_link(tmp_path: Path) -> None:
     build = tmp_path / ".runtime-build"
     build.mkdir()
 
@@ -433,7 +437,7 @@ def test_a_switch_where_no_runtime_was_creates_the_link(tmp_path: Path):
 
 def test_a_command_line_names_the_launcher_running_this_interpreter(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+) -> None:
     LauncherInstallation(tmp_path / "bin", Path(sys.executable).parents[1]).install()
     monkeypatch.setenv("PATH", str(tmp_path / "bin"))
 
@@ -444,7 +448,7 @@ def test_a_command_line_names_the_launcher_running_this_interpreter(
 
 def test_a_launcher_running_another_interpreter_is_not_named(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+) -> None:
     LauncherInstallation(tmp_path / "bin", tmp_path / "another-runtime").install()
     monkeypatch.setenv("PATH", str(tmp_path / "bin"))
 

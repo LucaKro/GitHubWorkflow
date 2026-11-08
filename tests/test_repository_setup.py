@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import pytest
-
 from basstler_domain_model.github.repository_client import (
     RepositoryFeatures,
 )
@@ -17,8 +16,8 @@ from basstler_domain_model.github.rest_models import Workflow, WorkflowRun
 from basstler_domain_model.github.vocabulary import WorkflowState
 from basstler_domain_model.repository import Repository
 
-from github_workflow.report_lines import Tone
 from github_workflow.locations import NotesFile
+from github_workflow.report_lines import Tone
 from github_workflow.repository_setup import RepositorySetup
 
 REPOSITORY = Repository("LucaKro", "a-repository")
@@ -100,14 +99,16 @@ class SettingsInMemory(RepositoryFeatures):
 # %% turning features on
 
 
-def test_a_repository_set_up_already_is_left_alone():
+def test_a_repository_set_up_already_is_left_alone() -> None:
     settings = SettingsInMemory()
 
     assert RepositorySetup(REPOSITORY, settings).lines() == []
     assert settings.changes == []
 
 
-def test_merged_branch_deletion_and_issues_that_are_off_are_left_for_the_person():
+def test_merged_branch_deletion_and_issues_that_are_off_are_left_for_the_person() -> (
+    None
+):
     """
     Turning a feature on changes the repository for everyone who uses it, a fork's
     public issues among it: only the person opts in.
@@ -120,7 +121,7 @@ def test_merged_branch_deletion_and_issues_that_are_off_are_left_for_the_person(
     assert [line.tone for line in lines] == [Tone.ACTION] * 2
 
 
-def test_actions_that_are_off_are_left_for_the_person_to_turn_on():
+def test_actions_that_are_off_are_left_for_the_person_to_turn_on() -> None:
     """
     Actions run every workflow on the repository, an upstream's on a fork among them,
     under the owner's account: only the person decides that.
@@ -134,7 +135,7 @@ def test_actions_that_are_off_are_left_for_the_person_to_turn_on():
     assert f"{REPOSITORY.settings_url}/actions" in line.text
 
 
-def test_actions_that_cannot_be_read_are_not_touched():
+def test_actions_that_cannot_be_read_are_not_touched() -> None:
     settings = SettingsInMemory(actions=None)
 
     assert RepositorySetup(REPOSITORY, settings).lines() == []
@@ -153,7 +154,7 @@ def test_actions_that_cannot_be_read_are_not_touched():
 )
 def test_a_feature_that_is_off_says_where_to_turn_it_on(
     settings: SettingsInMemory, page: str
-):
+) -> None:
     [line] = RepositorySetup(REPOSITORY, settings).lines()
 
     assert settings.changes == []
@@ -164,7 +165,9 @@ def test_a_feature_that_is_off_says_where_to_turn_it_on(
 # %% the notes branch's workflows
 
 
-def test_a_notes_workflow_github_turned_off_is_reported_with_where_to_turn_it_on():
+def test_a_notes_workflow_github_turned_off_is_reported_with_where_to_turn_it_on() -> (
+    None
+):
     posting = Workflow(
         "Post discussions",
         str(NotesFile.POSTING_WORKFLOW.value),
@@ -189,7 +192,7 @@ def test_a_notes_workflow_github_turned_off_is_reported_with_where_to_turn_it_on
     ],
     ids=["running", "not the notes branch's"],
 )
-def test_other_workflows_are_left_unreported(workflow: Workflow):
+def test_other_workflows_are_left_unreported(workflow: Workflow) -> None:
     settings = SettingsInMemory(listed=[workflow])
 
     assert RepositorySetup(REPOSITORY, settings).lines() == []

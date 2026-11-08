@@ -47,7 +47,7 @@ def board_with(issue: Issue) -> IssuesInMemory:
 # %% completing a label change
 
 
-def test_a_picked_stage_replaces_the_previous_stage():
+def test_a_picked_stage_replaces_the_previous_stage() -> None:
     issue = labelled(
         finding(1, FindingStage.UNREVIEWED, Priority.LOW), FindingStage.SHELVED
     )
@@ -58,7 +58,7 @@ def test_a_picked_stage_replaces_the_previous_stage():
     assert board.writes == [f"remove_label 1 {FindingStage.UNREVIEWED}"]
 
 
-def test_a_picked_incorrect_stage_closes_the_finding_as_not_planned():
+def test_a_picked_incorrect_stage_closes_the_finding_as_not_planned() -> None:
     issue = labelled(
         finding(1, FindingStage.ACCEPTED, Priority.LOW), FindingStage.INCORRECT
     )
@@ -72,7 +72,7 @@ def test_a_picked_incorrect_stage_closes_the_finding_as_not_planned():
     ]
 
 
-def test_a_picked_priority_replaces_the_previous_priority():
+def test_a_picked_priority_replaces_the_previous_priority() -> None:
     issue = labelled(finding(1, FindingStage.ACCEPTED, Priority.LOW), Priority.HIGH)
     board = board_with(issue)
 
@@ -81,7 +81,7 @@ def test_a_picked_priority_replaces_the_previous_priority():
     assert board.writes == [f"remove_label 1 {Priority.LOW}"]
 
 
-def test_a_priority_picked_on_a_plain_issue_makes_it_an_unreviewed_finding():
+def test_a_priority_picked_on_a_plain_issue_makes_it_an_unreviewed_finding() -> None:
     issue = Issue(1, "An issue", ("bug", Priority.MEDIUM), IssueState.OPEN)
     board = board_with(issue)
 
@@ -90,7 +90,7 @@ def test_a_priority_picked_on_a_plain_issue_makes_it_an_unreviewed_finding():
     assert board.writes == [f"add_labels 1 {[FindingStage.UNREVIEWED]}"]
 
 
-def test_picked_evidence_replaces_the_previous_evidence():
+def test_picked_evidence_replaces_the_previous_evidence() -> None:
     unproven = labelled(
         finding(1, FindingStage.ACCEPTED, Priority.LOW), Evidence.UNPROVEN
     )
@@ -101,7 +101,7 @@ def test_picked_evidence_replaces_the_previous_evidence():
     assert board.writes == [f"remove_label 1 {Evidence.UNPROVEN}"]
 
 
-def test_a_label_removed_again_since_changes_nothing():
+def test_a_label_removed_again_since_changes_nothing() -> None:
     board = board_with(finding(1, FindingStage.UNREVIEWED, Priority.LOW))
 
     FindingLabelCompletion(board, 1, FindingStage.SHELVED).run()
@@ -109,7 +109,7 @@ def test_a_label_removed_again_since_changes_nothing():
     assert board.writes == []
 
 
-def test_a_label_outside_the_findings_changes_nothing():
+def test_a_label_outside_the_findings_changes_nothing() -> None:
     issue = labelled(finding(1, FindingStage.UNREVIEWED, Priority.LOW), "bug")
     board = board_with(issue)
 
@@ -121,7 +121,9 @@ def test_a_label_outside_the_findings_changes_nothing():
 # %% the Actions workflow
 
 
-def test_the_actions_workflow_is_written_into_the_checkout_filled_in(tmp_path: Path):
+def test_the_actions_workflow_is_written_into_the_checkout_filled_in(
+    tmp_path: Path,
+) -> None:
     FindingAutomation(tmp_path).run()
 
     workflow = (tmp_path / ProjectFile.LABEL_COMPLETION_WORKFLOW.value).read_text()
@@ -187,7 +189,7 @@ def with_labels(*labels: str) -> Issue:
     return Issue(1, "Finding 1", labels, IssueState.OPEN)
 
 
-def test_the_stage_added_last_replaces_the_one_before_it():
+def test_the_stage_added_last_replaces_the_one_before_it() -> None:
     board = labelled_board(
         with_labels(FindingStage.UNREVIEWED, Priority.MEDIUM, FindingStage.ACCEPTED)
     )
@@ -199,7 +201,7 @@ def test_the_stage_added_last_replaces_the_one_before_it():
     assert board.writes == [f"remove_label 1 {FindingStage.UNREVIEWED}"]
 
 
-def test_the_priority_added_last_replaces_the_one_before_it():
+def test_the_priority_added_last_replaces_the_one_before_it() -> None:
     board = labelled_board(
         with_labels(FindingStage.ACCEPTED, Priority.HIGH, Priority.LOW)
     )
@@ -211,7 +213,7 @@ def test_the_priority_added_last_replaces_the_one_before_it():
     assert board.writes == [f"remove_label 1 {Priority.LOW}"]
 
 
-def test_an_open_incorrect_finding_is_closed():
+def test_an_open_incorrect_finding_is_closed() -> None:
     board = labelled_board(with_labels(FindingStage.INCORRECT, Priority.LOW))
 
     completion(board, {}).complete()
@@ -219,14 +221,14 @@ def test_an_open_incorrect_finding_is_closed():
     assert f"close_issue 1 {IssueStateReason.NOT_PLANNED}" in board.writes
 
 
-def test_a_finding_with_one_label_of_each_kind_is_left_as_it_is():
+def test_a_finding_with_one_label_of_each_kind_is_left_as_it_is() -> None:
     board = labelled_board(finding(1, FindingStage.ACCEPTED, Priority.LOW))
 
     assert completion(board, {}).complete() == []
     assert board.writes == []
 
 
-def test_the_session_start_says_what_was_completed_first():
+def test_the_session_start_says_what_was_completed_first() -> None:
     board = labelled_board(with_labels(FindingStage.INCORRECT, Priority.LOW))
 
     [line] = LabelsCompletedReport(completion(board, {}), NothingToSay()).lines()

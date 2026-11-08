@@ -22,7 +22,7 @@ from github_workflow.findings import Priority
 
 
 @pytest.mark.parametrize("command", list(RunnableCommand))
-def test_every_command_is_parsed_under_its_words(command: RunnableCommand):
+def test_every_command_is_parsed_under_its_words(command: RunnableCommand) -> None:
     required = [
         word
         for argument in command.arguments
@@ -37,7 +37,9 @@ def test_every_command_is_parsed_under_its_words(command: RunnableCommand):
 
 
 @pytest.mark.parametrize("command", list(RunnableCommand))
-def test_every_command_has_the_class_building_its_step(command: RunnableCommand):
+def test_every_command_has_the_class_building_its_step(
+    command: RunnableCommand,
+) -> None:
     arguments = argparse.Namespace(
         command=command.words[0], action=(command.words[1:] or [None])[0]
     )
@@ -48,13 +50,13 @@ def test_every_command_has_the_class_building_its_step(command: RunnableCommand)
 # %% lines naming a command
 
 
-def test_a_line_names_the_arguments_asked_for_with_their_placeholders():
+def test_a_line_names_the_arguments_asked_for_with_their_placeholders() -> None:
     line = RunnableCommand.SYNC.words_naming(CommandOption.ON)
 
     assert line == [*RunnableCommand.SYNC.words, f"{CommandOption.ON} <number>"]
 
 
-def test_a_line_shows_a_value_given_in_place_of_the_placeholder():
+def test_a_line_shows_a_value_given_in_place_of_the_placeholder() -> None:
     line = RunnableCommand.SYNC.words_naming(
         CommandOption.CONTINUE, values={CommandOption.CONTINUE: "a.py b.py"}
     )
@@ -62,7 +64,7 @@ def test_a_line_shows_a_value_given_in_place_of_the_placeholder():
     assert line == [*RunnableCommand.SYNC.words, f"{CommandOption.CONTINUE} a.py b.py"]
 
 
-def test_a_line_naming_an_argument_the_command_lacks_is_refused():
+def test_a_line_naming_an_argument_the_command_lacks_is_refused() -> None:
     with pytest.raises(KeyError):
         RunnableCommand.PUSH.words_naming(CommandOption.TITLE)
 
@@ -70,11 +72,11 @@ def test_a_line_naming_an_argument_the_command_lacks_is_refused():
 # %% who runs a command
 
 
-def test_a_session_describes_its_own_pull_request_on_its_own():
+def test_a_session_describes_its_own_pull_request_on_its_own() -> None:
     assert RunnableCommand.DESCRIBE.runs_unasked(list(RunnableCommand.DESCRIBE.words))
 
 
-def test_describing_another_pull_request_is_the_person_s_word():
+def test_describing_another_pull_request_is_the_person_s_word() -> None:
     words = [*RunnableCommand.DESCRIBE.words, "12"]
 
     assert not RunnableCommand.DESCRIBE.runs_unasked(words)
@@ -90,7 +92,7 @@ def test_describing_another_pull_request_is_the_person_s_word():
 )
 def test_a_command_on_the_person_s_word_is_never_run_unasked(
     command: RunnableCommand,
-):
+) -> None:
     assert not command.runs_unasked(list(command.words))
 
 
@@ -98,5 +100,5 @@ def test_a_command_on_the_person_s_word_is_never_run_unasked(
 
 
 @pytest.mark.parametrize("level", list(PriorityLevel))
-def test_each_priority_level_has_its_label(level: PriorityLevel):
+def test_each_priority_level_has_its_label(level: PriorityLevel) -> None:
     assert Priority.at_level(level).level is level

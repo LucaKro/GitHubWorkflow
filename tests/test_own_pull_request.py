@@ -8,19 +8,18 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 
 import pytest
-
 from basstler_domain_model.github.pull_request_models import UpstreamPullRequestSnapshot
+from basstler_domain_model.github.readers import PullRequestSource
+from basstler_domain_model.github.repository_client import Commenter, ForkDetails
+from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.review_models import (
     Author,
     BranchPullRequest,
+    Review,
     ReviewThread,
     ThreadComment,
 )
-from basstler_domain_model.github.repository_client import Commenter, ForkDetails
-from basstler_domain_model.github.rest_models import RestPullRequest
-from basstler_domain_model.github.review_models import Review
 from basstler_domain_model.github.review_writers import ReviewThreadWriter
-from basstler_domain_model.github.readers import PullRequestSource
 from basstler_domain_model.github.vocabulary import PullRequestState, ReviewState
 from basstler_domain_model.repository import Repository
 
@@ -69,7 +68,7 @@ def own(work: WritePolicy, *opened) -> WorkBranchPullRequest:  # noqa: F811
 
 def test_a_branch_without_an_open_pull_request_has_none_to_write_to(
     work: WritePolicy,  # noqa: F811
-):
+) -> None:
     closed = pull_request(3, "feature", state=PullRequestState.CLOSED)
 
     with pytest.raises(NoOpenPullRequestError):
@@ -88,7 +87,7 @@ def labelled() -> IssuesInMemory:
 
 def test_labels_the_repository_has_are_added_to_the_pull_request(
     work: WritePolicy,  # noqa: F811
-):
+) -> None:
     board = labelled()
 
     PullRequestLabelling(
@@ -100,7 +99,7 @@ def test_labels_the_repository_has_are_added_to_the_pull_request(
 
 def test_a_label_the_repository_lacks_is_refused_before_anything_is_written(
     work: WritePolicy,  # noqa: F811
-):
+) -> None:
     board = labelled()
 
     with pytest.raises(UnknownLabelError):
@@ -113,7 +112,7 @@ def test_a_label_the_repository_lacks_is_refused_before_anything_is_written(
 
 def test_only_labels_the_pull_request_carries_are_removed(
     work: WritePolicy,  # noqa: F811
-):
+) -> None:
     board = labelled()
     carrying = replace(pull_request(3, "feature"), labels=("api-break",))
 
@@ -122,7 +121,7 @@ def test_only_labels_the_pull_request_carries_are_removed(
     assert board.writes == ["remove_label 3 api-break"]
 
 
-def test_labelling_nothing_is_refused(work: WritePolicy):  # noqa: F811
+def test_labelling_nothing_is_refused(work: WritePolicy) -> None:  # noqa: F811
     board = labelled()
 
     with pytest.raises(NothingToLabelError):
@@ -136,7 +135,7 @@ def test_labelling_nothing_is_refused(work: WritePolicy):  # noqa: F811
 )
 def test_shelving_is_left_to_the_person(
     work: WritePolicy, added: tuple[str, ...], removed: tuple[str, ...]  # noqa: F811
-):
+) -> None:
     board = IssuesInMemory({}, {PullRequestLabel.SHELVED})
     carrying = replace(pull_request(3, "feature"), labels=removed)
 
@@ -291,7 +290,7 @@ def opened_upstream(number: int) -> RestPullRequest:
 
 def test_unresolved_threads_are_listed_first_by_their_first_comment(
     work: WritePolicy,  # noqa: F811
-):
+) -> None:
     listing = ReviewThreadListing(
         own(work, pull_request(3, "feature")),
         threads(thread(8, True), thread(9)),
@@ -306,7 +305,7 @@ def test_unresolved_threads_are_listed_first_by_their_first_comment(
 
 def test_the_upstream_pull_request_s_reviews_and_threads_follow_with_addresses(
     work: WritePolicy,  # noqa: F811
-):
+) -> None:
     upstream_thread = thread(77)
     review = Review(
         Author("upstream-reviewer"),
@@ -351,7 +350,7 @@ class UpstreamUnreadable(UpstreamReviews):
 
 def test_the_own_threads_are_listed_with_why_upstream_was_not_read(
     work: WritePolicy,  # noqa: F811
-):
+) -> None:
     unavailable = UpstreamReadNotStarted(UPSTREAM, 90.0)
     listing = ReviewThreadListing(
         own(work, opened_upstream(3)),
@@ -367,7 +366,7 @@ def test_the_own_threads_are_listed_with_why_upstream_was_not_read(
 
 def test_a_pull_request_not_opened_upstream_reads_nothing_upstream(
     work: WritePolicy,  # noqa: F811
-):
+) -> None:
     upstream = UpstreamReviewsInMemory([thread(77)])
 
     ReviewThreadListing(
@@ -395,7 +394,7 @@ class CommentsInMemory(Commenter):
 
 def test_an_addressed_upstream_comment_is_linked_on_the_own_pull_request(
     work: WritePolicy,  # noqa: F811
-):
+) -> None:
     comments = CommentsInMemory()
     address = f"https://github.com/{UPSTREAM}/pull/9#discussion_r77"
 
@@ -420,7 +419,7 @@ def test_an_addressed_upstream_comment_is_linked_on_the_own_pull_request(
 )
 def test_an_address_not_upstream_is_refused(
     work: WritePolicy, forked_from: Repository | None, address: str  # noqa: F811
-):
+) -> None:
     comments = CommentsInMemory()
 
     with pytest.raises(ForeignReviewAddressError):
@@ -433,7 +432,7 @@ def test_an_address_not_upstream_is_refused(
 
 def test_a_thread_is_replied_to_by_its_first_comment(
     work: WritePolicy,  # noqa: F811
-):
+) -> None:
     written = writer()
 
     ReviewReply(
@@ -443,7 +442,9 @@ def test_a_thread_is_replied_to_by_its_first_comment(
     assert written.written == [f"reply 3 {thread(9).identifier} Done."]
 
 
-def test_a_thread_the_pull_request_lacks_is_refused(work: WritePolicy):  # noqa: F811
+def test_a_thread_the_pull_request_lacks_is_refused(
+    work: WritePolicy,
+) -> None:  # noqa: F811
     with pytest.raises(ReviewThreadNotFoundError):
         ReviewReply(
             own(work, pull_request(3, "feature")), threads(thread(9)), writer(), 7, "x"
@@ -452,7 +453,7 @@ def test_a_thread_the_pull_request_lacks_is_refused(work: WritePolicy):  # noqa:
 
 def test_a_thread_is_resolved_once_the_branch_is_pushed(
     work: WritePolicy,  # noqa: F811
-):
+) -> None:
     written = writer()
 
     ReviewResolution(
@@ -464,7 +465,7 @@ def test_a_thread_is_resolved_once_the_branch_is_pushed(
 
 def test_a_thread_is_not_resolved_while_its_fix_is_unpushed(
     work: WritePolicy,  # noqa: F811
-):
+) -> None:
     work.checkout.git.run("commit", "--quiet", "--allow-empty", "--message", "Fix")
     written = writer()
 
@@ -476,7 +477,7 @@ def test_a_thread_is_not_resolved_while_its_fix_is_unpushed(
     assert written.written == []
 
 
-def test_a_resolved_thread_is_left_alone(work: WritePolicy):  # noqa: F811
+def test_a_resolved_thread_is_left_alone(work: WritePolicy) -> None:  # noqa: F811
     written = writer()
 
     ReviewResolution(

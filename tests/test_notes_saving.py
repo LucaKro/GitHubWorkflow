@@ -8,12 +8,12 @@ new session start.
 from __future__ import annotations
 
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.report_lines import Tone
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection
 from github_workflow.notes.saving import NotesSave
 from github_workflow.remotes import OwnedRemotes
+from github_workflow.report_lines import Tone
 from github_workflow.session_start import SessionStart
 from github_workflow.settings import WorkflowSettings
 
@@ -65,7 +65,7 @@ def loaded_section(checkout: ProjectCheckout, section: NotesSection) -> str:
 
 def test_progress_is_saved_for_the_branch_it_was_loaded_for(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
     checkout.git.run("switch", "--quiet", "--create", "feature-a")
     SessionStart(checkout, settings).load_notes()
@@ -84,7 +84,7 @@ def test_progress_is_saved_for_the_branch_it_was_loaded_for(
 
 def test_edits_not_saved_yet_survive_a_new_session_start(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
     SessionStart(checkout, settings).load_notes()
     edit(checkout, NotesSection.STANDING_NOTES, "a note never saved")
@@ -97,7 +97,7 @@ def test_edits_not_saved_yet_survive_a_new_session_start(
 
 def test_saved_edits_let_a_new_session_start_load_what_others_saved_since(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
     SessionStart(checkout, settings).load_notes()
     edit(checkout, NotesSection.STANDING_NOTES, "my note")

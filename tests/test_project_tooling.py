@@ -42,7 +42,7 @@ def uv_project(root: Path) -> Path:
 # %% what a session is told
 
 
-def test_a_session_is_told_to_set_up_with_the_tool(tmp_path: Path):
+def test_a_session_is_told_to_set_up_with_the_tool(tmp_path: Path) -> None:
     tool = UvTool(executable=sys.executable)
     root = uv_project(tmp_path)
 
@@ -52,7 +52,7 @@ def test_a_session_is_told_to_set_up_with_the_tool(tmp_path: Path):
     assert line.tone is Tone.NEWS
 
 
-def test_the_set_up_instruction_reaches_the_model_alone(tmp_path: Path):
+def test_the_set_up_instruction_reaches_the_model_alone(tmp_path: Path) -> None:
     tool = UvTool(executable=sys.executable)
     lines = ProjectTooling(uv_project(tmp_path), (tool,)).lines()
 
@@ -62,7 +62,7 @@ def test_the_set_up_instruction_reaches_the_model_alone(tmp_path: Path):
     assert (report[HookKey.SYSTEM_MESSAGE], given) == ("", lines[0].text)
 
 
-def test_a_missing_tool_is_left_for_the_person(tmp_path: Path):
+def test_a_missing_tool_is_left_for_the_person(tmp_path: Path) -> None:
     tool = UvTool(executable=str(tmp_path / "no-such-tool"))
 
     [line] = ProjectTooling(uv_project(tmp_path), (tool,)).lines()
@@ -70,13 +70,13 @@ def test_a_missing_tool_is_left_for_the_person(tmp_path: Path):
     assert line.tone is Tone.ACTION
 
 
-def test_a_project_declaring_no_tool_tells_nothing(tmp_path: Path):
+def test_a_project_declaring_no_tool_tells_nothing(tmp_path: Path) -> None:
     assert ProjectTooling(tmp_path).lines() == []
 
 
 def test_a_uv_project_s_session_start_tells_how_to_set_it_up(
     repositories: RepositoriesByOwner, foreign_url: str, settings: WorkflowSettings
-):
+) -> None:
     checkout = repositories.clone(foreign_url, "theirs")
     uv_project(checkout.root)
 

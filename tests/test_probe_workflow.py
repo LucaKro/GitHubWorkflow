@@ -5,9 +5,9 @@ Tests for the branch deletion workflow the probe pushes.
 from __future__ import annotations
 
 from basstler_domain_model.templates import Placeholder
-from github_workflow.probe.scenarios import ProbeWorkflowPlaceholder
+
 from github_workflow.locations import ProbeTemplate
-from github_workflow.probe.scenarios import BranchName
+from github_workflow.probe.scenarios import BranchName, ProbeWorkflowPlaceholder
 
 # %% filling in the template
 
@@ -27,7 +27,7 @@ def filled(workflow: str, deleted: str) -> str:
     )
 
 
-def test_the_filled_workflow_leaves_no_placeholder():
+def test_the_filled_workflow_leaves_no_placeholder() -> None:
     workflow = filled(
         f"{BranchName.WORKFLOW}stamp", f"{BranchName.DELETED_BY_WORKFLOW}stamp"
     )
@@ -39,7 +39,7 @@ def test_the_filled_workflow_leaves_no_placeholder():
     ] == []
 
 
-def test_the_filled_workflow_names_both_branches():
+def test_the_filled_workflow_names_both_branches() -> None:
     workflow = f"{BranchName.WORKFLOW}stamp"
     deleted = f"{BranchName.DELETED_BY_WORKFLOW}stamp"
 
