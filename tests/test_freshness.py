@@ -8,9 +8,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from http import HTTPStatus
 
-from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
-from basstler_domain_model.github.routes import RepositoryRoute
-from basstler_domain_model.repository import Repository
+from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
+from domain_model.github.routes import RepositoryRoute
+from domain_model.repository import Repository
 
 import github_workflow
 from github_workflow.command_line import WorkflowCommand

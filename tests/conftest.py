@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from basstler_domain_model.environment import ClaudeCodeVariable, GitIdentityVariable
+from domain_model.environment import ClaudeCodeVariable, GitIdentityVariable
 
 from github_workflow.settings import WorkflowSettings
 

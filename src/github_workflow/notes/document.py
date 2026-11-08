@@ -12,9 +12,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum, StrEnum, auto
 
-from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.github.discussions import DefaultDiscussionCategory
-from basstler_domain_model.templates import Placeholder
+from domain_model.class_property import classproperty
+from domain_model.github.discussions import DefaultDiscussionCategory
+from domain_model.templates import Placeholder
 
 from github_workflow.command_line import (
     CommandOption,

@@ -7,8 +7,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from basstler_domain_model.git.commands import GitCommandRunner
-from basstler_domain_model.locations import GitStateFile
+from domain_model.git.commands import GitCommandRunner
+from domain_model.locations import GitStateFile
 
 from github_workflow.exceptions import NotACheckoutError
 from github_workflow.locations import ProjectFile

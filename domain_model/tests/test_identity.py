@@ -1,11 +1,10 @@
 """
-Tests for :mod:`basstler_domain_model.git.identity`: a person read from how git writes
-them.
+Tests for :mod:`domain_model.git.identity`: a person read from how git writes them.
 """
 
 from __future__ import annotations
 
-from basstler_domain_model.git.identity import PersonIdentity
+from domain_model.git.identity import PersonIdentity
 
 # %% reading a person
 

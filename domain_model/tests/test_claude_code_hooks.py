@@ -1,13 +1,13 @@
 """
-Tests for :mod:`basstler_domain_model.claude_code.hooks`: what Claude Code hands a hook
-and what the hook answers.
+Tests for :mod:`domain_model.claude_code.hooks`: what Claude Code hands a hook and what
+the hook answers.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from basstler_domain_model.claude_code.hooks import (
+from domain_model.claude_code.hooks import (
     FileWritingTool,
     HookInput,
     HookKey,

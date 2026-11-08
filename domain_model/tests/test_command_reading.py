@@ -1,14 +1,14 @@
 """
-Tests for which git and GitHub calls only read: :mod:`basstler_domain_model.git.reading`
-and :mod:`basstler_domain_model.github.reading_calls`.
+Tests for which git and GitHub calls only read: :mod:`domain_model.git.reading` and
+:mod:`domain_model.github.reading_calls`.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from basstler_domain_model.git.reading import GitCall, GitCallEffect
-from basstler_domain_model.github.reading_calls import (
+from domain_model.git.reading import GitCall, GitCallEffect
+from domain_model.github.reading_calls import (
     GitHubCliCall,
     GitHubCliEffect,
     HttpClient,

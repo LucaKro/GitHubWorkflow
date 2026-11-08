@@ -11,9 +11,9 @@ import threading
 from pathlib import Path
 
 import pytest
-from basstler_domain_model.commands import CommandResult, CommandRunner
-from basstler_domain_model.environment import ShellVariable
-from basstler_domain_model.locations import PathEnumeration
+from domain_model.commands import CommandResult, CommandRunner
+from domain_model.environment import ShellVariable
+from domain_model.locations import PathEnumeration
 
 import github_workflow
 import github_workflow.install

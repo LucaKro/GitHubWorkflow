@@ -11,16 +11,16 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from basstler_domain_model.git.branch_tips import BranchTip
-from basstler_domain_model.git.commands import (
+from domain_model.git.branch_tips import BranchTip
+from domain_model.git.commands import (
     GitCommandRunner,
     ProposedPush,
     RemoteBranch,
 )
-from basstler_domain_model.git.conflict_markers import ConflictMarker
-from basstler_domain_model.github.closing_lines import ClosingLines
-from basstler_domain_model.github.number_links import NumberLink
-from basstler_domain_model.github.repository_client import (
+from domain_model.git.conflict_markers import ConflictMarker
+from domain_model.github.closing_lines import ClosingLines
+from domain_model.github.number_links import NumberLink
+from domain_model.github.repository_client import (
     BranchStacks,
     IssueTracker,
     PullRequestOpener,
@@ -28,9 +28,9 @@ from basstler_domain_model.github.repository_client import (
     PullRequestsFromForks,
     RewritablePullRequests,
 )
-from basstler_domain_model.github.stack_placement import StackPlacement
-from basstler_domain_model.github.vocabulary import PullRequestState
-from basstler_domain_model.repository import GitHubAddress, Repository
+from domain_model.github.stack_placement import StackPlacement
+from domain_model.github.vocabulary import PullRequestState
+from domain_model.repository import GitHubAddress, Repository
 
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.command_line import RunnableCommand

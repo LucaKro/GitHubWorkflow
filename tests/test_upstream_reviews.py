@@ -11,15 +11,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from basstler_domain_model.github.clients import GraphQLClient, ReplayingGraphQLClient
-from basstler_domain_model.github.repository_client import RepositoryWorkflows
-from basstler_domain_model.github.rest_models import Workflow, WorkflowRun
-from basstler_domain_model.github.vocabulary import (
+from domain_model.github.clients import GraphQLClient, ReplayingGraphQLClient
+from domain_model.github.repository_client import RepositoryWorkflows
+from domain_model.github.rest_models import Workflow, WorkflowRun
+from domain_model.github.vocabulary import (
     WorkflowRunConclusion,
     WorkflowRunStatus,
 )
-from basstler_domain_model.locations import PathEnumeration
-from basstler_domain_model.repository import Repository
+from domain_model.locations import PathEnumeration
+from domain_model.repository import Repository
 
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch

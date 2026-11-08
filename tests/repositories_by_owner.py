@@ -8,8 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.git.commands import GitCommandRunner
+from domain_model.class_property import classproperty
+from domain_model.git.commands import GitCommandRunner
 
 from github_workflow.checkout import ProjectCheckout
 

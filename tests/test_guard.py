@@ -12,16 +12,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-import basstler_domain_model
+import domain_model
 import pytest
-from basstler_domain_model.claude_code.hooks import (
+from domain_model.claude_code.hooks import (
     FileWritingTool,
     HookInput,
     HookKey,
     HookValue,
 )
-from basstler_domain_model.locations import PathEnumeration
-from basstler_domain_model.shell import CommandLine
+from domain_model.locations import PathEnumeration
+from domain_model.shell import CommandLine
 
 import github_workflow
 import github_workflow.guard as guard
@@ -433,7 +433,7 @@ def test_the_guard_runs_on_the_standard_library_and_the_plugin_s_source_alone() 
     """
     sources = [
         str(Path(package.__file__).parents[1])
-        for package in (github_workflow, basstler_domain_model)
+        for package in (github_workflow, domain_model)
     ]
     imported = subprocess.run(
         [

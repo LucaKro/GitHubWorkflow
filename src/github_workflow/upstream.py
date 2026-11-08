@@ -8,21 +8,21 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from basstler_domain_model.git.branch_tips import BranchTip
-from basstler_domain_model.git.commands import ProposedPush, RemoteBranch
-from basstler_domain_model.github.labels import LabelWrite
-from basstler_domain_model.github.number_links import NumberLink
-from basstler_domain_model.github.repository_client import (
+from domain_model.git.branch_tips import BranchTip
+from domain_model.git.commands import ProposedPush, RemoteBranch
+from domain_model.github.labels import LabelWrite
+from domain_model.github.number_links import NumberLink
+from domain_model.github.repository_client import (
     FollowedFork,
     ForkDetails,
     ProposingFork,
     PullRequestSearch,
     UpstreamRepository,
 )
-from basstler_domain_model.github.rest_models import RestPullRequest
-from basstler_domain_model.github.stack_placement import StackPlacement
-from basstler_domain_model.github.vocabulary import PullRequestState
-from basstler_domain_model.repository import Repository
+from domain_model.github.rest_models import RestPullRequest
+from domain_model.github.stack_placement import StackPlacement
+from domain_model.github.vocabulary import PullRequestState
+from domain_model.repository import Repository
 
 from github_workflow.command_line import ArgumentName, RunnableCommand
 from github_workflow.exceptions import (

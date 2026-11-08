@@ -1,4 +1,4 @@
-# basstler-domain-model
+# domain-model
 
 A deterministic, Python-native domain model of GitHub pull requests, checks, reviews and
 labels, and of the git operations built around them.
@@ -6,8 +6,8 @@ labels, and of the git operations built around them.
 ## Licence
 
 This project is licensed under the [Apache License 2.0](LICENSE), except for
-`src/basstler_domain_model/exceptions.py` and
-`src/basstler_domain_model/class_property.py`, which contain code adapted from
+`src/domain_model/exceptions.py` and
+`src/domain_model/class_property.py`, which contain code adapted from
 [krrood](https://github.com/cram2/krrood) and remain under the GNU Lesser General
 Public License, Version 3.
 

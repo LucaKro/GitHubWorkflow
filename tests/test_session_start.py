@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 import pytest
-from basstler_domain_model.locations import PathEnumeration
+from domain_model.locations import PathEnumeration
 
 from github_workflow.environment import WorkflowVariable
 from github_workflow.report import SectionName

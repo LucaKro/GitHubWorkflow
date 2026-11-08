@@ -8,11 +8,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from basstler_domain_model.github.repository_client import (
+from domain_model.github.repository_client import (
     RepositoryFeatures,
 )
-from basstler_domain_model.github.vocabulary import WorkflowState
-from basstler_domain_model.repository import Repository
+from domain_model.github.vocabulary import WorkflowState
+from domain_model.repository import Repository
 
 from github_workflow.report_lines import ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportSection

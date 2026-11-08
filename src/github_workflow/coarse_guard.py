@@ -16,9 +16,9 @@ from dataclasses import dataclass
 from pathlib import PurePath
 from typing import Any
 
-from basstler_domain_model.claude_code.hooks import HookInput, ToolCallDenial, ToolKind
-from basstler_domain_model.git.reading import GitConfigurationLocation
-from basstler_domain_model.programs import Program
+from domain_model.claude_code.hooks import HookInput, ToolCallDenial, ToolKind
+from domain_model.git.reading import GitConfigurationLocation
+from domain_model.programs import Program
 
 from github_workflow.report_lines import Speaker
 

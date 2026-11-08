@@ -1,5 +1,5 @@
 """
-One call through :mod:`basstler_domain_model`, run as a process of its own; a refusal
+One call through :mod:`domain_model`, run as a process of its own; a refusal
 ends only this check, with the library's own error as its message.
 
 Usage: ``python -m github_workflow.probe.library_check <check> <owner/name>
@@ -13,11 +13,11 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import StrEnum
 
-from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.github.clients import GitHubApi
-from basstler_domain_model.github.readers import ReadSource
-from basstler_domain_model.github.repository_client import GitHubRepository
-from basstler_domain_model.repository import Repository
+from domain_model.class_property import classproperty
+from domain_model.github.clients import GitHubApi
+from domain_model.github.readers import ReadSource
+from domain_model.github.repository_client import GitHubRepository
+from domain_model.repository import Repository
 
 # %% the checks
 

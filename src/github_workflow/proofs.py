@@ -15,18 +15,18 @@ from enum import Enum, StrEnum, auto
 from pathlib import Path
 from typing import Any
 
-from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.git.branch_tips import BranchTip
-from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
-from basstler_domain_model.github.issue_models import IssueComment
-from basstler_domain_model.pytest_run import (
+from domain_model.class_property import classproperty
+from domain_model.git.branch_tips import BranchTip
+from domain_model.git.commands import GitCommandRunner, RemoteBranch
+from domain_model.github.issue_models import IssueComment
+from domain_model.pytest_run import (
     BrokenTestException,
     JUnitReport,
     MissingFileException,
     PytestRun,
 )
-from basstler_domain_model.python_project import PackageDirectories
-from basstler_domain_model.templates import Placeholder
+from domain_model.python_project import PackageDirectories
+from domain_model.templates import Placeholder
 
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.exceptions import (

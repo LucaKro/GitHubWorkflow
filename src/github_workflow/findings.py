@@ -13,22 +13,22 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Self
 
-from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.github.closing_lines import ClosingLines
-from basstler_domain_model.github.issue_models import Issue
-from basstler_domain_model.github.number_links import NumberLink
-from basstler_domain_model.github.repository_client import (
+from domain_model.class_property import classproperty
+from domain_model.github.closing_lines import ClosingLines
+from domain_model.github.issue_models import Issue
+from domain_model.github.number_links import NumberLink
+from domain_model.github.repository_client import (
     ClosablePullRequests,
     IssueAndPullRequestTracker,
     IssueBoard,
     IssueTracker,
 )
-from basstler_domain_model.github.vocabulary import (
+from domain_model.github.vocabulary import (
     ClosingKeyword,
     IssueState,
     IssueStateReason,
 )
-from basstler_domain_model.repository import Repository
+from domain_model.repository import Repository
 
 from github_workflow.command_line import PriorityLevel
 from github_workflow.exceptions import (

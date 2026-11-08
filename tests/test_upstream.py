@@ -11,21 +11,21 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
-from basstler_domain_model.github.labels import GitHubLabel
-from basstler_domain_model.github.repository_client import (
+from domain_model.github.labels import GitHubLabel
+from domain_model.github.repository_client import (
     FollowedFork,
     ForkDetails,
     ProposingFork,
     PullRequestSearch,
 )
-from basstler_domain_model.github.rest_models import (
+from domain_model.github.rest_models import (
     RestPullRequest,
     SearchedPullRequest,
 )
-from basstler_domain_model.github.stack_models import Stack
-from basstler_domain_model.github.stack_placement import StackPlacement
-from basstler_domain_model.github.vocabulary import PullRequestState
-from basstler_domain_model.repository import GitHubAddress, Repository
+from domain_model.github.stack_models import Stack
+from domain_model.github.stack_placement import StackPlacement
+from domain_model.github.vocabulary import PullRequestState
+from domain_model.repository import GitHubAddress, Repository
 
 from github_workflow.exceptions import (
     ForeignRepositoryError,

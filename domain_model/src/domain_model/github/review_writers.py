@@ -8,15 +8,15 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from basstler_domain_model.github.clients import GraphQLClient, RestWriter
-from basstler_domain_model.github.review_models import ReviewThread
-from basstler_domain_model.github.routes import RepositoryRoute
-from basstler_domain_model.github.vocabulary import (
+from domain_model.github.clients import GraphQLClient, RestWriter
+from domain_model.github.review_models import ReviewThread
+from domain_model.github.routes import RepositoryRoute
+from domain_model.github.vocabulary import (
     GraphQLDocument,
     QueryVariable,
     RestJSONKey,
 )
-from basstler_domain_model.repository import Repository
+from domain_model.repository import Repository
 
 # %% writing
 

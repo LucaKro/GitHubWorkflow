@@ -19,26 +19,26 @@ from inspect import isabstract
 from pathlib import PurePath
 from typing import Any
 
-from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.claude_code.hooks import (
+from domain_model.class_property import classproperty
+from domain_model.claude_code.hooks import (
     HookInput,
     ToolCallDenial,
     ToolKind,
 )
-from basstler_domain_model.environment import ClaudeCodeVariable, GitVariable
-from basstler_domain_model.git.reading import (
+from domain_model.environment import ClaudeCodeVariable, GitVariable
+from domain_model.git.reading import (
     GitCall,
     GitCallEffect,
     GitConfigurationLocation,
 )
-from basstler_domain_model.github.reading_calls import (
+from domain_model.github.reading_calls import (
     GitHubCliCall,
     GitHubCliEffect,
     GitHubToolReading,
     HttpClient,
 )
-from basstler_domain_model.programs import Program
-from basstler_domain_model.shell import (
+from domain_model.programs import Program
+from domain_model.shell import (
     CommandLine,
     EnvironmentOption,
     Shell,

@@ -9,9 +9,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from basstler_domain_model.github.issue_models import Issue, LabelEvent
-from basstler_domain_model.github.repository_client import IssueLabelTracker
-from basstler_domain_model.github.vocabulary import IssueState, IssueStateReason
+from domain_model.github.issue_models import Issue, LabelEvent
+from domain_model.github.repository_client import IssueLabelTracker
+from domain_model.github.vocabulary import IssueState, IssueStateReason
 
 from github_workflow import label_events
 from github_workflow.findings import Evidence, FindingLabel, FindingStage, Priority

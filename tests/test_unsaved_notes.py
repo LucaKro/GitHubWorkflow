@@ -11,9 +11,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from basstler_domain_model.claude_code.hooks import HookKey, HookValue
-from basstler_domain_model.environment import ClaudeCodeVariable, PythonVariable
-from basstler_domain_model.locations import PathEnumeration
+from domain_model.claude_code.hooks import HookKey, HookValue
+from domain_model.environment import ClaudeCodeVariable, PythonVariable
+from domain_model.locations import PathEnumeration
 
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.environment import WorkflowVariable

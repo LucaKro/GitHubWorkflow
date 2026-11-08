@@ -9,12 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from basstler_domain_model.environment import GitIdentityVariable, GitVariable
-from basstler_domain_model.git.exceptions import (
-    GitCommandFailed,
-    MalformedReferenceUpdateError,
-)
-from basstler_domain_model.git.commands import (
+from domain_model.environment import GitIdentityVariable, GitVariable
+from domain_model.git.commands import (
     GitCommandRunner,
     GitIdentity,
     ProposedPush,
@@ -22,8 +18,12 @@ from basstler_domain_model.git.commands import (
     RemoteBranch,
     RemoteName,
 )
-from basstler_domain_model.locations import GitStateFile
-from basstler_domain_model.repository import Repository
+from domain_model.git.exceptions import (
+    GitCommandFailed,
+    MalformedReferenceUpdateError,
+)
+from domain_model.locations import GitStateFile
+from domain_model.repository import Repository
 
 # %% fixtures
 

@@ -8,16 +8,16 @@ from __future__ import annotations
 from abc import ABC
 from dataclasses import dataclass
 
-from basstler_domain_model.github.readers import PullRequestSource
-from basstler_domain_model.github.repository_client import (
+from domain_model.github.readers import PullRequestSource
+from domain_model.github.repository_client import (
     ForkCommenter,
     ForkDetails,
     IssueTracker,
     PullRequestsFromForks,
 )
-from basstler_domain_model.github.rest_models import RestPullRequest
-from basstler_domain_model.github.review_models import ReviewThread
-from basstler_domain_model.github.review_writers import ReviewThreadWriter
+from domain_model.github.rest_models import RestPullRequest
+from domain_model.github.review_models import ReviewThread
+from domain_model.github.review_writers import ReviewThreadWriter
 
 from github_workflow.exceptions import (
     ForeignReviewAddressError,

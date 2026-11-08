@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from basstler_domain_model.github.vocabulary import ClosingKeyword
+from domain_model.github.vocabulary import ClosingKeyword
 
 # %% closing lines
 

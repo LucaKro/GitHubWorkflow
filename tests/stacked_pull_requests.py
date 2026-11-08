@@ -8,14 +8,14 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 
-from basstler_domain_model.github.repository_client import (
+from domain_model.github.repository_client import (
     PullRequestOpener,
     RewritablePullRequests,
     StackHost,
 )
-from basstler_domain_model.github.rest_models import RestPullRequest
-from basstler_domain_model.github.stack_models import Stack, StackedPullRequest
-from basstler_domain_model.github.vocabulary import PullRequestState
+from domain_model.github.rest_models import RestPullRequest
+from domain_model.github.stack_models import Stack, StackedPullRequest
+from domain_model.github.vocabulary import PullRequestState
 
 from .pull_requests import pull_request
 from .repositories_by_owner import RepositoriesByOwner

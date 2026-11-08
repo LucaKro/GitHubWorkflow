@@ -14,15 +14,15 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from basstler_domain_model.github.clients import GitHubApi, RestAnswer, RestApi
-from basstler_domain_model.github.exceptions import GitHubRequestFailed, NotAnIssueError
-from basstler_domain_model.github.issue_models import Issue, IssueComment, LabelEvent
-from basstler_domain_model.github.labels import GitHubLabel
-from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
-from basstler_domain_model.github.repository_client import GitHubRepository
-from basstler_domain_model.github.rest_models import BranchComparison
-from basstler_domain_model.github.routes import QueryParameter, RepositoryRoute
-from basstler_domain_model.github.vocabulary import (
+from domain_model.github.clients import GitHubApi, RestAnswer, RestApi
+from domain_model.github.exceptions import GitHubRequestFailed, NotAnIssueError
+from domain_model.github.issue_models import Issue, IssueComment, LabelEvent
+from domain_model.github.labels import GitHubLabel
+from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
+from domain_model.github.repository_client import GitHubRepository
+from domain_model.github.rest_models import BranchComparison
+from domain_model.github.routes import QueryParameter, RepositoryRoute
+from domain_model.github.vocabulary import (
     ClosingKeyword,
     IssueEventType,
     IssueState,
@@ -33,7 +33,7 @@ from basstler_domain_model.github.vocabulary import (
     WorkflowRunStatus,
     WorkflowState,
 )
-from basstler_domain_model.repository import Repository
+from domain_model.repository import Repository
 
 from .dataset.locations import DatasetLocation
 

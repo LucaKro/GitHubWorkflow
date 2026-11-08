@@ -8,7 +8,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from basstler_domain_model.python_project import EnvironmentTool, UvTool
+from domain_model.python_project import EnvironmentTool, UvTool
 
 from github_workflow.command_line import CommandOption
 from github_workflow.report_lines import Audience, ReportLine, Speaker, Tone

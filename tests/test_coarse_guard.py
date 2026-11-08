@@ -8,13 +8,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from basstler_domain_model.claude_code.hooks import (
+from domain_model.claude_code.hooks import (
     FileWritingTool,
     HookInput,
     HookKey,
     HookValue,
 )
-from basstler_domain_model.locations import PathEnumeration
+from domain_model.locations import PathEnumeration
 
 from github_workflow.coarse_guard import CoarseGuard
 

@@ -1,3 +1,3 @@
 """
-A personal GitHub workflow, built on :mod:`basstler_domain_model`.
+A personal GitHub workflow, built on :mod:`domain_model`.
 """

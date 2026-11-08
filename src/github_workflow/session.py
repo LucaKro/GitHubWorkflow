@@ -10,14 +10,14 @@ from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
 
-from basstler_domain_model.github.readers import PullRequestSource, ReadSource
-from basstler_domain_model.github.repository_client import (
+from domain_model.github.readers import PullRequestSource, ReadSource
+from domain_model.github.repository_client import (
     GitHubRepository,
     RepositoryDetails,
 )
-from basstler_domain_model.github.review_writers import ReviewThreadWriter
-from basstler_domain_model.github.stack_placement import StackPlacement
-from basstler_domain_model.repository import Repository
+from domain_model.github.review_writers import ReviewThreadWriter
+from domain_model.github.stack_placement import StackPlacement
+from domain_model.repository import Repository
 
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.cleanup import KeptBranches

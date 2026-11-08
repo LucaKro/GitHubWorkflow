@@ -12,17 +12,17 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import StrEnum
 
-from basstler_domain_model.github.number_links import NumberLink
-from basstler_domain_model.github.pull_request_models import (
+from domain_model.github.number_links import NumberLink
+from domain_model.github.pull_request_models import (
     UpstreamPullRequestSnapshot,
 )
-from basstler_domain_model.github.readers import PullRequestSource
-from basstler_domain_model.github.repository_client import (
+from domain_model.github.readers import PullRequestSource
+from domain_model.github.repository_client import (
     PullRequestReader,
     PullRequestTracker,
 )
-from basstler_domain_model.github.rest_models import RestPullRequest
-from basstler_domain_model.github.vocabulary import MergeableState
+from domain_model.github.rest_models import RestPullRequest
+from domain_model.github.vocabulary import MergeableState
 
 from github_workflow.labels import PullRequestLabel, UpstreamLabel
 from github_workflow.report_lines import (

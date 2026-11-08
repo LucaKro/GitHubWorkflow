@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from basstler_domain_model.locations import PathEnumeration
+from domain_model.locations import PathEnumeration
 
 
 class DatasetLocation(PathEnumeration):

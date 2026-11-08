@@ -11,14 +11,14 @@ from dataclasses import dataclass
 from inspect import isabstract
 from typing import TYPE_CHECKING
 
-from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.environment import ClaudeCodeVariable
-from basstler_domain_model.github.discussions import (
+from domain_model.class_property import classproperty
+from domain_model.environment import ClaudeCodeVariable
+from domain_model.github.discussions import (
     DefaultDiscussionCategory,
     DiscussionCategory,
 )
-from basstler_domain_model.github.repository_client import GitHubRepository
-from basstler_domain_model.repository import Repository
+from domain_model.github.repository_client import GitHubRepository
+from domain_model.repository import Repository
 
 from github_workflow.cleanup import (
     BranchCleanup,

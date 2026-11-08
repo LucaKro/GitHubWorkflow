@@ -1,13 +1,13 @@
 """
-Tests for :mod:`basstler_domain_model.github.issue_events`.
+Tests for :mod:`domain_model.github.issue_events`.
 """
 
 from __future__ import annotations
 
 import json
 
-from basstler_domain_model.github.issue_events import IssueLabelled
-from basstler_domain_model.repository import Repository
+from domain_model.github.issue_events import IssueLabelled
+from domain_model.repository import Repository
 
 from .dataset.locations import DatasetLocation
 

@@ -12,7 +12,7 @@ from enum import Enum, StrEnum, auto
 from inspect import isabstract
 from pathlib import PurePath
 
-from basstler_domain_model.class_property import classproperty
+from domain_model.class_property import classproperty
 
 # %% where git reads its configuration
 

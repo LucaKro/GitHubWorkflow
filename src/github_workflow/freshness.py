@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from basstler_domain_model.github.repository_client import (
+from domain_model.github.repository_client import (
     ForkedRepository,
 )
 

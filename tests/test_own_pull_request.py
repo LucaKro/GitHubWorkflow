@@ -8,20 +8,20 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 
 import pytest
-from basstler_domain_model.github.pull_request_models import UpstreamPullRequestSnapshot
-from basstler_domain_model.github.readers import PullRequestSource
-from basstler_domain_model.github.repository_client import ForkCommenter, ForkDetails
-from basstler_domain_model.github.rest_models import RestPullRequest
-from basstler_domain_model.github.review_models import (
+from domain_model.github.pull_request_models import UpstreamPullRequestSnapshot
+from domain_model.github.readers import PullRequestSource
+from domain_model.github.repository_client import ForkCommenter, ForkDetails
+from domain_model.github.rest_models import RestPullRequest
+from domain_model.github.review_models import (
     Author,
     BranchPullRequest,
     Review,
     ReviewThread,
     ThreadComment,
 )
-from basstler_domain_model.github.review_writers import ReviewThreadWriter
-from basstler_domain_model.github.vocabulary import PullRequestState, ReviewState
-from basstler_domain_model.repository import Repository
+from domain_model.github.review_writers import ReviewThreadWriter
+from domain_model.github.vocabulary import PullRequestState, ReviewState
+from domain_model.repository import Repository
 
 from github_workflow.exceptions import (
     ForeignReviewAddressError,

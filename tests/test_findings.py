@@ -11,12 +11,12 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
-from basstler_domain_model.git.branch_tips import BranchTip
-from basstler_domain_model.github.issue_models import Issue, IssueComment
-from basstler_domain_model.github.number_links import NumberLink
-from basstler_domain_model.github.rest_models import RestPullRequest
-from basstler_domain_model.github.stack_placement import StackPlacement
-from basstler_domain_model.github.vocabulary import (
+from domain_model.git.branch_tips import BranchTip
+from domain_model.github.issue_models import Issue, IssueComment
+from domain_model.github.number_links import NumberLink
+from domain_model.github.rest_models import RestPullRequest
+from domain_model.github.stack_placement import StackPlacement
+from domain_model.github.vocabulary import (
     ClosingKeyword,
     IssueState,
     IssueStateReason,

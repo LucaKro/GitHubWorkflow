@@ -9,11 +9,11 @@ from abc import ABC, abstractmethod
 from enum import StrEnum
 from typing import Any, Self, TypeVar
 
-from basstler_domain_model.github.exceptions import (
+from domain_model.github.exceptions import (
     NoCheckOutcomesError,
     UnrecognisedGitHubValueError,
 )
-from basstler_domain_model.locations import PackageLocation
+from domain_model.locations import PackageLocation
 
 # %% the reading contract
 

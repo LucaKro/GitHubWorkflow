@@ -8,10 +8,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from basstler_domain_model.class_property import (
+from domain_model.class_property import (
     classproperty,
 )
-from basstler_domain_model.github.vocabulary import (
+from domain_model.github.vocabulary import (
     JSONModel,
     PullRequestJSONKey,
     PullRequestState,

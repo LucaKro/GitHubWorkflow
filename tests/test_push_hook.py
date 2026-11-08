@@ -10,8 +10,8 @@ import sys
 from pathlib import Path
 
 import pytest
-from basstler_domain_model.environment import ClaudeCodeVariable
-from basstler_domain_model.git.commands import (
+from domain_model.environment import ClaudeCodeVariable
+from domain_model.git.commands import (
     GitCommandRunner,
     ReferenceUpdate,
     RemoteBranch,

@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
-from basstler_domain_model.github.vocabulary import JSONModel, RestJSONKey
-from basstler_domain_model.repository import Repository
+from domain_model.github.vocabulary import JSONModel, RestJSONKey
+from domain_model.repository import Repository
 
 # %% a label added
 

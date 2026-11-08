@@ -15,15 +15,15 @@ from dataclasses import dataclass
 from enum import auto
 from pathlib import Path
 
-from basstler_domain_model.environment import ClaudeCodeVariable
-from basstler_domain_model.git.commands import (
+from domain_model.environment import ClaudeCodeVariable
+from domain_model.git.commands import (
     GitCommandRunner,
     ReferenceUpdate,
     RemoteBranch,
 )
-from basstler_domain_model.locations import GitStateFile
-from basstler_domain_model.repository import Repository
-from basstler_domain_model.templates import Placeholder
+from domain_model.locations import GitStateFile
+from domain_model.repository import Repository
+from domain_model.templates import Placeholder
 
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.exceptions import (

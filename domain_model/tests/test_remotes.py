@@ -1,11 +1,11 @@
 """
-Tests for :class:`basstler_domain_model.git.commands.Remote`.
+Tests for :class:`domain_model.git.commands.Remote`.
 """
 
 from __future__ import annotations
 
-from basstler_domain_model.git.commands import Remote, RemoteBranch
-from basstler_domain_model.repository import Repository
+from domain_model.git.commands import Remote, RemoteBranch
+from domain_model.repository import Repository
 
 # %% a remote's branches
 

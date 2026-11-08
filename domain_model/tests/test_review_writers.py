@@ -1,7 +1,6 @@
 """
-Tests for :mod:`basstler_domain_model.github.review_writers`: replying to a review
-thread through REST, and resolving it through whichever API the place it runs in
-reaches.
+Tests for :mod:`domain_model.github.review_writers`: replying to a review thread through
+REST, and resolving it through whichever API the place it runs in reaches.
 """
 
 from __future__ import annotations
@@ -9,21 +8,21 @@ from __future__ import annotations
 import json
 from http import HTTPStatus
 
-from basstler_domain_model.github.clients import GitHubApi
-from basstler_domain_model.github.readers import ReadSource
-from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
-from basstler_domain_model.github.review_models import (
+from domain_model.github.clients import GitHubApi
+from domain_model.github.readers import ReadSource
+from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
+from domain_model.github.review_models import (
     Author,
     ReviewThread,
     ThreadComment,
 )
-from basstler_domain_model.github.review_writers import (
+from domain_model.github.review_writers import (
     GraphQLReviewThreadWriter,
     RestReviewThreadWriter,
 )
-from basstler_domain_model.github.routes import RepositoryRoute
-from basstler_domain_model.github.vocabulary import QueryVariable, RestJSONKey
-from basstler_domain_model.repository import Repository
+from domain_model.github.routes import RepositoryRoute
+from domain_model.github.vocabulary import QueryVariable, RestJSONKey
+from domain_model.repository import Repository
 
 from .test_pull_request_readers import GraphQLAnswersInOrder
 

@@ -9,41 +9,41 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
-from basstler_domain_model.environment import (
+from domain_model.environment import (
     ClaudeCodeVariable,
 )
-from basstler_domain_model.github.clients import GitHubApi, GraphQLClient, RestClient
-from basstler_domain_model.github.commit_checks import CommitCheckReader
-from basstler_domain_model.github.exceptions import (
+from domain_model.github.clients import GitHubApi, GraphQLClient, RestClient
+from domain_model.github.commit_checks import CommitCheckReader
+from domain_model.github.exceptions import (
     UpstreamPullRequestNotFound,
 )
-from basstler_domain_model.github.pull_request_models import (
+from domain_model.github.pull_request_models import (
     PullRequestForBranchResult,
     ReviewThreadsPageResult,
     UpstreamPullRequestSnapshot,
 )
-from basstler_domain_model.github.rest_models import (
+from domain_model.github.rest_models import (
     RestPullRequest,
     RestReviewThread,
 )
-from basstler_domain_model.github.review_models import (
+from domain_model.github.review_models import (
     BranchPullRequest,
     Review,
     ReviewThread,
     ThreadComment,
 )
-from basstler_domain_model.github.review_writers import (
+from domain_model.github.review_writers import (
     GraphQLReviewThreadWriter,
     RestReviewThreadWriter,
     ReviewThreadWriter,
 )
-from basstler_domain_model.github.routes import RepositoryRoute
-from basstler_domain_model.github.vocabulary import (
+from domain_model.github.routes import RepositoryRoute
+from domain_model.github.vocabulary import (
     GraphQLDocument,
     PullRequestState,
     QueryVariable,
 )
-from basstler_domain_model.repository import (
+from domain_model.repository import (
     Repository,
 )
 

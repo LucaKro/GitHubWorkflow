@@ -14,9 +14,9 @@ from types import ModuleType
 
 import pytest
 
-import basstler_domain_model
-from basstler_domain_model.exceptions import DataclassException
-from basstler_domain_model.locations import PackageLocation
+import domain_model
+from domain_model.exceptions import DataclassException
+from domain_model.locations import PackageLocation
 
 
 def module_names() -> list[str]:
@@ -26,7 +26,7 @@ def module_names() -> list[str]:
     return [
         module.name
         for module in pkgutil.walk_packages(
-            basstler_domain_model.__path__, f"{basstler_domain_model.__name__}."
+            domain_model.__path__, f"{domain_model.__name__}."
         )
     ]
 
@@ -48,7 +48,7 @@ def errors() -> list[type[DataclassException]]:
             for module in modules()
             for _, member in inspect.getmembers(module, inspect.isclass)
             if issubclass(member, DataclassException)
-            and member.__module__.startswith(basstler_domain_model.__name__)
+            and member.__module__.startswith(domain_model.__name__)
         },
         key=lambda error: error.__qualname__,
     )

@@ -1,13 +1,13 @@
 """
-Tests for :class:`basstler_domain_model.github.discussions.DiscussionCategory`, which a
-caller's own set of categories extends.
+Tests for :class:`domain_model.github.discussions.DiscussionCategory`, which a caller's
+own set of categories extends.
 """
 
 from __future__ import annotations
 
 from enum import ReprEnum
 
-from basstler_domain_model.github.discussions import (
+from domain_model.github.discussions import (
     DefaultDiscussionCategory,
     DiscussionCategory,
 )

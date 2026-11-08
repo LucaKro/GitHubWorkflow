@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from enum import Enum, StrEnum, auto
 from pathlib import Path, PurePath
 
-from basstler_domain_model.repository import Repository
-from basstler_domain_model.templates import Placeholder
+from domain_model.repository import Repository
+from domain_model.templates import Placeholder
 
 from github_workflow.locations import NotesFile, WorkflowTemplate
 from github_workflow.plugin import Distribution, PluginSource, ToolRepository

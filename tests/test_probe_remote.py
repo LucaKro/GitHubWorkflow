@@ -9,9 +9,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from basstler_domain_model.git.commands import RemoteBranch
-from basstler_domain_model.git.storage_branch import StorageBranch
-from basstler_domain_model.github.clients import GitHubApi
+from domain_model.git.commands import RemoteBranch
+from domain_model.git.storage_branch import StorageBranch
+from domain_model.github.clients import GitHubApi
 
 from github_workflow.exceptions import NoOwnedRemoteError
 from github_workflow.probe import __main__ as probe_entry_point

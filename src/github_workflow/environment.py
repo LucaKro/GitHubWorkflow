@@ -4,7 +4,7 @@ The environment variables the workflow's hooks and commands set or read.
 
 from __future__ import annotations
 
-from basstler_domain_model.environment import EnvironmentVariable
+from domain_model.environment import EnvironmentVariable
 
 # %% this workflow
 

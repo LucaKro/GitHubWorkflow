@@ -8,13 +8,13 @@ from __future__ import annotations
 import json
 from http import HTTPStatus
 
-from basstler_domain_model.github.clients import GitHubApi
-from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
-from basstler_domain_model.github.repository_client import GitHubRepository
-from basstler_domain_model.github.routes import RepositoryRoute
-from basstler_domain_model.github.stack_models import Stack
-from basstler_domain_model.github.vocabulary import PullRequestState, RestJSONKey
-from basstler_domain_model.repository import Repository
+from domain_model.github.clients import GitHubApi
+from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
+from domain_model.github.repository_client import GitHubRepository
+from domain_model.github.routes import RepositoryRoute
+from domain_model.github.stack_models import Stack
+from domain_model.github.vocabulary import PullRequestState, RestJSONKey
+from domain_model.repository import Repository
 
 from .dataset.locations import DatasetLocation
 

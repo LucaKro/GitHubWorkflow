@@ -1,5 +1,5 @@
 """
-Tests for :mod:`basstler_domain_model.class_property`.
+Tests for :mod:`domain_model.class_property`.
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 
 import pytest
 
-from basstler_domain_model.class_property import classproperty
+from domain_model.class_property import classproperty
 
 
 class Kind(ABC):

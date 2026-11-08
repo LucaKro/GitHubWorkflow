@@ -4,7 +4,7 @@ Tests for the branch deletion workflow the probe pushes.
 
 from __future__ import annotations
 
-from basstler_domain_model.templates import Placeholder
+from domain_model.templates import Placeholder
 
 from github_workflow.locations import ProbeTemplate
 from github_workflow.probe.scenarios import BranchName, ProbeWorkflowPlaceholder

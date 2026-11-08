@@ -8,8 +8,8 @@ workflow's own commands. It is built on the domain model of git and GitHub in
 ## Licence
 
 This project is licensed under the [Apache License 2.0](LICENSE), except for
-`domain_model/src/basstler_domain_model/exceptions.py` and
-`domain_model/src/basstler_domain_model/class_property.py`, which contain code adapted
+`domain_model/src/domain_model/exceptions.py` and
+`domain_model/src/domain_model/class_property.py`, which contain code adapted
 from [krrood](https://github.com/cram2/krrood) and remain under the GNU Lesser General
 Public License, Version 3.
 

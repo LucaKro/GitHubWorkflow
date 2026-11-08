@@ -9,11 +9,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import pytest
-from basstler_domain_model.github.repository_client import (
+from domain_model.github.repository_client import (
     RepositoryFeatures,
 )
-from basstler_domain_model.github.rest_models import Workflow, WorkflowRun
-from basstler_domain_model.github.vocabulary import WorkflowState
+from domain_model.github.rest_models import Workflow, WorkflowRun
+from domain_model.github.vocabulary import WorkflowState
 
 from github_workflow.locations import NotesFile
 from github_workflow.report_lines import Tone

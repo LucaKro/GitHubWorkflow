@@ -1,6 +1,6 @@
 """
-Tests for :mod:`basstler_domain_model.github.vocabulary`: reading GitHub's fixed values,
-and what each one means.
+Tests for :mod:`domain_model.github.vocabulary`: reading GitHub's fixed values, and what
+each one means.
 """
 
 from __future__ import annotations
@@ -9,12 +9,12 @@ import json
 
 import pytest
 
-from basstler_domain_model.github.exceptions import (
+from domain_model.github.exceptions import (
     NoCheckOutcomesError,
     UnrecognisedGitHubValueError,
 )
-from basstler_domain_model.github.pull_request_models import CheckResult
-from basstler_domain_model.github.vocabulary import (
+from domain_model.github.pull_request_models import CheckResult
+from domain_model.github.vocabulary import (
     CheckOutcome,
     MergeableState,
     PullRequestJSONKey,

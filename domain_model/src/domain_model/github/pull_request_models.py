@@ -9,17 +9,17 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from basstler_domain_model.github.exceptions import (
+from domain_model.github.exceptions import (
     GraphQLDataMissingError,
     GraphQLErrorsReturned,
 )
-from basstler_domain_model.github.review_models import (
+from domain_model.github.review_models import (
     BranchPullRequest,
     Review,
     ReviewThread,
     ReviewThreadPage,
 )
-from basstler_domain_model.github.vocabulary import (
+from domain_model.github.vocabulary import (
     CheckContextType,
     CheckOutcome,
     JSONModel,

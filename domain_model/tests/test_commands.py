@@ -1,6 +1,5 @@
 """
-Tests for :mod:`basstler_domain_model.commands`: a command's result, whether or not it
-could run.
+Tests for :mod:`domain_model.commands`: a command's result, whether or not it could run.
 """
 
 from __future__ import annotations
@@ -10,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from basstler_domain_model.commands import CommandRunner
+from domain_model.commands import CommandRunner
 
 from .dataset.locations import DatasetLocation
 

@@ -16,17 +16,17 @@ from http import HTTPMethod, HTTPStatus
 from pathlib import Path
 from typing import Any
 
-from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.commands import CommandRunner
-from basstler_domain_model.environment import GitHubActionsVariable
-from basstler_domain_model.github.credential import GitHubToken
-from basstler_domain_model.github.exceptions import (
+from domain_model.class_property import classproperty
+from domain_model.commands import CommandRunner
+from domain_model.environment import GitHubActionsVariable
+from domain_model.github.credential import GitHubToken
+from domain_model.github.exceptions import (
     GitHubRequestFailed,
     RecordedAnswersExhaustedError,
 )
-from basstler_domain_model.github.pull_request_models import GraphQLResponse
-from basstler_domain_model.github.vocabulary import PullRequestJSONKey
-from basstler_domain_model.repository import GitHubAddress, Repository
+from domain_model.github.pull_request_models import GraphQLResponse
+from domain_model.github.vocabulary import PullRequestJSONKey
+from domain_model.repository import GitHubAddress, Repository
 
 # %% what reads GitHub
 

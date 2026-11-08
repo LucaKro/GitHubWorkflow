@@ -12,7 +12,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from basstler_domain_model.claude_code.hooks import HookKey
+from domain_model.claude_code.hooks import HookKey
 
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.notes.branch import NotesBranch

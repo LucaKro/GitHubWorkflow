@@ -17,28 +17,28 @@ from http import HTTPStatus
 from pathlib import Path
 
 import pytest
-from basstler_domain_model.claude_code.hooks import HookKey, HookValue
-from basstler_domain_model.environment import (
+from domain_model.claude_code.hooks import HookKey, HookValue
+from domain_model.environment import (
     ClaudeCodeVariable,
     GitHubActionsVariable,
     GitHubCredentialVariable,
 )
-from basstler_domain_model.git.commands import RemoteName
-from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
-from basstler_domain_model.github.repository_client import (
+from domain_model.git.commands import RemoteName
+from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
+from domain_model.github.repository_client import (
     GitHubRepository,
     PullRequestListState,
 )
-from basstler_domain_model.github.routes import QueryParameter, RepositoryRoute
-from basstler_domain_model.github.vocabulary import (
+from domain_model.github.routes import QueryParameter, RepositoryRoute
+from domain_model.github.vocabulary import (
     ClosingKeyword,
     IssueEventType,
     IssueState,
     PullRequestState,
     RestJSONKey,
 )
-from basstler_domain_model.locations import GitStateFile, PathEnumeration
-from basstler_domain_model.repository import GitHubAddress, Repository
+from domain_model.locations import GitStateFile, PathEnumeration
+from domain_model.repository import GitHubAddress, Repository
 
 import github_workflow
 import github_workflow.session_start

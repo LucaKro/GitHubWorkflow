@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from basstler_domain_model.templates import Placeholder
+from domain_model.templates import Placeholder
 
 from github_workflow.label_events import FindingAutomation
 from github_workflow.locations import ProjectFile

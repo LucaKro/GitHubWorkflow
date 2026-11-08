@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from enum import Enum, IntEnum, StrEnum
 from pathlib import Path
 
-from basstler_domain_model.environment import ShellVariable
+from domain_model.environment import ShellVariable
 
 from github_workflow.locations import PluginDirectory, RuntimeLocation
 
@@ -28,7 +28,7 @@ class Distribution(StrEnum):
     The workflow itself.
     """
 
-    DOMAIN_MODEL = "basstler-domain-model"
+    DOMAIN_MODEL = "domain-model"
     """
     The model of git and GitHub the workflow is built on.
     """

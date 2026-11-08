@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from basstler_domain_model.claude_code.hooks import HookKey
+from domain_model.claude_code.hooks import HookKey
 
 from github_workflow.report_lines import ReportLine, SessionStartReport, Speaker, Tone
 

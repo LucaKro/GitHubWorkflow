@@ -1,6 +1,6 @@
 """
-Tests for :class:`basstler_domain_model.github.rest_models.RestPullRequest`: a pull
-request parsed as it arrives, and refused when it lacks what it cannot be read without.
+Tests for :class:`domain_model.github.rest_models.RestPullRequest`: a pull request
+parsed as it arrives, and refused when it lacks what it cannot be read without.
 """
 
 from __future__ import annotations
@@ -11,19 +11,19 @@ from typing import Any
 
 import pytest
 
-from basstler_domain_model.github.clients import GitHubApi
-from basstler_domain_model.github.exceptions import MissingPullRequestFieldError
-from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
-from basstler_domain_model.github.repository_client import GitHubRepository
-from basstler_domain_model.github.rest_models import PullRequestHead, RestPullRequest
-from basstler_domain_model.github.review_models import Author
-from basstler_domain_model.github.routes import QueryParameter, RepositoryRoute
-from basstler_domain_model.github.vocabulary import (
+from domain_model.github.clients import GitHubApi
+from domain_model.github.exceptions import MissingPullRequestFieldError
+from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
+from domain_model.github.repository_client import GitHubRepository
+from domain_model.github.rest_models import PullRequestHead, RestPullRequest
+from domain_model.github.review_models import Author
+from domain_model.github.routes import QueryParameter, RepositoryRoute
+from domain_model.github.vocabulary import (
     MergeableState,
     PullRequestState,
     RestJSONKey,
 )
-from basstler_domain_model.repository import Repository
+from domain_model.repository import Repository
 
 from .dataset.locations import DatasetLocation
 

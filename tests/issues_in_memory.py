@@ -8,11 +8,11 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 
-from basstler_domain_model.github.issue_models import Issue, IssueComment
-from basstler_domain_model.github.labels import GitHubLabel
-from basstler_domain_model.github.repository_client import ClosablePullRequests
-from basstler_domain_model.github.rest_models import RestPullRequest
-from basstler_domain_model.github.vocabulary import IssueState, IssueStateReason
+from domain_model.github.issue_models import Issue, IssueComment
+from domain_model.github.labels import GitHubLabel
+from domain_model.github.repository_client import ClosablePullRequests
+from domain_model.github.rest_models import RestPullRequest
+from domain_model.github.vocabulary import IssueState, IssueStateReason
 
 from github_workflow.findings import FindingLabel, FindingStage, Priority
 from github_workflow.proofs import FindingTest, ProofAttempt, ProofRunner

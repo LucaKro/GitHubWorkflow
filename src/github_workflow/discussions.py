@@ -11,13 +11,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from basstler_domain_model.git.commands import GitCommandRunner
-from basstler_domain_model.github.discussions import (
+from domain_model.git.commands import GitCommandRunner
+from domain_model.github.discussions import (
     DefaultDiscussionCategory,
     DiscussionCategory,
 )
-from basstler_domain_model.github.repository_client import RepositoryDiscussions
-from basstler_domain_model.repository import Repository
+from domain_model.github.repository_client import RepositoryDiscussions
+from domain_model.repository import Repository
 
 from github_workflow.exceptions import DiscussionsDisabledError
 from github_workflow.locations import NotesFile, WorkflowTemplate

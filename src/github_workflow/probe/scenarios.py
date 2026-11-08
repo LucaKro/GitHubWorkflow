@@ -12,29 +12,29 @@ from dataclasses import dataclass
 from enum import StrEnum, auto
 from http import HTTPMethod
 
-from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.commands import CommandResult, CommandRunner
-from basstler_domain_model.environment import (
+from domain_model.class_property import classproperty
+from domain_model.commands import CommandResult, CommandRunner
+from domain_model.environment import (
     ClaudeCodeVariable,
     GitHubCredentialVariable,
 )
-from basstler_domain_model.git.commands import (
+from domain_model.git.commands import (
     GitCommandRunner,
     GitIdentity,
     ProposedPush,
     RemoteBranch,
 )
-from basstler_domain_model.github.clients import GitHubApi, RestAnswer
-from basstler_domain_model.github.rest_models import RestPullRequest
-from basstler_domain_model.github.routes import RepositoryRoute, StackAction
-from basstler_domain_model.github.stack_models import Stack
-from basstler_domain_model.github.vocabulary import (
+from domain_model.github.clients import GitHubApi, RestAnswer
+from domain_model.github.rest_models import RestPullRequest
+from domain_model.github.routes import RepositoryRoute, StackAction
+from domain_model.github.stack_models import Stack
+from domain_model.github.vocabulary import (
     IssueState,
     IssueStateReason,
     RestJSONKey,
     WorkflowRunStatus,
 )
-from basstler_domain_model.templates import Placeholder
+from domain_model.templates import Placeholder
 
 import github_workflow
 from github_workflow.command_line import ArgumentName, RunnableCommand

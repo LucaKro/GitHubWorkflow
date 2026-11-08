@@ -9,9 +9,9 @@ import json
 import sys
 from pathlib import Path
 
-from basstler_domain_model.claude_code.hooks import HookKey
-from basstler_domain_model.locations import PythonProjectFile
-from basstler_domain_model.python_project import DevelopmentExtra, UvTool
+from domain_model.claude_code.hooks import HookKey
+from domain_model.locations import PythonProjectFile
+from domain_model.python_project import DevelopmentExtra, UvTool
 
 from github_workflow.project_tooling import ProjectTooling
 from github_workflow.report_lines import SessionStartReport, Tone

@@ -5,7 +5,7 @@ Tests for :mod:`github_workflow.remotes`: writes go only to the owner's reposito
 from __future__ import annotations
 
 import pytest
-from basstler_domain_model.git.commands import RemoteName
+from domain_model.git.commands import RemoteName
 
 from github_workflow.exceptions import AmbiguousOwnedRemoteError, NoOwnedRemoteError
 from github_workflow.remotes import OwnedRemotes

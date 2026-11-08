@@ -8,14 +8,14 @@ from abc import ABC
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from basstler_domain_model.exceptions import DataclassException
+from domain_model.exceptions import DataclassException
 
 from github_workflow.command_line import CommandOption, RunnableCommand
 
 if TYPE_CHECKING:
-    from basstler_domain_model.git.branch_tips import BranchTip
-    from basstler_domain_model.github.vocabulary import WorkflowRunConclusion
-    from basstler_domain_model.repository import Repository
+    from domain_model.git.branch_tips import BranchTip
+    from domain_model.github.vocabulary import WorkflowRunConclusion
+    from domain_model.repository import Repository
 
 # %% whose repository
 

@@ -1,6 +1,6 @@
 """
-Tests for :class:`basstler_domain_model.git.storage_branch.StorageBranch`: a branch read
-and written without a checkout, by several writers.
+Tests for :class:`domain_model.git.storage_branch.StorageBranch`: a branch read and
+written without a checkout, by several writers.
 """
 
 from __future__ import annotations
@@ -11,14 +11,14 @@ from pathlib import Path
 
 import pytest
 
-from basstler_domain_model.git.commands import (
+from domain_model.git.commands import (
     GitCommandResult,
     GitCommandRunner,
     RemoteBranch,
     RemoteName,
 )
-from basstler_domain_model.git.exceptions import StorageBranchWriteConflict
-from basstler_domain_model.git.storage_branch import StorageBranch
+from domain_model.git.exceptions import StorageBranchWriteConflict
+from domain_model.git.storage_branch import StorageBranch
 
 # %% fixtures
 

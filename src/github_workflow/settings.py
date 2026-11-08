@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from github_workflow.plugin import Distribution, ToolRepository
 
 if TYPE_CHECKING:
-    from basstler_domain_model.repository import Repository
+    from domain_model.repository import Repository
 
 # %% settings
 

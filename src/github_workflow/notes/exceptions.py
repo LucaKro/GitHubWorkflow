@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from basstler_domain_model.exceptions import DataclassException
+from domain_model.exceptions import DataclassException
 
 # %% saving notes
 

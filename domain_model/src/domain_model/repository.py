@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from urllib.parse import urlsplit
 
-from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.exceptions import MalformedRepositoryError
+from domain_model.class_property import classproperty
+from domain_model.exceptions import MalformedRepositoryError
 
 # %% addresses
 

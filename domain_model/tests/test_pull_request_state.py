@@ -1,6 +1,6 @@
 """
-Tests for :class:`basstler_domain_model.github.vocabulary.PullRequestState`: one state,
-whichever API reported it.
+Tests for :class:`domain_model.github.vocabulary.PullRequestState`: one state, whichever
+API reported it.
 """
 
 from __future__ import annotations
@@ -9,9 +9,9 @@ import json
 
 import pytest
 
-from basstler_domain_model.github.rest_models import RestPullRequest
-from basstler_domain_model.github.review_models import BranchPullRequest
-from basstler_domain_model.github.vocabulary import PullRequestState
+from domain_model.github.rest_models import RestPullRequest
+from domain_model.github.review_models import BranchPullRequest
+from domain_model.github.vocabulary import PullRequestState
 
 from .dataset.locations import DatasetLocation
 

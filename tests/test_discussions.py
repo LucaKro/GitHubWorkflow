@@ -13,19 +13,19 @@ from http import HTTPStatus
 from pathlib import Path
 
 import pytest
-from basstler_domain_model.github.discussions import (
+from domain_model.github.discussions import (
     DefaultDiscussionCategory,
     DiscussionCategory,
 )
-from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
-from basstler_domain_model.github.repository_client import (
+from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
+from domain_model.github.repository_client import (
     PullRequestListState,
     RepositoryDiscussions,
 )
-from basstler_domain_model.github.routes import QueryParameter, RepositoryRoute
-from basstler_domain_model.github.vocabulary import RestJSONKey
-from basstler_domain_model.locations import PathEnumeration
-from basstler_domain_model.repository import Repository
+from domain_model.github.routes import QueryParameter, RepositoryRoute
+from domain_model.github.vocabulary import RestJSONKey
+from domain_model.locations import PathEnumeration
+from domain_model.repository import Repository
 
 import github_workflow
 from github_workflow.command_line import (

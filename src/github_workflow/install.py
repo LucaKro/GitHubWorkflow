@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
-from basstler_domain_model.commands import CommandResult, CommandRunner
+from domain_model.commands import CommandResult, CommandRunner
 
 from github_workflow.exceptions import RuntimeInstallError
 from github_workflow.locations import (

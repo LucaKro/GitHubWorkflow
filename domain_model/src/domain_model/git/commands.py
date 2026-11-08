@@ -14,16 +14,16 @@ from dataclasses import dataclass, fields
 from enum import StrEnum
 from pathlib import Path
 
-from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.commands import CommandResult, CommandRunner
-from basstler_domain_model.environment import GitVariable
-from basstler_domain_model.git.exceptions import (
+from domain_model.class_property import classproperty
+from domain_model.commands import CommandResult, CommandRunner
+from domain_model.environment import GitVariable
+from domain_model.git.exceptions import (
     GitCommandFailed,
     MalformedReferenceUpdateError,
     UnresolvableReferenceError,
 )
-from basstler_domain_model.locations import GitStateFile
-from basstler_domain_model.repository import Repository
+from domain_model.locations import GitStateFile
+from domain_model.repository import Repository
 
 # %% how one branch takes in another
 

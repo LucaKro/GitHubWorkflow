@@ -1,6 +1,6 @@
 """
-Tests for :class:`basstler_domain_model.github.credential.GitHubToken`: the
-environment's token first, then the one ``gh`` is logged in with.
+Tests for :class:`domain_model.github.credential.GitHubToken`: the environment's token
+first, then the one ``gh`` is logged in with.
 """
 
 from __future__ import annotations
@@ -11,10 +11,10 @@ from pathlib import Path
 
 import pytest
 
-from basstler_domain_model.commands import CommandRunner
-from basstler_domain_model.environment import GitHubCredentialVariable
-from basstler_domain_model.github.credential import GitHubToken
-from basstler_domain_model.github.exceptions import GitHubCredentialUnavailableError
+from domain_model.commands import CommandRunner
+from domain_model.environment import GitHubCredentialVariable
+from domain_model.github.credential import GitHubToken
+from domain_model.github.exceptions import GitHubCredentialUnavailableError
 
 from .dataset.locations import DatasetLocation
 

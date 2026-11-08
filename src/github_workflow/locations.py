@@ -7,7 +7,7 @@ from __future__ import annotations
 from enum import StrEnum
 from pathlib import Path
 
-from basstler_domain_model.locations import GitHubRepositoryFile, PathEnumeration
+from domain_model.locations import GitHubRepositoryFile, PathEnumeration
 
 # %% the notes branch
 

@@ -10,10 +10,10 @@ import sys
 from pathlib import Path
 
 import pytest
-from basstler_domain_model.environment import PythonVariable
-from basstler_domain_model.git.commands import RemoteName
-from basstler_domain_model.github.issue_models import IssueComment
-from basstler_domain_model.locations import PathEnumeration, PythonProjectFile
+from domain_model.environment import PythonVariable
+from domain_model.git.commands import RemoteName
+from domain_model.github.issue_models import IssueComment
+from domain_model.locations import PathEnumeration, PythonProjectFile
 
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.exceptions import (

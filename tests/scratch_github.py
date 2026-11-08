@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.repository import Repository
+from domain_model.class_property import classproperty
+from domain_model.repository import Repository
 
 from github_workflow.settings import WorkflowSettings
 

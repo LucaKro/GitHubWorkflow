@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from basstler_domain_model.github.exceptions import ContradictoryLabelWriteError
+from domain_model.github.exceptions import ContradictoryLabelWriteError
 
 # %% labels
 

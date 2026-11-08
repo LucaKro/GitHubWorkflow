@@ -1,14 +1,14 @@
 """
-Tests for :mod:`basstler_domain_model.python_project`: where a Python project's packages
-are imported from, and the tool managing its environment.
+Tests for :mod:`domain_model.python_project`: where a Python project's packages are
+imported from, and the tool managing its environment.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from basstler_domain_model.locations import PythonProjectFile
-from basstler_domain_model.python_project import (
+from domain_model.locations import PythonProjectFile
+from domain_model.python_project import (
     DevelopmentExtra,
     PackageDirectories,
     UvTool,

@@ -13,10 +13,10 @@ import time
 from pathlib import Path
 
 import pytest
-from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
-from basstler_domain_model.github.replayed_api import ReplayedApi
-from basstler_domain_model.github.rest_models import RestPullRequest
-from basstler_domain_model.github.vocabulary import PullRequestState
+from domain_model.git.commands import GitCommandRunner, RemoteBranch
+from domain_model.github.replayed_api import ReplayedApi
+from domain_model.github.rest_models import RestPullRequest
+from domain_model.github.vocabulary import PullRequestState
 
 import github_workflow
 from github_workflow.cleanup import (

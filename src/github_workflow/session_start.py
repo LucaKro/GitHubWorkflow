@@ -16,8 +16,8 @@ from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
 
-from basstler_domain_model.claude_code.hooks import HookValue
-from basstler_domain_model.commands import CommandRunner
+from domain_model.claude_code.hooks import HookValue
+from domain_model.commands import CommandRunner
 
 import github_workflow.report as report
 from github_workflow.checkout import ProjectCheckout

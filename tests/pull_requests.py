@@ -4,9 +4,9 @@ Pull requests as the repository client reads them, built for the stand-ins in te
 
 from __future__ import annotations
 
-from basstler_domain_model.github.rest_models import PullRequestHead, RestPullRequest
-from basstler_domain_model.github.review_models import Author
-from basstler_domain_model.github.vocabulary import MergeableState, PullRequestState
+from domain_model.github.rest_models import PullRequestHead, RestPullRequest
+from domain_model.github.review_models import Author
+from domain_model.github.vocabulary import MergeableState, PullRequestState
 
 from .repositories_by_owner import RepositoriesByOwner
 from .scratch_github import ScratchGitHub

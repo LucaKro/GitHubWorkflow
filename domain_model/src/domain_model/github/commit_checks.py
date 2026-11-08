@@ -6,13 +6,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from basstler_domain_model.github.clients import RestClient
-from basstler_domain_model.github.pull_request_models import CheckStatus
-from basstler_domain_model.github.rest_models import (
+from domain_model.github.clients import RestClient
+from domain_model.github.pull_request_models import CheckStatus
+from domain_model.github.rest_models import (
     RestCheckRunPage,
     RestCombinedStatusPage,
 )
-from basstler_domain_model.github.routes import RepositoryRoute
+from domain_model.github.routes import RepositoryRoute
 
 # %% the reading
 

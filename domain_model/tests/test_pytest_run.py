@@ -1,6 +1,6 @@
 """
-Tests for :mod:`basstler_domain_model.pytest_run`: running pytest on a test file and
-reading its report.
+Tests for :mod:`domain_model.pytest_run`: running pytest on a test file and reading its
+report.
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from basstler_domain_model.pytest_run import (
+from domain_model.pytest_run import (
     BrokenTestException,
     JUnitReport,
     PytestRun,

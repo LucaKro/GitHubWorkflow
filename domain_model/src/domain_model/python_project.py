@@ -12,7 +12,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from basstler_domain_model.locations import PythonProjectFile
+from domain_model.locations import PythonProjectFile
 
 # %% the project's settings
 

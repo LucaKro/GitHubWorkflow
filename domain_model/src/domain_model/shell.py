@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import PurePath
 
-from basstler_domain_model.class_property import classproperty
+from domain_model.class_property import classproperty
 
 # %% programs running other commands
 

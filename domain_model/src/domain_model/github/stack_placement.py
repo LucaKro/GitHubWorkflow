@@ -7,10 +7,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from basstler_domain_model.github.exceptions import StackContinuesAboveError
-from basstler_domain_model.github.repository_client import StackHost
-from basstler_domain_model.github.stack_models import Stack
-from basstler_domain_model.github.vocabulary import PullRequestState
+from domain_model.github.exceptions import StackContinuesAboveError
+from domain_model.github.repository_client import StackHost
+from domain_model.github.stack_models import Stack
+from domain_model.github.vocabulary import PullRequestState
 
 # %% placing a pull request
 

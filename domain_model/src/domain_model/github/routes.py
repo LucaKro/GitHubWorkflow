@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from urllib.parse import quote, urlencode
 
-from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.repository import Repository
+from domain_model.class_property import classproperty
+from domain_model.repository import Repository
 
 # %% query parameters
 

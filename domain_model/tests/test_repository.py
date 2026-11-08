@@ -1,6 +1,6 @@
 """
-Tests for :mod:`basstler_domain_model.repository`: reading a GitHub repository out of a
-reference or a remote URL.
+Tests for :mod:`domain_model.repository`: reading a GitHub repository out of a reference
+or a remote URL.
 """
 
 from __future__ import annotations
@@ -9,8 +9,8 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from basstler_domain_model.exceptions import MalformedRepositoryError
-from basstler_domain_model.repository import GitHubAddress, Repository
+from domain_model.exceptions import MalformedRepositoryError
+from domain_model.repository import GitHubAddress, Repository
 
 REPOSITORY = Repository("an-owner", "a-repository")
 """

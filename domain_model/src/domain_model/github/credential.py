@@ -6,10 +6,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from basstler_domain_model.commands import CommandRunner
-from basstler_domain_model.environment import GitHubCredentialVariable
-from basstler_domain_model.github.exceptions import GitHubCredentialUnavailableError
-from basstler_domain_model.github.vocabulary import GitHubClient
+from domain_model.commands import CommandRunner
+from domain_model.environment import GitHubCredentialVariable
+from domain_model.github.exceptions import GitHubCredentialUnavailableError
+from domain_model.github.vocabulary import GitHubClient
 
 # %% the token
 

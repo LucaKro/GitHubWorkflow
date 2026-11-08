@@ -18,19 +18,19 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from basstler_domain_model.github.clients import (
+from domain_model.github.clients import (
     GitHubApi,
     GraphQLClient,
     RecordingGraphQLClient,
     ReplayingGraphQLClient,
 )
-from basstler_domain_model.github.pull_request_models import (
+from domain_model.github.pull_request_models import (
     UpstreamPullRequestSnapshot,
 )
-from basstler_domain_model.github.readers import UpstreamPullRequestReader
-from basstler_domain_model.github.repository_client import RepositoryWorkflows
-from basstler_domain_model.github.vocabulary import WorkflowRunConclusion
-from basstler_domain_model.repository import Repository
+from domain_model.github.readers import UpstreamPullRequestReader
+from domain_model.github.repository_client import RepositoryWorkflows
+from domain_model.github.vocabulary import WorkflowRunConclusion
+from domain_model.repository import Repository
 
 from github_workflow.exceptions import (
     UpstreamReadFailed,

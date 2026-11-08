@@ -8,8 +8,8 @@ from abc import ABC
 from dataclasses import dataclass
 from enum import StrEnum
 
-from basstler_domain_model.exceptions import DataclassException, ExternalCallFailed
-from basstler_domain_model.repository import Repository
+from domain_model.exceptions import DataclassException, ExternalCallFailed
+from domain_model.repository import Repository
 
 # %% reading one pull request's review state
 

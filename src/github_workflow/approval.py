@@ -18,7 +18,7 @@ import sys
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum
 
-from basstler_domain_model.shell import CommandLine, SimpleCommand
+from domain_model.shell import CommandLine, SimpleCommand
 
 from github_workflow.command_line import RunnableCommand
 from github_workflow.guard import CommandGuard, WorkflowInvocation

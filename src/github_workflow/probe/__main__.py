@@ -11,8 +11,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from basstler_domain_model.git.commands import GitCommandRunner
-from basstler_domain_model.github.clients import GitHubApi
+from domain_model.git.commands import GitCommandRunner
+from domain_model.github.clients import GitHubApi
 
 from github_workflow.locations import ProbeFile
 from github_workflow.probe.publish import ResultsPublication

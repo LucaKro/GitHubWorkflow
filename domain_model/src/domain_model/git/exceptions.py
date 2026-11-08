@@ -7,7 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from basstler_domain_model.exceptions import DataclassException, ExternalCallFailed
+from domain_model.exceptions import DataclassException, ExternalCallFailed
 
 # %% errors
 

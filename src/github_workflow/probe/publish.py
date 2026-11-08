@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from basstler_domain_model.git.commands import GitCommandRunner
-from basstler_domain_model.git.storage_branch import StorageBranch
+from domain_model.git.commands import GitCommandRunner
+from domain_model.git.storage_branch import StorageBranch
 
 from github_workflow.plugin import Distribution
 from github_workflow.remotes import OwnedRemote, OwnedRemotes

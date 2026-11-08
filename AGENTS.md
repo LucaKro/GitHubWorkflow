@@ -93,7 +93,7 @@
   - An exception raised only within one subpackage goes in that subpackage's `exceptions.py`; create the file if the subpackage has none
   - An exception raised across several subpackages goes in the `exceptions.py` of their nearest common package
 - Never use `assert` outside tests: Python drops it when run with `-O`, so the check silently disappears. Raise a custom exception instead
-- Custom exceptions subclass `basstler_domain_model.exceptions.DataclassException`, implementing its `error_message` and `suggest_correction`
+- Custom exceptions subclass `domain_model.exceptions.DataclassException`, implementing its `error_message` and `suggest_correction`
 
 ### Constants and Class-Level Values
 - Never use global variables, module-level constants or `ClassVar`. Instead:
@@ -101,7 +101,7 @@
   - A default a caller may want to change is a parameter of the method that uses it if only that method does, otherwise a dataclass field with that default. For example, a `Heater` takes `target_temperature: float = 20.0` as a field instead of declaring `DEFAULT_TARGET_TEMPERATURE: ClassVar[float] = 20.0`
   - A constant that belongs to a class is a `classproperty`
   - `ClassVar` is allowed only for state that explicitly has to be shared and mutable across every instance of a class. This almost never applies
-- Use `basstler_domain_model.class_property.classproperty`
+- Use `domain_model.class_property.classproperty`
 
 ### Structured Data
 - Structured data is the default over bare strings, hardcoded values and meaningless numbers: reach for the structured form first and justify the literal, never the other way round
@@ -111,7 +111,7 @@
 - Data whose shape someone else controls - an API response, a configuration file - is mirrored in dataclasses and parsed by a `from_json` classmethod, so the field names and the access path into the payload are written once
 - A tuple whose positions carry meaning becomes a dataclass, or an enum when the positions are a fixed set of alternatives rather than fields
 - A long literal document - a query, a template, a schema - lives in a file of its own type and is read in, never embedded as a string
-- A path enum subclasses `basstler_domain_model.locations.PathEnumeration`, so every path derived from a member is a plain `Path`; its members' `name` is the path's last component, so read the member name as `_name_`
+- A path enum subclasses `domain_model.locations.PathEnumeration`, so every path derived from a member is a plain `Path`; its members' `name` is the path's last component, so read the member name as `_name_`
 
 ## Type Hints
 - Every parameter and return value has an accurate type hint, `Any` and `-> None` included
@@ -147,14 +147,14 @@
 # Project Rules
 
 ## Package
-- The repository holds two packages: the workflow, `github_workflow` under `src/`, and the domain model it is built on, `basstler_domain_model` under `domain_model/src/`, with its own `pyproject.toml`, tests and `AGENTS.md`. Every Python module lives in one of them
+- The repository holds two packages: the workflow, `github_workflow` under `src/`, and the domain model it is built on, `domain_model` under `domain_model/src/`, with its own `pyproject.toml`, tests and `AGENTS.md`. Every Python module lives in one of them
 - Name every file and directory once, in `github_workflow.locations`; every environment variable once, in `github_workflow.environment`
-- GitHub's and git's data, and the clients that read and write them, come from `basstler_domain_model`; `github_workflow` holds only the workflow built on them. Something that models GitHub or git rather than this workflow belongs in `basstler_domain_model`
+- GitHub's and git's data, and the clients that read and write them, come from `domain_model`; `github_workflow` holds only the workflow built on them. Something that models GitHub or git rather than this workflow belongs in `domain_model`
 - Each package depends only on the libraries its `pyproject.toml` lists
 
 ## The Guard
 - `github_workflow.guard`, `github_workflow.coarse_guard`, `github_workflow.approval` and `github_workflow.install`, and every module they import, run on the standard library and the plugin's own source alone - the workflow's and the domain model's - so the hooks can run them when the runtime cannot, and the installer can build the runtime
-- `basstler_domain_model` depends on nothing but the standard library, so the guard can import it from the plugin's source
+- `domain_model` depends on nothing but the standard library, so the guard can import it from the plugin's source
 
 ## Releases
 - No file carries the version: `hatch-vcs` reads it from the latest git tag

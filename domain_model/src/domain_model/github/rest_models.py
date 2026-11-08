@@ -7,19 +7,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.github.exceptions import (
+from domain_model.class_property import classproperty
+from domain_model.github.exceptions import (
     MissingPullRequestFieldError,
     ReviewThreadWithoutCommentsError,
 )
-from basstler_domain_model.github.pull_request_models import CheckResult
-from basstler_domain_model.github.review_models import (
+from domain_model.github.pull_request_models import CheckResult
+from domain_model.github.review_models import (
     Author,
     BranchPullRequest,
     ReviewThread,
     ThreadComment,
 )
-from basstler_domain_model.github.vocabulary import (
+from domain_model.github.vocabulary import (
     JSONModel,
     MergeableState,
     PullRequestState,
@@ -28,7 +28,7 @@ from basstler_domain_model.github.vocabulary import (
     WorkflowRunStatus,
     WorkflowState,
 )
-from basstler_domain_model.repository import Repository
+from domain_model.repository import Repository
 
 # %% a pull request
 

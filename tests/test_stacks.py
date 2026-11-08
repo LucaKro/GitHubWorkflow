@@ -9,10 +9,10 @@ import subprocess
 import sys
 
 import pytest
-from basstler_domain_model.git.commands import RemoteName
-from basstler_domain_model.github.exceptions import StackContinuesAboveError
-from basstler_domain_model.github.stack_models import Stack
-from basstler_domain_model.github.stack_placement import StackPlacement
+from domain_model.git.commands import RemoteName
+from domain_model.github.exceptions import StackContinuesAboveError
+from domain_model.github.stack_models import Stack
+from domain_model.github.stack_placement import StackPlacement
 
 import github_workflow
 from github_workflow.command_line import (

@@ -12,8 +12,8 @@ from enum import StrEnum
 from pathlib import Path
 from xml.etree import ElementTree
 
-from basstler_domain_model.commands import CommandRunner
-from basstler_domain_model.environment import PythonVariable
+from domain_model.commands import CommandRunner
+from domain_model.environment import PythonVariable
 
 # %% how a test fared
 

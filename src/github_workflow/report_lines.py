@@ -11,9 +11,9 @@ from dataclasses import dataclass
 from enum import Enum, StrEnum
 from types import TracebackType
 
-from basstler_domain_model.claude_code.hooks import HookKey, HookValue
-from basstler_domain_model.counted_noun import CountedNoun
-from basstler_domain_model.exceptions import DataclassException
+from domain_model.claude_code.hooks import HookKey, HookValue
+from domain_model.counted_noun import CountedNoun
+from domain_model.exceptions import DataclassException
 
 from github_workflow.plugin import Distribution
 

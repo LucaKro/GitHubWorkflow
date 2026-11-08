@@ -16,15 +16,15 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Self
 
-from basstler_domain_model.git.branch_tips import BranchTip
-from basstler_domain_model.git.commands import GitCommandRunner
-from basstler_domain_model.github.repository_client import (
+from domain_model.git.branch_tips import BranchTip
+from domain_model.git.commands import GitCommandRunner
+from domain_model.github.repository_client import (
     GitHubRepository,
     PullRequestsFromForks,
 )
-from basstler_domain_model.github.rest_models import RestPullRequest
-from basstler_domain_model.github.vocabulary import PullRequestState
-from basstler_domain_model.locations import GitStateFile
+from domain_model.github.rest_models import RestPullRequest
+from domain_model.github.vocabulary import PullRequestState
+from domain_model.locations import GitStateFile
 
 from github_workflow.command_line import RunnableCommand
 from github_workflow.exceptions import (

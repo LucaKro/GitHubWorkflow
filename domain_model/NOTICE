@@ -1,4 +1,4 @@
-basstler-domain-model
+domain-model
 Copyright 2026 Luca Krohm
 
 Licensed under the Apache License, Version 2.0 (see LICENSE), except for the code
@@ -21,7 +21,7 @@ basstler's NOTICE reads:
     adapted from krrood (https://github.com/cram2/krrood), which remains under its
     own licence.
 
-In this project, src/basstler_domain_model/exceptions.py and
-src/basstler_domain_model/class_property.py contain code adapted from krrood
+In this project, src/domain_model/exceptions.py and
+src/domain_model/class_property.py contain code adapted from krrood
 (https://github.com/cram2/krrood), which remains under its own licence, the GNU
 Lesser General Public License, Version 3.

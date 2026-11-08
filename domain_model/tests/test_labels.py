@@ -1,6 +1,6 @@
 """
-Tests for :class:`basstler_domain_model.github.labels.GitHubLabel`, which a caller's own
-set of labels extends, and for :class:`basstler_domain_model.github.labels.LabelWrite`.
+Tests for :class:`domain_model.github.labels.GitHubLabel`, which a caller's own set of
+labels extends, and for :class:`domain_model.github.labels.LabelWrite`.
 """
 
 from __future__ import annotations
@@ -10,9 +10,9 @@ from enum import ReprEnum
 
 import pytest
 
-from basstler_domain_model.github.exceptions import ContradictoryLabelWriteError
-from basstler_domain_model.github.labels import GitHubLabel, LabelWrite
-from basstler_domain_model.github.repository_client import RepositoryLabels
+from domain_model.github.exceptions import ContradictoryLabelWriteError
+from domain_model.github.labels import GitHubLabel, LabelWrite
+from domain_model.github.repository_client import RepositoryLabels
 
 # %% an enumeration of labels
 

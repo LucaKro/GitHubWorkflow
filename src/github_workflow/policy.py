@@ -9,9 +9,9 @@ from dataclasses import dataclass
 from enum import StrEnum
 from functools import cached_property
 
-from basstler_domain_model.git.commands import GitIdentity
-from basstler_domain_model.git.identity import PersonIdentity
-from basstler_domain_model.github.repository_client import RepositoryDetails
+from domain_model.git.commands import GitIdentity
+from domain_model.git.identity import PersonIdentity
+from domain_model.github.repository_client import RepositoryDetails
 
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.exceptions import (

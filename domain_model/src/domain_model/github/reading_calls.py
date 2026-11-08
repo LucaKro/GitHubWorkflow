@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from enum import Enum, StrEnum, auto
 from http import HTTPMethod
 
-from basstler_domain_model.class_property import classproperty
+from domain_model.class_property import classproperty
 
 # %% sending options
 

@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from basstler_domain_model.git.commands import GitCommandRunner, Remote, RemoteName
-from basstler_domain_model.repository import Repository
+from domain_model.git.commands import GitCommandRunner, Remote, RemoteName
+from domain_model.repository import Repository
 
 from github_workflow.exceptions import AmbiguousOwnedRemoteError, NoOwnedRemoteError
 from github_workflow.settings import WorkflowSettings

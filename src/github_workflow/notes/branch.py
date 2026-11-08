@@ -8,8 +8,8 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
-from basstler_domain_model.git.commands import GitCommandRunner
-from basstler_domain_model.git.storage_branch import StorageBranch
+from domain_model.git.commands import GitCommandRunner
+from domain_model.git.storage_branch import StorageBranch
 
 from github_workflow.remotes import OwnedRemote
 from github_workflow.settings import WorkflowSettings

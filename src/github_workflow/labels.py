@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from enum import ReprEnum
 
-from basstler_domain_model.github.labels import GitHubLabel
+from domain_model.github.labels import GitHubLabel
 
 # %% labels
 

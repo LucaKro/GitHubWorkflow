@@ -1,11 +1,12 @@
 """
-Tests for :mod:`basstler_domain_model.environment`.
+Tests for :mod:`domain_model.environment`.
 """
 
 from __future__ import annotations
 
 import pytest
-from basstler_domain_model.environment import GitVariable, ShellVariable
+
+from domain_model.environment import GitVariable, ShellVariable
 
 # %% git's variables
 

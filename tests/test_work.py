@@ -13,21 +13,21 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
-from basstler_domain_model.environment import GitIdentityVariable
-from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
-from basstler_domain_model.git.exceptions import GitCommandFailed
-from basstler_domain_model.github.exceptions import StackContinuesAboveError
-from basstler_domain_model.github.repository_client import (
+from domain_model.environment import GitIdentityVariable
+from domain_model.git.commands import GitCommandRunner, RemoteBranch
+from domain_model.git.exceptions import GitCommandFailed
+from domain_model.github.exceptions import StackContinuesAboveError
+from domain_model.github.repository_client import (
     BranchStacks,
     PullRequestReader,
     PullRequestsFromForks,
     RepositoryDetails,
 )
-from basstler_domain_model.github.rest_models import RestPullRequest
-from basstler_domain_model.github.stack_models import Stack
-from basstler_domain_model.github.stack_placement import StackPlacement
-from basstler_domain_model.github.vocabulary import ClosingKeyword, PullRequestState
-from basstler_domain_model.repository import Repository
+from domain_model.github.rest_models import RestPullRequest
+from domain_model.github.stack_models import Stack
+from domain_model.github.stack_placement import StackPlacement
+from domain_model.github.vocabulary import ClosingKeyword, PullRequestState
+from domain_model.repository import Repository
 
 import github_workflow
 from github_workflow.checkout import ProjectCheckout

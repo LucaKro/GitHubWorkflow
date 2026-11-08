@@ -13,12 +13,12 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from basstler_domain_model.github.clients import GitHubApi, RestApi
-from basstler_domain_model.github.commit_checks import CommitCheckReader
-from basstler_domain_model.github.exceptions import NotAnIssueError
-from basstler_domain_model.github.issue_models import Issue, IssueComment, LabelEvent
-from basstler_domain_model.github.labels import GitHubLabel
-from basstler_domain_model.github.rest_models import (
+from domain_model.github.clients import GitHubApi, RestApi
+from domain_model.github.commit_checks import CommitCheckReader
+from domain_model.github.exceptions import NotAnIssueError
+from domain_model.github.issue_models import Issue, IssueComment, LabelEvent
+from domain_model.github.labels import GitHubLabel
+from domain_model.github.rest_models import (
     BranchComparison,
     RestPullRequest,
     RestRepository,
@@ -26,20 +26,20 @@ from basstler_domain_model.github.rest_models import (
     Workflow,
     WorkflowRun,
 )
-from basstler_domain_model.github.routes import (
+from domain_model.github.routes import (
     QueryParameter,
     RepositoryRoute,
     StackAction,
 )
-from basstler_domain_model.github.stack_models import Stack
-from basstler_domain_model.github.vocabulary import (
+from domain_model.github.stack_models import Stack
+from domain_model.github.vocabulary import (
     IssueState,
     IssueStateReason,
     PullRequestState,
     RestJSONKey,
     RollupState,
 )
-from basstler_domain_model.repository import Repository
+from domain_model.repository import Repository
 
 # %% what a caller reads and writes
 

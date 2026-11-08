@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.github.repository_client import GitHubRepository
+from domain_model.class_property import classproperty
+from domain_model.github.repository_client import GitHubRepository
 
 from github_workflow.cleanup import CleanupReminder
 from github_workflow.findings import FindingsSummary

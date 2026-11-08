@@ -9,13 +9,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from basstler_domain_model.git.commands import (
+from domain_model.git.commands import (
     GitCommandResult,
     GitCommandRunner,
     ProposedPush,
     RemoteBranch,
 )
-from basstler_domain_model.git.exceptions import (
+from domain_model.git.exceptions import (
     StorageBranchPushRefused,
     StorageBranchWriteConflict,
 )

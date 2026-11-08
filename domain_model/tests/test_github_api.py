@@ -1,6 +1,6 @@
 """
-Tests for :class:`basstler_domain_model.github.clients.GitHubApi`: REST, GraphQL and job
-logs over HTTP, against answers replayed by a local server.
+Tests for :class:`domain_model.github.clients.GitHubApi`: REST, GraphQL and job logs
+over HTTP, against answers replayed by a local server.
 """
 
 from __future__ import annotations
@@ -12,15 +12,15 @@ from http import HTTPStatus
 
 import pytest
 
-from basstler_domain_model.github.clients import GitHubApi
-from basstler_domain_model.github.exceptions import (
+from domain_model.github.clients import GitHubApi
+from domain_model.github.exceptions import (
     GitHubRequestFailed,
     GraphQLDataMissingError,
     GraphQLErrorsReturned,
 )
-from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
-from basstler_domain_model.github.vocabulary import PullRequestJSONKey
-from basstler_domain_model.repository import Repository
+from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
+from domain_model.github.vocabulary import PullRequestJSONKey
+from domain_model.repository import Repository
 
 from .dataset.locations import DatasetLocation
 

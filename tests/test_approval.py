@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from basstler_domain_model.locations import PathEnumeration
+from domain_model.locations import PathEnumeration
 
 from github_workflow import approval
 from github_workflow.approval import ApprovalStatus, SessionCommandApproval

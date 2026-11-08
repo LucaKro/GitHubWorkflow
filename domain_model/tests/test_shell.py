@@ -1,11 +1,11 @@
 """
-Tests for :mod:`basstler_domain_model.shell`: a Bash command line split into the simple
-commands it runs.
+Tests for :mod:`domain_model.shell`: a Bash command line split into the simple commands
+it runs.
 """
 
 from __future__ import annotations
 
-from basstler_domain_model.shell import CommandLine, SimpleCommand
+from domain_model.shell import CommandLine, SimpleCommand
 
 # %% splitting a line
 

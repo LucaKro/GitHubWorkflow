@@ -1,10 +1,10 @@
 """
-Tests for :mod:`basstler_domain_model.github.number_links`.
+Tests for :mod:`domain_model.github.number_links`.
 """
 
 from __future__ import annotations
 
-from basstler_domain_model.github.number_links import NumberLink
+from domain_model.github.number_links import NumberLink
 
 # %% the link
 

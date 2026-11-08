@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from basstler_domain_model.git.commands import RemoteBranch, RemoteName
-from basstler_domain_model.git.storage_branch import StorageBranch
+from domain_model.git.commands import RemoteBranch, RemoteName
+from domain_model.git.storage_branch import StorageBranch
 
 from github_workflow.probe.publish import ResultsBranch, ResultsPublication
 from github_workflow.remotes import OwnedRemotes

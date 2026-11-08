@@ -1,7 +1,7 @@
 """
-Tests for :mod:`basstler_domain_model.github.readers` and
-:class:`basstler_domain_model.github.commit_checks.CommitCheckReader`: finding a
-branch's pull request and reading its checks and review state, through GraphQL or REST.
+Tests for :mod:`domain_model.github.readers` and
+:class:`domain_model.github.commit_checks.CommitCheckReader`: finding a branch's pull
+request and reading its checks and review state, through GraphQL or REST.
 """
 
 from __future__ import annotations
@@ -12,25 +12,25 @@ from typing import Any
 
 import pytest
 
-from basstler_domain_model.github.clients import (
+from domain_model.github.clients import (
     GraphQLClient,
     RecordingGraphQLClient,
     ReplayingGraphQLClient,
     RestClient,
 )
-from basstler_domain_model.github.commit_checks import CommitCheckReader
-from basstler_domain_model.github.exceptions import (
+from domain_model.github.commit_checks import CommitCheckReader
+from domain_model.github.exceptions import (
     RecordedAnswersExhaustedError,
     ReviewThreadWithoutCommentsError,
     UpstreamPullRequestNotFound,
 )
-from basstler_domain_model.github.readers import (
+from domain_model.github.readers import (
     RestPullRequestReader,
     UpstreamPullRequestReader,
 )
-from basstler_domain_model.github.rest_models import RestReviewThread
-from basstler_domain_model.github.routes import RepositoryRoute
-from basstler_domain_model.github.vocabulary import (
+from domain_model.github.rest_models import RestReviewThread
+from domain_model.github.routes import RepositoryRoute
+from domain_model.github.vocabulary import (
     CheckOutcome,
     PullRequestJSONKey,
     QueryVariable,
@@ -38,7 +38,7 @@ from basstler_domain_model.github.vocabulary import (
     ReviewState,
     RollupState,
 )
-from basstler_domain_model.repository import Repository
+from domain_model.repository import Repository
 
 from .dataset.locations import DatasetLocation
 
