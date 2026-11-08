@@ -104,13 +104,7 @@ class UpstreamProposal(WorkflowStep):
             raise NotAForkError(self.repository)
         local = self.local_pull_request()
         proposals = self.upstream_repository(upstream)
-        already = [
-            pull_request
-            for pull_request in proposals.pull_requests_from(
-                self.repository.owner, self.branch
-            )
-            if pull_request.state is PullRequestState.OPEN
-        ]
+        already = proposals.pull_requests_open_from(self.repository.owner, self.branch)
         if already:
             raise PullRequestNotProposableError(
                 self.branch,
@@ -232,13 +226,18 @@ class ForkMainSync(WorkflowStep):
             raise ForkBranchDivergedError(branch, upstream, tips.ahead)
         return self.fast_forward(upstream, tips)
 
+    @property
+    def fork_branch(self) -> RemoteBranch:
+        """:return: The fork's default branch, on the owner's remote."""
+        return RemoteBranch(self.policy.remote.name, self.policy.default_branch)
+
     def tips(self, upstream: Repository) -> ForkTips:
         """
         :param upstream: The repository the fork was forked from.
         :return: The fork's default branch and the upstream's, as fetched now.
         """
         git = self.policy.checkout.git
-        fork = RemoteBranch(self.policy.remote.name, self.policy.default_branch)
+        fork = self.fork_branch
         theirs = RemoteBranch(self.upstream_name, self.policy.default_branch)
         git.fetch_branch(fork).raise_if_failed()
         git.fetch_branch(theirs, upstream.clone_url_under()).raise_if_failed()
@@ -259,7 +258,7 @@ class ForkMainSync(WorkflowStep):
         :return: What was fast-forwarded, the local copy included.
         """
         git = self.policy.checkout.git
-        fork = RemoteBranch(self.policy.remote.name, self.policy.default_branch)
+        fork = self.fork_branch
         git.push(
             ProposedPush(
                 fork.remote,

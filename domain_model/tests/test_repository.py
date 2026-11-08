@@ -115,6 +115,16 @@ def test_the_actions_url_is_the_actions_page_under_the_repository():
     assert REPOSITORY.actions_url == f"{REPOSITORY.url}/actions"
 
 
+def test_a_review_comment_s_address_is_on_a_pull_request_page():
+    address = f"{REPOSITORY.pull_request_url(7)}#discussion_r123"
+
+    assert REPOSITORY.is_pull_request_page(address)
+
+
+def test_an_issue_s_address_is_on_no_pull_request_page():
+    assert not REPOSITORY.is_pull_request_page(REPOSITORY.issue_url(7))
+
+
 def test_a_settings_url_is_the_settings_page_under_the_repository():
     assert REPOSITORY.settings_url == f"{REPOSITORY.url}/settings"
 

@@ -409,7 +409,7 @@ class DetailsStep(CommandStep):
 
     def step(self) -> WorkflowStep:
         return PullRequestDetails(
-            PullRequestSignalReader.from_repository(self.session.github),
+            PullRequestSignalReader(self.session.github, self.session.thread_source),
             self.arguments.number,
         )
 

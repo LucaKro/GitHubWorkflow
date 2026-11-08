@@ -13,7 +13,7 @@ import argparse
 import json
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -96,7 +96,7 @@ class UpstreamReviewRequest:
     The fork's branch.
     """
 
-    name: str
+    name: str = field(default_factory=NotesBranch.queued_file_name)
     """
     The request's file name on the notes branch, its answer's too.
     """
@@ -228,7 +228,7 @@ class ForwardedUpstreamReviews(UpstreamReviews):
             answered = self.answer(request)
             if not isinstance(answered, UpstreamReadNotStarted):
                 return answered
-            request = replace(request, name=f"{time.time_ns()}.json")
+            request = replace(request, name=NotesBranch.queued_file_name())
         return answered
 
     def answer(
@@ -240,7 +240,7 @@ class ForwardedUpstreamReviews(UpstreamReviews):
             answer came.
         """
         queued = self.queue(request)
-        answer = NotesFile.UPSTREAM_REVIEW_ANSWERS.value / request.name
+        answer = NotesFile.UPSTREAM_REVIEW_ANSWERS / request.name
         waited = 0.0
         while True:
             self.notes.fetch()
@@ -270,7 +270,7 @@ class ForwardedUpstreamReviews(UpstreamReviews):
             run
             for run in self.workflows.runs_on(self.notes.branch.name)
             if run.commit == queued
-            and run.path == str(NotesFile.UPSTREAM_REVIEW_WORKFLOW.value)
+            and run.path == str(NotesFile.UPSTREAM_REVIEW_WORKFLOW)
         ]
         if not runs:
             started_late = waited >= self.start_seconds
@@ -304,8 +304,7 @@ class ForwardedUpstreamReviews(UpstreamReviews):
         self.notes.fetch()
         self.notes.write(
             {
-                NotesFile.UPSTREAM_REVIEW_REQUESTS.value
-                / request.name: request.to_json(),
+                NotesFile.UPSTREAM_REVIEW_REQUESTS / request.name: request.to_json(),
                 **workflow,
             },
             f"Ask for the upstream reviews of {request.branch}",

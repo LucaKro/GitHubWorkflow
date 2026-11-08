@@ -203,6 +203,14 @@ class Repository:
         """
         return f"{self.url}/pull/{number}"
 
+    def is_pull_request_page(self, url: str) -> bool:
+        """
+        :param url: An address.
+        :return: Whether it is on the page of one of the repository's pull requests,
+            such as a review comment's.
+        """
+        return url.startswith(self.pull_request_url(""))
+
     @property
     def settings_url(self) -> str:
         """:return: The repository's settings page on GitHub."""

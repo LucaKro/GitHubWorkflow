@@ -132,17 +132,18 @@ class BranchDiscard(WorkflowStep):
         if tip is None:
             raise NothingToDiscardError(branch)
         self.notes.fetch()
-        listed = self.notes.read(NotesFile.DISCARDED_BRANCHES.value)
+        listed = self.notes.read(NotesFile.DISCARDED_BRANCHES)
         discarded = DiscardedBranches.from_text(listed).extended(BranchTip(branch, tip))
         self.notes.write(
-            {NotesFile.DISCARDED_BRANCHES.value: discarded.to_text()},
+            {NotesFile.DISCARDED_BRANCHES: discarded.to_text()},
             f"Discard {branch}",
         )
         owner = self.policy.remote.repository.owner
         closed = [
             pull_request.number
-            for pull_request in self.pull_requests.pull_requests_from(owner, branch)
-            if pull_request.state is PullRequestState.OPEN
+            for pull_request in self.pull_requests.pull_requests_open_from(
+                owner, branch
+            )
         ]
         for number in closed:
             self.retirement.retire(
@@ -247,7 +248,7 @@ class KeptBranches:
             pull_requests.result(),
             remote.repository.full_name,
             frozenset({default_branch.result(), notes.branch.name}),
-            DiscardedBranches.from_text(notes.read(NotesFile.DISCARDED_BRANCHES.value)),
+            DiscardedBranches.from_text(notes.read(NotesFile.DISCARDED_BRANCHES)),
         )
 
 
@@ -347,7 +348,7 @@ class BranchCleanup(WorkflowStep):
         )
         self.notes.fetch()
         self.notes.write(
-            {NotesFile.READY_FOR_DELETION.value: listed.to_text(), **workflow},
+            {NotesFile.READY_FOR_DELETION: listed.to_text(), **workflow},
             f"List {CountedThing.BRANCH.counted(len(refused))} for deletion",
         )
         return (

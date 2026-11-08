@@ -5,7 +5,6 @@ replying to and resolving its review threads.
 
 from __future__ import annotations
 
-import time
 from abc import ABC
 from dataclasses import dataclass
 
@@ -20,7 +19,6 @@ from basstler_domain_model.github.repository_client import (
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.review_models import ReviewThread
 from basstler_domain_model.github.review_writers import ReviewThreadWriter
-from basstler_domain_model.github.vocabulary import PullRequestState
 
 from github_workflow.exceptions import (
     ForeignReviewAddressError,
@@ -65,11 +63,7 @@ class WorkBranchPullRequest:
         """
         branch = self.policy.work_branch()
         owner = self.policy.remote.repository.owner
-        opened = [
-            pull_request
-            for pull_request in self.pull_requests.pull_requests_from(owner, branch)
-            if pull_request.state is PullRequestState.OPEN
-        ]
+        opened = self.pull_requests.pull_requests_open_from(owner, branch)
         if not opened:
             raise NoOpenPullRequestError(branch)
         return opened[0]
@@ -134,6 +128,40 @@ class PullRequestLabelling(WorkflowStep):
 
 
 @dataclass(frozen=True)
+class ThreadedPullRequest:
+    """
+    A pull request, and its review threads, unresolved first.
+    """
+
+    pull_request: RestPullRequest
+    """
+    The pull request.
+    """
+
+    threads: list[ReviewThread]
+    """
+    Its review threads, unresolved first.
+    """
+
+
+@dataclass(frozen=True)
+class PullRequestThread:
+    """
+    One review thread, and the pull request it is on.
+    """
+
+    pull_request: RestPullRequest
+    """
+    The pull request.
+    """
+
+    thread: ReviewThread
+    """
+    The thread.
+    """
+
+
+@dataclass(frozen=True)
 class ReviewThreads:
     """
     The review threads of the work branch's pull request, each named by its first
@@ -150,25 +178,27 @@ class ReviewThreads:
     Reads the threads, through whichever API the place it runs in reaches.
     """
 
-    def read(self) -> tuple[RestPullRequest, list[ReviewThread]]:
+    def read(self) -> ThreadedPullRequest:
         """
-        :return: The pull request, and its threads, unresolved first.
+        :return: The pull request, and its threads.
         """
         found = self.pull_request.find()
         read = self.source.read_current_state(found.number).threads
-        return found, sorted(read, key=lambda thread: thread.is_resolved)
+        return ThreadedPullRequest(
+            found, sorted(read, key=lambda thread: thread.is_resolved)
+        )
 
-    def thread(self, comment: int) -> tuple[RestPullRequest, ReviewThread]:
+    def thread(self, comment: int) -> PullRequestThread:
         """
         :param comment: The identifier of a comment in the thread.
-        :return: The pull request, and the thread.
+        :return: The thread holding the comment.
         :raises ReviewThreadNotFoundError: If the pull request has no such thread.
         """
-        found, read = self.read()
-        for thread in read:
+        threaded = self.read()
+        for thread in threaded.threads:
             if comment in [each.database_identifier for each in thread.comments]:
-                return found, thread
-        raise ReviewThreadNotFoundError(found.number, comment)
+                return PullRequestThread(threaded.pull_request, thread)
+        raise ReviewThreadNotFoundError(threaded.pull_request.number, comment)
 
 
 @dataclass(frozen=True)
@@ -205,8 +235,9 @@ class ReviewThreadListing(WorkflowStep):
         :return: One thread per line; overrides :meth:`WorkflowStep.run`, which
             reports in one line.
         """
-        found, read = ReviewThreads(self.pull_request, self.source).read()
-        lines = [self.described(thread) for thread in read]
+        threaded = ReviewThreads(self.pull_request, self.source).read()
+        found = threaded.pull_request
+        lines = [self.described(thread) for thread in threaded.threads]
         lines = lines or [f"#{found.number} has no review threads"]
         if UpstreamLabel.OPENED_UPSTREAM not in found.labels:
             return "\n".join(lines)
@@ -219,7 +250,6 @@ class ReviewThreadListing(WorkflowStep):
                 upstream,
                 policy.remote.repository.owner,
                 policy.work_branch(),
-                f"{time.time_ns()}.json",
             )
         )
         if isinstance(snapshot, UpstreamReviewsUnavailable):
@@ -282,9 +312,9 @@ class ReviewThreadWrite(WorkflowStep, ABC):
     The identifier of a comment in the thread.
     """
 
-    def thread(self) -> tuple[RestPullRequest, ReviewThread]:
+    def thread(self) -> PullRequestThread:
         """
-        :return: The work branch's pull request, and the thread holding the comment.
+        :return: The thread holding the comment, on the work branch's pull request.
         :raises ReviewThreadNotFoundError: If the pull request has no such thread.
         """
         return ReviewThreads(self.pull_request, self.source).thread(self.comment)
@@ -302,9 +332,10 @@ class ReviewReply(ReviewThreadWrite):
     """
 
     def run(self) -> str:
-        found, thread = self.thread()
-        url = self.writer.reply(found.number, thread, self.body)
-        return f"replied in the thread at {thread.location} on #{found.number}: {url}"
+        found = self.thread()
+        number = found.pull_request.number
+        url = self.writer.reply(number, found.thread, self.body)
+        return f"replied in the thread at {found.thread.location} on #{number}: {url}"
 
 
 @dataclass(frozen=True)
@@ -324,11 +355,12 @@ class ReviewResolution(ReviewThreadWrite):
         pushed = fetched.succeeded and git.contains("HEAD", branch.tracking_reference)
         if not pushed:
             raise UnpushedWorkError(branch.name)
-        found, thread = self.thread()
+        found = self.thread()
+        number, thread = found.pull_request.number, found.thread
         if thread.is_resolved:
-            return f"the thread at {thread.location} on #{found.number} is resolved"
-        self.writer.resolve(found.number, thread)
-        return f"resolved the thread at {thread.location} on #{found.number}"
+            return f"the thread at {thread.location} on #{number} is resolved"
+        self.writer.resolve(number, thread)
+        return f"resolved the thread at {thread.location} on #{number}"
 
 
 @dataclass(frozen=True)
@@ -369,7 +401,7 @@ class ReviewAddressing(WorkflowStep):
 
     def run(self) -> str:
         upstream = self.fork.upstream()
-        if upstream is None or not self.address.startswith(f"{upstream.url}/pull/"):
+        if upstream is None or not upstream.is_pull_request_page(self.address):
             raise ForeignReviewAddressError(self.address, upstream)
         found = self.pull_request.find()
         url = self.commenter.add_comment(

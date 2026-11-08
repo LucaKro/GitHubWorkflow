@@ -53,9 +53,7 @@ class NotesSave:
             raise NotesBlockMissingError(str(self.checkout.claude_local))
         sections = NotesBlock.read_sections(document)
         files = {
-            NotesFile.STANDING_NOTES.value: sections.get(
-                NotesSection.STANDING_NOTES, ""
-            )
+            NotesFile.STANDING_NOTES: sections.get(NotesSection.STANDING_NOTES, "")
         }
         branch = self.progress_branch
         if branch and NotesSection.BRANCH_PROGRESS in sections:

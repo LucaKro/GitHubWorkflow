@@ -5,6 +5,7 @@ name the settings give it.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
@@ -34,3 +35,11 @@ class NotesBranch(StorageBranch):
         :return: The notes branch.
         """
         return cls(git, RemoteBranch(remote.name, settings.notes_branch))
+
+    @staticmethod
+    def queued_file_name() -> str:
+        """
+        :return: A name for one file queued on the branch, sorting after the name of
+            every file queued before it.
+        """
+        return f"{time.time_ns()}.json"

@@ -222,11 +222,11 @@ class FindingAutomation(WorkflowStep):
             WorkflowTemplate.LABEL_COMPLETION_WORKFLOW.read_text(),
             ActionRequirement.placeholder_values(__name__),
         )
-        path = self.root / ProjectFile.LABEL_COMPLETION_WORKFLOW.value
+        path = self.root / ProjectFile.LABEL_COMPLETION_WORKFLOW
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(workflow)
         return (
-            f"wrote {ProjectFile.LABEL_COMPLETION_WORKFLOW.value}; commit it on a work "
+            f"wrote {ProjectFile.LABEL_COMPLETION_WORKFLOW}; commit it on a work "
             f"branch and open a draft, GitHub runs it once it is on the default branch"
         )
 

@@ -323,6 +323,18 @@ class PullRequestsFromForks(ABC):
         :return: Every pull request opened from it, open or closed.
         """
 
+    def pull_requests_open_from(self, owner: str, branch: str) -> list[RestPullRequest]:
+        """
+        :param owner: The fork's owner.
+        :param branch: The fork's branch.
+        :return: The pull requests opened from it that are open still.
+        """
+        return [
+            pull_request
+            for pull_request in self.pull_requests_from(owner, branch)
+            if pull_request.state is PullRequestState.OPEN
+        ]
+
     @abstractmethod
     def open_pull_request_from(
         self, owner: str, branch: str, base: str, title: str, body: str

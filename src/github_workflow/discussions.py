@@ -7,7 +7,6 @@ Discussions itself. Ideas are posted this way, and the session log is kept this 
 from __future__ import annotations
 
 import json
-import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -162,8 +161,8 @@ class DiscussionPosting:
         self.notes.fetch()
         self.notes.write(
             {
-                NotesFile.DISCUSSION_POSTS.value
-                / f"{time.time_ns()}.json": post.to_json(),
+                NotesFile.DISCUSSION_POSTS
+                / NotesBranch.queued_file_name(): post.to_json(),
                 **workflow,
             },
             f"Queue the discussion {post.title!r}",
@@ -274,6 +273,6 @@ class DiscussionSessionLog(SessionLog):
                 self.category,
                 self.title,
                 f"{written}{where}: {action}",
-                WorkflowTemplate.SESSION_LOG_INTRODUCTION.value.read_text(),
+                WorkflowTemplate.SESSION_LOG_INTRODUCTION.read_text(),
             )
         )

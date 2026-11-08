@@ -179,7 +179,7 @@ class PushHook:
                         f"{path} is a pre-push hook of the checkout's own, so pushes "
                         f"run outside the workflow's commands go unchecked; ask the "
                         f"person whether to merge in the workflow's from "
-                        f"{WorkflowTemplate.PRE_PUSH_HOOK.value}"
+                        f"{WorkflowTemplate.PRE_PUSH_HOOK}"
                     ),
                     Tone.ACTION,
                 )

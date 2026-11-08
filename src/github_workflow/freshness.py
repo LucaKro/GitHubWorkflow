@@ -14,7 +14,6 @@ from basstler_domain_model.github.repository_client import (
     ForkDetails,
     PullRequestsFromForks,
 )
-from basstler_domain_model.github.vocabulary import PullRequestState
 
 from github_workflow.command_line import CommandOption, RunnableCommand
 from github_workflow.policy import WritePolicy
@@ -136,8 +135,9 @@ class BranchFreshening:
         owner = self.policy.remote.repository.owner
         targets = [
             pull_request.base
-            for pull_request in self.pull_requests.pull_requests_from(owner, branch)
-            if pull_request.state is PullRequestState.OPEN
+            for pull_request in self.pull_requests.pull_requests_open_from(
+                owner, branch
+            )
         ]
         return targets[0] if targets else self.policy.default_branch
 

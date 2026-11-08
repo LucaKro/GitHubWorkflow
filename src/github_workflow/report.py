@@ -134,7 +134,7 @@ class PullRequestsBuilder(SectionBuilder):
     def section(self) -> ReportSection:
         github = self.session.github
         return PullRequestOverview(
-            PullRequestSignalReader.from_repository(github),
+            PullRequestSignalReader(github, self.session.thread_source),
             github,
             github,
             self.session.checkout.git.checked_out_branch(),

@@ -16,9 +16,8 @@ from basstler_domain_model.github.number_links import NumberLink
 from basstler_domain_model.github.pull_request_models import (
     UpstreamPullRequestSnapshot,
 )
-from basstler_domain_model.github.readers import PullRequestSource, ReadSource
+from basstler_domain_model.github.readers import PullRequestSource
 from basstler_domain_model.github.repository_client import (
-    GitHubRepository,
     PullRequestReader,
     RepositoryLabels,
     ReviewRequests,
@@ -188,17 +187,6 @@ class PullRequestSignalReader:
     """
     Reads their checks and review threads.
     """
-
-    @classmethod
-    def from_repository(cls, github: GitHubRepository) -> PullRequestSignalReader:
-        """
-        :param github: The owner's repository on GitHub.
-        :return: A reader of its pull requests, reading review threads through the API
-            the place this runs in can reach.
-        """
-        repository = github.repository
-        threads = ReadSource.detect().reader(github.api, repository, repository.owner)
-        return cls(github, threads)
 
     def signals(self, number: int) -> PullRequestSignals:
         """

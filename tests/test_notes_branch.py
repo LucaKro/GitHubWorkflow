@@ -35,3 +35,13 @@ def test_notes_are_saved_to_the_settings_branch_on_the_owner_s_remote(
 
     assert settings.notes_branch in repositories.branches(owned_url)
     assert settings.notes_branch not in repositories.branches(foreign_url)
+
+
+# %% queued files
+
+
+def test_a_file_queued_later_sorts_after_one_queued_before() -> None:
+    first = NotesBranch.queued_file_name()
+    later = NotesBranch.queued_file_name()
+
+    assert sorted([later, first]) == [first, later]

@@ -206,6 +206,20 @@ def test_the_pull_requests_from_a_fork_s_branch_are_listed():
     ]
 
 
+def test_only_the_open_pull_requests_from_a_fork_s_branch_are_kept_open():
+    listing = ROUTE.pull_requests_for_head("a-fork-owner", "a-branch")
+    opened = json.loads(DatasetLocation.PULL_REQUEST_OPEN.read_text())
+    merged = json.loads(DatasetLocation.REST_PULL_REQUEST_MERGED.read_text())
+    answers = {("GET", f"/{listing}"): answer(HTTPStatus.OK, [merged, opened])}
+
+    with ReplayedApi(answers) as api:
+        found = client(api).pull_requests_open_from("a-fork-owner", "a-branch")
+
+    assert [pull_request.number for pull_request in found] == [
+        opened[RestJSONKey.NUMBER]
+    ]
+
+
 def test_a_branch_is_compared_with_another_repository_s_branch():
     compared = ROUTE.comparison("trunk", "an-upstream:a-repository:main")
     answers = {

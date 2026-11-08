@@ -282,9 +282,9 @@ class NotesBranchWorkflow(Enum):
             **values,
         }
         return {
-            self.destination.value: Placeholder.fill(self.template.read_text(), filled),
+            self.destination: Placeholder.fill(self.template.read_text(), filled),
             **{
-                companion.destination.value: companion.template.read_text()
+                companion.destination: companion.template.read_text()
                 for companion in self.companions
             },
         }
