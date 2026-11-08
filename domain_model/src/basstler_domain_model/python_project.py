@@ -19,7 +19,7 @@ from basstler_domain_model.locations import PythonProjectFile
 
 class ProjectKey(StrEnum):
     """
-    The keys of a ``pyproject.toml``'s ``[project]`` table the workflow reads.
+    The keys of a ``pyproject.toml``'s ``[project]`` table read here.
     """
 
     PROJECT = "project"

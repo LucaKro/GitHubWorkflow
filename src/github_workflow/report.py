@@ -8,9 +8,12 @@ per line, or nothing when there is nothing to say.
 from __future__ import annotations
 
 import sys
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from basstler_domain_model.class_property import classproperty
 from basstler_domain_model.github.repository_client import GitHubRepository
 
 from github_workflow.cleanup import CleanupReminder
@@ -65,41 +68,143 @@ class SectionName(StrEnum):
     The fork's pull requests merged upstream, closed, and their stacks moved on.
     """
 
-    def section(self, session: WorkflowSession) -> ReportSection:
+
+# %% building a section
+
+
+@dataclass(frozen=True)
+class SectionBuilder(ABC):
+    """
+    Builds one section from the checkout the session starts in.
+    """
+
+    session: WorkflowSession
+    """
+    The checkout the session starts in.
+    """
+
+    @classproperty
+    @abstractmethod
+    def section_name(cls) -> SectionName:
         """
-        :param session: The checkout the session starts in.
+        The section this builds.
+        """
+
+    @abstractmethod
+    def section(self) -> ReportSection:
+        """
         :return: The section.
         """
-        github = session.github
-        match self:
-            case SectionName.SETUP:
-                return RepositorySetup(session.remote.repository, github)
-            case SectionName.PULL_REQUESTS:
-                return PullRequestOverview(
-                    PullRequestSignalReader.from_repository(github),
-                    github,
-                    github,
-                    session.checkout.git.checked_out_branch(),
-                )
-            case SectionName.FINDINGS:
-                return LabelsCompletedReport(
-                    session.label_completion,
-                    FindingsSummary(github, session.remote.repository),
-                )
-            case SectionName.CLEANUP:
-                return CleanupReminder(session.kept_branches)
-            case SectionName.UPSTREAM_MERGES:
-                return UpstreamMergeFollowing(
-                    session.remote.repository,
-                    github,
-                    github,
-                    github,
-                    GitHubRepository.from_environment,
-                    session.session_closing,
-                    session.placement,
-                )
-            case SectionName.FRESHNESS:
-                return FreshnessReport(session.freshening)
+
+    @classmethod
+    def building(cls, name: SectionName) -> type[SectionBuilder]:
+        """
+        :param name: A section.
+        :return: The class building it.
+        """
+        return next(
+            builder for builder in cls.__subclasses__() if builder.section_name is name
+        )
+
+
+@dataclass(frozen=True)
+class SetupBuilder(SectionBuilder):
+    """
+    Builds the section turning on the repository features the workflow relies on.
+    """
+
+    @classproperty
+    def section_name(cls) -> SectionName:
+        return SectionName.SETUP
+
+    def section(self) -> ReportSection:
+        return RepositorySetup(self.session.remote.repository, self.session.github)
+
+
+@dataclass(frozen=True)
+class PullRequestsBuilder(SectionBuilder):
+    """
+    Builds the section over the open pull requests.
+    """
+
+    @classproperty
+    def section_name(cls) -> SectionName:
+        return SectionName.PULL_REQUESTS
+
+    def section(self) -> ReportSection:
+        github = self.session.github
+        return PullRequestOverview(
+            PullRequestSignalReader.from_repository(github),
+            github,
+            github,
+            self.session.checkout.git.checked_out_branch(),
+        )
+
+
+@dataclass(frozen=True)
+class FindingsBuilder(SectionBuilder):
+    """
+    Builds the section over the findings waiting for the person.
+    """
+
+    @classproperty
+    def section_name(cls) -> SectionName:
+        return SectionName.FINDINGS
+
+    def section(self) -> ReportSection:
+        return LabelsCompletedReport(
+            self.session.label_completion,
+            FindingsSummary(self.session.github, self.session.remote.repository),
+        )
+
+
+@dataclass(frozen=True)
+class CleanupBuilder(SectionBuilder):
+    """
+    Builds the section over the branches ready for deletion.
+    """
+
+    @classproperty
+    def section_name(cls) -> SectionName:
+        return SectionName.CLEANUP
+
+    def section(self) -> ReportSection:
+        return CleanupReminder(self.session.kept_branches)
+
+
+@dataclass(frozen=True)
+class FreshnessBuilder(SectionBuilder):
+    """
+    Builds the section bringing the fork's default branch and the work branch up to
+    date.
+    """
+
+    @classproperty
+    def section_name(cls) -> SectionName:
+        return SectionName.FRESHNESS
+
+    def section(self) -> ReportSection:
+        return FreshnessReport(self.session.freshening)
+
+
+@dataclass(frozen=True)
+class UpstreamMergesBuilder(SectionBuilder):
+    """
+    Builds the section following the fork's pull requests merged upstream.
+    """
+
+    @classproperty
+    def section_name(cls) -> SectionName:
+        return SectionName.UPSTREAM_MERGES
+
+    def section(self) -> ReportSection:
+        return UpstreamMergeFollowing(
+            self.session.remote.repository.owner,
+            self.session.github,
+            GitHubRepository.from_environment,
+            self.session.session_closing,
+            self.session.placement,
+        )
 
 
 # %% entry point
@@ -110,7 +215,8 @@ def main() -> None:
     Compute the section the command line names, and print its lines.
     """
     session = WorkflowSession(Path.cwd(), WorkflowSettings())
-    for line in SectionName(sys.argv[1]).section(session).lines():
+    builder = SectionBuilder.building(SectionName(sys.argv[1]))
+    for line in builder(session).section().lines():
         print(line.to_json())
 
 

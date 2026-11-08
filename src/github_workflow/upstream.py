@@ -13,11 +13,10 @@ from basstler_domain_model.git.branch_tips import BranchTip
 from basstler_domain_model.git.commands import ProposedPush, RemoteBranch
 from basstler_domain_model.github.labels import LabelWrite
 from basstler_domain_model.github.repository_client import (
+    FollowedFork,
     ForkDetails,
     ProposingFork,
-    PullRequestReader,
     PullRequestSearch,
-    RepositoryDetails,
     UpstreamRepository,
 )
 from basstler_domain_model.github.rest_models import RestPullRequest
@@ -361,24 +360,14 @@ class UpstreamMergeFollowing(ReportSection):
     the default branch.
     """
 
-    fork: Repository
+    owner: str
     """
-    The owner's fork.
-    """
-
-    pull_requests: PullRequestReader
-    """
-    Lists the fork's open pull requests.
+    The fork's owner, whose branches the upstream's pull requests are opened from.
     """
 
-    fork_details: ForkDetails
+    fork: FollowedFork
     """
-    Reads which repository the fork was forked from.
-    """
-
-    repository_details: RepositoryDetails
-    """
-    Reads the fork's default branch.
+    The owner's fork on GitHub.
     """
 
     upstream_search: Callable[[Repository], PullRequestSearch]
@@ -399,12 +388,12 @@ class UpstreamMergeFollowing(ReportSection):
     def lines(self) -> list[ReportLine]:
         opened = [
             pull_request
-            for pull_request in self.pull_requests.open_pull_requests()
+            for pull_request in self.fork.open_pull_requests()
             if UpstreamLabel.OPENED_UPSTREAM in pull_request.labels
         ]
         if not opened:
             return []
-        upstream = self.fork_details.upstream()
+        upstream = self.fork.upstream()
         if upstream is None:
             return []
         search = self.upstream_search(upstream)
@@ -413,7 +402,7 @@ class UpstreamMergeFollowing(ReportSection):
             merged = [
                 found
                 for found in search.search_pull_requests_from(
-                    self.fork.owner, pull_request.head.branch
+                    self.owner, pull_request.head.branch
                 )
                 if found.merged_at is not None
             ]
@@ -422,7 +411,7 @@ class UpstreamMergeFollowing(ReportSection):
             self.closing.retire(
                 pull_request.number, f"Merged upstream as {merged[0].url}."
             )
-            base = self.repository_details.default_branch()
+            base = self.fork.default_branch()
             moved = self.placement.move_off(pull_request.number, base)
             link = NumberLink(pull_request.number, pull_request.url).markdown()
             onto = "" if moved is None else f", and moved #{moved} onto {base}"

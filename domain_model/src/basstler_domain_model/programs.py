@@ -12,7 +12,7 @@ from enum import StrEnum
 
 class Program(StrEnum):
     """
-    The programs the guard judges, by their executable's name.
+    The programs that reach git or GitHub, by their executable's name.
     """
 
     GIT = "git"

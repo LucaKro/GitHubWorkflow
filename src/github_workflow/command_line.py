@@ -471,32 +471,51 @@ class CommandAuthority(Enum):
 # %% the arguments
 
 
-class ArgumentCount(Enum):
+@dataclass(eq=False)
+class ValueCountParsing:
+    """
+    How the command line's parser reads an argument's values.
+    """
+
+    values_taken: str | None = None
+    """
+    How many values it takes, as :mod:`argparse`'s ``nargs`` spells it; ``None`` for
+    exactly one.
+    """
+
+    parser_action: str | None = None
+    """
+    What the parser does with them, as :mod:`argparse`'s ``action`` spells it; ``None``
+    to store the value.
+    """
+
+
+class ArgumentCount(ValueCountParsing, Enum):
     """
     How many values an argument takes.
     """
 
-    ONE = auto()
+    ONE = ()
     """
     Exactly one.
     """
 
-    OPTIONAL = auto()
+    OPTIONAL = ("?",)
     """
     One, or none for a positional argument that may be left out.
     """
 
-    SEVERAL = auto()
+    SEVERAL = ("+",)
     """
     One or more.
     """
 
-    REPEATED = auto()
+    REPEATED = (None, "append")
     """
     One each time the option is given; the option may be given several times.
     """
 
-    NONE = auto()
+    NONE = (None, "store_true")
     """
     None: the option is a flag, true when given.
     """
@@ -661,8 +680,10 @@ class CommandArgument:
         """
         names = [self.short_name, self.name] if self.short_name else [self.name]
         keywords: dict[str, Any] = {"help": self.description}
+        if self.count.parser_action is not None:
+            keywords["action"] = self.count.parser_action
         if self.count is ArgumentCount.NONE:
-            parser.add_argument(*names, action="store_true", **keywords)
+            parser.add_argument(*names, **keywords)
             return
         if self.value_type is not None:
             keywords["type"] = self.value_type
@@ -672,13 +693,8 @@ class CommandArgument:
             keywords["choices"] = self.choices
         if self.destination is not None:
             keywords["dest"] = self.destination
-        match self.count:
-            case ArgumentCount.OPTIONAL:
-                keywords["nargs"] = "?"
-            case ArgumentCount.SEVERAL:
-                keywords["nargs"] = "+"
-            case ArgumentCount.REPEATED:
-                keywords["action"] = "append"
+        if self.count.values_taken is not None:
+            keywords["nargs"] = self.count.values_taken
         if self.is_option:
             keywords["required"] = self.required
             keywords["metavar"] = self.placeholder.upper().replace(" ", "_")

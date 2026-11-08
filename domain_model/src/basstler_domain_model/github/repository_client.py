@@ -635,6 +635,14 @@ class RepositoryFeatures(
 
 
 @dataclass(frozen=True)
+class FollowedFork(PullRequestReader, RepositoryDetails, ForkDetails, ABC):
+    """
+    A fork, as far as following its pull requests upstream goes: its pull requests,
+    its default branch and what it was forked from.
+    """
+
+
+@dataclass(frozen=True)
 class UpstreamRepository(PullRequestsFromForks, RepositoryDetails, ABC):
     """
     The repository a fork was forked from, as far as proposing a fork's pull request
@@ -659,6 +667,7 @@ class ProposingFork(
 class GitHubRepository(
     ForkPullRequests,
     ProposingFork,
+    FollowedFork,
     ForkSync,
     PullRequestCloser,
     PullRequestOpener,

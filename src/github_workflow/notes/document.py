@@ -8,9 +8,11 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import StrEnum, auto
 
+from basstler_domain_model.class_property import classproperty
 from basstler_domain_model.github.discussions import DefaultDiscussionCategory
 from basstler_domain_model.templates import Placeholder
 
@@ -181,15 +183,10 @@ class ReferenceKind(StrEnum):
 
 
 @dataclass(frozen=True)
-class CommandReference:
+class CommandReference(ABC):
     """
     A command, an option or an argument the notes header names, written as
     ``{<kind>:<name> <argument>...}``.
-    """
-
-    kind: ReferenceKind
-    """
-    What it names.
     """
 
     name: str
@@ -201,6 +198,21 @@ class CommandReference:
     """
     The arguments named after it, by their names.
     """
+
+    @classproperty
+    @abstractmethod
+    def kind(cls) -> ReferenceKind:
+        """
+        What a reference of this class names, as the header writes it.
+        """
+
+    @abstractmethod
+    def text(self, program: str) -> str:
+        """
+        :param program: How the command line starts.
+        :return: What the reference names, as the header shows it.
+        :raises KeyError: If it names a command, option or argument that does not exist.
+        """
 
     @classmethod
     def pattern(cls) -> re.Pattern[str]:
@@ -217,25 +229,59 @@ class CommandReference:
         :return: The reference it matched.
         """
         kind, name, arguments = found.groups()
-        return cls(ReferenceKind(kind), name, tuple(arguments.split()))
+        referenced = next(
+            reference
+            for reference in cls.__subclasses__()
+            if reference.kind is ReferenceKind(kind)
+        )
+        return referenced(name, tuple(arguments.split()))
+
+
+@dataclass(frozen=True)
+class CommandLineReference(CommandReference):
+    """
+    A reference to a command line, shown with its program and the arguments named.
+    """
+
+    @classproperty
+    def kind(cls) -> ReferenceKind:
+        return ReferenceKind.COMMAND
 
     def text(self, program: str) -> str:
-        """
-        :param program: How the command line starts.
-        :return: What the reference names, as the header shows it.
-        :raises KeyError: If it names a command, option or argument that does not exist.
-        """
-        match self.kind:
-            case ReferenceKind.OPTION:
-                return CommandOption[self.name]
-            case ReferenceKind.ARGUMENT:
-                [argument] = self.arguments
-                return RunnableCommand[self.name].argument(argument).shown()
         if self.name in RunnableCommand.__members__:
             words = RunnableCommand[self.name].words_naming(*self.arguments)
         else:
             words = [WorkflowCommand[self.name]]
         return " ".join([program, *words])
+
+
+@dataclass(frozen=True)
+class OptionReference(CommandReference):
+    """
+    A reference to an option, shown as the option alone.
+    """
+
+    @classproperty
+    def kind(cls) -> ReferenceKind:
+        return ReferenceKind.OPTION
+
+    def text(self, program: str) -> str:
+        return CommandOption[self.name]
+
+
+@dataclass(frozen=True)
+class ArgumentReference(CommandReference):
+    """
+    A reference to one argument of a command, shown with its placeholder.
+    """
+
+    @classproperty
+    def kind(cls) -> ReferenceKind:
+        return ReferenceKind.ARGUMENT
+
+    def text(self, program: str) -> str:
+        [argument] = self.arguments
+        return RunnableCommand[self.name].argument(argument).shown()
 
 
 # %% the block

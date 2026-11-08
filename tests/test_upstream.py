@@ -11,19 +11,19 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
-
 from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.repository_client import (
+    FollowedFork,
     ForkDetails,
     ProposingFork,
     PullRequestSearch,
-    RepositoryDetails,
 )
 from basstler_domain_model.github.rest_models import (
     RestPullRequest,
     SearchedPullRequest,
 )
 from basstler_domain_model.github.stack_models import Stack
+from basstler_domain_model.github.stack_placement import StackPlacement
 from basstler_domain_model.github.vocabulary import PullRequestState
 from basstler_domain_model.repository import GitHubAddress, Repository
 
@@ -34,15 +34,14 @@ from github_workflow.exceptions import (
     PersonOnlyCommandError,
     PullRequestNotProposableError,
 )
-from github_workflow.settings import WorkflowSettings
 from github_workflow.policy import WritePolicy
 from github_workflow.push_hook import PushHook
 from github_workflow.report_lines import Tone
-from basstler_domain_model.github.stack_placement import StackPlacement
+from github_workflow.settings import WorkflowSettings
 from github_workflow.upstream import (
     ForkMainSync,
-    UpstreamMergeFollowing,
     UpstreamLabel,
+    UpstreamMergeFollowing,
     UpstreamProposal,
     UpstreamSuggestion,
 )
@@ -483,9 +482,10 @@ class UpstreamSearchInMemory(PullRequestSearch):
 
 
 @dataclass(frozen=True)
-class OpenedUpstreamPullRequests(StackedPullRequestsInMemory):
+class OpenedUpstreamPullRequests(StackedPullRequestsInMemory, FollowedFork):
     """
-    The stand-in, some pull requests labelled as opened upstream.
+    The stand-in, a fork of :data:`UPSTREAM` on the default branch ``main``, with some
+    pull requests labelled as opened upstream.
     """
 
     opened_upstream: frozenset[int] = frozenset()
@@ -499,20 +499,8 @@ class OpenedUpstreamPullRequests(StackedPullRequestsInMemory):
         )
         return replace(super().pull_request(number), labels=labels)
 
-
-@dataclass(frozen=True)
-class ForkOf(ForkDetails, RepositoryDetails):
-    """
-    A fork of the repository given, on the default branch ``main``.
-    """
-
-    forked_from: Repository
-    """
-    The upstream.
-    """
-
     def upstream(self) -> Repository | None:
-        return self.forked_from
+        return UPSTREAM
 
     def default_branch(self) -> str:
         return "main"
@@ -539,10 +527,8 @@ def following(
     fork.existing_stacks.append(Stack(7, "main", True, fork.stacked([1, 2])))
     retired = RetiredInMemory()
     section = UpstreamMergeFollowing(
-        Repository.parse(REPOSITORY),
+        Repository.parse(REPOSITORY).owner,
         fork,
-        ForkOf(Repository.parse("an-upstream-owner/project")),
-        ForkOf(Repository.parse("an-upstream-owner/project")),
         lambda upstream: UpstreamSearchInMemory(found),
         retired,
         StackPlacement(fork),

@@ -59,7 +59,7 @@ class HookKey(StrEnum):
 
     PERMISSION_DECISION = "permissionDecision"
     """
-    What the guard decided about a call.
+    What the hook decided about a call.
     """
 
     PERMISSION_DECISION_REASON = "permissionDecisionReason"
@@ -95,28 +95,27 @@ class HookValue(StrEnum):
 
     PRE_TOOL_USE = "PreToolUse"
     """
-    The hook event the guard answers.
+    The hook event before each tool call, which may deny it.
     """
 
     SESSION_START = "SessionStart"
     """
-    The hook event the session start answers.
+    The hook event starting a session.
     """
 
     STOP = "Stop"
     """
-    The hook event ending each of the model's turns, which saves unsaved notes.
+    The hook event ending each of the model's turns.
     """
 
     SESSION_END = "SessionEnd"
     """
-    The hook event ending the session, which saves unsaved notes too.
+    The hook event ending the session.
     """
 
     USER_PROMPT_SUBMIT = "UserPromptSubmit"
     """
-    The hook event the session start answers instead, on the first prompt, when the
-    plugin arrived too late for the session's start.
+    The hook event on each prompt the person submits.
     """
 
     DENY = "deny"
@@ -173,7 +172,7 @@ class GitHubTool(StrEnum):
 
 class ToolKind(StrEnum):
     """
-    The kinds of tool call the guard judges, and every other.
+    The kinds of tool call that can reach git or GitHub, and every other.
     """
 
     BASH = "bash"

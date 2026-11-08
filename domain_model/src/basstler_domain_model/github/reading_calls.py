@@ -215,7 +215,7 @@ class GraphQLOperation(StrEnum):
 
     SUBSCRIPTION = "subscription"
     """
-    Waits for changes; not a read the guard lets through.
+    Waits for changes, so it never finishes as a read does.
     """
 
 

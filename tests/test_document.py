@@ -14,10 +14,10 @@ from github_workflow.command_line import (
 )
 from github_workflow.install import ToolRepository
 from github_workflow.notes.document import (
+    ArgumentReference,
     CommandReference,
     NotesBlock,
     NotesSection,
-    ReferenceKind,
 )
 from github_workflow.policy import Attribution
 
@@ -124,7 +124,7 @@ def test_the_header_names_no_command_left_unresolved():
 
 
 def test_a_reference_to_an_option_a_command_lacks_is_refused():
-    reference = CommandReference(ReferenceKind.ARGUMENT, "PUSH", (CommandOption.TITLE,))
+    reference = ArgumentReference("PUSH", (CommandOption.TITLE,))
 
     with pytest.raises(KeyError):
         reference.text("workflow")

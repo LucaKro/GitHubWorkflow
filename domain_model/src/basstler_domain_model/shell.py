@@ -135,7 +135,7 @@ class VariableRemoval(StrEnum):
 
 class EnvironmentOption(StrEnum):
     """
-    The options of ``env`` that the guard reads before the command it runs.
+    The options of ``env`` that come before the command it runs.
     """
 
     IGNORE_ENVIRONMENT = "-i"
@@ -498,8 +498,8 @@ class CommandLine:
 
     def runs_input_through_a_shell(self) -> bool:
         """
-        :return: Whether a shell runs whatever reaches its input, which the guard
-            cannot see.
+        :return: Whether a shell runs whatever reaches its input, which the command
+            line itself does not show.
         """
         return bool(self.shell_reading_input.search(self.text))
 
