@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # PreToolUse hook: denies writing to git or GitHub directly, so every write goes through
-# the workflow's commands; reading stays allowed. Prints the guard's denial, its request
-# that the person confirm a workflow command needing their go-ahead, or nothing to leave
-# the call to the usual permissions.
+# the workflow's commands; reading stays allowed. Prints the guard's denial, or nothing to
+# leave the call to the usual permissions.
 #
 # When the guard cannot run from its runtime - the runtime missing, or the guard
-# failing - the guard runs again from the plugin's source on the standard library alone,
-# judging the call as usual. When that fails too, the coarse guard stands in: it denies
+# failing - the guard runs again from the plugin's source, the domain model's included, on
+# the standard library alone, judging the call as usual. When that fails too, the coarse guard stands in: it denies
 # every call that could reach git or GitHub and lets every other call run. Only when that
 # cannot run either is the call blocked (exit 2) with the reason.
 #

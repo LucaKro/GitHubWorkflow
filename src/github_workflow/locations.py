@@ -131,21 +131,6 @@ class ProjectFile(PathEnumeration):
     The Actions workflow completing finding labels picked on GitHub.
     """
 
-    SOURCE_DIRECTORY = Path("src")
-    """
-    Where a Python project laid out with a source directory keeps its packages.
-    """
-
-    PYPROJECT = Path("pyproject.toml")
-    """
-    The Python project's settings, which may name the members of its uv workspace.
-    """
-
-    UV_LOCK = Path("uv.lock")
-    """
-    The versions uv pins a project's environment to, there when uv manages it.
-    """
-
 
 class GitFile(PathEnumeration):
     """

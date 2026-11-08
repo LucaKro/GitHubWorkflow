@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from enum import StrEnum, auto
 from http import HTTPMethod
 
+from basstler_domain_model.class_property import classproperty
 from basstler_domain_model.commands import CommandResult, CommandRunner
 from basstler_domain_model.environment import (
     ClaudeCodeVariable,
@@ -38,8 +39,9 @@ from basstler_domain_model.templates import Placeholder
 import github_workflow
 from github_workflow.command_line import RunnableCommand
 from github_workflow.locations import ProbeTemplate, RepositoryFile
+from github_workflow.probe import library_check
 from github_workflow.probe.library_check import LibraryCheck
-from github_workflow.probe.results import CheckGroup, ProbeReport
+from github_workflow.probe.results import CheckGroup, EnvironmentFact, ProbeReport
 from github_workflow.remotes import OwnedRemote
 
 # %% the template's placeholders
@@ -187,15 +189,22 @@ class TimedAnswer(RestAnswer):
     How long the call took.
     """
 
+    @classproperty
+    def summary_length(cls) -> int:
+        """
+        How many characters of a text that is no JSON its summary keeps.
+        """
+        return 200
+
     @property
     def summary(self) -> str:
         """:return: The API's own message on a refusal, a count for a list, else the
         start of the text."""
         if not self.text.strip().startswith(("{", "[")):
-            return self.text[:200]
+            return self.text[: self.summary_length]
         body = self.body
-        if isinstance(body, dict) and "message" in body:
-            return str(body["message"])
+        if isinstance(body, dict) and RestJSONKey.MESSAGE in body:
+            return str(body[RestJSONKey.MESSAGE])
         if isinstance(body, list):
             return f"{len(body)} entries"
         return ""
@@ -260,15 +269,17 @@ class Probe:
         :return: What the session runs on, by what was looked at.
         """
         return {
-            "python": platform.python_version(),
-            "cloud session": str(ClaudeCodeVariable.REMOTE.read()),
-            "token variable set": str(
+            EnvironmentFact.PYTHON: platform.python_version(),
+            EnvironmentFact.CLOUD_SESSION: str(ClaudeCodeVariable.REMOTE.read()),
+            EnvironmentFact.TOKEN_VARIABLE_SET: str(
                 GitHubCredentialVariable.first_token() is not None
             ),
-            "checked-out branch": git.checked_out_branch(),
-            "git author": git.identity(GitIdentity.AUTHOR).rsplit(" ", 2)[0],
-            "git": git.run("--version"),
-            "gh": CommandRunner(git.working_directory)
+            EnvironmentFact.CHECKED_OUT_BRANCH: git.checked_out_branch(),
+            EnvironmentFact.GIT_AUTHOR: git.identity(GitIdentity.AUTHOR).rsplit(" ", 2)[
+                0
+            ],
+            EnvironmentFact.GIT: git.version(),
+            EnvironmentFact.GITHUB_CLI: CommandRunner(git.working_directory)
             .run("gh", "--version")
             .first_line,
         }
@@ -357,7 +368,7 @@ class Probe:
         result = self.runner.run(
             sys.executable,
             "-m",
-            "github_workflow.probe.library_check",
+            library_check.__name__,
             check,
             self.remote.repository.full_name,
             argument,

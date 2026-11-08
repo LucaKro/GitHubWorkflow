@@ -1,6 +1,6 @@
 """
-Tests for :mod:`github_workflow.workspace`: the tool a project manages its environment
-with, which a session is told to set it up with.
+Tests for :mod:`github_workflow.project_tooling`: what a session is told about the tool
+a project manages its environment with.
 """
 
 from __future__ import annotations
@@ -10,11 +10,13 @@ import sys
 from pathlib import Path
 
 from basstler_domain_model.claude_code.hooks import HookKey
+from basstler_domain_model.locations import PythonProjectFile
+from basstler_domain_model.python_project import DevelopmentExtra, UvTool
+
+from github_workflow.project_tooling import ProjectTooling
 from github_workflow.report_lines import SessionStartReport, Tone
-from github_workflow.locations import ProjectFile
 from github_workflow.session_start import SessionStart
 from github_workflow.settings import WorkflowSettings
-from github_workflow.workspace import DevelopmentExtra, ProjectTooling, UvTool
 
 from .repositories_by_owner import RepositoriesByOwner
 
@@ -26,8 +28,8 @@ def uv_project(root: Path) -> Path:
     :param root: An empty directory.
     :return: It, as a project uv manages, with a development extra and another one.
     """
-    (root / ProjectFile.UV_LOCK).write_text("version = 1\n")
-    (root / ProjectFile.PYPROJECT).write_text(
+    (root / PythonProjectFile.UV_LOCK).write_text("version = 1\n")
+    (root / PythonProjectFile.PYPROJECT).write_text(
         "[project]\n"
         'name = "project"\n'
         "[project.optional-dependencies]\n"
@@ -37,38 +39,7 @@ def uv_project(root: Path) -> Path:
     return root
 
 
-# %% which tool
-
-
-def test_a_uv_lock_declares_uv(tmp_path: Path):
-    (tmp_path / ProjectFile.UV_LOCK).write_text("version = 1\n")
-
-    assert UvTool().manages(tmp_path)
-
-
-def test_a_tool_uv_table_declares_uv(tmp_path: Path):
-    (tmp_path / ProjectFile.PYPROJECT).write_text(
-        '[tool.uv.workspace]\nmembers = ["packages/*"]\n'
-    )
-
-    assert UvTool().manages(tmp_path)
-
-
-def test_a_project_without_uv_s_files_is_not_uv_s(tmp_path: Path):
-    (tmp_path / ProjectFile.PYPROJECT).write_text('[project]\nname = "project"\n')
-
-    assert not UvTool().manages(tmp_path)
-
-
-def test_the_setup_names_the_development_extras_only(tmp_path: Path):
-    tool = UvTool()
-
-    command = tool.setup_command(uv_project(tmp_path))
-
-    assert command == f"{tool.executable} sync --extra {DevelopmentExtra.DEV}"
-
-
-# %% what the session is told
+# %% what a session is told
 
 
 def test_a_session_is_told_to_set_up_with_the_tool(tmp_path: Path):

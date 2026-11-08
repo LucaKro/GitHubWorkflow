@@ -266,3 +266,18 @@ class DatasetLocation(PathEnumeration):
     """
     A rollup's check run, concluded in a way this package does not know.
     """
+
+    WORKSPACE_PYPROJECT = DIRECTORY / "projects" / "workspace_pyproject.toml"
+    """
+    A uv workspace's settings, its members under ``packages``, one excluded.
+    """
+
+    JUNIT_REPORT_WITH_FAILURE = DIRECTORY / "pytest" / "report_with_failure.xml"
+    """
+    Pytest's JUnit XML report on two tests, one of which failed.
+    """
+
+    FAILING_TEST_FILE = DIRECTORY / "pytest" / "failing_case.py"
+    """
+    A test file whose one test fails.
+    """

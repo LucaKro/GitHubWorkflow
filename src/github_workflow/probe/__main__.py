@@ -16,7 +16,7 @@ from basstler_domain_model.github.clients import GitHubApi
 
 from github_workflow.locations import ProbeFile
 from github_workflow.probe.publish import ResultsPublication
-from github_workflow.probe.results import ProbeReport
+from github_workflow.probe.results import EnvironmentFact, ProbeReport
 from github_workflow.probe.scenarios import Probe
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.settings import WorkflowSettings
@@ -42,8 +42,10 @@ def main() -> None:
         report=ProbeReport(Probe.describe_environment(git)),
     )
     default_branch = probe.default_branch()
-    probe.report.environment["repository"] = probe.remote.repository.full_name
-    probe.report.environment["default branch"] = str(default_branch)
+    probe.report.environment[EnvironmentFact.REPOSITORY] = (
+        probe.remote.repository.full_name
+    )
+    probe.report.environment[EnvironmentFact.DEFAULT_BRANCH] = str(default_branch)
     probe.check_library(git.commit_at("HEAD"))
     probe.check_notes_branch()
     probe.check_issue_board()

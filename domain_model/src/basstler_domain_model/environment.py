@@ -172,3 +172,17 @@ class GitIdentityVariable(EnvironmentVariable):
     """
     The address a commit is committed under.
     """
+
+
+# %% Python
+
+
+class PythonVariable(EnvironmentVariable):
+    """
+    The variables the Python interpreter reads when it starts.
+    """
+
+    MODULE_SEARCH_PATH = "PYTHONPATH"
+    """
+    Directories searched for modules before the installed packages.
+    """

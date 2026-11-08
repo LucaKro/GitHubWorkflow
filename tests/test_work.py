@@ -13,11 +13,10 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
-
-import github_workflow
 from basstler_domain_model.environment import GitIdentityVariable
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
 from basstler_domain_model.git.exceptions import GitCommandFailed
+from basstler_domain_model.github.exceptions import StackContinuesAboveError
 from basstler_domain_model.github.repository_client import (
     PullRequestReader,
     PullRequestsFromForks,
@@ -25,22 +24,22 @@ from basstler_domain_model.github.repository_client import (
 )
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.stack_models import Stack
+from basstler_domain_model.github.stack_placement import StackPlacement
 from basstler_domain_model.github.vocabulary import ClosingKeyword, PullRequestState
 from basstler_domain_model.repository import Repository
 
-from github_workflow.command_line import RunnableCommand
-from github_workflow.session import WorkflowSession
+import github_workflow
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.command_line import WorkflowCommand
+from github_workflow.command_line import RunnableCommand, WorkflowCommand
 from github_workflow.environment import WorkflowVariable
 from github_workflow.exceptions import (
     AssistantCreditError,
     BranchDeletedFromGitHubError,
     BranchNotPushedError,
+    ConflictMarkersLeftError,
     DefaultBranchWriteError,
     DetachedHeadError,
     DraftUnfinishedError,
-    ConflictMarkersLeftError,
     MergeConflictError,
     MergeInProgressError,
     NoMergeInProgressError,
@@ -49,18 +48,17 @@ from github_workflow.exceptions import (
     PushRefusedError,
     StackedBranchMergeError,
     UnbuildablePullRequestError,
-    UnreplaceablePullRequestError,
-    UnpushedCommitsError,
     UnknownPluginDataError,
+    UnpushedCommitsError,
+    UnreplaceablePullRequestError,
     UnresolvedConflictError,
 )
 from github_workflow.locations import PluginDataDirectory
 from github_workflow.policy import Attribution, WritePolicy
 from github_workflow.push_hook import PushHook
 from github_workflow.remotes import OwnedRemotes
+from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
-from basstler_domain_model.github.exceptions import StackContinuesAboveError
-from basstler_domain_model.github.stack_placement import StackPlacement
 from github_workflow.work import (
     BaseMerge,
     BranchStart,
@@ -74,42 +72,26 @@ from github_workflow.work import (
     LocalBranchFollowing,
     MergeAbort,
     MergeCompletion,
-    PullRequestBranches,
     PullRequestMerge,
+    PullRequestOpenedLabelling,
     PullRequestRetirement,
     PushWork,
     Replacement,
     RepositoryCloning,
     SessionLog,
-    PullRequestOpenedLabelling,
 )
 
-from .repositories_by_owner import RepositoriesByOwner
-from .test_push_hook import in_claude_code  # noqa: F401  (a fixture)
 from .issues_in_memory import IssuesInMemory
 from .pull_requests import pull_request
+from .repositories_by_owner import RepositoriesByOwner
 from .stacked_pull_requests import (
     DraftsAndStacksInMemory,
     DraftsInMemory,
     StackedPullRequestsInMemory,
 )
+from .test_push_hook import in_claude_code  # noqa: F401  (a fixture)
 
 # %% helpers
-
-
-@dataclass(frozen=True)
-class PullRequestBranchesInMemory(PullRequestBranches):
-    """
-    The branches pull requests were opened from, as a set.
-    """
-
-    branches: frozenset[str] = frozenset()
-    """
-    Each branch a pull request was opened from.
-    """
-
-    def opened_from(self, branch: str) -> bool:
-        return branch in self.branches
 
 
 class DefaultBranchOfTheScratchRepositories(RepositoryDetails):
@@ -686,7 +668,7 @@ def test_a_branch_github_moved_on_is_fast_forwarded(
 ):
     other = other_clone_pushing(repositories, owned_url, settings)
 
-    BranchSync(work, PullRequestBranchesInMemory()).run()
+    BranchSync(work, PullRequestsFromBranchesInMemory()).run()
 
     assert work.checkout.git.commit_at("HEAD") == other.checkout.git.commit_at("HEAD")
 
@@ -705,7 +687,7 @@ def test_a_branch_github_rebased_is_moved_to_github_s(
     rebaser.run("commit", "--quiet", "--amend", "--message", "Rebased")
     rebaser.run("push", "--quiet", "--force", "origin", "feature")
 
-    BranchSync(work, PullRequestBranchesInMemory()).run()
+    BranchSync(work, PullRequestsFromBranchesInMemory()).run()
 
     assert work.checkout.git.commit_at("HEAD") == rebaser.commit_at("HEAD")
 
@@ -721,7 +703,7 @@ def test_a_branch_with_unpushed_commits_github_diverged_from_is_left_alone(
     before = work.checkout.git.commit_at("HEAD")
 
     with pytest.raises(UnpushedCommitsError):
-        BranchSync(work, PullRequestBranchesInMemory()).run()
+        BranchSync(work, PullRequestsFromBranchesInMemory()).run()
 
     assert work.checkout.git.commit_at("HEAD") == before
 
@@ -737,7 +719,7 @@ def test_a_branch_deleted_from_github_is_not_reported_as_never_pushed(
     deleter.run("push", "--quiet", "origin", "--delete", "feature")
 
     with pytest.raises(BranchDeletedFromGitHubError):
-        BranchSync(work, PullRequestBranchesInMemory()).run()
+        BranchSync(work, PullRequestsFromBranchesInMemory()).run()
 
 
 def test_a_branch_the_sandbox_tracks_but_never_pushed_is_not_reported_deleted(
@@ -752,7 +734,7 @@ def test_a_branch_the_sandbox_tracks_but_never_pushed_is_not_reported_deleted(
     git.run("switch", "--quiet", "--create", "claude/session-branch")
     git.run("update-ref", "refs/remotes/origin/claude/session-branch", "HEAD")
 
-    BranchSync(policy, PullRequestBranchesInMemory()).run()
+    BranchSync(policy, PullRequestsFromBranchesInMemory()).run()
 
 
 def test_a_cloned_branch_deleted_after_its_pull_request_is_reported_deleted(
@@ -771,7 +753,9 @@ def test_a_cloned_branch_deleted_after_its_pull_request_is_reported_deleted(
     deleter.run("push", "--quiet", "origin", "--delete", "feature")
 
     with pytest.raises(BranchDeletedFromGitHubError):
-        BranchSync(session, PullRequestBranchesInMemory(frozenset({"feature"}))).run()
+        BranchSync(
+            session, PullRequestsFromBranchesInMemory([pull_request(1, "feature")])
+        ).run()
 
 
 def cut_off_from_github(policy: WritePolicy, repositories: RepositoriesByOwner) -> None:
@@ -794,7 +778,7 @@ def test_a_pushed_branch_is_not_reported_deleted_when_github_cannot_be_reached(
     cut_off_from_github(work, repositories)
 
     with pytest.raises(GitCommandFailed):
-        BranchSync(work, PullRequestBranchesInMemory()).run()
+        BranchSync(work, PullRequestsFromBranchesInMemory()).run()
 
 
 def test_a_branch_is_not_reported_unpushed_when_github_cannot_be_reached(
@@ -804,7 +788,7 @@ def test_a_branch_is_not_reported_unpushed_when_github_cannot_be_reached(
     cut_off_from_github(work, repositories)
 
     with pytest.raises(GitCommandFailed):
-        BranchSync(work, PullRequestBranchesInMemory()).run()
+        BranchSync(work, PullRequestsFromBranchesInMemory()).run()
 
 
 # %% taking in the default branch

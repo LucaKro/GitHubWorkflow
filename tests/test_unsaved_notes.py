@@ -11,12 +11,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from basstler_domain_model.environment import ClaudeCodeVariable
+from basstler_domain_model.claude_code.hooks import HookKey, HookValue
+from basstler_domain_model.environment import ClaudeCodeVariable, PythonVariable
 from basstler_domain_model.locations import PathEnumeration
 
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.environment import PythonVariable, WorkflowVariable
-from basstler_domain_model.claude_code.hooks import HookKey, HookValue
+from github_workflow.environment import WorkflowVariable
 from github_workflow.locations import NotesFile
 from github_workflow.notes.document import NotesBlock, NotesSection
 from github_workflow.notes.unsaved import UnsavedNotes

@@ -515,6 +515,10 @@ class GitCommandRunner:
         writes = tuple(TrackingReferenceWrite)
         return any(entry.startswith(writes) for entry in self.reflog_entries(reference))
 
+    def version(self) -> str:
+        """:return: Git's version, as ``git --version`` prints it."""
+        return self.run("--version")
+
     def identity(self, identity: GitIdentity) -> str:
         """
         :param identity: Which of the identities a commit records.

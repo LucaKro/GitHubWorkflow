@@ -57,6 +57,58 @@ class CheckGroup(StrEnum):
     """
 
 
+class EnvironmentFact(StrEnum):
+    """
+    What a probe records about the session it runs in, each valued as the report names
+    it.
+    """
+
+    PYTHON = "python"
+    """
+    The interpreter's version.
+    """
+
+    CLOUD_SESSION = "cloud session"
+    """
+    Whether the session runs in the cloud.
+    """
+
+    TOKEN_VARIABLE_SET = "token variable set"
+    """
+    Whether a variable holds a GitHub token.
+    """
+
+    CHECKED_OUT_BRANCH = "checked-out branch"
+    """
+    The branch the checkout has checked out.
+    """
+
+    GIT_AUTHOR = "git author"
+    """
+    Who git records as a commit's author.
+    """
+
+    GIT = "git"
+    """
+    Git's version.
+    """
+
+    GITHUB_CLI = "gh"
+    """
+    The GitHub CLI's version.
+    """
+
+    REPOSITORY = "repository"
+    """
+    The repository the session works in.
+    """
+
+    DEFAULT_BRANCH = "default branch"
+    """
+    Its default branch.
+    """
+
+
 @dataclass(frozen=True)
 class CheckOutcome:
     """

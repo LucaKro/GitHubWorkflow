@@ -10,27 +10,25 @@ import sys
 from pathlib import Path
 
 import pytest
+from basstler_domain_model.environment import PythonVariable
 from basstler_domain_model.git.commands import RemoteName
 from basstler_domain_model.github.issue_models import IssueComment
-from basstler_domain_model.locations import PathEnumeration
+from basstler_domain_model.locations import PathEnumeration, PythonProjectFile
 
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.environment import PythonVariable
 from github_workflow.exceptions import (
     BrokenTestError,
     FileOutsideCheckoutError,
     PassingTestError,
 )
-from github_workflow.locations import ProjectFile
 from github_workflow.proofs import (
+    BranchProofRunner,
     BranchTip,
     FindingTest,
-    BranchProofRunner,
     Proof,
     ProofOutcome,
 )
 from github_workflow.settings import WorkflowSettings
-from github_workflow.workspace import PackageDirectories
 
 from .repositories_by_owner import RepositoriesByOwner
 
@@ -109,7 +107,7 @@ class DoublingProjectFile(PathEnumeration):
     Where the doubling project keeps its files, relative to its root.
     """
 
-    PACKAGE = ProjectFile.SOURCE_DIRECTORY / "doubling" / "__init__.py"
+    PACKAGE = PythonProjectFile.SOURCE_DIRECTORY / "doubling" / "__init__.py"
     """
     The package.
     """
@@ -236,7 +234,7 @@ def test_a_bug_only_on_the_work_branch_proves_nothing(
     commit_package(checkout, ProofDataset.DOUBLING_WRONG)
     monkeypatch.setenv(
         PythonVariable.MODULE_SEARCH_PATH,
-        str(checkout.root / ProjectFile.SOURCE_DIRECTORY),
+        str(checkout.root / PythonProjectFile.SOURCE_DIRECTORY),
     )
 
     attempt = runner(checkout).attempt(finding_test(ProofDataset.DOUBLING_SHOWN_WRONG))
@@ -339,7 +337,7 @@ def commit_workspace_member(checkout: ProjectCheckout, package: ProofDataset) ->
     target = member / DoublingProjectFile.PACKAGE
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(package.read_text())
-    (checkout.root / ProjectFile.PYPROJECT).write_text(
+    (checkout.root / PythonProjectFile.PYPROJECT).write_text(
         ProofDataset.WORKSPACE_PYPROJECT.read_text()
     )
     checkout.git.run("add", ".")
@@ -361,7 +359,8 @@ def test_a_workspace_member_is_imported_from_the_default_branch(
     commit_workspace_member(checkout, ProofDataset.DOUBLING_CORRECT)
     installed = checkout.root / DoublingProjectFile.WORKSPACE_MEMBER
     monkeypatch.setenv(
-        PythonVariable.MODULE_SEARCH_PATH, str(installed / ProjectFile.SOURCE_DIRECTORY)
+        PythonVariable.MODULE_SEARCH_PATH,
+        str(installed / PythonProjectFile.SOURCE_DIRECTORY),
     )
 
     attempt = runner(checkout).attempt(finding_test(ProofDataset.DOUBLING_SHOWN_WRONG))
@@ -376,38 +375,11 @@ def workspace(root: Path, *members: Path) -> None:
     :param root: Its root.
     :param members: The directories made, relative to it.
     """
-    (root / ProjectFile.PYPROJECT).write_text(
+    (root / PythonProjectFile.PYPROJECT).write_text(
         ProofDataset.WORKSPACE_PYPROJECT.read_text()
     )
     for member in members:
         (root / member).mkdir(parents=True)
-
-
-def test_a_workspace_member_s_source_directory_is_searched(tmp_path: Path):
-    source = Path("packages") / "laid-out" / ProjectFile.SOURCE_DIRECTORY
-    workspace(tmp_path, source, Path("packages") / "flat")
-
-    assert PackageDirectories(tmp_path).search_path() == [
-        str(tmp_path),
-        str(tmp_path / "packages" / "flat"),
-        str(tmp_path / source),
-    ]
-
-
-def test_a_directory_the_workspace_excludes_is_not_searched(tmp_path: Path):
-    workspace(tmp_path, Path("packages") / "unused")
-
-    assert PackageDirectories(tmp_path).search_path() == [str(tmp_path)]
-
-
-def test_a_project_that_is_no_workspace_is_searched_in_its_source_directory(
-    tmp_path: Path,
-):
-    (tmp_path / ProjectFile.SOURCE_DIRECTORY).mkdir()
-
-    assert PackageDirectories(tmp_path).search_path() == [
-        str(tmp_path / ProjectFile.SOURCE_DIRECTORY)
-    ]
 
 
 # %% the test file

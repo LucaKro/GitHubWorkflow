@@ -86,8 +86,9 @@ class OwnedRemotes:
         :raises NoOwnedRemoteError: If no remote is owned.
         :raises AmbiguousOwnedRemoteError: If several are, and none is ``origin``.
         """
-        if self.problem is not None:
-            raise self.problem
+        problem = self.problem
+        if problem is not None:
+            raise problem
         return next(
             (remote for remote in self.owned if remote.name == RemoteName.ORIGIN),
             self.owned[0],

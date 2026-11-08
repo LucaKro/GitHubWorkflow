@@ -79,3 +79,28 @@ class GitStateFile(PathEnumeration):
     """
     The commit message a merge in progress was started with.
     """
+
+
+# %% a Python project's files
+
+
+class PythonProjectFile(PathEnumeration):
+    """
+    The files and directories a Python project lays itself out with, relative to its
+    root.
+    """
+
+    PYPROJECT = Path("pyproject.toml")
+    """
+    The project's settings, which may name the members of its uv workspace.
+    """
+
+    UV_LOCK = Path("uv.lock")
+    """
+    The versions uv pins the project's environment to, there when uv manages it.
+    """
+
+    SOURCE_DIRECTORY = Path("src")
+    """
+    Where a project laid out with a source directory keeps its packages.
+    """

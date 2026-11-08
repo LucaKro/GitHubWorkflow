@@ -1,11 +1,10 @@
 """
-Where a Python project's packages are imported from, its uv workspace's members
-included, and the tool it manages its environment with.
+A Python project as its files lay it out: its settings, the directories its packages and
+its uv workspace's members are imported from, and the tool managing its environment.
 """
 
 from __future__ import annotations
 
-import shutil
 import tomllib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -13,9 +12,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from github_workflow.command_line import CommandOption
-from github_workflow.locations import ProjectFile
-from github_workflow.report_lines import Audience, ReportLine, Speaker, Tone
+from basstler_domain_model.locations import PythonProjectFile
 
 # %% the project's settings
 
@@ -51,7 +48,7 @@ class Pyproject:
         """
         :return: Its tables, none when the project has no ``pyproject.toml``.
         """
-        file = self.root / ProjectFile.PYPROJECT
+        file = self.root / PythonProjectFile.PYPROJECT
         return tomllib.loads(file.read_text()) if file.exists() else {}
 
 
@@ -110,8 +107,8 @@ class PackageDirectories:
         projects = [self.root, *self.workspace_members()]
         return [
             str(
-                project / ProjectFile.SOURCE_DIRECTORY
-                if (project / ProjectFile.SOURCE_DIRECTORY).is_dir()
+                project / PythonProjectFile.SOURCE_DIRECTORY
+                if (project / PythonProjectFile.SOURCE_DIRECTORY).is_dir()
                 else project
             )
             for project in projects
@@ -200,7 +197,7 @@ class UvTool(EnvironmentTool):
     """
 
     def manages(self, root: Path) -> bool:
-        if (root / ProjectFile.UV_LOCK).exists():
+        if (root / PythonProjectFile.UV_LOCK).exists():
             return True
         return WorkspaceKey.UV in Pyproject(root).settings().get(WorkspaceKey.TOOL, {})
 
@@ -213,57 +210,3 @@ class UvTool(EnvironmentTool):
         )
         named = [f"--extra {extra}" for extra in DevelopmentExtra if extra in extras]
         return " ".join([self.executable, "sync", *named])
-
-
-@dataclass(frozen=True)
-class ProjectTooling:
-    """
-    What a session is told about the tool the project manages its environment with:
-    to set the environment up with it whenever tests need it, never by hand. The
-    workflow never runs the tool itself.
-    """
-
-    root: Path
-    """
-    The project's root.
-    """
-
-    tools: tuple[EnvironmentTool, ...] = (UvTool(),)
-    """
-    The tools looked for, in order; the first the project declares counts.
-    """
-
-    def lines(self) -> list[ReportLine]:
-        """
-        :return: How to set the environment up, or that the tool is missing; nothing
-            when the project declares none of the tools.
-        """
-        tool = next((tool for tool in self.tools if tool.manages(self.root)), None)
-        if tool is None:
-            return []
-        command = tool.setup_command(self.root)
-        if shutil.which(tool.executable) is None:
-            return [
-                ReportLine(
-                    Speaker.WORKFLOW.says(
-                        f"this project's environment is managed with "
-                        f"{tool.executable}, which is not installed, so `{command}` "
-                        f"cannot set it up: ask the person whether to install it, and "
-                        f"install none of the project's packages by hand"
-                    ),
-                    Tone.ACTION,
-                )
-            ]
-        return [
-            ReportLine(
-                Speaker.WORKFLOW.says(
-                    f"this project's environment is managed with {tool.executable}: "
-                    f"whenever tests need it, set it up with `{command}` and run them "
-                    f"in it, giving the workflow's proof commands its interpreter with "
-                    f"`{CommandOption.PYTHON}`; never install the project's packages "
-                    f"by hand"
-                ),
-                Tone.NEWS,
-                Audience.MODEL,
-            )
-        ]

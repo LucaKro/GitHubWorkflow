@@ -10,7 +10,6 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from basstler_domain_model.git.branch_tips import BranchTip
 from basstler_domain_model.git.commands import (
@@ -59,9 +58,6 @@ from github_workflow.policy import WritePolicy
 from github_workflow.push_hook import PushHook
 from github_workflow.report_lines import NumberLink
 from github_workflow.settings import WorkflowSettings
-
-if TYPE_CHECKING:
-    from basstler_domain_model.github.repository_client import GitHubRepository
 
 # %% one step
 
@@ -557,44 +553,6 @@ class DescriptionRewrite(WorkflowStep):
 # %% bringing a branch up to date
 
 
-class PullRequestBranches(ABC):
-    """
-    The branches pull requests on the owner's repository were opened from.
-    """
-
-    @abstractmethod
-    def opened_from(self, branch: str) -> bool:
-        """
-        :param branch: A branch of the owner's repository.
-        :return: Whether a pull request, open or closed, was opened from it.
-        """
-
-
-@dataclass(frozen=True)
-class GitHubPullRequestBranches(PullRequestBranches):
-    """
-    The branches pull requests were opened from, as GitHub lists the pull requests.
-    """
-
-    github: GitHubRepository
-    """
-    The owner's repository on GitHub.
-    """
-
-    repository: str
-    """
-    The repository's full name, which a pull request's head names when it is from this
-    repository.
-    """
-
-    def opened_from(self, branch: str) -> bool:
-        return any(
-            pull_request.head.repository == self.repository
-            and pull_request.head.branch == branch
-            for pull_request in self.github.all_pull_requests()
-        )
-
-
 @dataclass(frozen=True)
 class BranchSync(WorkflowStep):
     """
@@ -611,9 +569,9 @@ class BranchSync(WorkflowStep):
     The checkout and the remote synced with.
     """
 
-    pull_request_branches: PullRequestBranches
+    pull_requests: PullRequestsFromForks
     """
-    The branches pull requests were opened from, which shows a branch was on GitHub.
+    The owner's repository, whose pull requests from a branch show it was on GitHub.
     """
 
     def run(self) -> str:
@@ -657,7 +615,8 @@ class BranchSync(WorkflowStep):
         """
         if self.policy.checkout.git.fetched_or_pushed(branch.tracking_reference):
             return True
-        return self.pull_request_branches.opened_from(branch.name)
+        owner = self.policy.remote.repository.owner
+        return bool(self.pull_requests.pull_requests_from(owner, branch.name))
 
 
 # %% taking in the default branch

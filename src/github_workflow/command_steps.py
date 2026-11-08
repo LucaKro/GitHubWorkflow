@@ -72,7 +72,6 @@ from github_workflow.work import (
     CommitWork,
     DescriptionRewrite,
     DraftOpening,
-    GitHubPullRequestBranches,
     MergeAbort,
     MergeCompletion,
     NotesSaving,
@@ -311,12 +310,7 @@ class SyncStep(CommandStep):
             return MergeCompletion(session.policy, arguments.resolved)
         if arguments.abort:
             return MergeAbort(session.policy)
-        return BranchSync(
-            session.policy,
-            GitHubPullRequestBranches(
-                session.github, session.remote.repository.full_name
-            ),
-        )
+        return BranchSync(session.policy, session.github)
 
 
 @dataclass(frozen=True)

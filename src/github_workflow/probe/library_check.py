@@ -1,5 +1,5 @@
 """
-One call through :mod:`basstler_domain_model`, run as a process of its own so a refusal
+One call through :mod:`basstler_domain_model`, run as a process of its own; a refusal
 ends only this check, with the library's own error as its message.
 
 Usage: ``python -m github_workflow.probe.library_check <check> <owner/name>
@@ -9,8 +9,11 @@ Usage: ``python -m github_workflow.probe.library_check <check> <owner/name>
 from __future__ import annotations
 
 import sys
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from enum import StrEnum
 
+from basstler_domain_model.class_property import classproperty
 from basstler_domain_model.github.clients import GitHubApi
 from basstler_domain_model.github.readers import ReadSource
 from basstler_domain_model.github.repository_client import GitHubRepository
@@ -21,7 +24,7 @@ from basstler_domain_model.repository import Repository
 
 class LibraryCheck(StrEnum):
     """
-    The calls through the library a probe makes, each printing what it read in one line.
+    The calls through the library a probe makes, by the name the command line takes.
     """
 
     AUTHENTICATED_LOGIN = "authenticated-login"
@@ -50,32 +53,118 @@ class LibraryCheck(StrEnum):
     reaches them, given its number as the argument.
     """
 
-    def run(self, repository: Repository, argument: str) -> str:
+
+# %% the calls
+
+
+@dataclass(frozen=True)
+class LibraryCall(ABC):
+    """
+    One check's call through the library.
+    """
+
+    @classproperty
+    @abstractmethod
+    def check(cls) -> LibraryCheck:
+        """
+        The check the call makes.
+        """
+
+    @abstractmethod
+    def read(self, repository: Repository, argument: str) -> str:
         """
         :param repository: The repository the session works in.
         :param argument: The commit or pull request number the check needs, if any.
         :return: What it read, in one line.
         """
-        if self is LibraryCheck.PULL_REQUEST_REVIEW_STATE:
-            source = ReadSource.detect()
-            snapshot = source.reader(
-                GitHubApi.from_environment(), repository, repository.owner
-            ).read_current_state(int(argument))
-            checks = snapshot.checks.state if snapshot.checks else "not reported"
-            return (
-                f"read through {source}: {len(snapshot.threads)} review threads, "
-                f"checks {checks}"
-            )
+
+    @classmethod
+    def making(cls, check: LibraryCheck) -> LibraryCall:
+        """
+        :param check: A check.
+        :return: The call it makes.
+        """
+        return next(call() for call in cls.__subclasses__() if call.check is check)
+
+
+@dataclass(frozen=True)
+class AuthenticatedLoginCall(LibraryCall):
+    """
+    Reads whose credential the REST client calls with.
+    """
+
+    @classproperty
+    def check(cls) -> LibraryCheck:
+        return LibraryCheck.AUTHENTICATED_LOGIN
+
+    def read(self, repository: Repository, argument: str) -> str:
+        return GitHubRepository.from_environment(repository).authenticated_login()
+
+
+@dataclass(frozen=True)
+class LabelsCall(LibraryCall):
+    """
+    Reads the labels the repository carries.
+    """
+
+    @classproperty
+    def check(cls) -> LibraryCheck:
+        return LibraryCheck.LABELS
+
+    def read(self, repository: Repository, argument: str) -> str:
+        return ", ".join(sorted(GitHubRepository.from_environment(repository).labels()))
+
+
+@dataclass(frozen=True)
+class OpenPullRequestsCall(LibraryCall):
+    """
+    Counts the repository's open pull requests.
+    """
+
+    @classproperty
+    def check(cls) -> LibraryCheck:
+        return LibraryCheck.OPEN_PULL_REQUESTS
+
+    def read(self, repository: Repository, argument: str) -> str:
         client = GitHubRepository.from_environment(repository)
-        match self:
-            case LibraryCheck.AUTHENTICATED_LOGIN:
-                return client.authenticated_login()
-            case LibraryCheck.LABELS:
-                return ", ".join(sorted(client.labels()))
-            case LibraryCheck.OPEN_PULL_REQUESTS:
-                return f"{len(client.open_pull_requests())} open"
-            case LibraryCheck.CHECK_STATE:
-                return str(client.check_state(argument))
+        return f"{len(client.open_pull_requests())} open"
+
+
+@dataclass(frozen=True)
+class CheckStateCall(LibraryCall):
+    """
+    Reads the verdict over the checks on a commit.
+    """
+
+    @classproperty
+    def check(cls) -> LibraryCheck:
+        return LibraryCheck.CHECK_STATE
+
+    def read(self, repository: Repository, argument: str) -> str:
+        return str(GitHubRepository.from_environment(repository).check_state(argument))
+
+
+@dataclass(frozen=True)
+class PullRequestReviewStateCall(LibraryCall):
+    """
+    Reads a pull request's review threads and checks the way this session's place
+    reaches them.
+    """
+
+    @classproperty
+    def check(cls) -> LibraryCheck:
+        return LibraryCheck.PULL_REQUEST_REVIEW_STATE
+
+    def read(self, repository: Repository, argument: str) -> str:
+        source = ReadSource.detect()
+        snapshot = source.reader(
+            GitHubApi.from_environment(), repository, repository.owner
+        ).read_current_state(int(argument))
+        checks = snapshot.checks.state if snapshot.checks else "not reported"
+        return (
+            f"read through {source}: {len(snapshot.threads)} review threads, "
+            f"checks {checks}"
+        )
 
 
 # %% entry point
@@ -86,7 +175,8 @@ def main() -> None:
     Run the check the command line names and print what it read.
     """
     check, repository, *argument = sys.argv[1:]
-    print(LibraryCheck(check).run(Repository.parse(repository), "".join(argument)))
+    call = LibraryCall.making(LibraryCheck(check))
+    print(call.read(Repository.parse(repository), "".join(argument)))
 
 
 if __name__ == "__main__":
