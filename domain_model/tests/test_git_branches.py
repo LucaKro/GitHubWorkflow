@@ -276,6 +276,16 @@ def test_the_reflog_names_what_wrote_a_reference(
     assert checkout.reflog_entries(published.tracking_reference) == ["update by push"]
 
 
+def test_a_pushed_branch_s_tracking_reference_was_written_from_its_remote(
+    checkout: GitCommandRunner, published: RemoteBranch
+):
+    assert checkout.fetched_or_pushed(published.tracking_reference)
+
+
+def test_a_reference_never_fetched_or_pushed_was_not(checkout: GitCommandRunner):
+    assert not checkout.fetched_or_pushed("refs/remotes/nowhere/main")
+
+
 def test_a_reference_without_a_reflog_has_no_entries(checkout: GitCommandRunner):
     assert checkout.reflog_entries("refs/remotes/nowhere/main") == []
 

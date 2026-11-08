@@ -14,7 +14,10 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
+from typing import Self
 
+from basstler_domain_model.counted_noun import CountedNoun
+from basstler_domain_model.git.branch_tips import BranchTip
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
 from basstler_domain_model.github.repository_client import (
     GitHubRepository,
@@ -23,22 +26,57 @@ from basstler_domain_model.github.repository_client import (
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import PullRequestState
 
-from github_workflow.branch_tips import BranchTip, BranchTips
 from github_workflow.command_line import RunnableCommand
-from github_workflow.counted_noun import CountedNoun
 from github_workflow.exceptions import (
     DetachedHeadError,
     NothingToDiscardError,
     UndiscardableBranchError,
 )
-from github_workflow.hooks import ReportLine, Speaker, Tone
 from github_workflow.locations import GitStateFile, NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.policy import WritePolicy
 from github_workflow.remotes import OwnedRemote
+from github_workflow.report_lines import ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportSection
 from github_workflow.work import PullRequestRetirement, SessionLog, WorkflowStep
-from github_workflow.workflow_templates import NotesBranchWorkflow, TemplatePlaceholder
+from github_workflow.workflow_templates import DeletionPlaceholder, NotesBranchWorkflow
+
+# %% branches listed with their commits
+
+
+@dataclass(frozen=True)
+class BranchTips:
+    """
+    Branches, each with the commit it may be deleted at, as the notes branch lists them.
+    """
+
+    commits: Mapping[str, str] = field(default_factory=dict)
+    """
+    Each branch, and the commit it may be deleted at.
+    """
+
+    @classmethod
+    def from_text(cls, text: str | None) -> Self:
+        """
+        :param text: The list as the notes branch keeps it, ``None`` when it has none.
+        :return: The branches it names.
+        """
+        pairs = (line.split() for line in (text or "").splitlines() if line.strip())
+        return cls({branch: commit for branch, commit in pairs})
+
+    def to_text(self) -> str:
+        """:return: The list as the notes branch keeps it."""
+        return "".join(
+            f"{branch} {commit}\n" for branch, commit in sorted(self.commits.items())
+        )
+
+    def extended(self, tip: BranchTip) -> Self:
+        """
+        :param tip: Another branch, and its commit.
+        :return: These branches and that one.
+        """
+        return type(self)({**self.commits, tip.branch: tip.commit})
+
 
 # %% discarded branches
 
@@ -306,7 +344,7 @@ class BranchCleanup(WorkflowStep):
         listed = BranchTips({branch: self.kept.tips[branch] for branch in refused})
         workflow = NotesBranchWorkflow.DELETION.files(
             self.notes.branch.name,
-            {TemplatePlaceholder.LIST_FILE: str(NotesFile.READY_FOR_DELETION)},
+            {DeletionPlaceholder.LIST_FILE: str(NotesFile.READY_FOR_DELETION)},
         )
         self.notes.fetch()
         self.notes.write(

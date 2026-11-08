@@ -1,6 +1,6 @@
 """
-Tests for :mod:`github_workflow.hooks`: the session start's lines stand out to the
-person in their tone's colour and reach the model plain.
+Tests for :mod:`github_workflow.report_lines`: the session start's lines stand out to
+the person in their tone's colour and reach the model plain.
 """
 
 from __future__ import annotations
@@ -9,12 +9,8 @@ import json
 
 import pytest
 
-from github_workflow.hooks import (
-    HookKey,
-    ReportLine,
-    SessionStartReport,
-    Tone,
-)
+from basstler_domain_model.claude_code.hooks import HookKey
+from github_workflow.report_lines import ReportLine, SessionStartReport, Tone
 
 # %% one line
 

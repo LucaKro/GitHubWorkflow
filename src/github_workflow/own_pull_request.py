@@ -25,13 +25,13 @@ from basstler_domain_model.github.vocabulary import PullRequestState
 
 from github_workflow.exceptions import (
     ForeignReviewAddressError,
-    UpstreamReviewsUnavailable,
     NoOpenPullRequestError,
     NothingToLabelError,
     PersonOnlyLabelError,
     ReviewThreadNotFoundError,
     UnknownLabelError,
     UnpushedWorkError,
+    UpstreamReviewsUnavailable,
 )
 from github_workflow.labels import PullRequestLabel, UpstreamLabel
 from github_workflow.policy import WritePolicy

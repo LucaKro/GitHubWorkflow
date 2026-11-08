@@ -13,6 +13,7 @@ import stat
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import auto
 from pathlib import Path
 
 from basstler_domain_model.class_property import classproperty
@@ -23,6 +24,7 @@ from basstler_domain_model.git.commands import (
     RemoteBranch,
 )
 from basstler_domain_model.repository import Repository
+from basstler_domain_model.templates import Placeholder
 
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.exceptions import (
@@ -30,10 +32,33 @@ from github_workflow.exceptions import (
     ForeignPushError,
     UnknownDefaultBranchError,
 )
-from github_workflow.hooks import ReportLine, Speaker, Tone
 from github_workflow.locations import GitFile, WorkflowTemplate
+from github_workflow.report_lines import ReportLine, Speaker, Tone
 from github_workflow.settings import WorkflowSettings
-from github_workflow.workflow_templates import TemplatePlaceholder
+
+# %% the template's placeholders
+
+
+class PushHookPlaceholder(Placeholder):
+    """
+    The names the ``pre-push`` hook's template leaves to be filled in.
+    """
+
+    MARKER_VARIABLE = auto()
+    """
+    The variable set only in commands a Claude Code session runs.
+    """
+
+    PYTHON = auto()
+    """
+    The interpreter the package is installed in.
+    """
+
+    MODULE = auto()
+    """
+    The module a hook runs.
+    """
+
 
 # %% the check
 
@@ -129,12 +154,12 @@ class PushHook:
         """
         The hook, as written into the checkout.
         """
-        return TemplatePlaceholder.fill(
+        return Placeholder.fill(
             WorkflowTemplate.PRE_PUSH_HOOK.read_text(),
             {
-                TemplatePlaceholder.MARKER_VARIABLE: ClaudeCodeVariable.COMMAND_MARKER,
-                TemplatePlaceholder.PYTHON: str(self.python),
-                TemplatePlaceholder.MODULE: PushCheck.__module__,
+                PushHookPlaceholder.MARKER_VARIABLE: ClaudeCodeVariable.COMMAND_MARKER,
+                PushHookPlaceholder.PYTHON: str(self.python),
+                PushHookPlaceholder.MODULE: PushCheck.__module__,
             },
         )
 

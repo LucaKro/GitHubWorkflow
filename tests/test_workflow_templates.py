@@ -9,25 +9,30 @@ from pathlib import Path
 
 import pytest
 
+from github_workflow.workflow_templates import (
+    DeletionPlaceholder,
+    NotesBranchPlaceholder,
+)
+from basstler_domain_model.templates import Placeholder
 from github_workflow.label_events import FindingAutomation
 from github_workflow.locations import ProjectFile
-from github_workflow.workflow_templates import NotesBranchWorkflow, TemplatePlaceholder
+from github_workflow.workflow_templates import NotesBranchWorkflow
 
 # %% filling in
 
 
 def test_a_value_naming_another_placeholder_is_kept_as_it_is():
-    template = f"{TemplatePlaceholder.NOTES_BRANCH} {TemplatePlaceholder.LIST_FILE}"
+    template = f"{NotesBranchPlaceholder.NOTES_BRANCH} {DeletionPlaceholder.LIST_FILE}"
 
-    filled = TemplatePlaceholder.fill(
+    filled = Placeholder.fill(
         template,
         {
-            TemplatePlaceholder.NOTES_BRANCH: TemplatePlaceholder.LIST_FILE,
-            TemplatePlaceholder.LIST_FILE: "list.md",
+            NotesBranchPlaceholder.NOTES_BRANCH: DeletionPlaceholder.LIST_FILE,
+            DeletionPlaceholder.LIST_FILE: "list.md",
         },
     )
 
-    assert filled == f"{TemplatePlaceholder.LIST_FILE} list.md"
+    assert filled == f"{DeletionPlaceholder.LIST_FILE} list.md"
 
 
 # %% the notes branch's workflows

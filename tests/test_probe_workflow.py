@@ -4,9 +4,10 @@ Tests for the branch deletion workflow the probe pushes.
 
 from __future__ import annotations
 
+from basstler_domain_model.templates import Placeholder
+from github_workflow.probe.scenarios import ProbeWorkflowPlaceholder
 from github_workflow.locations import ProbeTemplate
 from github_workflow.probe.scenarios import BranchName
-from github_workflow.workflow_templates import TemplatePlaceholder
 
 # %% filling in the template
 
@@ -17,11 +18,11 @@ def filled(workflow: str, deleted: str) -> str:
     :param deleted: The other branch it deletes.
     :return: The probe's branch deletion workflow, naming both.
     """
-    return TemplatePlaceholder.fill(
+    return Placeholder.fill(
         ProbeTemplate.BRANCH_DELETION_WORKFLOW.read_text(),
         {
-            TemplatePlaceholder.WORKFLOW_BRANCH: workflow,
-            TemplatePlaceholder.DELETED_BRANCH: deleted,
+            ProbeWorkflowPlaceholder.WORKFLOW_BRANCH: workflow,
+            ProbeWorkflowPlaceholder.DELETED_BRANCH: deleted,
         },
     )
 
@@ -32,7 +33,9 @@ def test_the_filled_workflow_leaves_no_placeholder():
     )
 
     assert [
-        placeholder for placeholder in TemplatePlaceholder if placeholder in workflow
+        placeholder
+        for placeholder in ProbeWorkflowPlaceholder
+        if placeholder in workflow
     ] == []
 
 

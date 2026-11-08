@@ -13,10 +13,9 @@ from basstler_domain_model.exceptions import DataclassException
 from github_workflow.command_line import CommandOption, RunnableCommand
 
 if TYPE_CHECKING:
+    from basstler_domain_model.git.branch_tips import BranchTip
     from basstler_domain_model.github.vocabulary import WorkflowRunConclusion
     from basstler_domain_model.repository import Repository
-
-    from github_workflow.branch_tips import BranchTip
 
 # %% whose repository
 

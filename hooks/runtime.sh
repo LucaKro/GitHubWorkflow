@@ -10,12 +10,14 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && p
 RUNTIME="${HOME:-}/.virtualenvs/githubworkflow-runtime"
 PYTHON="${GITHUB_WORKFLOW_PYTHON:-${RUNTIME}/bin/python}"
 INSTALLER="${PLUGIN_ROOT}/src/github_workflow/install.py"
+# The plugin's source directories, the workflow's and the domain model's, as a path.
+PLUGIN_SOURCES="${PLUGIN_ROOT}/src:${PLUGIN_ROOT}/domain_model/src"
 
 # Puts the plugin's own code first on the interpreter's path, so a plugin updated after
 # the runtime was installed never runs code older than the hook; the runtime supplies
 # the libraries.
 use_plugin_source() {
-  export PYTHONPATH="${PLUGIN_ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
+  export PYTHONPATH="${PLUGIN_SOURCES}${PYTHONPATH:+:${PYTHONPATH}}"
 }
 
 # Answers the hook with one line shown to the person, bold in the colour the second

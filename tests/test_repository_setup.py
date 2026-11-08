@@ -19,7 +19,7 @@ from basstler_domain_model.github.rest_models import Workflow, WorkflowRun
 from basstler_domain_model.github.vocabulary import WorkflowState
 from basstler_domain_model.repository import Repository
 
-from github_workflow.hooks import Tone
+from github_workflow.report_lines import Tone
 from github_workflow.locations import NotesFile
 from github_workflow.repository_setup import RepositorySetup
 

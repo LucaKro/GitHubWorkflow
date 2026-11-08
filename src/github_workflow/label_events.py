@@ -30,6 +30,7 @@ from basstler_domain_model.github.vocabulary import (
     RestJSONKey,
 )
 from basstler_domain_model.repository import Repository
+from basstler_domain_model.templates import Placeholder
 
 from github_workflow.findings import (
     Evidence,
@@ -38,11 +39,11 @@ from github_workflow.findings import (
     FindingStage,
     Priority,
 )
-from github_workflow.hooks import ReportLine, Speaker, Tone
 from github_workflow.locations import ProjectFile, WorkflowTemplate
+from github_workflow.report_lines import ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportSection
 from github_workflow.work import WorkflowStep
-from github_workflow.workflow_templates import ActionRequirement, TemplatePlaceholder
+from github_workflow.workflow_templates import ActionRequirement
 
 # %% the event
 
@@ -294,7 +295,7 @@ class FindingAutomation(WorkflowStep):
     """
 
     def run(self) -> str:
-        workflow = TemplatePlaceholder.fill(
+        workflow = Placeholder.fill(
             WorkflowTemplate.LABEL_COMPLETION_WORKFLOW.read_text(),
             ActionRequirement.placeholder_values(__name__),
         )

@@ -63,10 +63,16 @@ from github_workflow.findings import (
     ProvenFindingFiling,
     SessionPullRequestClosing,
 )
-from github_workflow.hooks import Emphasis, Highlight, NumberLink, ReportLine, Tone
+from github_workflow.report_lines import (
+    Emphasis,
+    Highlight,
+    NumberLink,
+    ReportLine,
+    Tone,
+)
 from github_workflow.policy import WritePolicy
 from github_workflow.report_section import ReportGroup
-from github_workflow.branch_tips import BranchTip
+from basstler_domain_model.git.branch_tips import BranchTip
 from github_workflow.proofs import FindingTest, ProofAttempt, ProofOutcome
 from github_workflow.settings import WorkflowSettings
 from github_workflow.stacks import StackPlacement

@@ -34,7 +34,7 @@ from github_workflow.cleanup import (
 from github_workflow.command_line import WorkflowCommand
 from github_workflow.environment import WorkflowVariable
 from github_workflow.exceptions import NothingToDiscardError, UndiscardableBranchError
-from github_workflow.hooks import Tone
+from github_workflow.report_lines import Tone
 from github_workflow.locations import NotesFile, PluginDataDirectory
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.remotes import OwnedRemotes

@@ -14,8 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from github_workflow.command_line import CommandOption
-from github_workflow.hooks import Audience, ReportLine, Speaker, Tone
 from github_workflow.locations import ProjectFile
+from github_workflow.report_lines import Audience, ReportLine, Speaker, Tone
 
 # %% the project's settings
 

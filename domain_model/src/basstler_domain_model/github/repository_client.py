@@ -18,11 +18,6 @@ from basstler_domain_model.github.commit_checks import CommitCheckReader
 from basstler_domain_model.github.exceptions import NotAnIssueError
 from basstler_domain_model.github.issue_models import Issue, IssueComment, LabelEvent
 from basstler_domain_model.github.labels import GitHubLabel
-from basstler_domain_model.github.routes import (
-    QueryParameter,
-    RepositoryRoute,
-    StackAction,
-)
 from basstler_domain_model.github.rest_models import (
     BranchComparison,
     RestPullRequest,
@@ -30,6 +25,11 @@ from basstler_domain_model.github.rest_models import (
     SearchedPullRequest,
     Workflow,
     WorkflowRun,
+)
+from basstler_domain_model.github.routes import (
+    QueryParameter,
+    RepositoryRoute,
+    StackAction,
 )
 from basstler_domain_model.github.stack_models import Stack
 from basstler_domain_model.github.vocabulary import (

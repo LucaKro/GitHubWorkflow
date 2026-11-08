@@ -8,6 +8,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from basstler_domain_model.counted_noun import CountedNoun
+from basstler_domain_model.git.branch_tips import BranchTip
 from basstler_domain_model.git.commands import ProposedPush, RemoteBranch
 from basstler_domain_model.github.labels import LabelWrite
 from basstler_domain_model.github.repository_client import (
@@ -24,9 +26,7 @@ from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import PullRequestState
 from basstler_domain_model.repository import Repository
 
-from github_workflow.branch_tips import BranchTip
 from github_workflow.command_line import RunnableCommand
-from github_workflow.counted_noun import CountedNoun
 from github_workflow.exceptions import (
     ForeignRepositoryError,
     ForkBranchDivergedError,
@@ -34,12 +34,12 @@ from github_workflow.exceptions import (
     PersonOnlyCommandError,
     PullRequestNotProposableError,
 )
-from github_workflow.hooks import NumberLink, ReportLine, Speaker, Tone
 from github_workflow.install import Launcher
 from github_workflow.labels import UpstreamLabel
-from github_workflow.settings import WorkflowSettings
 from github_workflow.policy import WritePolicy
+from github_workflow.report_lines import NumberLink, ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportSection
+from github_workflow.settings import WorkflowSettings
 from github_workflow.stacks import StackPlacement
 from github_workflow.work import (
     DescriptionEnding,

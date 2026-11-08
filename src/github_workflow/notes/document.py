@@ -9,9 +9,10 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import StrEnum, auto
 
 from basstler_domain_model.github.discussions import DefaultDiscussionCategory
+from basstler_domain_model.templates import Placeholder
 
 from github_workflow.command_line import (
     CommandOption,
@@ -21,7 +22,60 @@ from github_workflow.command_line import (
 )
 from github_workflow.locations import WorkflowTemplate
 from github_workflow.policy import Attribution
-from github_workflow.workflow_templates import TemplatePlaceholder
+
+# %% the template's placeholders
+
+
+class NotesHeaderPlaceholder(Placeholder):
+    """
+    The names the notes header's template leaves to be filled in.
+    """
+
+    SOURCE_OF_NOTES = auto()
+    """
+    Where the notes were read from.
+    """
+
+    SAVE_COMMAND = auto()
+    """
+    The command saving the notes block.
+    """
+
+    WORKFLOW_COMMAND = auto()
+    """
+    The command every write to git and GitHub goes through.
+    """
+
+    COMMANDS = auto()
+    """
+    The workflow's commands, listed.
+    """
+
+    FINDING_GUIDE = auto()
+    """
+    What each finding priority means.
+    """
+
+    IDEAS_CATEGORY = auto()
+    """
+    The discussion category ideas are posted in unless told otherwise.
+    """
+
+    REFUSAL_HINT = auto()
+    """
+    What a session does about a refusal.
+    """
+
+    CO_AUTHOR_TRAILER = auto()
+    """
+    The trailer crediting a co-author.
+    """
+
+    ACKNOWLEDGEMENT = auto()
+    """
+    The line every commit's message carries.
+    """
+
 
 # %% markers
 
@@ -241,18 +295,18 @@ class NotesBlock:
         :raises KeyError: If the header names a command, or an argument of one, that
             does not exist.
         """
-        filled = TemplatePlaceholder.fill(
+        filled = Placeholder.fill(
             WorkflowTemplate.NOTES_HEADER.read_text(),
             {
-                TemplatePlaceholder.SOURCE_OF_NOTES: self.source,
-                TemplatePlaceholder.SAVE_COMMAND: self.save_command,
-                TemplatePlaceholder.WORKFLOW_COMMAND: self.workflow_command,
-                TemplatePlaceholder.COMMANDS: ", ".join(WorkflowCommand),
-                TemplatePlaceholder.FINDING_GUIDE: self.finding_guide,
-                TemplatePlaceholder.IDEAS_CATEGORY: DefaultDiscussionCategory.IDEAS,
-                TemplatePlaceholder.REFUSAL_HINT: RefusalAdvice.hint(),
-                TemplatePlaceholder.CO_AUTHOR_TRAILER: Attribution.CO_AUTHOR_TRAILER,
-                TemplatePlaceholder.ACKNOWLEDGEMENT: Attribution.ACKNOWLEDGEMENT,
+                NotesHeaderPlaceholder.SOURCE_OF_NOTES: self.source,
+                NotesHeaderPlaceholder.SAVE_COMMAND: self.save_command,
+                NotesHeaderPlaceholder.WORKFLOW_COMMAND: self.workflow_command,
+                NotesHeaderPlaceholder.COMMANDS: ", ".join(WorkflowCommand),
+                NotesHeaderPlaceholder.FINDING_GUIDE: self.finding_guide,
+                NotesHeaderPlaceholder.IDEAS_CATEGORY: DefaultDiscussionCategory.IDEAS,
+                NotesHeaderPlaceholder.REFUSAL_HINT: RefusalAdvice.hint(),
+                NotesHeaderPlaceholder.CO_AUTHOR_TRAILER: Attribution.CO_AUTHOR_TRAILER,
+                NotesHeaderPlaceholder.ACKNOWLEDGEMENT: Attribution.ACKNOWLEDGEMENT,
             },
         )
         return (

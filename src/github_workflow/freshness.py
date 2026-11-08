@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from basstler_domain_model.counted_noun import CountedNoun
 from basstler_domain_model.git.commands import RemoteBranch
 from basstler_domain_model.github.repository_client import (
     ForkDetails,
@@ -17,9 +18,8 @@ from basstler_domain_model.github.repository_client import (
 from basstler_domain_model.github.vocabulary import PullRequestState
 
 from github_workflow.command_line import CommandOption, RunnableCommand
-from github_workflow.counted_noun import CountedNoun
-from github_workflow.hooks import ReportLine, Speaker, Tone
 from github_workflow.policy import WritePolicy
+from github_workflow.report_lines import ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportSection
 from github_workflow.upstream import ForkMainSync
 from github_workflow.work import WorkBranchMerge, WorkflowStep

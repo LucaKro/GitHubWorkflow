@@ -14,23 +14,31 @@ from pathlib import Path
 
 import pytest
 
-from basstler_domain_model.environment import ClaudeCodeVariable
 from basstler_domain_model.locations import PathEnumeration
 
 from github_workflow.environment import WorkflowVariable
 import github_workflow
 import github_workflow.guard as guard
+import basstler_domain_model
+from basstler_domain_model.shell import CommandLine
+
 from github_workflow.guard import (
-    SessionVariable,
     CommandGuard,
-    CommandLine,
-    OwnPullRequestTool,
+    DescribeAlternative,
+    DraftAlternative,
+    GitHubCliWrite,
+    GitHubToolWrite,
     GitWrite,
-    PullRequestWrite,
     ToolGuard,
+    WorkflowAlternative,
 )
 from github_workflow.command_line import RefusalAdvice
-from github_workflow.hooks import FileWritingTool, HookInput, HookKey, HookValue
+from basstler_domain_model.claude_code.hooks import (
+    FileWritingTool,
+    HookInput,
+    HookKey,
+    HookValue,
+)
 
 from .test_coarse_guard import CoarseGuardDataset
 
@@ -171,23 +179,28 @@ def test_a_write_around_a_here_document_is_denied(location: GuardDataset):
 # %% what to do instead
 
 
+@pytest.mark.parametrize("write", [*GitWrite, *GitHubCliWrite, *GitHubToolWrite])
+def test_every_write_with_a_workflow_command_has_its_alternative(write: str):
+    assert write in WorkflowAlternative.doing(write).writes
+
+
 @pytest.mark.parametrize("write", list(GitWrite))
 def test_a_git_write_names_the_workflow_command_doing_its_job(write: GitWrite):
     denial = CommandGuard().denial(f"git {write} feature")
 
-    assert denial.instead == write.instead
+    assert denial.instead == WorkflowAlternative.doing(write).command_line()
 
 
 def test_opening_a_pull_request_names_the_workflow_s_draft():
     denial = CommandGuard().denial("gh pr create --title Change")
 
-    assert denial.instead == PullRequestWrite.OPENING.instead
+    assert denial.instead == DraftAlternative().command_line()
 
 
 def test_editing_a_pull_request_names_the_workflow_s_describe():
     denial = CommandGuard().denial("gh pr edit 9 --body-file description.md")
 
-    assert denial.instead == PullRequestWrite.REWRITING.instead
+    assert denial.instead == DescribeAlternative().command_line()
 
 
 def test_a_write_no_workflow_command_does_names_none():
@@ -236,25 +249,15 @@ def test_a_github_tool_that_writes_is_denied(tool: str):
     )
 
 
-@pytest.mark.parametrize("tool", list(OwnPullRequestTool))
-def test_a_github_tool_labelling_or_answering_reviews_names_the_workflow_s_command(
-    tool: OwnPullRequestTool,
-):
+@pytest.mark.parametrize("tool", list(GitHubToolWrite))
+def test_a_github_tool_with_a_workflow_command_names_it(tool: GitHubToolWrite):
     denial = ToolGuard(
         HookInput.from_json(
             {HookKey.TOOL_NAME: f"{HookValue.MCP_TOOL_PREFIX}github__{tool}"}
         )
     ).denial()
 
-    assert denial.instead == tool.instead()
-
-
-def test_the_github_tool_opening_a_pull_request_names_the_workflow_s_draft():
-    tool = f"{HookValue.MCP_TOOL_PREFIX}github__{PullRequestWrite.OPENING.tool}"
-
-    denial = ToolGuard(HookInput.from_json({HookKey.TOOL_NAME: tool})).denial()
-
-    assert denial.instead == PullRequestWrite.OPENING.instead
+    assert denial.instead == WorkflowAlternative.doing(tool).command_line()
 
 
 def test_every_denial_says_how_to_report_an_unnecessary_one():
@@ -423,29 +426,28 @@ def test_the_hook_denies_a_write_when_the_runtime_cannot_run():
     assert output[HookKey.PERMISSION_DECISION] == HookValue.DENY
 
 
-def test_the_guard_runs_on_the_standard_library_alone():
+def test_the_guard_runs_on_the_standard_library_and_the_plugin_s_source_alone():
     """
-    Without site-packages, only the standard library and the plugin's source can be
-    imported.
+    Without site-packages, only the standard library and the plugin's source, the domain
+    model's included, can be imported.
     """
-    source = Path(github_workflow.__file__).parents[1]
+    sources = [
+        str(Path(package.__file__).parents[1])
+        for package in (github_workflow, basstler_domain_model)
+    ]
     imported = subprocess.run(
         [
             sys.executable,
             "-I",
             "-S",
             "-c",
-            f"import sys; sys.path.insert(0, {str(source)!r}); import {guard.__name__}",
+            f"import sys; sys.path[:0] = {sources!r}; import {guard.__name__}",
         ],
         capture_output=True,
         text=True,
     )
 
     assert (imported.returncode, imported.stderr) == (0, "")
-
-
-def test_the_guard_names_the_session_variable_as_the_domain_model_does():
-    assert SessionVariable.COMMAND_MARKER == ClaudeCodeVariable.COMMAND_MARKER
 
 
 def test_the_hook_lets_other_work_run_when_the_guard_cannot_run():

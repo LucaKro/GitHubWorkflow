@@ -12,12 +12,14 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from basstler_domain_model.claude_code.hooks import HookKey
+
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.hooks import HookKey, ReportLine, Speaker, Tone
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock
 from github_workflow.notes.saving import NotesSave
 from github_workflow.remotes import OwnedRemotes
+from github_workflow.report_lines import ReportLine, Speaker, Tone
 from github_workflow.settings import WorkflowSettings
 
 # %% unsaved notes

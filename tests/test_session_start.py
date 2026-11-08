@@ -17,7 +17,7 @@ import pytest
 from basstler_domain_model.locations import PathEnumeration
 
 from github_workflow.environment import WorkflowVariable
-from github_workflow.hooks import Tone
+from github_workflow.report_lines import Tone
 from github_workflow.report import SectionName
 from github_workflow.session_start import SessionStart
 from github_workflow.settings import WorkflowSettings

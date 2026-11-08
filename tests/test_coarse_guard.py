@@ -12,7 +12,12 @@ import pytest
 from basstler_domain_model.locations import PathEnumeration
 
 from github_workflow.coarse_guard import CoarseGuard
-from github_workflow.hooks import FileWritingTool, HookInput, HookKey, HookValue
+from basstler_domain_model.claude_code.hooks import (
+    FileWritingTool,
+    HookInput,
+    HookKey,
+    HookValue,
+)
 
 # %% the dataset
 

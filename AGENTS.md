@@ -153,7 +153,8 @@
 - Each package depends only on the libraries its `pyproject.toml` lists
 
 ## The Guard
-- `github_workflow.guard`, and every module it imports, runs on the standard library alone, so the hook can run it from the plugin's source when the runtime cannot run. It imports nothing from `basstler_domain_model`: an exception to using its `classproperty` (the guard uses `classmethod`) and to naming Claude Code's variables only there (the guard names the one it reads, and a test checks the two agree)
+- `github_workflow.guard`, `github_workflow.coarse_guard` and `github_workflow.approval`, and every module they import, run on the standard library and the plugin's own source alone - the workflow's and the domain model's - so the hooks can run them when the runtime cannot
+- `basstler_domain_model` depends on nothing but the standard library, so the guard can import it from the plugin's source
 
 ## Releases
 - No file carries the version: `hatch-vcs` reads it from the latest git tag

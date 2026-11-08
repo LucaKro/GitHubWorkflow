@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import StrEnum
 
+from basstler_domain_model.counted_noun import CountedNoun
 from basstler_domain_model.github.pull_request_models import (
     UpstreamPullRequestSnapshot,
 )
@@ -25,7 +26,8 @@ from basstler_domain_model.github.repository_client import (
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import MergeableState
 
-from github_workflow.hooks import (
+from github_workflow.labels import PullRequestLabel, UpstreamLabel
+from github_workflow.report_lines import (
     Emphasis,
     Highlight,
     NumberLink,
@@ -33,8 +35,6 @@ from github_workflow.hooks import (
     Speaker,
     Tone,
 )
-from github_workflow.counted_noun import CountedNoun
-from github_workflow.labels import PullRequestLabel, UpstreamLabel
 from github_workflow.report_section import ReportGroup, ReportSection
 from github_workflow.work import WorkflowStep
 

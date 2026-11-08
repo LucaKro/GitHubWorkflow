@@ -16,27 +16,22 @@ from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
 
+from basstler_domain_model.claude_code.hooks import HookValue
 from basstler_domain_model.commands import CommandRunner
 
 import github_workflow.report as report
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.hooks import (
-    HookValue,
-    ReportLine,
-    SessionStartReport,
-    Speaker,
-    Tone,
-)
+from github_workflow.command_line import PriorityLevel, RunnableCommand, WorkflowCommand
+from github_workflow.environment import WorkflowVariable
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection
 from github_workflow.push_hook import PushHook
-from github_workflow.workspace import ProjectTooling
-from github_workflow.command_line import PriorityLevel, RunnableCommand, WorkflowCommand
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.report import SectionName
-from github_workflow.environment import WorkflowVariable
+from github_workflow.report_lines import ReportLine, SessionStartReport, Speaker, Tone
 from github_workflow.settings import WorkflowSettings
+from github_workflow.workspace import ProjectTooling
 
 # %% the session start
 

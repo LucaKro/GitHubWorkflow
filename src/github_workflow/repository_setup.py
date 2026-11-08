@@ -16,7 +16,7 @@ from basstler_domain_model.github.repository_client import (
 from basstler_domain_model.github.vocabulary import WorkflowState
 from basstler_domain_model.repository import Repository
 
-from github_workflow.hooks import ReportLine, Speaker, Tone
+from github_workflow.report_lines import ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportSection
 from github_workflow.workflow_templates import NotesBranchWorkflow
 

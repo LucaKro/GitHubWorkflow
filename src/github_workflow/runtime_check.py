@@ -11,10 +11,11 @@ import sys
 from dataclasses import dataclass
 from enum import IntEnum
 
+from basstler_domain_model.claude_code.hooks import HookInput, HookValue
+
+import github_workflow.session  # noqa: F401 - checks that the commands load
 from github_workflow.command_line import RunnableCommand
 from github_workflow.guard import ToolGuard
-from github_workflow.hooks import HookInput, HookValue
-import github_workflow.session  # noqa: F401 - checks that the commands load
 
 # %% the check
 

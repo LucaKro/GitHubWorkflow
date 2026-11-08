@@ -17,13 +17,13 @@ from pathlib import Path
 from basstler_domain_model.class_property import classproperty
 from basstler_domain_model.commands import CommandResult, CommandRunner
 from basstler_domain_model.environment import GitVariable
-from basstler_domain_model.locations import GitStateFile
-from basstler_domain_model.repository import Repository
 from basstler_domain_model.git.exceptions import (
     GitCommandFailed,
     MalformedReferenceUpdateError,
     UnresolvableReferenceError,
 )
+from basstler_domain_model.locations import GitStateFile
+from basstler_domain_model.repository import Repository
 
 # %% how one branch takes in another
 
@@ -73,6 +73,28 @@ class MergeReference(StrEnum):
     """
     The commit being merged in, set from the start of a merge until it is committed or
     undone.
+    """
+
+
+class TrackingReferenceWrite(StrEnum):
+    """
+    How the reflog names a write of a remote-tracking reference from its remote,
+    compared as the start of the entry.
+    """
+
+    FETCH = "fetch"
+    """
+    A fetch stored the branch.
+    """
+
+    PULL = "pull"
+    """
+    A pull stored the branch.
+    """
+
+    PUSH = "update by push"
+    """
+    A push sent the branch.
     """
 
 
@@ -484,6 +506,14 @@ class GitCommandRunner:
         """
         reflog = self.attempt("reflog", "show", "--format=%gs", reference)
         return reflog.output.splitlines() if reflog.succeeded else []
+
+    def fetched_or_pushed(self, reference: str) -> bool:
+        """
+        :param reference: A remote-tracking reference.
+        :return: Whether a fetch, a pull or a push ever wrote it, as its reflog says.
+        """
+        writes = tuple(TrackingReferenceWrite)
+        return any(entry.startswith(writes) for entry in self.reflog_entries(reference))
 
     def identity(self, identity: GitIdentity) -> str:
         """

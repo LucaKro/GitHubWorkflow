@@ -5,7 +5,6 @@ together with the files each runs.
 
 from __future__ import annotations
 
-import re
 import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -13,31 +12,18 @@ from enum import Enum, StrEnum, auto
 from pathlib import Path, PurePath
 
 from basstler_domain_model.repository import Repository
+from basstler_domain_model.templates import Placeholder
 
 from github_workflow.install import Distribution, PluginSource, ToolRepository
 from github_workflow.locations import NotesFile, WorkflowTemplate
 
-# %% filling a template in
+# %% the names the templates leave to be filled in
 
 
-class TemplatePlaceholder(StrEnum):
+class NotesBranchPlaceholder(Placeholder):
     """
-    The names the package's templates leave to be filled in, each written as
-    ``__<NAME>__``.
+    The names every workflow on the notes branch leaves to be filled in.
     """
-
-    @staticmethod
-    def _generate_next_value_(
-        name: str, start: int, count: int, last_values: list[str]
-    ) -> str:
-        """
-        :param name: The member's name.
-        :param start: Unused by string values.
-        :param count: Unused by string values.
-        :param last_values: Unused by string values.
-        :return: The placeholder as a template writes it.
-        """
-        return f"__{name}__"
 
     NOTES_BRANCH = auto()
     """
@@ -54,9 +40,21 @@ class TemplatePlaceholder(StrEnum):
     The script a workflow runs.
     """
 
+
+class DeletionPlaceholder(Placeholder):
+    """
+    The names the deletion workflow leaves to be filled in, besides the notes branch's.
+    """
+
     LIST_FILE = auto()
     """
     The file listing the branches to delete.
+    """
+
+
+class PostingPlaceholder(Placeholder):
+    """
+    The names the posting workflow leaves to be filled in, besides the notes branch's.
     """
 
     POSTS_DIRECTORY = auto()
@@ -84,6 +82,13 @@ class TemplatePlaceholder(StrEnum):
     The mutation commenting on a discussion.
     """
 
+
+class UpstreamReviewPlaceholder(Placeholder):
+    """
+    The names the upstream reviews workflow leaves to be filled in, besides the notes
+    branch's.
+    """
+
     REQUESTS_DIRECTORY = auto()
     """
     The directory holding the requests for upstream reviews.
@@ -92,6 +97,12 @@ class TemplatePlaceholder(StrEnum):
     ANSWERS_DIRECTORY = auto()
     """
     The directory the answers to them are saved in.
+    """
+
+
+class ActionPlaceholder(Placeholder):
+    """
+    The names every Actions workflow running the workflow's code leaves to be filled in.
     """
 
     REQUIREMENTS = auto()
@@ -103,127 +114,6 @@ class TemplatePlaceholder(StrEnum):
     """
     The command an Actions workflow runs, before its own arguments.
     """
-
-    MARKER_VARIABLE = auto()
-    """
-    The variable set only in commands a Claude Code session runs.
-    """
-
-    PYTHON = auto()
-    """
-    The interpreter the package is installed in.
-    """
-
-    MODULE = auto()
-    """
-    The module a hook runs.
-    """
-
-    RECORD = auto()
-    """
-    A proof as the record its comment carries, between its markers.
-    """
-
-    BRANCH = auto()
-    """
-    The branch a finding's test failed on.
-    """
-
-    COMMIT = auto()
-    """
-    The commit it failed on.
-    """
-
-    FAILURE = auto()
-    """
-    pytest's message on the failure.
-    """
-
-    PATH = auto()
-    """
-    The test's path in the repository.
-    """
-
-    FENCE = auto()
-    """
-    The backticks fencing the test's text, more than any run of them inside it.
-    """
-
-    SOURCE = auto()
-    """
-    The test's text.
-    """
-
-    WORKFLOW_BRANCH = auto()
-    """
-    The branch carrying the probe's workflow, which triggers it and is deleted last.
-    """
-
-    DELETED_BRANCH = auto()
-    """
-    The other branch the probe's workflow deletes.
-    """
-
-    SAVE_COMMAND = auto()
-    """
-    The command saving the notes block.
-    """
-
-    SOURCE_OF_NOTES = auto()
-    """
-    Where the notes were read from.
-    """
-
-    WORKFLOW_COMMAND = auto()
-    """
-    The command every write to git and GitHub goes through.
-    """
-
-    COMMANDS = auto()
-    """
-    The workflow's commands, listed.
-    """
-
-    FINDING_GUIDE = auto()
-    """
-    What each finding priority means.
-    """
-
-    IDEAS_CATEGORY = auto()
-    """
-    The discussion category ideas are posted in unless told otherwise.
-    """
-
-    REFUSAL_HINT = auto()
-    """
-    What a session does about a refusal.
-    """
-
-    CO_AUTHOR_TRAILER = auto()
-    """
-    The trailer crediting a co-author.
-    """
-
-    ACKNOWLEDGEMENT = auto()
-    """
-    The line every commit's message carries.
-    """
-
-    @classmethod
-    def fill(cls, template: str, values: Mapping[TemplatePlaceholder, str]) -> str:
-        """
-        :param template: A template's text.
-        :param values: The text of each placeholder it holds.
-        :return: The template with every placeholder given replaced in one pass, so a
-            value holding a placeholder's name is kept as it is.
-        """
-        if not values:
-            return template
-        return re.sub(
-            "|".join(map(re.escape, values)),
-            lambda found: values[cls(found.group())],
-            template,
-        )
 
 
 # %% running the workflow on an Actions runner
@@ -252,14 +142,14 @@ class ActionRequirement(StrEnum):
     """
 
     @classmethod
-    def placeholder_values(cls, module: str) -> dict[TemplatePlaceholder, str]:
+    def placeholder_values(cls, module: str) -> dict[Placeholder, str]:
         """
         :param module: The module the workflow runs.
         :return: What an Actions workflow running it installs, and the command it runs.
         """
         return {
-            TemplatePlaceholder.REQUIREMENTS: shlex.join(list(cls)),
-            TemplatePlaceholder.ENTRY_POINT: f"python -m {module}",
+            ActionPlaceholder.REQUIREMENTS: shlex.join(list(cls)),
+            ActionPlaceholder.ENTRY_POINT: f"python -m {module}",
         }
 
 
@@ -282,7 +172,7 @@ class CarriedFile:
     Where the notes branch keeps it.
     """
 
-    placeholder: TemplatePlaceholder
+    placeholder: Placeholder
     """
     How the workflow names it.
     """
@@ -300,7 +190,7 @@ class NotesBranchWorkflow(Enum):
             CarriedFile(
                 WorkflowTemplate.DELETION_SCRIPT,
                 NotesFile.DELETION_SCRIPT,
-                TemplatePlaceholder.SCRIPT_FILE,
+                NotesBranchPlaceholder.SCRIPT_FILE,
             ),
         ),
     )
@@ -315,27 +205,27 @@ class NotesBranchWorkflow(Enum):
             CarriedFile(
                 WorkflowTemplate.POSTING_SCRIPT,
                 NotesFile.POSTING_SCRIPT,
-                TemplatePlaceholder.SCRIPT_FILE,
+                NotesBranchPlaceholder.SCRIPT_FILE,
             ),
             CarriedFile(
                 WorkflowTemplate.CATEGORIES_QUERY,
                 NotesFile.CATEGORIES_QUERY,
-                TemplatePlaceholder.CATEGORIES_QUERY,
+                PostingPlaceholder.CATEGORIES_QUERY,
             ),
             CarriedFile(
                 WorkflowTemplate.CREATE_QUERY,
                 NotesFile.CREATE_QUERY,
-                TemplatePlaceholder.CREATE_QUERY,
+                PostingPlaceholder.CREATE_QUERY,
             ),
             CarriedFile(
                 WorkflowTemplate.FIND_QUERY,
                 NotesFile.FIND_QUERY,
-                TemplatePlaceholder.FIND_QUERY,
+                PostingPlaceholder.FIND_QUERY,
             ),
             CarriedFile(
                 WorkflowTemplate.COMMENT_QUERY,
                 NotesFile.COMMENT_QUERY,
-                TemplatePlaceholder.COMMENT_QUERY,
+                PostingPlaceholder.COMMENT_QUERY,
             ),
         ),
     )
@@ -370,12 +260,12 @@ class NotesBranchWorkflow(Enum):
             CarriedFile(
                 WorkflowTemplate.COMMIT_SCRIPT,
                 NotesFile.COMMIT_SCRIPT,
-                TemplatePlaceholder.COMMIT_SCRIPT,
+                NotesBranchPlaceholder.COMMIT_SCRIPT,
             ),
         )
 
     def files(
-        self, notes_branch: str, values: Mapping[TemplatePlaceholder, str]
+        self, notes_branch: str, values: Mapping[Placeholder, str]
     ) -> dict[Path, str]:
         """
         :param notes_branch: The notes branch's name.
@@ -384,7 +274,7 @@ class NotesBranchWorkflow(Enum):
             branch keeps each.
         """
         filled = {
-            TemplatePlaceholder.NOTES_BRANCH: notes_branch,
+            NotesBranchPlaceholder.NOTES_BRANCH: notes_branch,
             **{
                 companion.placeholder: str(companion.destination)
                 for companion in self.companions
@@ -392,9 +282,7 @@ class NotesBranchWorkflow(Enum):
             **values,
         }
         return {
-            self.destination.value: TemplatePlaceholder.fill(
-                self.template.read_text(), filled
-            ),
+            self.destination.value: Placeholder.fill(self.template.read_text(), filled),
             **{
                 companion.destination.value: companion.template.read_text()
                 for companion in self.companions

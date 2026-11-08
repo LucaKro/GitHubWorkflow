@@ -22,7 +22,7 @@ source "$(dirname "$0")/runtime.sh"
 # coarse guard when that fails too.
 from_source() {
   local decided
-  if decided="$(printf '%s' "${INPUT}" | python3 -I -S -c 'import sys; sys.path.insert(0, sys.argv[1]); from github_workflow.guard import main; main()' "${PLUGIN_ROOT}/src" 2>/dev/null)"; then
+  if decided="$(printf '%s' "${INPUT}" | python3 -I -S -c 'import sys; sys.path[:0] = sys.argv[1].split(":"); from github_workflow.guard import main; main()' "${PLUGIN_SOURCES}" 2>/dev/null)"; then
     printf '%s' "${decided}"
     exit 0
   fi
@@ -33,7 +33,7 @@ from_source() {
 coarse() {
   local reason="$1" decided errors
   errors="$(mktemp)"
-  if ! decided="$(printf '%s' "${INPUT}" | python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); from github_workflow.coarse_guard import main; main(sys.argv[2])' "${PLUGIN_ROOT}/src" "${reason}" 2>"${errors}")"; then
+  if ! decided="$(printf '%s' "${INPUT}" | python3 -I -c 'import sys; sys.path[:0] = sys.argv[1].split(":"); from github_workflow.coarse_guard import main; main(sys.argv[2])' "${PLUGIN_SOURCES}" "${reason}" 2>"${errors}")"; then
     echo "github-workflow guard: ${reason}, and the coarse guard failed too, so the call is blocked: $(tail -n 1 "${errors}")" >&2
     rm -f "${errors}"
     exit 2

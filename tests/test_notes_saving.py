@@ -8,7 +8,7 @@ new session start.
 from __future__ import annotations
 
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.hooks import Tone
+from github_workflow.report_lines import Tone
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection

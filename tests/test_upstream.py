@@ -40,7 +40,7 @@ from github_workflow.exceptions import (
 from github_workflow.settings import WorkflowSettings
 from github_workflow.policy import WritePolicy
 from github_workflow.push_hook import PushHook
-from github_workflow.hooks import Tone
+from github_workflow.report_lines import Tone
 from github_workflow.stacks import StackPlacement
 from github_workflow.upstream import (
     ForkMainSync,

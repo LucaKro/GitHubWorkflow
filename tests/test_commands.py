@@ -69,7 +69,8 @@ from github_workflow.findings import (
     Priority,
     ProvenFindingFiling,
 )
-from github_workflow.hooks import HookKey, HookValue, Tone
+from basstler_domain_model.claude_code.hooks import HookKey, HookValue
+from github_workflow.report_lines import Tone
 from github_workflow.locations import GitFile, NotesFile, ProjectFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection

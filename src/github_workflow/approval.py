@@ -3,7 +3,8 @@ Which Bash command lines the plugin's mod approves, so auto mode's classifier do
 judge them: the launcher running one workflow command a session runs on its own, with
 nothing around it but changing directory and printing part of its output.
 
-Runs on the standard library alone, like :mod:`github_workflow.guard`.
+Runs on the standard library and the plugin's own source alone, like
+:mod:`github_workflow.guard`.
 
 Usage: ``python -m github_workflow.approval < command-line``; exits with
 :attr:`ApprovalStatus.APPROVED` when a session may run the line on its own, and with
@@ -17,8 +18,10 @@ import sys
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum
 
+from basstler_domain_model.shell import CommandLine, SimpleCommand
+
 from github_workflow.command_line import RunnableCommand
-from github_workflow.guard import CommandGuard, CommandLine, SimpleCommand
+from github_workflow.guard import CommandGuard, WorkflowInvocation
 from github_workflow.install import Launcher
 
 # %% what a line may run besides
@@ -97,7 +100,7 @@ class SessionCommandApproval:
         others = [command for command in commands if command not in workflow]
         if not all(self.is_harmless(command) for command in others):
             return False
-        words = workflow[0].workflow_words() or []
+        words = WorkflowInvocation(workflow[0]).words() or []
         command = RunnableCommand.run_by(words)
         return command is not None and command.runs_unasked(words)
 

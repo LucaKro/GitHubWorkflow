@@ -14,6 +14,7 @@ from enum import StrEnum
 from typing import Self
 
 from basstler_domain_model.class_property import classproperty
+from basstler_domain_model.github.closing_lines import ClosingLines
 from basstler_domain_model.github.issue_models import Issue
 from basstler_domain_model.github.repository_client import (
     IssueBoard,
@@ -21,12 +22,12 @@ from basstler_domain_model.github.repository_client import (
     PullRequestReader,
     RepositoryLabels,
 )
-from basstler_domain_model.repository import Repository
 from basstler_domain_model.github.vocabulary import (
     ClosingKeyword,
     IssueState,
     IssueStateReason,
 )
+from basstler_domain_model.repository import Repository
 
 from github_workflow.command_line import PriorityLevel
 from github_workflow.exceptions import (
@@ -41,12 +42,17 @@ from github_workflow.exceptions import (
     ProofNoLongerHoldsError,
     UnprovenFindingCloseError,
 )
-from github_workflow.hooks import Emphasis, Highlight, NumberLink, ReportLine, Tone
 from github_workflow.labels import DescribedLabel
 from github_workflow.proofs import FindingTest, Proof, ProofOutcome, ProofRunner
+from github_workflow.report_lines import (
+    Emphasis,
+    Highlight,
+    NumberLink,
+    ReportLine,
+    Tone,
+)
 from github_workflow.report_section import ReportGroup, ReportSection
 from github_workflow.work import (
-    ClosingLines,
     DraftOpening,
     PullRequestOpenedLabelling,
     PullRequestRetirement,

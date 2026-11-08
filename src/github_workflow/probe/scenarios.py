@@ -9,14 +9,14 @@ import platform
 import sys
 import time
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import StrEnum, auto
 from http import HTTPMethod
 
+from basstler_domain_model.commands import CommandResult, CommandRunner
 from basstler_domain_model.environment import (
     ClaudeCodeVariable,
     GitHubCredentialVariable,
 )
-from basstler_domain_model.commands import CommandResult, CommandRunner
 from basstler_domain_model.git.commands import (
     GitCommandRunner,
     GitIdentity,
@@ -33,14 +33,33 @@ from basstler_domain_model.github.vocabulary import (
     RestJSONKey,
     WorkflowRunStatus,
 )
+from basstler_domain_model.templates import Placeholder
 
 import github_workflow
+from github_workflow.command_line import RunnableCommand
 from github_workflow.locations import ProbeTemplate, RepositoryFile
 from github_workflow.probe.library_check import LibraryCheck
-from github_workflow.command_line import RunnableCommand
 from github_workflow.probe.results import CheckGroup, ProbeReport
 from github_workflow.remotes import OwnedRemote
-from github_workflow.workflow_templates import TemplatePlaceholder
+
+# %% the template's placeholders
+
+
+class ProbeWorkflowPlaceholder(Placeholder):
+    """
+    The names the probe's branch deletion workflow leaves to be filled in.
+    """
+
+    WORKFLOW_BRANCH = auto()
+    """
+    The branch carrying the probe's workflow, which triggers it and is deleted last.
+    """
+
+    DELETED_BRANCH = auto()
+    """
+    The other branch the probe's workflow deletes.
+    """
+
 
 # %% vocabulary
 
@@ -807,11 +826,11 @@ class Probe:
         :param deleted: The other branch it deletes.
         :return: The commit.
         """
-        text = TemplatePlaceholder.fill(
+        text = Placeholder.fill(
             ProbeTemplate.BRANCH_DELETION_WORKFLOW.read_text(),
             {
-                TemplatePlaceholder.WORKFLOW_BRANCH: workflow,
-                TemplatePlaceholder.DELETED_BRANCH: deleted,
+                ProbeWorkflowPlaceholder.WORKFLOW_BRANCH: workflow,
+                ProbeWorkflowPlaceholder.DELETED_BRANCH: deleted,
             },
         )
         commit = self.git.commit_files(

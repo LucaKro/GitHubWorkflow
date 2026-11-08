@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.notes.exceptions import NotesBlockMissingError
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import BlockRecord, NotesBlock, NotesSection
+from github_workflow.notes.exceptions import NotesBlockMissingError
 
 # %% saving
 

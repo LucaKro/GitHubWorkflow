@@ -8,7 +8,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 
-from github_workflow.hooks import Emphasis, Highlight, ReportLine, Speaker, Tone
+from github_workflow.report_lines import Emphasis, Highlight, ReportLine, Speaker, Tone
 
 # %% one section
 

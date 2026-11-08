@@ -5,7 +5,7 @@ shown under a heading.
 
 from __future__ import annotations
 
-from github_workflow.hooks import Emphasis, Highlight, ReportLine, Tone
+from github_workflow.report_lines import Emphasis, Highlight, ReportLine, Tone
 from github_workflow.report_section import ReportGroup
 
 # %% a group of lines

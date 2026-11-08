@@ -43,7 +43,7 @@ from github_workflow.notes.branch import NotesBranch
 from github_workflow.workflow_templates import (
     ActionRequirement,
     NotesBranchWorkflow,
-    TemplatePlaceholder,
+    UpstreamReviewPlaceholder,
 )
 
 # %% requests
@@ -292,10 +292,10 @@ class ForwardedUpstreamReviews(UpstreamReviews):
         workflow = NotesBranchWorkflow.UPSTREAM_REVIEWS.files(
             self.notes.branch.name,
             {
-                TemplatePlaceholder.REQUESTS_DIRECTORY: str(
+                UpstreamReviewPlaceholder.REQUESTS_DIRECTORY: str(
                     NotesFile.UPSTREAM_REVIEW_REQUESTS
                 ),
-                TemplatePlaceholder.ANSWERS_DIRECTORY: str(
+                UpstreamReviewPlaceholder.ANSWERS_DIRECTORY: str(
                     NotesFile.UPSTREAM_REVIEW_ANSWERS
                 ),
                 **ActionRequirement.placeholder_values(__name__),

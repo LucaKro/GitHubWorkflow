@@ -5,58 +5,58 @@ The writes a session makes to git and GitHub, each one step that checks the
 
 from __future__ import annotations
 
-import re
 import sys
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
-from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from basstler_domain_model.git.branch_tips import BranchTip
 from basstler_domain_model.git.commands import (
     GitCommandRunner,
     ProposedPush,
     RemoteBranch,
 )
+from basstler_domain_model.git.conflict_markers import ConflictMarker
+from basstler_domain_model.github.closing_lines import ClosingLines
 from basstler_domain_model.github.repository_client import (
     IssueBoard,
-    RepositoryLabels,
     PullRequestOpener,
     PullRequestReader,
     PullRequestsFromForks,
     PullRequestWriter,
     RepositoryDetails,
+    RepositoryLabels,
     StackReader,
 )
-from basstler_domain_model.github.vocabulary import ClosingKeyword, PullRequestState
+from basstler_domain_model.github.vocabulary import PullRequestState
 from basstler_domain_model.repository import GitHubAddress, Repository
 
-from github_workflow.branch_tips import BranchTip
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.command_line import RunnableCommand
 from github_workflow.exceptions import (
-    ConflictMarkersLeftError,
-    MergeConflictError,
-    NoMergeInProgressError,
-    UnresolvedConflictError,
-    StackedBranchMergeError,
     BranchDeletedFromGitHubError,
     BranchNotPushedError,
+    ConflictMarkersLeftError,
     DetachedHeadError,
     DraftUnfinishedError,
+    MergeConflictError,
+    NoMergeInProgressError,
     NothingToDescribeError,
     PullRequestNotOpenError,
     PushRefusedError,
+    StackedBranchMergeError,
     UnbuildablePullRequestError,
-    UnreplaceablePullRequestError,
     UnpushedCommitsError,
+    UnreplaceablePullRequestError,
+    UnresolvedConflictError,
 )
-from github_workflow.hooks import NumberLink
 from github_workflow.labels import IssueLabel
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
 from github_workflow.push_hook import PushHook
+from github_workflow.report_lines import NumberLink
 from github_workflow.settings import WorkflowSettings
 from github_workflow.stacks import StackPlacement
 
@@ -484,46 +484,6 @@ class PullRequestOpenedLabelling:
 
 
 @dataclass(frozen=True)
-class ClosingLines:
-    """
-    The lines of a pull request's description that close an issue once it is merged,
-    such as ``Fixes #148``.
-    """
-
-    description: str
-    """
-    The description.
-    """
-
-    def lines(self) -> list[str]:
-        """
-        :return: The closing lines, in order.
-        """
-        keyword = "|".join(map(re.escape, ClosingKeyword))
-        closing = re.compile(rf"(?:{keyword}) #\d+")
-        stripped = (line.strip() for line in self.description.splitlines())
-        return [line for line in stripped if closing.fullmatch(line)]
-
-    def issues(self) -> list[int]:
-        """
-        :return: The issues of the description's repository that the closing lines
-            close, in order.
-        """
-        return [int(line.rpartition("#")[2]) for line in self.lines()]
-
-    def kept_in(self, rewritten: str) -> str:
-        """
-        :param rewritten: A new description replacing this one.
-        :return: It, ending with every closing line of this one it lacks.
-        """
-        held = ClosingLines(rewritten).lines()
-        missing = [line for line in self.lines() if line not in held]
-        if not missing:
-            return rewritten
-        return f"{rewritten.rstrip()}\n\n" + "\n".join(missing) + "\n"
-
-
-@dataclass(frozen=True)
 class DescriptionRewrite(WorkflowStep):
     """
     A new description, title or both for an open pull request on the owner's repository,
@@ -600,28 +560,6 @@ class DescriptionRewrite(WorkflowStep):
 
 
 # %% bringing a branch up to date
-
-
-class TrackingReferenceWrite(StrEnum):
-    """
-    How the reflog names a write of a remote-tracking reference from what GitHub holds,
-    compared as the start of the entry.
-    """
-
-    FETCH = "fetch"
-    """
-    A fetch stored the branch.
-    """
-
-    PULL = "pull"
-    """
-    A pull stored the branch.
-    """
-
-    PUSH = "update by push"
-    """
-    A push sent the branch.
-    """
 
 
 class PullRequestBranches(ABC):
@@ -722,39 +660,12 @@ class BranchSync(WorkflowStep):
         :return: Whether GitHub had it: a fetch or a push wrote its remote-tracking
             reference, or a pull request was opened from it.
         """
-        entries = self.policy.checkout.git.reflog_entries(branch.tracking_reference)
-        writes = tuple(TrackingReferenceWrite)
-        if any(entry.startswith(writes) for entry in entries):
+        if self.policy.checkout.git.fetched_or_pushed(branch.tracking_reference):
             return True
         return self.pull_request_branches.opened_from(branch.name)
 
 
 # %% taking in the default branch
-
-
-class ConflictMarker(StrEnum):
-    """
-    The lines git writes into a file around each conflict a merge leaves, compared as
-    the start of a line.
-    """
-
-    OURS = "<<<<<<< "
-    """
-    Opens a conflict, with the branch's own side.
-    """
-
-    THEIRS = ">>>>>>> "
-    """
-    Closes a conflict, after the merged branch's side.
-    """
-
-    @classmethod
-    def left_in(cls, text: str) -> bool:
-        """
-        :param text: A file's text.
-        :return: Whether a conflict is still marked in it.
-        """
-        return any(line.startswith(tuple(cls)) for line in text.splitlines())
 
 
 @dataclass(frozen=True)

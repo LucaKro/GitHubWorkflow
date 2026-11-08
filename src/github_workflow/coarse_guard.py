@@ -1,87 +1,26 @@
 """
 The guard's stand-in while the guard itself cannot run: it denies every call that could
-reach git or GitHub and lets every other call run. Runs on the standard library and
-:mod:`github_workflow.hooks` alone, from the plugin's source.
+reach git or GitHub and lets every other call run. Runs on the standard library and the
+plugin's own source alone.
 
-Usage: ``python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); from
-github_workflow.coarse_guard import main; main(sys.argv[2])' <source> <guard failure> <
-hook-input.json``
+Usage: ``python3 -I -c 'import sys; sys.path[:0] = sys.argv[1].split(":"); from
+github_workflow.coarse_guard import main; main(sys.argv[2])' <source directories>
+<guard failure> < hook-input.json``
 """
 
 from __future__ import annotations
 
 import json
-import re
 import sys
 from dataclasses import dataclass
-from enum import StrEnum
 from pathlib import PurePath
 from typing import Any
 
-from github_workflow.hooks import HookInput, Speaker, ToolCallDenial, ToolKind
+from basstler_domain_model.claude_code.hooks import HookInput, ToolCallDenial, ToolKind
+from basstler_domain_model.git.reading import GitConfigurationLocation
+from basstler_domain_model.programs import Program
 
-# %% what reaches git and GitHub
-
-
-class Program(StrEnum):
-    """
-    The programs the guard judges, by their executable's name.
-    """
-
-    GIT = "git"
-    """
-    Git itself.
-    """
-
-    GITHUB_CLI = "gh"
-    """
-    GitHub's command-line client.
-    """
-
-    CURL = "curl"
-    """
-    An HTTP client that could call GitHub's API.
-    """
-
-    WGET = "wget"
-    """
-    Another HTTP client that could call GitHub's API.
-    """
-
-    @classmethod
-    def any_named(cls, command_line: str) -> bool:
-        """
-        :param command_line: A Bash command line.
-        :return: Whether it names any of the programs as a word of its own.
-        """
-        names = "|".join(re.escape(program) for program in cls)
-        return re.search(rf"\b({names})\b", command_line) is not None
-
-
-class GitConfigurationLocation(StrEnum):
-    """
-    The names marking a file git reads its configuration or hooks from, and so runs the
-    programs it names.
-    """
-
-    REPOSITORY = ".git"
-    """
-    A repository's own directory, its configuration and hooks among it.
-    """
-
-    USER = ".gitconfig"
-    """
-    The user's configuration file.
-    """
-
-    @classmethod
-    def holds(cls, path: PurePath) -> bool:
-        """
-        :param path: A file's path.
-        :return: Whether git reads its configuration or hooks from the file.
-        """
-        return cls.REPOSITORY in path.parts or path.name == cls.USER
-
+from github_workflow.report_lines import Speaker
 
 # %% the coarse guard
 

@@ -27,7 +27,10 @@ from basstler_domain_model.github.vocabulary import RestJSONKey
 from basstler_domain_model.locations import PathEnumeration
 from basstler_domain_model.repository import Repository
 
-from github_workflow.workflow_templates import TemplatePlaceholder
+from github_workflow.workflow_templates import (
+    NotesBranchPlaceholder,
+    PostingPlaceholder,
+)
 from github_workflow.command_line import RunnableCommand
 from github_workflow.session import WorkflowSession
 from github_workflow.command_line import IdeaSubcommand, WorkflowCommand
@@ -295,7 +298,10 @@ def test_the_queued_workflow_has_every_placeholder_filled(
     notes.fetch()
     workflow = notes.read(NotesFile.POSTING_WORKFLOW.value)
     assert [
-        placeholder for placeholder in TemplatePlaceholder if placeholder in workflow
+        placeholder
+        for kind in (NotesBranchPlaceholder, PostingPlaceholder)
+        for placeholder in kind
+        if placeholder in workflow
     ] == []
 
 

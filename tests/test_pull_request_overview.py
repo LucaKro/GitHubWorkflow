@@ -29,7 +29,7 @@ from basstler_domain_model.github.review_models import (
 )
 from basstler_domain_model.github.vocabulary import CheckOutcome, MergeableState
 
-from github_workflow.hooks import Emphasis, Highlight, NumberLink, Tone
+from github_workflow.report_lines import Emphasis, Highlight, NumberLink, Tone
 from github_workflow.pull_request_overview import (
     PullRequestDetails,
     PullRequestGroup,

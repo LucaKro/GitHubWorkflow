@@ -17,6 +17,7 @@ from basstler_domain_model.locations import PathEnumeration
 from basstler_domain_model.repository import Repository
 
 from github_workflow import label_events
+from github_workflow.workflow_templates import ActionPlaceholder
 from github_workflow.findings import Evidence, FindingLabel, FindingStage, Priority
 from github_workflow.label_events import (
     FindingAutomation,
@@ -25,8 +26,8 @@ from github_workflow.label_events import (
     LabelsCompletedReport,
     PickedLabelCompletion,
 )
-from github_workflow.workflow_templates import ActionRequirement, TemplatePlaceholder
-from github_workflow.hooks import ReportLine, Tone
+from github_workflow.workflow_templates import ActionRequirement
+from github_workflow.report_lines import ReportLine, Tone
 from github_workflow.locations import ProjectFile
 from github_workflow.report_section import ReportSection
 
@@ -157,7 +158,7 @@ def test_the_actions_workflow_is_written_into_the_checkout_filled_in(tmp_path: P
     FindingAutomation(tmp_path).run()
 
     workflow = (tmp_path / ProjectFile.LABEL_COMPLETION_WORKFLOW.value).read_text()
-    assert [p for p in TemplatePlaceholder if p in workflow] == []
+    assert [p for p in ActionPlaceholder if p in workflow] == []
     assert all(requirement in workflow for requirement in ActionRequirement)
     assert f"python -m {label_events.__name__}" in workflow
 

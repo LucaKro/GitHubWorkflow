@@ -14,7 +14,7 @@ from types import TracebackType
 from basstler_domain_model.exceptions import DataclassException
 
 from github_workflow.command_line import RunnableCommand
-from github_workflow.hooks import Speaker
+from github_workflow.report_lines import Speaker
 from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
 

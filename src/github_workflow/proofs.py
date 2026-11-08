@@ -18,10 +18,11 @@ from typing import Any
 from xml.etree import ElementTree
 
 from basstler_domain_model.commands import CommandRunner
+from basstler_domain_model.git.branch_tips import BranchTip
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
 from basstler_domain_model.github.issue_models import IssueComment
+from basstler_domain_model.templates import Placeholder
 
-from github_workflow.branch_tips import BranchTip
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.environment import PythonVariable
 from github_workflow.exceptions import (
@@ -30,8 +31,51 @@ from github_workflow.exceptions import (
     PassingTestError,
 )
 from github_workflow.locations import ProofFile, WorkflowTemplate
-from github_workflow.workflow_templates import TemplatePlaceholder
 from github_workflow.workspace import PackageDirectories
+
+# %% the template's placeholders
+
+
+class ProofPlaceholder(Placeholder):
+    """
+    The names the proof comment's template leaves to be filled in.
+    """
+
+    RECORD = auto()
+    """
+    A proof as the record its comment carries, between its markers.
+    """
+
+    BRANCH = auto()
+    """
+    The branch a finding's test failed on.
+    """
+
+    COMMIT = auto()
+    """
+    The commit it failed on.
+    """
+
+    FAILURE = auto()
+    """
+    pytest's message on the failure.
+    """
+
+    PATH = auto()
+    """
+    The test's path in the repository.
+    """
+
+    FENCE = auto()
+    """
+    The backticks fencing the test's text, more than any run of them inside it.
+    """
+
+    SOURCE = auto()
+    """
+    The test's text.
+    """
+
 
 # %% the test and where it ran
 
@@ -502,18 +546,18 @@ class Proof:
         record = json.dumps(self.to_json()).replace(">", "\\u003e")
         backtick_runs = re.findall("`+", self.test.source)
         fence = "`" * max([3, *(len(run) + 1 for run in backtick_runs)])
-        return TemplatePlaceholder.fill(
+        return Placeholder.fill(
             WorkflowTemplate.PROOF_COMMENT.read_text(),
             {
-                TemplatePlaceholder.RECORD: (
+                ProofPlaceholder.RECORD: (
                     f"{ProofMarker.START}{record}{ProofMarker.END}"
                 ),
-                TemplatePlaceholder.BRANCH: self.tip.branch,
-                TemplatePlaceholder.COMMIT: self.tip.commit,
-                TemplatePlaceholder.FAILURE: self.failure,
-                TemplatePlaceholder.PATH: str(self.test.path),
-                TemplatePlaceholder.FENCE: fence,
-                TemplatePlaceholder.SOURCE: self.test.source.rstrip("\n"),
+                ProofPlaceholder.BRANCH: self.tip.branch,
+                ProofPlaceholder.COMMIT: self.tip.commit,
+                ProofPlaceholder.FAILURE: self.failure,
+                ProofPlaceholder.PATH: str(self.test.path),
+                ProofPlaceholder.FENCE: fence,
+                ProofPlaceholder.SOURCE: self.test.source.rstrip("\n"),
             },
         )
 

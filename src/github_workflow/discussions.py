@@ -24,7 +24,7 @@ from github_workflow.exceptions import DiscussionsDisabledError
 from github_workflow.locations import NotesFile, WorkflowTemplate
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.work import SessionLog, WorkflowStep
-from github_workflow.workflow_templates import NotesBranchWorkflow, TemplatePlaceholder
+from github_workflow.workflow_templates import NotesBranchWorkflow, PostingPlaceholder
 
 # %% vocabulary
 
@@ -157,7 +157,7 @@ class DiscussionPosting:
         """
         workflow = NotesBranchWorkflow.POSTING.files(
             self.notes.branch.name,
-            {TemplatePlaceholder.POSTS_DIRECTORY: str(NotesFile.DISCUSSION_POSTS)},
+            {PostingPlaceholder.POSTS_DIRECTORY: str(NotesFile.DISCUSSION_POSTS)},
         )
         self.notes.fetch()
         self.notes.write(

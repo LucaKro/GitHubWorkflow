@@ -15,7 +15,7 @@ from basstler_domain_model.repository import Repository
 
 from github_workflow.command_line import WorkflowCommand
 from github_workflow.freshness import BranchFreshening, FreshenedStep
-from github_workflow.hooks import Tone
+from github_workflow.report_lines import Tone
 from github_workflow.policy import WritePolicy
 from github_workflow.settings import WorkflowSettings
 from github_workflow.work import BranchSwitch, WorkflowStep
