@@ -21,7 +21,7 @@ from github_workflow.settings import WorkflowSettings
 # %% entry point
 
 
-def report(
+def report_failure(
     kind: type[BaseException], raised: BaseException, traceback: TracebackType | None
 ) -> None:
     """
@@ -42,7 +42,7 @@ def main() -> None:
     """
     Run the command the command line names, and print what it did, or why it refused.
     """
-    sys.excepthook = report
+    sys.excepthook = report_failure
     arguments = RunnableCommand.parser().parse_args()
     session = WorkflowSession(Path.cwd(), WorkflowSettings())
     print(Speaker.WORKFLOW.says(session.command(arguments).run()))

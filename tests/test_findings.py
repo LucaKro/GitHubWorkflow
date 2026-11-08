@@ -11,20 +11,22 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
-
+from basstler_domain_model.git.branch_tips import BranchTip
 from basstler_domain_model.github.issue_models import Issue, IssueComment
+from basstler_domain_model.github.number_links import NumberLink
 from basstler_domain_model.github.repository_client import (
     PullRequestCloser,
     PullRequestReader,
 )
 from basstler_domain_model.github.rest_models import RestPullRequest
-from basstler_domain_model.repository import Repository
+from basstler_domain_model.github.stack_placement import StackPlacement
 from basstler_domain_model.github.vocabulary import (
     ClosingKeyword,
     IssueState,
     IssueStateReason,
     PullRequestState,
 )
+from basstler_domain_model.repository import Repository
 
 from github_workflow.exceptions import (
     AlreadyProvenError,
@@ -48,6 +50,7 @@ from github_workflow.findings import (
     FindingDraftOpening,
     FindingEdit,
     FindingFiling,
+    FindingGroup,
     FindingLabel,
     FindingListing,
     FindingPrioritization,
@@ -55,7 +58,6 @@ from github_workflow.findings import (
     FindingRecheck,
     FindingRejection,
     FindingShelving,
-    FindingGroup,
     FindingsSummary,
     FindingStage,
     FindingUnproving,
@@ -63,19 +65,16 @@ from github_workflow.findings import (
     ProvenFindingFiling,
     SessionPullRequestClosing,
 )
+from github_workflow.policy import WritePolicy
+from github_workflow.proofs import FindingTest, ProofAttempt, ProofOutcome
 from github_workflow.report_lines import (
     Emphasis,
     Highlight,
-    NumberLink,
     ReportLine,
     Tone,
 )
-from github_workflow.policy import WritePolicy
 from github_workflow.report_section import ReportGroup
-from basstler_domain_model.git.branch_tips import BranchTip
-from github_workflow.proofs import FindingTest, ProofAttempt, ProofOutcome
 from github_workflow.settings import WorkflowSettings
-from basstler_domain_model.github.stack_placement import StackPlacement
 from github_workflow.work import DraftOpening, IssueLabel, PullRequestOpenedLabelling
 
 from .issues_in_memory import (

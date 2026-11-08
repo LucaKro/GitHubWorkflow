@@ -19,6 +19,7 @@ from basstler_domain_model.git.commands import (
 )
 from basstler_domain_model.git.conflict_markers import ConflictMarker
 from basstler_domain_model.github.closing_lines import ClosingLines
+from basstler_domain_model.github.number_links import NumberLink
 from basstler_domain_model.github.repository_client import (
     IssueBoard,
     IssueTracker,
@@ -56,7 +57,6 @@ from github_workflow.labels import IssueLabel
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
 from github_workflow.push_hook import PushHook
-from github_workflow.report_lines import NumberLink
 from github_workflow.settings import WorkflowSettings
 
 # %% one step

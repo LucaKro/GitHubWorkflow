@@ -15,6 +15,7 @@ from enum import Enum, StrEnum, auto
 from pathlib import Path
 from typing import Any
 
+from basstler_domain_model.class_property import classproperty
 from basstler_domain_model.git.branch_tips import BranchTip
 from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
 from basstler_domain_model.github.issue_models import IssueComment
@@ -34,6 +35,7 @@ from github_workflow.exceptions import (
     PassingTestError,
 )
 from github_workflow.locations import ProofFile, WorkflowTemplate
+from github_workflow.markers import WorkflowMarker
 
 # %% the template's placeholders
 
@@ -45,7 +47,7 @@ class ProofPlaceholder(Placeholder):
 
     RECORD = auto()
     """
-    A proof as the record its comment carries, between its markers.
+    The comment carrying the proof as a record, hidden from a person reading it.
     """
 
     BRANCH = auto()
@@ -318,23 +320,6 @@ class ProofKey(StrEnum):
     """
 
 
-class ProofMarker(StrEnum):
-    """
-    The text around the record a proof comment carries, hidden from a person reading
-    it.
-    """
-
-    START = "<!-- github-workflow:proof "
-    """
-    Opens the record.
-    """
-
-    END = " -->"
-    """
-    Closes the record.
-    """
-
-
 @dataclass(frozen=True)
 class Proof:
     """
@@ -355,6 +340,13 @@ class Proof:
     """
     The first line of pytest's message on the first failed test.
     """
+
+    @classproperty
+    def marker(cls) -> WorkflowMarker:
+        """
+        The comment carrying the record, hidden from a person reading the proof.
+        """
+        return WorkflowMarker("proof")
 
     def to_json(self) -> dict[str, str]:
         """:return: The proof as the record its comment carries."""
@@ -389,9 +381,7 @@ class Proof:
         return Placeholder.fill(
             WorkflowTemplate.PROOF_COMMENT.read_text(),
             {
-                ProofPlaceholder.RECORD: (
-                    f"{ProofMarker.START}{record}{ProofMarker.END}"
-                ),
+                ProofPlaceholder.RECORD: self.marker.line(record),
                 ProofPlaceholder.BRANCH: self.tip.branch,
                 ProofPlaceholder.COMMIT: self.tip.commit,
                 ProofPlaceholder.FAILURE: self.failure,
@@ -412,9 +402,8 @@ class Proof:
         """
         trusted = {author.casefold() for author in authors}
         for comment in reversed(comments):
-            start = comment.body.find(ProofMarker.START)
-            if comment.author.casefold() not in trusted or start == -1:
+            record = cls.marker.read(comment.body)
+            if comment.author.casefold() not in trusted or record is None:
                 continue
-            record = comment.body[start + len(ProofMarker.START) :]
-            return cls.from_json(json.loads(record.partition(ProofMarker.END)[0]))
+            return cls.from_json(json.loads(record))
         return None

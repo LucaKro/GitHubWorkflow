@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from basstler_domain_model.counted_noun import CountedNoun
+from basstler_domain_model.github.number_links import NumberLink
 from basstler_domain_model.github.pull_request_models import (
     UpstreamPullRequestSnapshot,
 )
@@ -30,7 +31,6 @@ from github_workflow.labels import PullRequestLabel, UpstreamLabel
 from github_workflow.report_lines import (
     Emphasis,
     Highlight,
-    NumberLink,
     ReportLine,
     Speaker,
     Tone,

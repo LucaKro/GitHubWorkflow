@@ -12,6 +12,7 @@ from basstler_domain_model.counted_noun import CountedNoun
 from basstler_domain_model.git.branch_tips import BranchTip
 from basstler_domain_model.git.commands import ProposedPush, RemoteBranch
 from basstler_domain_model.github.labels import LabelWrite
+from basstler_domain_model.github.number_links import NumberLink
 from basstler_domain_model.github.repository_client import (
     FollowedFork,
     ForkDetails,
@@ -35,7 +36,7 @@ from github_workflow.exceptions import (
 from github_workflow.install import Launcher
 from github_workflow.labels import UpstreamLabel
 from github_workflow.policy import WritePolicy
-from github_workflow.report_lines import NumberLink, ReportLine, Speaker, Tone
+from github_workflow.report_lines import ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportSection
 from github_workflow.settings import WorkflowSettings
 from github_workflow.work import (

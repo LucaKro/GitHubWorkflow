@@ -10,7 +10,7 @@ import json
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from enum import StrEnum, auto
+from enum import Enum, StrEnum, auto
 
 from basstler_domain_model.class_property import classproperty
 from basstler_domain_model.github.discussions import DefaultDiscussionCategory
@@ -23,6 +23,7 @@ from github_workflow.command_line import (
     WorkflowCommand,
 )
 from github_workflow.locations import WorkflowTemplate
+from github_workflow.markers import WorkflowMarker
 from github_workflow.policy import Attribution
 
 # %% the template's placeholders
@@ -87,12 +88,12 @@ class BlockMarker(StrEnum):
     The lines that open and close the whole block.
     """
 
-    START = "<!-- github-workflow:start -->"
+    START = WorkflowMarker("start").line()
     """
     Opens the block.
     """
 
-    END = "<!-- github-workflow:end -->"
+    END = WorkflowMarker("end").line()
     """
     Closes the block.
     """
@@ -117,43 +118,28 @@ class NotesSection(StrEnum):
     @property
     def start_marker(self) -> str:
         """:return: The line the section's editable text starts after."""
-        return f"<!-- github-workflow:{self._name_.lower()}:start -->"
+        return WorkflowMarker(f"{self._name_.lower()}:start").line()
 
     @property
     def end_marker(self) -> str:
         """:return: The line the section's editable text ends before."""
-        return f"<!-- github-workflow:{self._name_.lower()}:end -->"
+        return WorkflowMarker(f"{self._name_.lower()}:end").line()
 
 
-class BlockRecord(StrEnum):
+class BlockRecord(WorkflowMarker, Enum):
     """
-    The lines recording what the block was loaded with, each its value's prefix.
+    The comments recording what the block was loaded with.
     """
 
-    BRANCH = "<!-- github-workflow:branch "
+    BRANCH = ("branch",)
     """
     The branch whose progress the block holds, empty for none.
     """
 
-    LOADED = "<!-- github-workflow:loaded "
+    LOADED = ("loaded",)
     """
     A digest of the sections as loaded, or as last saved.
     """
-
-    def line(self, value: str) -> str:
-        """
-        :param value: What the line records.
-        :return: The line.
-        """
-        return f"{self}{value} -->"
-
-    def read(self, document: str) -> str | None:
-        """
-        :param document: ``CLAUDE.local.md``'s text.
-        :return: What the line records, ``None`` when the document has no such line.
-        """
-        recorded = re.search(f"{re.escape(self)}(\\S*) -->", document)
-        return recorded.group(1) if recorded else None
 
 
 # %% commands named in the header

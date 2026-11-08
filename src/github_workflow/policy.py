@@ -10,6 +10,7 @@ from enum import StrEnum
 from functools import cached_property
 
 from basstler_domain_model.git.commands import GitIdentity
+from basstler_domain_model.git.identity import PersonIdentity
 from basstler_domain_model.github.repository_client import RepositoryDetails
 
 from github_workflow.checkout import ProjectCheckout
@@ -62,10 +63,10 @@ class AssistantMarker(StrEnum):
         :param identity: An identity, as ``Name <address>`` with anything after it.
         :return: Whether it is an assistant's.
         """
-        name, _, rest = identity.partition("<")
-        domain = rest.partition(">")[0].rpartition("@")[2].casefold()
+        person = PersonIdentity.parse(identity)
+        domain = person.domain
         on_the_domain = domain == cls.ANTHROPIC or domain.endswith(f".{cls.ANTHROPIC}")
-        return on_the_domain or name.strip().casefold() == cls.CLAUDE
+        return on_the_domain or person.name.casefold() == cls.CLAUDE
 
 
 # %% the rules

@@ -11,6 +11,8 @@ from enum import StrEnum
 
 from basstler_domain_model.claude_code.hooks import HookKey, HookValue
 
+from github_workflow.install import Distribution
+
 # %% who speaks
 
 
@@ -19,7 +21,7 @@ class Speaker(StrEnum):
     Who a line shown to the person or given to the model comes from.
     """
 
-    WORKFLOW = "github-workflow"
+    WORKFLOW = Distribution.WORKFLOW.value
     """
     The workflow: its commands, hooks and session start.
     """
@@ -30,30 +32,6 @@ class Speaker(StrEnum):
         :return: It, opened by who says it.
         """
         return f"{self}: {text}"
-
-
-# %% the session start's answer
-
-
-@dataclass(frozen=True)
-class NumberLink:
-    """
-    A pull request or issue named by its number, as a Markdown link to its page.
-    """
-
-    number: int
-    """
-    Its number.
-    """
-
-    url: str
-    """
-    Its page on GitHub.
-    """
-
-    def markdown(self) -> str:
-        """:return: The link, ``[#<number>](<url>)``."""
-        return f"[#{self.number}]({self.url})"
 
 
 # %% report lines

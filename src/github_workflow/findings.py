@@ -16,6 +16,7 @@ from typing import Self
 from basstler_domain_model.class_property import classproperty
 from basstler_domain_model.github.closing_lines import ClosingLines
 from basstler_domain_model.github.issue_models import Issue
+from basstler_domain_model.github.number_links import NumberLink
 from basstler_domain_model.github.repository_client import (
     IssueBoard,
     IssueTracker,
@@ -47,7 +48,6 @@ from github_workflow.proofs import FindingTest, Proof, ProofOutcome, ProofRunner
 from github_workflow.report_lines import (
     Emphasis,
     Highlight,
-    NumberLink,
     ReportLine,
     Tone,
 )

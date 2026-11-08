@@ -155,9 +155,9 @@ class Launcher(StrEnum):
     The command running the workflow from its runtime, on the person's path.
     """
 
-    COMMAND = "github-workflow"
+    COMMAND = Distribution.WORKFLOW.value
     """
-    The command's name, as the person types it.
+    The command's name, as the person types it: the workflow's own.
     """
 
     DIRECTORY = ".local/bin"

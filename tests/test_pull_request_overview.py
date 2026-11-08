@@ -8,14 +8,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 
 import pytest
-
+from basstler_domain_model.github.labels import GitHubLabel
+from basstler_domain_model.github.number_links import NumberLink
 from basstler_domain_model.github.pull_request_models import (
     CheckResult,
     CheckStatus,
     UpstreamPullRequestSnapshot,
 )
 from basstler_domain_model.github.readers import PullRequestSource
-from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.repository_client import (
     PullRequestReader,
     RepositoryLabels,
@@ -29,7 +29,6 @@ from basstler_domain_model.github.review_models import (
 )
 from basstler_domain_model.github.vocabulary import CheckOutcome, MergeableState
 
-from github_workflow.report_lines import Emphasis, Highlight, NumberLink, Tone
 from github_workflow.pull_request_overview import (
     PullRequestDetails,
     PullRequestGroup,
@@ -37,6 +36,7 @@ from github_workflow.pull_request_overview import (
     PullRequestOverview,
     PullRequestSignalReader,
 )
+from github_workflow.report_lines import Emphasis, Highlight, Tone
 from github_workflow.upstream import UpstreamLabel
 
 from .pull_requests import pull_request
