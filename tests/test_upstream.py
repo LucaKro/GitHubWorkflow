@@ -509,11 +509,29 @@ class OpenedUpstreamPullRequests(StackedPullRequestsInMemory):
     The pull requests labelled so.
     """
 
+    merged: frozenset[int] = frozenset()
+    """
+    The pull requests the fork has merged.
+    """
+
+    def open_pull_requests(self) -> list[RestPullRequest]:
+        return [
+            pull_request
+            for pull_request in super().open_pull_requests()
+            if not pull_request.merged
+        ]
+
     def pull_request(self, number: int) -> RestPullRequest:
         labels = (
             (UpstreamLabel.OPENED_UPSTREAM,) if number in self.opened_upstream else ()
         )
-        return replace(super().pull_request(number), labels=labels)
+        merged = number in self.merged
+        return replace(
+            super().pull_request(number),
+            labels=labels,
+            merged=merged,
+            state=PullRequestState.CLOSED if merged else PullRequestState.OPEN,
+        )
 
 
 @dataclass(frozen=True)
@@ -542,15 +560,20 @@ The page of the upstream pull request opened from the fork's branch ``branch-1``
 
 def following(
     found: dict[str, list[SearchedPullRequest]],
+    merged: frozenset[int] = frozenset(),
+    opened_upstream: frozenset[int] = frozenset({1}),
 ) -> tuple[UpstreamMergeFollowing, StackedPullRequestsInMemory, RetiredInMemory]:
     """
     :param found: The upstream's pull requests, by the branch they were opened from.
-    :return: The section over a fork whose #1, opened upstream, has #2 stacked on it;
-        the fork's pull requests; and what was closed.
+    :param merged: The pull requests the fork has merged already.
+    :param opened_upstream: The pull requests labelled as opened upstream.
+    :return: The section over a fork whose #2 is stacked on #1; the fork's pull
+        requests; and what was closed.
     """
     fork = OpenedUpstreamPullRequests(
         {1: "main", 2: StackedPullRequestsInMemory.branch_of(1)},
-        opened_upstream=frozenset({1}),
+        opened_upstream=opened_upstream,
+        merged=merged,
     )
     fork.existing_stacks.append(Stack(7, "main", True, fork.stacked([1, 2])))
     retired = RetiredInMemory()
@@ -561,6 +584,7 @@ def following(
         ForkOf(Repository.parse("an-upstream-owner/project")),
         lambda upstream: UpstreamSearchInMemory(found),
         retired,
+        fork,
         StackPlacement(fork, fork, fork, fork),
     )
     return section, fork, retired
@@ -582,5 +606,26 @@ def test_a_pull_request_merged_upstream_is_closed_and_its_stack_moved_on():
 def test_a_pull_request_still_open_upstream_is_left_alone():
     open_upstream = SearchedPullRequest(9, UPSTREAM_PULL_REQUEST, None)
     section, fork, retired = following({"branch-1": [open_upstream]})
+
+    assert (section.lines(), retired.retired, fork.writes) == ([], [], [])
+
+
+def test_what_is_stacked_on_a_pull_request_the_fork_merged_already_is_moved_on():
+    merged = SearchedPullRequest(9, UPSTREAM_PULL_REQUEST, "2026-11-07T10:00:00Z")
+    section, fork, retired = following({"branch-1": [merged]}, merged=frozenset({1}))
+
+    [line] = section.lines()
+
+    assert (retired.retired, fork.writes, line.tone) == (
+        [],
+        ["unstack 7", "set_base 2 main"],
+        Tone.ACTION,
+    )
+
+
+def test_what_is_stacked_on_a_merged_pull_request_never_opened_upstream_is_left_alone():
+    section, fork, retired = following(
+        {}, merged=frozenset({1}), opened_upstream=frozenset()
+    )
 
     assert (section.lines(), retired.retired, fork.writes) == ([], [], [])

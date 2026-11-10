@@ -104,6 +104,9 @@ class StackPlacement:
         :param base: The branch the next one targets instead, the default branch.
         :return: The open pull request now targeting *base*, ``None`` when nothing open
             builds on *done*; the stack is made again from the open ones above.
+
+        .. note:: The stack is dissolved first: GitHub refuses to change the base of a
+           pull request in a stack.
         """
         stack = self.stacks.stack_of(done)
         if stack is None:
@@ -114,8 +117,8 @@ class StackPlacement:
         ]
         if not above:
             return None
-        self.retargeting.set_base(above[0], base)
         self.stacking.unstack(stack)
+        self.retargeting.set_base(above[0], base)
         if len(above) > 1:
             self.stacking.create_stack(above)
         return above[0]

@@ -286,7 +286,8 @@ them:
   `opened upstream` whose pull request upstream was merged - found through GitHub's
   search, which a cloud session reaches - is closed as merged upstream, linking it, and
   the pull request stacked on it moves onto the default branch, the stack made again
-  from the open ones above
+  from the open ones above. One the fork merged already, as the fork sync does, still
+  has what is stacked on it moved
 - open draft pull requests, labelling every issue a draft's description closes
   (`Fixes #N`) `pull request opened`, created where my repository lacks it; a pull
   request a session closes unmerged takes the label off its issues again, and a draft
