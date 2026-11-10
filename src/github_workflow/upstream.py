@@ -19,6 +19,7 @@ from basstler_domain_model.github.repository_client import (
     PullRequestsFromForks,
     RepositoryDetails,
     RepositoryLabels,
+    StackReader,
 )
 from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.vocabulary import PullRequestState
@@ -408,9 +409,9 @@ class UpstreamSuggestion(DescriptionEnding):
 @dataclass(frozen=True)
 class UpstreamMergeFollowing(ReportSection):
     """
-    The fork's open pull requests opened upstream whose pull request there was merged:
-    each closed on the fork as merged upstream, and what was stacked on it moved onto
-    the default branch.
+    The fork's pull requests opened upstream whose pull request there was merged: each
+    one still open closed on the fork as merged upstream, and what is stacked on it,
+    also on one the fork has merged already, moved onto the default branch.
     """
 
     fork: Repository
@@ -420,7 +421,7 @@ class UpstreamMergeFollowing(ReportSection):
 
     pull_requests: PullRequestReader
     """
-    Lists the fork's open pull requests.
+    Reads the fork's pull requests.
     """
 
     fork_details: ForkDetails
@@ -443,15 +444,21 @@ class UpstreamMergeFollowing(ReportSection):
     Closes a fork's pull request as a session's.
     """
 
+    stacks: StackReader
+    """
+    Reads the stack an open pull request is in.
+    """
+
     placement: StackPlacement
     """
-    Moves a stack off the pull request closed.
+    Moves a stack off the pull request merged.
     """
 
     def lines(self) -> list[ReportLine]:
+        default_branch = self.repository_details.default_branch()
         opened = [
             pull_request
-            for pull_request in self.pull_requests.open_pull_requests()
+            for pull_request in self.pull_requests_to_follow(default_branch)
             if UpstreamLabel.OPENED_UPSTREAM in pull_request.labels
         ]
         if not opened:
@@ -471,18 +478,55 @@ class UpstreamMergeFollowing(ReportSection):
             ]
             if not merged:
                 continue
-            self.closing.retire(
-                pull_request.number, f"Merged upstream as {merged[0].url}."
-            )
-            base = self.repository_details.default_branch()
-            moved = self.placement.move_off(pull_request.number, base)
+            done = self.follow_merge(pull_request, merged[0].url, default_branch)
             link = NumberLink(pull_request.number, pull_request.url).markdown()
-            onto = "" if moved is None else f", and moved #{moved} onto {base}"
             lines.append(
                 ReportLine(
                     f"github-workflow: {link} was merged upstream as {merged[0].url}: "
-                    f"closed it{onto}; tell the person",
+                    f"{', and '.join(done)}; tell the person",
                     Tone.ACTION,
                 )
             )
         return lines
+
+    def pull_requests_to_follow(self, default_branch: str) -> list[RestPullRequest]:
+        """
+        :param default_branch: The fork's default branch.
+        :return: The fork's open pull requests, and each merged one an open pull
+            request is still stacked on.
+        """
+        open_ones = self.pull_requests.open_pull_requests()
+        merged_below = []
+        for pull_request in open_ones:
+            if pull_request.base == default_branch:
+                continue
+            stack = self.stacks.stack_of(pull_request.number)
+            if stack is None:
+                continue
+            position = stack.numbers.index(pull_request.number)
+            if position == 0:
+                continue
+            below = self.pull_requests.pull_request(stack.numbers[position - 1])
+            if below.merged:
+                merged_below.append(below)
+        return open_ones + merged_below
+
+    def follow_merge(
+        self, pull_request: RestPullRequest, upstream_url: str, default_branch: str
+    ) -> list[str]:
+        """
+        :param pull_request: The fork's pull request merged upstream.
+        :param upstream_url: The upstream pull request it was merged as.
+        :param default_branch: The fork's default branch.
+        :return: What was done on the fork, each in a few words.
+        """
+        done = []
+        if pull_request.state is PullRequestState.OPEN:
+            self.closing.retire(
+                pull_request.number, f"Merged upstream as {upstream_url}."
+            )
+            done.append("closed it")
+        moved = self.placement.move_off(pull_request.number, default_branch)
+        if moved is not None:
+            done.append(f"moved #{moved} onto {default_branch}")
+        return done

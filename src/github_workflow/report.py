@@ -130,6 +130,7 @@ class SectionName(StrEnum):
                         github,
                         PullRequestOpenedLabelling(github, github),
                     ),
+                    github,
                     StackPlacement(github, github, github, github),
                 )
             case SectionName.FRESHNESS:
