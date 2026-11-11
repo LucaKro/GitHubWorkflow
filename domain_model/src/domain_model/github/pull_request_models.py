@@ -13,6 +13,7 @@ from domain_model.github.exceptions import (
     GraphQLDataMissingError,
     GraphQLErrorsReturned,
 )
+from domain_model.github.number_links import HasNumberLink
 from domain_model.github.review_models import (
     BranchPullRequest,
     Review,
@@ -218,7 +219,7 @@ class PullRequestCommit(JSONModel):
 
 
 @dataclass(frozen=True)
-class PullRequest(JSONModel):
+class PullRequest(JSONModel, HasNumberLink):
     """
     One upstream pull request, as a single page of the review-threads query reads it.
     """
@@ -287,7 +288,7 @@ class PullRequest(JSONModel):
 
 
 @dataclass(frozen=True)
-class UpstreamPullRequestSnapshot:
+class UpstreamPullRequestSnapshot(HasNumberLink):
     """
     Everything read from one upstream pull request in a single run.
     """

@@ -264,7 +264,7 @@ class ForwardedUpstreamReviews(UpstreamReviews):
         """
         runs = [
             run
-            for run in self.workflows.runs_on(self.notes.branch.name)
+            for run in self.workflows.branch_runs(self.notes.branch.name)
             if run.commit == queued
             and run.path == str(NotesFile.UPSTREAM_REVIEW_WORKFLOW)
         ]

@@ -26,7 +26,7 @@ class ConflictMarker(StrEnum):
     """
 
     @classmethod
-    def left_in(cls, text: str) -> bool:
+    def marks_conflict(cls, text: str) -> bool:
         """
         :param text: A file's text.
         :return: Whether a conflict is still marked in it.

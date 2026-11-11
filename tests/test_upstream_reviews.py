@@ -181,7 +181,7 @@ class RunsOfTheQueuedRequest(RepositoryWorkflows):
     def workflows(self) -> list[Workflow]:
         return []
 
-    def runs_on(self, branch: str) -> list[WorkflowRun]:
+    def branch_runs(self, branch: str) -> list[WorkflowRun]:
         if self.status is None:
             return []
         tip = self.notes.branch.remote.git.run(

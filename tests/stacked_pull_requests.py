@@ -76,7 +76,7 @@ class StackedPullRequestsInMemory(StackHost):
     def stack(self, number: int) -> Stack:
         return next(stack for stack in self.existing_stacks if stack.number == number)
 
-    def stack_of(self, pull_request: int) -> Stack | None:
+    def containing_stack(self, pull_request: int) -> Stack | None:
         return next(
             (stack for stack in self.existing_stacks if pull_request in stack.numbers),
             None,

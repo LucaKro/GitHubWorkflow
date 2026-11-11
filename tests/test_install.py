@@ -426,7 +426,7 @@ def test_the_first_switch_turns_the_runtime_into_a_link_to_the_build(
     build = tmp_path / ".runtime-build"
     build.mkdir()
 
-    RuntimeSwitch(location).to(build)
+    RuntimeSwitch(location).activate(build)
 
     assert location.resolve() == build.resolve()
     assert sorted(path.name for path in tmp_path.iterdir()) == [
@@ -445,7 +445,7 @@ def test_a_later_switch_moves_the_link_and_removes_the_build_before(
     second.mkdir()
     location.symlink_to(first.name)
 
-    RuntimeSwitch(location).to(second)
+    RuntimeSwitch(location).activate(second)
 
     assert location.resolve() == second.resolve()
     assert not first.exists()
@@ -455,7 +455,7 @@ def test_a_switch_where_no_runtime_was_creates_the_link(tmp_path: Path) -> None:
     build = tmp_path / ".runtime-build"
     build.mkdir()
 
-    RuntimeSwitch(tmp_path / "runtime").to(build)
+    RuntimeSwitch(tmp_path / "runtime").activate(build)
 
     assert (tmp_path / "runtime").resolve() == build.resolve()
 

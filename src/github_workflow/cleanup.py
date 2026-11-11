@@ -142,7 +142,7 @@ class BranchDiscard(WorkflowStep):
         owner = self.policy.remote.repository.owner
         closed = [
             pull_request.number
-            for pull_request in self.pull_requests.pull_requests_open_from(
+            for pull_request in self.pull_requests.open_fork_branch_pull_requests(
                 owner, branch
             )
         ]

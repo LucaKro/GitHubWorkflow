@@ -431,7 +431,7 @@ def test_a_posted_proof_reads_back_as_it_was(settings: WorkflowSettings) -> None
 
     posted = [IssueComment(settings.owner, proof.comment())]
 
-    assert Proof.posted_in(posted, [settings.owner]) == proof
+    assert Proof.latest_posted(posted, [settings.owner]) == proof
 
 
 def test_a_test_holding_comment_ends_and_fences_reads_back_as_it_was(
@@ -441,7 +441,7 @@ def test_a_test_holding_comment_ends_and_fences_reads_back_as_it_was(
 
     posted = [IssueComment(settings.owner, proof.comment())]
 
-    assert Proof.posted_in(posted, [settings.owner]) == proof
+    assert Proof.latest_posted(posted, [settings.owner]) == proof
 
 
 def test_the_latest_proof_counts(settings: WorkflowSettings) -> None:
@@ -454,7 +454,7 @@ def test_the_latest_proof_counts(settings: WorkflowSettings) -> None:
         IssueComment(settings.owner, "Looks right."),
     ]
 
-    assert Proof.posted_in(posted, [settings.owner]) == later
+    assert Proof.latest_posted(posted, [settings.owner]) == later
 
 
 def test_a_proof_by_an_untrusted_author_is_ignored(settings: WorkflowSettings) -> None:
@@ -466,10 +466,10 @@ def test_a_proof_by_an_untrusted_author_is_ignored(settings: WorkflowSettings) -
         IssueComment(RepositoriesByOwner.foreign_owner, forged.comment()),
     ]
 
-    assert Proof.posted_in(posted, [settings.owner]) == trusted
+    assert Proof.latest_posted(posted, [settings.owner]) == trusted
 
 
 def test_an_issue_without_a_proof_has_none(settings: WorkflowSettings) -> None:
     posted = [IssueComment(settings.owner, "Looks right.")]
 
-    assert Proof.posted_in(posted, [settings.owner]) is None
+    assert Proof.latest_posted(posted, [settings.owner]) is None

@@ -191,7 +191,7 @@ class ProofAttempt:
         """
         broken = [
             *report.errors,
-            *filter(BrokenTestException.reported_in, report.failures),
+            *filter(BrokenTestException.is_reported, report.failures),
             *filter(test.misses_its_own_file, report.failures),
         ]
         if broken:
@@ -370,7 +370,7 @@ class Proof:
     def comment(self) -> str:
         """
         :return: The comment posting the proof on the finding's issue, for a person to
-            read and :meth:`posted_in` to read back.
+            read and :meth:`latest_posted` to read back.
         """
         record = json.dumps(self.to_json()).replace(">", "\\u003e")
         backtick_runs = re.findall("`+", self.test.source)
@@ -389,7 +389,7 @@ class Proof:
         )
 
     @classmethod
-    def posted_in(
+    def latest_posted(
         cls, comments: Sequence[IssueComment], authors: Collection[str]
     ) -> Proof | None:
         """

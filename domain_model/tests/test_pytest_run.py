@@ -27,7 +27,7 @@ def test_a_report_counts_its_tests_and_names_each_failure_by_its_first_line():
 
 
 def test_a_broken_test_s_exception_is_recognised():
-    assert BrokenTestException.reported_in(f"{BrokenTestException.NAME_ERROR}: x")
+    assert BrokenTestException.is_reported(f"{BrokenTestException.NAME_ERROR}: x")
 
 
 # %% running pytest

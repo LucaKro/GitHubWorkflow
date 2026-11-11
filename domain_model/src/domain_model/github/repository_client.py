@@ -180,7 +180,7 @@ class StackReader(ABC):
         :return: That stack."""
 
     @abstractmethod
-    def stack_of(self, pull_request: int) -> Stack | None:
+    def containing_stack(self, pull_request: int) -> Stack | None:
         """:param pull_request: A pull request's number.
         :return: The stack holding it, ``None`` when it is in none."""
 
@@ -254,7 +254,7 @@ class PullRequestSearch(ABC):
     """
 
     @abstractmethod
-    def search_pull_requests_from(
+    def search_branch_pull_requests(
         self, author: str, branch: str
     ) -> list[SearchedPullRequest]:
         """
@@ -277,7 +277,7 @@ class RepositoryWorkflows(ABC):
         """
 
     @abstractmethod
-    def runs_on(self, branch: str) -> list[WorkflowRun]:
+    def branch_runs(self, branch: str) -> list[WorkflowRun]:
         """
         :param branch: A branch.
         :return: The latest runs its pushes and events started, newest first.
@@ -316,14 +316,18 @@ class PullRequestsFromForks(ABC):
     """
 
     @abstractmethod
-    def pull_requests_from(self, owner: str, branch: str) -> list[RestPullRequest]:
+    def fork_branch_pull_requests(
+        self, owner: str, branch: str
+    ) -> list[RestPullRequest]:
         """
         :param owner: The fork's owner.
         :param branch: The fork's branch.
         :return: Every pull request opened from it, open or closed.
         """
 
-    def pull_requests_open_from(self, owner: str, branch: str) -> list[RestPullRequest]:
+    def open_fork_branch_pull_requests(
+        self, owner: str, branch: str
+    ) -> list[RestPullRequest]:
         """
         :param owner: The fork's owner.
         :param branch: The fork's branch.
@@ -331,12 +335,12 @@ class PullRequestsFromForks(ABC):
         """
         return [
             pull_request
-            for pull_request in self.pull_requests_from(owner, branch)
+            for pull_request in self.fork_branch_pull_requests(owner, branch)
             if pull_request.state is PullRequestState.OPEN
         ]
 
     @abstractmethod
-    def open_pull_request_from(
+    def open_fork_pull_request(
         self, owner: str, branch: str, base: str, title: str, body: str
     ) -> RestPullRequest:
         """
@@ -935,7 +939,7 @@ class GitHubRepository(
             for entry in page[RestJSONKey.WORKFLOWS]
         ]
 
-    def search_pull_requests_from(
+    def search_branch_pull_requests(
         self, author: str, branch: str
     ) -> list[SearchedPullRequest]:
         found = self.api.get(self.route.pull_request_search(author, branch))
@@ -943,7 +947,7 @@ class GitHubRepository(
             SearchedPullRequest.from_json(item) for item in found[RestJSONKey.ITEMS]
         ]
 
-    def runs_on(self, branch: str) -> list[WorkflowRun]:
+    def branch_runs(self, branch: str) -> list[WorkflowRun]:
         listed = self.api.get(self.route.workflow_runs(branch))
         return [
             WorkflowRun.from_json(entry) for entry in listed[RestJSONKey.WORKFLOW_RUNS]
@@ -959,7 +963,9 @@ class GitHubRepository(
             "POST", self.route.merge_upstream, {RestJSONKey.BRANCH: branch}
         )
 
-    def pull_requests_from(self, owner: str, branch: str) -> list[RestPullRequest]:
+    def fork_branch_pull_requests(
+        self, owner: str, branch: str
+    ) -> list[RestPullRequest]:
         return [
             RestPullRequest.from_json(entry)
             for entry in self._every_entry(
@@ -967,7 +973,7 @@ class GitHubRepository(
             )
         ]
 
-    def open_pull_request_from(
+    def open_fork_pull_request(
         self, owner: str, branch: str, base: str, title: str, body: str
     ) -> RestPullRequest:
         created = self.api.request(
@@ -1094,7 +1100,7 @@ class GitHubRepository(
     def stack(self, number: int) -> Stack:
         return Stack.from_json(self.api.get(self.route.stack(number)))
 
-    def stack_of(self, pull_request: int) -> Stack | None:
+    def containing_stack(self, pull_request: int) -> Stack | None:
         found = self.api.get(self.route.stacks_holding(pull_request))
         return Stack.from_json(found[0]) if found else None
 

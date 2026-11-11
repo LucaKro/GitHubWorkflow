@@ -1,18 +1,17 @@
 """
-An issue or pull request named by its number, as GitHub's Markdown links it.
+Issues and pull requests named by their number, as GitHub's Markdown links them.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from domain_model.class_property import classproperty
 
 # %% the link
 
 
-@dataclass(frozen=True)
-class NumberLink:
+class HasNumberLink:
     """
-    A pull request or issue named by its number, as a Markdown link to its page.
+    A pull request or issue with a number and a page, linked by its number.
     """
 
     number: int
@@ -25,6 +24,15 @@ class NumberLink:
     Its page on GitHub.
     """
 
-    def markdown(self) -> str:
+    @classproperty
+    def link_format(cls) -> str:
+        """
+        How GitHub's Markdown links an issue or pull request by its number, to fill with
+        ``number`` and ``url``.
+        """
+        return "[#{number}]({url})"
+
+    @property
+    def markdown_link(self) -> str:
         """:return: The link, ``[#<number>](<url>)``."""
-        return f"[#{self.number}]({self.url})"
+        return self.link_format.format(number=self.number, url=self.url)

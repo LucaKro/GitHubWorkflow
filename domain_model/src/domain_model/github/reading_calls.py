@@ -43,7 +43,7 @@ class SendingOptions:
     The long options naming the request method.
     """
 
-    def present_in(self, arguments: Sequence[str]) -> bool:
+    def sends(self, arguments: Sequence[str]) -> bool:
         """
         :param arguments: A call's arguments.
         :return: Whether one of them sends something.
@@ -387,7 +387,7 @@ class GitHubCliCall:
         queries = self.api_sending.named_method(options) == HTTPMethod.GET and not any(
             argument.startswith(self.api_input) for argument in options
         )
-        if self.api_sending.present_in(options) and not queries:
+        if self.api_sending.sends(options) and not queries:
             return GitHubCliEffect.API_SENDS
         return None
 
@@ -456,7 +456,7 @@ class HttpClient(Enum):
         reaches_github = any(
             host in argument for argument in arguments for host in GitHubHost
         )
-        return reaches_github and self.sending.present_in(arguments)
+        return reaches_github and self.sending.sends(arguments)
 
 
 # %% the GitHub MCP server

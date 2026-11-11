@@ -95,7 +95,7 @@ class GitCommandResult(CommandResult):
     """
 
     @classmethod
-    def of(cls, result: CommandResult) -> GitCommandResult:
+    def from_command_result(cls, result: CommandResult) -> GitCommandResult:
         """
         :param result: A finished ``git`` command.
         :return: It, as a git command.
@@ -180,7 +180,7 @@ class GitCommandRunner:
             own.
         :return: The finished command.
         """
-        return GitCommandResult.of(
+        return GitCommandResult.from_command_result(
             CommandRunner(self.working_directory).run(
                 Program.GIT,
                 *arguments,

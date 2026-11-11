@@ -13,6 +13,7 @@ from domain_model.github.exceptions import (
     MissingPullRequestFieldError,
     ReviewThreadWithoutCommentsError,
 )
+from domain_model.github.number_links import HasNumberLink
 from domain_model.github.pull_request_models import CheckResult
 from domain_model.github.review_models import (
     Author,
@@ -110,7 +111,7 @@ class PullRequestHead(JSONModel):
 
 
 @dataclass(frozen=True)
-class RestPullRequest(JSONModel):
+class RestPullRequest(JSONModel, HasNumberLink):
     """
     One pull request as REST describes it, whether listed or read on its own.
     """
@@ -294,7 +295,7 @@ class RestRepository(JSONModel):
 
 
 @dataclass(frozen=True)
-class SearchedPullRequest(JSONModel):
+class SearchedPullRequest(JSONModel, HasNumberLink):
     """
     A pull request as GitHub's issue search finds it.
     """

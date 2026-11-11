@@ -514,7 +514,7 @@ class EndingNamingTheBranch(DescriptionEnding):
     Ends a description with its branch's name.
     """
 
-    def appended_to(self, body: str, branch: str) -> str:
+    def append_once(self, body: str, branch: str) -> str:
         return f"{body} | {branch}"
 
 
@@ -526,7 +526,7 @@ def test_a_draft_onto_the_default_branch_ends_its_description(
 
     replace(draft(work, github, None), ending=ending).run()
 
-    assert github.bodies == {1: ending.appended_to("A body", "feature")}
+    assert github.bodies == {1: ending.append_once("A body", "feature")}
 
 
 @dataclass(frozen=True)
@@ -821,14 +821,16 @@ class PullRequestsFromBranchesInMemory(PullRequestsFromForks):
     Every pull request.
     """
 
-    def pull_requests_from(self, owner: str, branch: str) -> list[RestPullRequest]:
+    def fork_branch_pull_requests(
+        self, owner: str, branch: str
+    ) -> list[RestPullRequest]:
         return [
             pull_request
             for pull_request in self.opened
             if pull_request.head.branch == branch
         ]
 
-    def open_pull_request_from(
+    def open_fork_pull_request(
         self, owner: str, branch: str, base: str, title: str, body: str
     ) -> RestPullRequest:
         raise NotImplementedError
@@ -1189,7 +1191,7 @@ def test_a_new_description_onto_the_default_branch_ends_as_a_draft_s_does() -> N
 
     replace(step, ending=ending).run()
 
-    described = ending.appended_to("A new body", github.branch_of(1))
+    described = ending.append_once("A new body", github.branch_of(1))
     assert github.writes == [f"set_description 1 {described}"]
 
 
@@ -1206,7 +1208,7 @@ def test_a_new_description_keeps_the_old_one_s_closing_lines() -> None:
     closing = ClosingKeyword.FIXES.reference(148)
     old = f"What it did.\n\n{closing}\n"
 
-    kept = ClosingLines(old).kept_in("What it does now.\n")
+    kept = ClosingLines(old).append_missing_lines("What it does now.\n")
 
     assert kept == f"What it does now.\n\n{closing}\n"
 
@@ -1215,7 +1217,10 @@ def test_a_closing_line_the_new_description_has_is_not_repeated() -> None:
     closing = ClosingKeyword.FIXES.reference(148)
     rewritten = f"What it does now.\n\n{closing}\n"
 
-    assert ClosingLines(f"What it did.\n\n{closing}\n").kept_in(rewritten) == rewritten
+    assert (
+        ClosingLines(f"What it did.\n\n{closing}\n").append_missing_lines(rewritten)
+        == rewritten
+    )
 
 
 def test_an_open_pull_request_s_title_is_rewritten() -> None:

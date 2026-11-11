@@ -93,7 +93,7 @@ def test_the_stack_holding_a_pull_request_is_found_by_it():
     }
 
     with ReplayedApi(answers) as api:
-        found = client(api).stack_of(middle)
+        found = client(api).containing_stack(middle)
 
     assert found == stack
 
@@ -107,7 +107,7 @@ def test_a_pull_request_in_no_stack_has_none():
     }
 
     with ReplayedApi(answers) as api:
-        assert client(api).stack_of(1) is None
+        assert client(api).containing_stack(1) is None
 
 
 def test_every_stack_is_listed():

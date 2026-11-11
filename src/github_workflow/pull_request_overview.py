@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import StrEnum
 
-from domain_model.github.number_links import NumberLink
+from domain_model.github.number_links import HasNumberLink
 from domain_model.github.pull_request_models import (
     UpstreamPullRequestSnapshot,
 )
@@ -40,7 +40,7 @@ from github_workflow.work import WorkflowStep
 
 
 @dataclass(frozen=True)
-class PullRequestSignals:
+class PullRequestSignals(HasNumberLink):
     """
     What one open pull request is, and what in it asks for attention.
     """
@@ -130,7 +130,7 @@ class PullRequestSignals:
         marks += self.problems or ["ok"]
         tags = " · ".join(marks)
         return ReportLine(
-            f"{NumberLink(self.number, self.url).markdown()} {self.title} - {tags}",
+            f"{self.markdown_link} {self.title} - {tags}",
             Tone.ACTION if self.problems else Tone.NEWS,
             emphases=(Emphasis(f"- {tags}", Highlight.STATUS),),
         )

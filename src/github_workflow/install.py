@@ -67,7 +67,7 @@ class RuntimeSwitch:
     The runtime's path, which ends up a link to the build in use.
     """
 
-    def to(self, build: Path) -> None:
+    def activate(self, build: Path) -> None:
         """
         Point the runtime's path at a build in one step, and remove the build it pointed
         at before.
@@ -266,7 +266,7 @@ class RuntimeInstallation:
         checked = runner.run(str(interpreter), "-I", "-m", RuntimeModule.RUNTIME_CHECK)
         self.raise_if_failed(checked, build, "checking the new runtime")
         (build / RuntimeLocation.PLUGIN_STAMP).write_text(stamp)
-        RuntimeSwitch(self.location).to(build)
+        RuntimeSwitch(self.location).activate(build)
         installed = Speaker.WORKFLOW.says(
             f"runtime installed from the plugin at {self.plugin}"
         )

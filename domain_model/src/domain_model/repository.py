@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 
 from domain_model.class_property import classproperty
 from domain_model.exceptions import MalformedRepositoryError
+from domain_model.github.number_links import HasNumberLink
 
 # %% addresses
 
@@ -186,9 +187,9 @@ class Repository:
         """
         The HTTPS URL git clones and fetches the repository from.
         """
-        return self.clone_url_under()
+        return self.rooted_clone_url()
 
-    def clone_url_under(self, root: str = GitHubAddress.WEB) -> str:
+    def rooted_clone_url(self, root: str = GitHubAddress.WEB) -> str:
         """
         :param root: Where repositories are kept as ``<root>/owner/name.git``: GitHub
             itself, or a directory of bare repositories standing in for it.
@@ -232,6 +233,15 @@ class Repository:
         :return: Its page on GitHub; GitHub opens a pull request's own page from it.
         """
         return f"{self.url}/issues/{number}"
+
+    def issue_link(self, number: int) -> str:
+        """
+        :param number: An issue or pull request of the repository.
+        :return: Its number, as GitHub's Markdown links it to its page.
+        """
+        return HasNumberLink.link_format.format(
+            number=number, url=self.issue_url(number)
+        )
 
     def workflow_run_url(self, run: int) -> str:
         """

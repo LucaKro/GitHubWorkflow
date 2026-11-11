@@ -40,7 +40,7 @@ class StackPlacement:
         above_base = self.host.pull_request(above).base
         if above_base != below_branch:
             self.host.set_base(above, below_branch)
-        stack = self.host.stack_of(below)
+        stack = self.host.containing_stack(below)
         if stack is None:
             return self.host.create_stack([below, above])
         position = stack.numbers.index(below)
@@ -60,7 +60,7 @@ class StackPlacement:
         :raises StackContinuesAboveError: If other open pull requests already sit on
             it.
         """
-        stack = self.host.stack_of(below)
+        stack = self.host.containing_stack(below)
         if stack is None:
             return
         self.refuse_open_on_top(below, stack.numbers[stack.numbers.index(below) + 1 :])
@@ -86,7 +86,7 @@ class StackPlacement:
         .. note:: The stack is dissolved first: GitHub refuses to change the base of a
            pull request in a stack.
         """
-        stack = self.host.stack_of(done)
+        stack = self.host.containing_stack(done)
         if stack is None:
             return None
         position = stack.numbers.index(done)

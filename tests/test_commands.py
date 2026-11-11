@@ -1234,7 +1234,7 @@ def test_a_rewritten_description_of_a_fork_s_pull_request_keeps_the_upstream_lin
     suggestion = UpstreamSuggestion(owner_s_github(settings), fork)
     assert written == [
         {
-            RestJSONKey.BODY: suggestion.appended_to(
+            RestJSONKey.BODY: suggestion.append_once(
                 "What it does, after the review.\n", "feature"
             )
         }

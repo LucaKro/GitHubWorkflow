@@ -130,7 +130,7 @@ class BranchFreshening:
         owner = self.policy.remote.repository.owner
         targets = [
             pull_request.base
-            for pull_request in self.fork.pull_requests_open_from(owner, branch)
+            for pull_request in self.fork.open_fork_branch_pull_requests(owner, branch)
         ]
         return targets[0] if targets else self.policy.default_branch
 

@@ -12,7 +12,6 @@ from domain_model.git.branch_tips import BranchTip
 from domain_model.git.remotes import ProposedPush, Remote, RemoteBranch, RemoteName
 from domain_model.git.revisions import Commit
 from domain_model.github.labels import LabelWrite
-from domain_model.github.number_links import NumberLink
 from domain_model.github.repository_client import (
     FollowedFork,
     ForkDetails,
@@ -105,14 +104,16 @@ class UpstreamProposal(WorkflowStep):
             raise NotAForkError(self.repository)
         local = self.local_pull_request()
         proposals = self.upstream_repository(upstream)
-        already = proposals.pull_requests_open_from(self.repository.owner, self.branch)
+        already = proposals.open_fork_branch_pull_requests(
+            self.repository.owner, self.branch
+        )
         if already:
             raise PullRequestNotProposableError(
                 self.branch,
                 f"its pull request is open on {upstream} already, as "
                 f"#{already[0].number}: {already[0].url}",
             )
-        opened = proposals.open_pull_request_from(
+        opened = proposals.open_fork_pull_request(
             self.repository.owner,
             self.branch,
             proposals.default_branch(),
@@ -132,7 +133,7 @@ class UpstreamProposal(WorkflowStep):
         :return: The fork's open pull request from the branch, onto its default branch.
         :raises PullRequestNotProposableError: If there is none.
         """
-        every = self.fork.pull_requests_from(self.repository.owner, self.branch)
+        every = self.fork.fork_branch_pull_requests(self.repository.owner, self.branch)
         if not every:
             raise PullRequestNotProposableError(
                 self.branch, f"{self.repository} has no pull request from it"
@@ -238,7 +239,7 @@ class ForkMainSync(WorkflowStep):
         :param upstream: The repository the fork was forked from.
         :return: The fork's default branch and the upstream's, as fetched now.
         """
-        url = upstream.clone_url_under()
+        url = upstream.rooted_clone_url()
         remote = Remote(
             self.policy.checkout.git, self.upstream_name, url, upstream, url
         )
@@ -321,7 +322,7 @@ class UpstreamSuggestion(DescriptionEnding):
     The repository the pull request is opened on.
     """
 
-    def appended_to(self, body: str, branch: str) -> str:
+    def append_once(self, body: str, branch: str) -> str:
         upstream = self.fork_details.upstream()
         if upstream is None:
             return body
@@ -405,7 +406,7 @@ class UpstreamMergeFollowing(ReportSection):
         for pull_request in opened:
             merged = [
                 found
-                for found in search.search_pull_requests_from(
+                for found in search.search_branch_pull_requests(
                     self.owner, pull_request.head.branch
                 )
                 if found.merged_at is not None
@@ -413,7 +414,7 @@ class UpstreamMergeFollowing(ReportSection):
             if not merged:
                 continue
             done = self.follow_merge(pull_request, merged[0].url, default_branch)
-            link = NumberLink(pull_request.number, pull_request.url).markdown()
+            link = pull_request.markdown_link
             lines.append(
                 ReportLine(
                     Speaker.WORKFLOW.says(
@@ -436,7 +437,7 @@ class UpstreamMergeFollowing(ReportSection):
         for pull_request in open_ones:
             if pull_request.base == default_branch:
                 continue
-            stack = self.fork.stack_of(pull_request.number)
+            stack = self.fork.containing_stack(pull_request.number)
             if stack is None:
                 continue
             position = stack.numbers.index(pull_request.number)

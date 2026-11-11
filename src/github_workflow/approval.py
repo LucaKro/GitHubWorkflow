@@ -98,7 +98,7 @@ class SessionCommandApproval:
         if not all(self.is_harmless(command) for command in others):
             return False
         words = WorkflowInvocation(workflow[0]).words() or []
-        command = RunnableCommand.run_by(words)
+        command = RunnableCommand.from_words(words)
         return command is not None and command.runs_unasked(words)
 
     @staticmethod

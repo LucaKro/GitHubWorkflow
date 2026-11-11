@@ -14,7 +14,6 @@ import pytest
 from domain_model.git.branch_tips import BranchTip
 from domain_model.git.revisions import CommitHash
 from domain_model.github.issue_models import Issue, IssueComment
-from domain_model.github.number_links import NumberLink
 from domain_model.github.rest_models import RestPullRequest
 from domain_model.github.stack_placement import StackPlacement
 from domain_model.github.vocabulary import (
@@ -307,8 +306,7 @@ def test_findings_are_listed_unreviewed_first_and_most_urgent_first() -> None:
     listed = FindingListing(board, ScratchGitHub.owned).run().splitlines()
 
     assert [line.split()[0] for line in listed] == [
-        NumberLink(number, ScratchGitHub.owned.issue_url(number)).markdown()
-        for number in (3, 2, 1)
+        ScratchGitHub.owned.issue_link(number) for number in (3, 2, 1)
     ]
 
 
@@ -323,8 +321,7 @@ def test_shelved_findings_are_listed_after_the_accepted() -> None:
     listed = FindingListing(board, ScratchGitHub.owned).run().splitlines()
 
     assert [line.split()[0] for line in listed] == [
-        NumberLink(number, ScratchGitHub.owned.issue_url(number)).markdown()
-        for number in (2, 1)
+        ScratchGitHub.owned.issue_link(number) for number in (2, 1)
     ]
 
 

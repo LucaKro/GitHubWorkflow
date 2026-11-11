@@ -611,7 +611,7 @@ class WorkflowInvocation:
         :return: Whether this runs it.
         """
         words = self.words()
-        return words is not None and RunnableCommand.run_by(words) is command
+        return words is not None and RunnableCommand.from_words(words) is command
 
 
 @dataclass(frozen=True)

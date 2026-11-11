@@ -111,7 +111,7 @@ def test_pull_requests_opened_from_a_branch_are_searched_with_when_they_merged()
     }
 
     with ReplayedApi(answers) as api:
-        found = client(api).search_pull_requests_from("LucaKro", "feature")
+        found = client(api).search_branch_pull_requests("LucaKro", "feature")
 
     items = json.loads(DatasetLocation.SEARCHED_PULL_REQUESTS.read_text())[
         RestJSONKey.ITEMS
@@ -153,7 +153,7 @@ def test_a_branch_s_runs_are_read_newest_first():
     }
 
     with ReplayedApi(answers) as api:
-        runs = client(api).runs_on("github-workflow/notes")
+        runs = client(api).branch_runs("github-workflow/notes")
 
     recorded = json.loads(DatasetLocation.WORKFLOW_RUNS.read_text())
     assert [(run.identifier, run.status, run.conclusion) for run in runs] == [
@@ -178,7 +178,7 @@ def test_a_pull_request_is_opened_from_a_fork_s_branch_ready_for_review():
     }
 
     with ReplayedApi(answers) as api:
-        opened = client(api).open_pull_request_from(
+        opened = client(api).open_fork_pull_request(
             "a-fork-owner", "a-branch", "trunk", "A title", "A body"
         )
 
@@ -199,7 +199,7 @@ def test_the_pull_requests_from_a_fork_s_branch_are_listed():
     answers = {("GET", f"/{listing}"): answer(HTTPStatus.OK, [recorded])}
 
     with ReplayedApi(answers) as api:
-        found = client(api).pull_requests_from("a-fork-owner", "a-branch")
+        found = client(api).fork_branch_pull_requests("a-fork-owner", "a-branch")
 
     assert [pull_request.number for pull_request in found] == [
         recorded[RestJSONKey.NUMBER]
@@ -213,7 +213,7 @@ def test_only_the_open_pull_requests_from_a_fork_s_branch_are_kept_open():
     answers = {("GET", f"/{listing}"): answer(HTTPStatus.OK, [merged, opened])}
 
     with ReplayedApi(answers) as api:
-        found = client(api).pull_requests_open_from("a-fork-owner", "a-branch")
+        found = client(api).open_fork_branch_pull_requests("a-fork-owner", "a-branch")
 
     assert [pull_request.number for pull_request in found] == [
         opened[RestJSONKey.NUMBER]

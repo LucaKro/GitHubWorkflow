@@ -99,7 +99,7 @@ def hosted(checkout: GitCommandRunner, tmp_path: Path) -> Repository:  # noqa: F
 def test_a_clone_holds_the_repository_s_commits(
     checkout: GitCommandRunner, hosted: Repository, tmp_path: Path  # noqa: F811
 ) -> None:
-    url = hosted.clone_url_under(f"file://{tmp_path / 'hosting'}")
+    url = hosted.rooted_clone_url(f"file://{tmp_path / 'hosting'}")
 
     clone = GitCommandRunner.clone(url, tmp_path / "clones" / hosted.name)
 
@@ -109,7 +109,7 @@ def test_a_clone_holds_the_repository_s_commits(
 def test_a_clone_s_origin_is_the_repository_cloned(
     hosted: Repository, tmp_path: Path
 ) -> None:
-    url = hosted.clone_url_under(f"file://{tmp_path / 'hosting'}")
+    url = hosted.rooted_clone_url(f"file://{tmp_path / 'hosting'}")
 
     clone = GitCommandRunner.clone(url, tmp_path / "clones" / hosted.name)
 
@@ -123,7 +123,7 @@ def test_a_relative_destination_is_cloned_where_it_names(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    url = hosted.clone_url_under(f"file://{tmp_path / 'hosting'}")
+    url = hosted.rooted_clone_url(f"file://{tmp_path / 'hosting'}")
     monkeypatch.chdir(tmp_path)
 
     GitCommandRunner.clone(url, Path("clones") / hosted.name)
@@ -134,7 +134,7 @@ def test_a_relative_destination_is_cloned_where_it_names(
 def test_cloning_into_a_non_empty_directory_is_refused(
     hosted: Repository, tmp_path: Path
 ) -> None:
-    url = hosted.clone_url_under(f"file://{tmp_path / 'hosting'}")
+    url = hosted.rooted_clone_url(f"file://{tmp_path / 'hosting'}")
     occupied = tmp_path / "occupied"
     occupied.mkdir()
     (occupied / "file.txt").write_text("in the way\n")

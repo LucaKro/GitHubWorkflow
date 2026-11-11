@@ -52,7 +52,7 @@ def test_text_outside_the_block_survives_rewriting_it() -> None:
     before, after = "my own line above\n", "\nmy own line below\n"
     document = before + block().render() + after
 
-    rewritten = block().written_into(document)
+    rewritten = block().updated_document(document)
 
     assert rewritten.startswith(before) and rewritten.endswith(after)
 

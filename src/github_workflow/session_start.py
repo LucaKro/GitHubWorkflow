@@ -151,7 +151,7 @@ class SessionStart:
             sections,
         )
         self.checkout.claude_local.write_text(
-            block.written_into(self.checkout.claude_local_text)
+            block.updated_document(self.checkout.claude_local_text)
         )
         self.checkout.exclude_claude_local()
         state = "" if exists else " (not created yet: the first save creates it)"

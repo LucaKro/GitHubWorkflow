@@ -45,6 +45,8 @@
 ### Naming
 - Names are technically correct, simple and descriptive, in that order. An inaccurate name is worse than a vague one, because a reader who trusts it stops reading
 - A name stays correct and understandable when read on its own, without its class or a keyword argument next to it - after `value = instance.attribute`, in a log line, in a traceback, or when passed on positionally. A `Pipe` field `size` says nothing once it leaves the class; `inner_diameter` does. A generic word that would fit anything never passes this test
+- Never begin a function or method name with one of the prepositions `as_`, `for_`, `with_`, `of_`, and never name one with a bare preposition such as `of` or `on`: the phrase it starts is only finished by the class name in front of it
+- Never end a function or method name with a preposition that only its first argument finishes, such as `bottom_of(body)`: name what it returns or does, such as `bottom_height(body)`. A preposition that belongs to the verb, as in `look_for` or `is_contained_in`, is part of the name
 - Use the plain word every reader already knows. Use a specialist, metaphorical or in-house term only where it is genuinely the precise word, never as shorthand between the people who were in the discussion
 - Where the domain or file format already has a word for something, use that word
 - Never abbreviate an identifier

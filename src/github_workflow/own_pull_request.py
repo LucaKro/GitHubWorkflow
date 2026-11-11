@@ -62,7 +62,7 @@ class WorkBranchPullRequest:
         """
         branch = self.policy.work_branch()
         owner = self.policy.remote.repository.owner
-        opened = self.pull_requests.pull_requests_open_from(owner, branch)
+        opened = self.pull_requests.open_fork_branch_pull_requests(owner, branch)
         if not opened:
             raise NoOpenPullRequestError(branch)
         return opened[0]

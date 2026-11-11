@@ -725,7 +725,7 @@ class CommandArgument:
             return self.name
         return f"{self.name} {shown}"
 
-    def add_to(self, parser: argparse._ActionsContainer) -> None:
+    def register(self, parser: argparse._ActionsContainer) -> None:
         """
         :param parser: The parser, or a group of its arguments, to add the argument to.
         """
@@ -1365,7 +1365,7 @@ class RunnableCommand(CommandSpecification, Enum):
     """
 
     @classmethod
-    def run_by(cls, words: Sequence[str]) -> RunnableCommand | None:
+    def from_words(cls, words: Sequence[str]) -> RunnableCommand | None:
         """
         :param words: A workflow command line's words, options left out.
         :return: The command they run, ``None`` when they run none.
@@ -1395,7 +1395,7 @@ class RunnableCommand(CommandSpecification, Enum):
         for command in cls:
             first = command.words[0]
             if len(command.words) == 1:
-                command.add_arguments_to(
+                command.register_arguments(
                     commands.add_parser(first, help=command.summary)
                 )
                 continue
@@ -1405,12 +1405,12 @@ class RunnableCommand(CommandSpecification, Enum):
                 )
                 group = commands.add_parser(first, help=actions)
                 subcommands[first] = group.add_subparsers(dest="action", required=True)
-            command.add_arguments_to(
+            command.register_arguments(
                 subcommands[first].add_parser(command.words[1], help=command.summary)
             )
         return parser
 
-    def add_arguments_to(self, parser: argparse.ArgumentParser) -> None:
+    def register_arguments(self, parser: argparse.ArgumentParser) -> None:
         """
         :param parser: The command's own parser, given each of its arguments.
         """
@@ -1420,7 +1420,7 @@ class RunnableCommand(CommandSpecification, Enum):
             else None
         )
         for argument in self.arguments:
-            argument.add_to(alternatives if argument.alternative else parser)
+            argument.register(alternatives if argument.alternative else parser)
 
 
 # %% what a session does about a refusal

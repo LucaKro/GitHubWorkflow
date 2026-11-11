@@ -88,7 +88,7 @@ class SettingsInMemory(RepositoryFeatures):
     def workflows(self) -> list[Workflow]:
         return list(self.listed)
 
-    def runs_on(self, branch: str) -> list[WorkflowRun]:
+    def branch_runs(self, branch: str) -> list[WorkflowRun]:
         return []
 
 

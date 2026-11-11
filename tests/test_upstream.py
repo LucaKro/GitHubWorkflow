@@ -93,7 +93,9 @@ class ForkInMemory(ProposingFork):
     Each pull request labelled, with the complete label set it was given.
     """
 
-    def pull_requests_from(self, owner: str, branch: str) -> list[RestPullRequest]:
+    def fork_branch_pull_requests(
+        self, owner: str, branch: str
+    ) -> list[RestPullRequest]:
         return [
             pull_request
             for pull_request in self.pull_requests
@@ -101,7 +103,7 @@ class ForkInMemory(ProposingFork):
             and (pull_request.head.repository or "").startswith(f"{owner}/")
         ]
 
-    def open_pull_request_from(
+    def open_fork_pull_request(
         self, owner: str, branch: str, base: str, title: str, body: str
     ) -> RestPullRequest:
         self.written.append(f"open {owner}:{branch} onto {base}: {title} | {body}")
@@ -177,7 +179,7 @@ def test_the_fork_s_pull_request_is_given_the_upstream_link() -> None:
 
     proposal(fork, upstream).run()
 
-    opened = upstream.open_pull_request_from(
+    opened = upstream.open_fork_pull_request(
         ScratchGitHub.owned.owner, "feature", "main", "", ""
     )
     assert fork.written == [
@@ -287,7 +289,7 @@ def test_a_pull_request_that_cannot_go_upstream_is_refused(
 def test_a_draft_on_a_fork_suggests_the_command_to_the_person() -> None:
     suggestion = UpstreamSuggestion(ForkInMemory(), ScratchGitHub.owned)
 
-    described = suggestion.appended_to("What the change does.", "feature")
+    described = suggestion.append_once("What the change does.", "feature")
 
     assert described.startswith("What the change does.")
     assert (
@@ -297,16 +299,16 @@ def test_a_draft_on_a_fork_suggests_the_command_to_the_person() -> None:
 
 def test_a_description_ending_with_the_suggestion_keeps_it_once() -> None:
     suggestion = UpstreamSuggestion(ForkInMemory(), ScratchGitHub.owned)
-    described = suggestion.appended_to("What the change does.", "feature")
+    described = suggestion.append_once("What the change does.", "feature")
 
-    assert suggestion.appended_to(described, "feature") == described
+    assert suggestion.append_once(described, "feature") == described
 
 
 def test_a_suggestion_amid_a_description_moves_to_its_end() -> None:
     suggestion = UpstreamSuggestion(ForkInMemory(), ScratchGitHub.owned)
-    described = suggestion.appended_to("What the change does.", "feature")
+    described = suggestion.append_once("What the change does.", "feature")
 
-    rewritten = suggestion.appended_to(f"{described}\nAfter the review.", "feature")
+    rewritten = suggestion.append_once(f"{described}\nAfter the review.", "feature")
 
     command = UpstreamSuggestion.opening_command(ScratchGitHub.owned, "feature")
     assert rewritten.count(command) == 1
@@ -316,7 +318,7 @@ def test_a_suggestion_amid_a_description_moves_to_its_end() -> None:
 def test_a_draft_on_a_repository_that_is_no_fork_suggests_nothing() -> None:
     suggestion = UpstreamSuggestion(ForkInMemory(forked_from=None), ScratchGitHub.owned)
 
-    described = suggestion.appended_to("What the change does.", "feature")
+    described = suggestion.append_once("What the change does.", "feature")
 
     assert described == "What the change does."
 
@@ -480,7 +482,7 @@ class UpstreamSearchInMemory(PullRequestSearch):
     The pull requests opened from each branch.
     """
 
-    def search_pull_requests_from(
+    def search_branch_pull_requests(
         self, author: str, branch: str
     ) -> list[SearchedPullRequest]:
         return self.found.get(branch, [])

@@ -133,7 +133,7 @@ class CommandStep(ABC):
         :return: The class building the step it asks for.
         """
         words = [word for word in (arguments.command, arguments.action) if word]
-        command = RunnableCommand.run_by(words)
+        command = RunnableCommand.from_words(words)
         builders = [cls]
         for builder in builders:
             builders += builder.__subclasses__()

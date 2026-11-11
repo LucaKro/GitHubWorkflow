@@ -16,7 +16,6 @@ from typing import Self
 from domain_model.class_property import classproperty
 from domain_model.github.closing_lines import ClosingLines
 from domain_model.github.issue_models import Issue
-from domain_model.github.number_links import NumberLink
 from domain_model.github.repository_client import (
     ClosablePullRequests,
     IssueAndPullRequestTracker,
@@ -212,8 +211,7 @@ class Priority(FindingLabel):
         """
         priority = cls.from_issue(issue)
         level = priority.level if priority else "no priority"
-        link = NumberLink(issue.number, repository.issue_url(issue.number))
-        return f"{link.markdown()} [{level}] {issue.title}"
+        return f"{repository.issue_link(issue.number)} [{level}] {issue.title}"
 
     @classmethod
     def emphases(cls, issue: Issue) -> tuple[Emphasis, ...]:
@@ -603,7 +601,7 @@ class FindingClosing(FindingChange):
         accepted = FindingStage.from_issue(issue) is FindingStage.ACCEPTED
         if issue.state is not IssueState.OPEN or not accepted:
             raise FindingNotAcceptedError(self.number)
-        proof = Proof.posted_in(self.issues.comments(self.number), self.authors)
+        proof = Proof.latest_posted(self.issues.comments(self.number), self.authors)
         if Evidence.from_issue(issue) is not Evidence.PROVEN or proof is None:
             raise UnprovenFindingCloseError(self.number)
         fix = self.issues.pull_request(self.fixed_by)
@@ -813,7 +811,7 @@ class FindingRecheck(WorkflowStep):
             broken.
         """
         issue = self.board.issue(self.number)
-        proof = Proof.posted_in(self.board.comments(self.number), self.authors)
+        proof = Proof.latest_posted(self.board.comments(self.number), self.authors)
         if Evidence.from_issue(issue) is not Evidence.PROVEN or proof is None:
             raise MissingProofError(self.number)
         attempt = self.runner.attempt(proof.test)

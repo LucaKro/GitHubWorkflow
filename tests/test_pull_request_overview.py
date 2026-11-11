@@ -9,7 +9,6 @@ from dataclasses import dataclass, field, replace
 
 import pytest
 from domain_model.github.labels import GitHubLabel
-from domain_model.github.number_links import NumberLink
 from domain_model.github.pull_request_models import (
     CheckResult,
     CheckStatus,
@@ -233,7 +232,7 @@ def test_a_pull_request_is_named_with_its_page() -> None:
 
     [_, line] = github.overview().lines()
 
-    assert line.text.split()[0] == NumberLink(1, github.pull_request(1).url).markdown()
+    assert line.text.split()[0] == github.pull_request(1).markdown_link
 
 
 def test_pull_requests_are_grouped_open_upstream_then_drafts_then_ready() -> None:
@@ -249,10 +248,7 @@ def test_pull_requests_are_grouped_open_upstream_then_drafts_then_ready() -> Non
     named = [line.text.split()[0] for line in lines if line.text.startswith(" ")]
     assert (headings, named) == (
         [Speaker.WORKFLOW.says(f"{group}:") for group in PullRequestGroup],
-        [
-            NumberLink(number, github.pull_request(number).url).markdown()
-            for number in (3, 4, 2, 1)
-        ],
+        [github.pull_request(number).markdown_link for number in (3, 4, 2, 1)],
     )
 
 

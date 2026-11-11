@@ -40,7 +40,7 @@ class ClosingLines:
         """
         return [int(line.rpartition("#")[2]) for line in self.lines()]
 
-    def kept_in(self, rewritten: str) -> str:
+    def append_missing_lines(self, rewritten: str) -> str:
         """
         :param rewritten: A new description replacing this one.
         :return: It, ending with every closing line of this one it lacks.

@@ -17,7 +17,6 @@ from domain_model.git.remotes import ProposedPush, RemoteBranch
 from domain_model.git.revisions import LocalBranch
 from domain_model.git.working_tree import WorkingTree
 from domain_model.github.closing_lines import ClosingLines
-from domain_model.github.number_links import NumberLink
 from domain_model.github.repository_client import (
     BranchStacks,
     IssueTracker,
@@ -242,7 +241,7 @@ class DescriptionEnding(ABC):
     """
 
     @abstractmethod
-    def appended_to(self, body: str, branch: str) -> str:
+    def append_once(self, body: str, branch: str) -> str:
         """
         :param body: A pull request's description, which may end with it already.
         :param branch: The pull request's branch.
@@ -370,7 +369,7 @@ class DraftOpening(WorkflowStep):
             else self.placement.host.pull_request(self.below).head.branch
         )
         body = (
-            self.ending.appended_to(self.body, branch.name)
+            self.ending.append_once(self.body, branch.name)
             if self.ending is not None and self.below is None
             else self.body
         )
@@ -391,8 +390,8 @@ class DraftOpening(WorkflowStep):
         :param body: Its description.
         :return: What was done.
         """
-        link = NumberLink(number, self.policy.remote.repository.issue_url(number))
-        opened = f"opened draft {link.markdown()}: {branch} onto {base}"
+        link = self.policy.remote.repository.issue_link(number)
+        opened = f"opened draft {link}: {branch} onto {base}"
         if self.replacement is not None:
             replaced = self.replacement.number
             self.replacement.retirement.retire(replaced, f"Replaced by #{number}.")
@@ -514,10 +513,10 @@ class DescriptionRewrite(WorkflowStep):
             raise PullRequestNotOpenError(self.number)
         rewritten = []
         if self.body is not None:
-            kept = ClosingLines(pull_request.body or "").kept_in(self.body)
+            kept = ClosingLines(pull_request.body or "").append_missing_lines(self.body)
             onto_default = pull_request.base == self.pull_requests.default_branch()
             body = (
-                self.ending.appended_to(kept, pull_request.head.branch)
+                self.ending.append_once(kept, pull_request.head.branch)
                 if self.ending is not None and onto_default
                 else kept
             )
@@ -596,7 +595,7 @@ class BranchSync(WorkflowStep):
         if branch.tracking_branch.was_fetched_or_pushed():
             return True
         owner = self.policy.remote.repository.owner
-        return bool(self.pull_requests.pull_requests_from(owner, branch.name))
+        return bool(self.pull_requests.fork_branch_pull_requests(owner, branch.name))
 
 
 # %% taking in the default branch
@@ -672,7 +671,7 @@ class MergeCompletion(WorkflowStep):
         marked = [
             str(path)
             for path in self.resolved
-            if ConflictMarker.left_in((checkout.root / path).read_text())
+            if ConflictMarker.marks_conflict((checkout.root / path).read_text())
         ]
         if marked:
             raise ConflictMarkersLeftError(tuple(marked))
@@ -734,8 +733,8 @@ class BaseMerge(WorkflowStep):
     def run(self) -> str:
         branch = self.policy.work_branch()
         owner = self.policy.remote.repository.owner
-        for pull_request in self.branches.pull_requests_from(owner, branch):
-            stacked = self.branches.stack_of(pull_request.number) is not None
+        for pull_request in self.branches.fork_branch_pull_requests(owner, branch):
+            stacked = self.branches.containing_stack(pull_request.number) is not None
             above = pull_request.base != self.policy.default_branch
             if pull_request.state is PullRequestState.OPEN and stacked and above:
                 raise StackedBranchMergeError(branch, pull_request.number)
@@ -921,7 +920,7 @@ class RepositoryCloning(WorkflowStep):
                 f"for what changed since"
             )
         GitCommandRunner.clone(
-            self.repository.clone_url_under(self.hosting_root), destination
+            self.repository.rooted_clone_url(self.hosting_root), destination
         )
         checkout = ProjectCheckout(GitCommandRunner(destination))
         refused = PushHook(checkout, Path(sys.executable)).install()

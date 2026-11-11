@@ -376,7 +376,7 @@ class NotesBlock:
         lines.append(BlockMarker.END)
         return "\n".join(lines) + "\n"
 
-    def written_into(self, document: str) -> str:
+    def updated_document(self, document: str) -> str:
         """
         :param document: ``CLAUDE.local.md`` as it is now, empty when it does not exist.
         :return: It with this block in place of the old one, or appended when it holds

@@ -66,7 +66,7 @@ class BrokenTestException(StrEnum):
     """
 
     @classmethod
-    def reported_in(cls, message: str) -> bool:
+    def is_reported(cls, message: str) -> bool:
         """
         :param message: pytest's message on a failed test.
         :return: Whether it reports one of these exceptions.

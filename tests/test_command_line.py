@@ -33,7 +33,7 @@ def test_every_command_is_parsed_under_its_words(command: RunnableCommand) -> No
     parsed = RunnableCommand.parser().parse_args([*command.words, *required])
 
     words = [word for word in (parsed.command, parsed.action) if word]
-    assert RunnableCommand.run_by(words) is command
+    assert RunnableCommand.from_words(words) is command
 
 
 @pytest.mark.parametrize("command", list(RunnableCommand))

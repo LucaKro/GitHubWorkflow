@@ -105,7 +105,7 @@ class GitProgramOption(StrEnum):
         return "u"
 
     @classmethod
-    def present_in(cls, subcommand: str, arguments: Sequence[str]) -> bool:
+    def runs_program(cls, subcommand: str, arguments: Sequence[str]) -> bool:
         """
         :param subcommand: The git subcommand.
         :param arguments: What follows it.
@@ -962,7 +962,7 @@ class GitCall:
         opens_files = subcommand == GitSubcommand.GREP and any(
             argument.startswith(pager) for argument in rest
         )
-        if GitProgramOption.present_in(subcommand, rest) or opens_files:
+        if GitProgramOption.runs_program(subcommand, rest) or opens_files:
             return GitCallEffect.RUNS_A_PROGRAM
         if subcommand not in GitSubcommand:
             return GitCallEffect.WRITES
