@@ -652,13 +652,13 @@ class CommandGuard:
                 "a shell reading its input could run git or gh unseen", saw_write=False
             )
         judge = replace(self, enclosing_line_names_git=mentions_git)
-        for words in line.simple_commands():
+        for command in line.simple_commands():
             person_only = next(
                 (
-                    command
-                    for command in RunnableCommand
-                    if command.authority is CommandAuthority.PERSON
-                    and WorkflowInvocation(SimpleCommand(words)).runs(command)
+                    workflow_command
+                    for workflow_command in RunnableCommand
+                    if workflow_command.authority is CommandAuthority.PERSON
+                    and WorkflowInvocation(command).runs(workflow_command)
                 ),
                 None,
             )
@@ -668,22 +668,21 @@ class CommandGuard:
                     f"Claude Code session: put its command line in the pull request's "
                     f"description for them to copy"
                 )
-            if mentions_git and "$" in SimpleCommand(words).program:
+            if mentions_git and "$" in command.program:
                 return Denial(
                     "a program named by an expansion could be git or gh",
                     saw_write=False,
                 )
-            reason = judge.command_denial(words)
+            reason = judge.command_denial(command)
             if reason is not None:
                 return reason
         return None
 
-    def command_denial(self, words: Sequence[str]) -> Denial | None:
+    def command_denial(self, command: SimpleCommand) -> Denial | None:
         """
-        :param words: One simple command's words.
+        :param command: One simple command.
         :return: Why it is denied, ``None`` when it may run.
         """
-        command = SimpleCommand(words)
         program, arguments = command.program, command.arguments
         if any(
             GitVariable.steers_git(assignment) for assignment in command.assignments
@@ -746,7 +745,7 @@ class CommandGuard:
                     saw_write=False,
                 )
             if program in judged:
-                return self.command_denial(arguments[index:])
+                return self.command_denial(SimpleCommand(arguments[index:]))
         return None
 
     @staticmethod

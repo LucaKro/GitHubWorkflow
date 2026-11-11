@@ -12,24 +12,28 @@ from domain_model.shell import CommandLine, SimpleCommand
 
 def test_a_line_is_split_at_its_operators():
     assert CommandLine("cd here && git log | head").simple_commands() == [
-        ["cd", "here"],
-        ["git", "log"],
-        ["head"],
+        SimpleCommand(["cd", "here"]),
+        SimpleCommand(["git", "log"]),
+        SimpleCommand(["head"]),
     ]
 
 
 def test_a_substitution_s_command_is_split_out_too():
-    assert ["git", "push"] in CommandLine("echo $(git push)").simple_commands()
+    commands = CommandLine("echo $(git push)").simple_commands()
+
+    assert SimpleCommand(["git", "push"]) in commands
 
 
 def test_a_redirection_s_target_is_no_word_of_the_command():
-    assert CommandLine("git log > out.txt 2>&1").simple_commands() == [["git", "log"]]
+    assert CommandLine("git log > out.txt 2>&1").simple_commands() == [
+        SimpleCommand(["git", "log"])
+    ]
 
 
 def test_a_here_document_no_shell_reads_is_data():
     line = "cat <<EOF\ngit push\nEOF"
 
-    assert CommandLine(line).simple_commands() == [["cat"]]
+    assert CommandLine(line).simple_commands() == [SimpleCommand(["cat"])]
 
 
 def test_a_shell_reading_its_input_is_seen():

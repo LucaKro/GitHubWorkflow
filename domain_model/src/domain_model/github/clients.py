@@ -12,6 +12,7 @@ import urllib.request
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from enum import StrEnum
 from http import HTTPMethod, HTTPStatus
 from pathlib import Path
 from typing import Any
@@ -63,6 +64,41 @@ class GraphQLClient(ABC):
         """
 
 
+class RecordedAnswersKey(StrEnum):
+    """
+    The keys of :class:`RecordedAnswers` as JSON.
+    """
+
+    DATA = "answers"
+    """
+    The ``data`` of every answer, in order.
+    """
+
+
+@dataclass(frozen=True)
+class RecordedAnswers:
+    """
+    GitHub's answers to a run of GraphQL queries, in the order they came.
+    """
+
+    data: list[dict[str, Any]] = field(default_factory=list)
+    """
+    The ``data`` member of every answer, in order.
+    """
+
+    def to_json(self) -> str:
+        """:return: The answers, as :meth:`from_json` reads them."""
+        return json.dumps({RecordedAnswersKey.DATA: self.data})
+
+    @classmethod
+    def from_json(cls, text: str) -> RecordedAnswers:
+        """
+        :param text: Answers, as :meth:`to_json` writes them.
+        :return: The answers.
+        """
+        return cls(json.loads(text)[RecordedAnswersKey.DATA])
+
+
 @dataclass(frozen=True)
 class RecordingGraphQLClient(GraphQLClient):
     """
@@ -75,14 +111,14 @@ class RecordingGraphQLClient(GraphQLClient):
     The client the queries go through.
     """
 
-    answers: list[dict[str, Any]] = field(default_factory=list)
+    answers: RecordedAnswers = field(default_factory=RecordedAnswers)
     """
-    The ``data`` of every answer, in the order they came.
+    Every answer, in the order they came.
     """
 
     def execute(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
         answer = self.client.execute(query, variables)
-        self.answers.append(answer)
+        self.answers.data.append(answer)
         return answer
 
 
@@ -93,9 +129,9 @@ class ReplayingGraphQLClient(GraphQLClient):
     the same reads, made in the same order, see what GitHub answered then.
     """
 
-    answers: list[dict[str, Any]]
+    answers: RecordedAnswers
     """
-    The ``data`` of every recorded answer, in order.
+    The recorded answers.
     """
 
     given: int = 0
@@ -107,10 +143,10 @@ class ReplayingGraphQLClient(GraphQLClient):
         """
         :raises RecordedAnswersExhaustedError: If every answer was given already.
         """
-        if self.given == len(self.answers):
+        if self.given == len(self.answers.data):
             raise RecordedAnswersExhaustedError(self.given)
         self.given += 1
-        return self.answers[self.given - 1]
+        return self.answers.data[self.given - 1]
 
 
 class RestClient(ABC):

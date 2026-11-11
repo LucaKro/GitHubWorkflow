@@ -5,7 +5,6 @@ commits built without a checkout, and pushed without force.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,7 +14,7 @@ from domain_model.git.exceptions import (
     StorageBranchWriteConflict,
 )
 from domain_model.git.remotes import ProposedPush, RemoteBranch
-from domain_model.git.revisions import Commit
+from domain_model.git.revisions import Commit, TextFiles
 
 # %% the branch
 
@@ -57,7 +56,7 @@ class StorageBranch:
         """
         return self.branch.tracking_branch.file_text(path)
 
-    def write(self, files: Mapping[Path, str], message: str) -> None:
+    def write(self, files: TextFiles, message: str) -> None:
         """
         Commit *files* on top of the branch's tip and push the commit.
 
@@ -80,9 +79,7 @@ class StorageBranch:
             raise StorageBranchPushRefused(self.branch.name, pushed.error_output)
         self.fetch()
 
-    def _refuse_overwriting(
-        self, base: Commit | None, files: Mapping[Path, str]
-    ) -> None:
+    def _refuse_overwriting(self, base: Commit | None, files: TextFiles) -> None:
         """
         :param base: The tip the write was first built on, ``None`` when the branch did
             not exist.
@@ -93,13 +90,13 @@ class StorageBranch:
         tip = self.branch.tracking_branch.commit_or_none()
         changed = tuple(
             path
-            for path in files
+            for path in files.paths
             if (base and base.file_blob(path)) != (tip and tip.file_blob(path))
         )
         if changed:
             raise StorageBranchWriteConflict(self.branch.name, changed)
 
-    def _push(self, files: Mapping[Path, str], message: str) -> GitCommandResult:
+    def _push(self, files: TextFiles, message: str) -> GitCommandResult:
         """
         :param files: The text of each file to write.
         :param message: The commit message.

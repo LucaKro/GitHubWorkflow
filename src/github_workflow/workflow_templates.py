@@ -9,8 +9,9 @@ import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum, StrEnum, auto
-from pathlib import Path, PurePath
+from pathlib import PurePath
 
+from domain_model.git.revisions import TextFiles
 from domain_model.repository import Repository
 from domain_model.templates import Placeholder
 
@@ -264,9 +265,7 @@ class NotesBranchWorkflow(Enum):
             ),
         )
 
-    def files(
-        self, notes_branch: str, values: Mapping[Placeholder, str]
-    ) -> dict[Path, str]:
+    def files(self, notes_branch: str, values: Mapping[Placeholder, str]) -> TextFiles:
         """
         :param notes_branch: The notes branch's name.
         :param values: The text of the workflow's other placeholders.
@@ -281,10 +280,12 @@ class NotesBranchWorkflow(Enum):
             },
             **values,
         }
-        return {
-            self.destination: Placeholder.fill(self.template.read_text(), filled),
-            **{
-                companion.destination: companion.template.read_text()
-                for companion in self.companions
-            },
-        }
+        return TextFiles(
+            {
+                self.destination: Placeholder.fill(self.template.read_text(), filled),
+                **{
+                    companion.destination: companion.template.read_text()
+                    for companion in self.companions
+                },
+            }
+        )

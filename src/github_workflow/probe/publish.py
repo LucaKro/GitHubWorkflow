@@ -14,6 +14,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from domain_model.git.commands import GitCommandRunner
+from domain_model.git.revisions import TextFiles
 from domain_model.git.storage_branch import StorageBranch
 
 from github_workflow.plugin import Distribution
@@ -58,11 +59,13 @@ class ResultsPublication:
         results = StorageBranch(self.remote.branch(ResultsBranch.NAME))
         results.fetch()
         results.write(
-            {
-                Path(self.directory.name) / file.name: file.read_text()
-                for file in sorted(self.directory.iterdir())
-                if file.is_file()
-            },
+            TextFiles(
+                {
+                    Path(self.directory.name) / file.name: file.read_text()
+                    for file in sorted(self.directory.iterdir())
+                    if file.is_file()
+                }
+            ),
             f"Record results {self.directory.name}",
         )
         return f"published to {ResultsBranch.NAME}: {self.directory.name}/"

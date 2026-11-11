@@ -16,11 +16,12 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
 
+from domain_model.git.revisions import TextFiles
 from domain_model.github.clients import (
     GitHubApi,
     GraphQLClient,
+    RecordedAnswers,
     RecordingGraphQLClient,
     ReplayingGraphQLClient,
 )
@@ -51,7 +52,7 @@ from github_workflow.workflow_templates import (
 
 class UpstreamReviewKey(StrEnum):
     """
-    The keys of a request, and of its answer, as the notes branch holds them.
+    The keys of a request, as the notes branch holds it.
     """
 
     UPSTREAM = "upstream"
@@ -67,11 +68,6 @@ class UpstreamReviewKey(StrEnum):
     BRANCH = "branch"
     """
     The fork's branch.
-    """
-
-    ANSWERS = "answers"
-    """
-    GitHub's answers to the reads, in an answer.
     """
 
 
@@ -246,7 +242,7 @@ class ForwardedUpstreamReviews(UpstreamReviews):
             self.notes.fetch()
             saved = self.notes.read(answer)
             if saved is not None:
-                answers = json.loads(saved)[UpstreamReviewKey.ANSWERS]
+                answers = RecordedAnswers.from_json(saved)
                 return request.snapshot(ReplayingGraphQLClient(answers))
             stopped = self.stopped_run(queued, waited)
             if stopped is not None:
@@ -303,10 +299,9 @@ class ForwardedUpstreamReviews(UpstreamReviews):
         )
         self.notes.fetch()
         self.notes.write(
-            {
-                NotesFile.UPSTREAM_REVIEW_REQUESTS / request.name: request.to_json(),
-                **workflow,
-            },
+            TextFiles(
+                {NotesFile.UPSTREAM_REVIEW_REQUESTS / request.name: request.to_json()}
+            ).combined(workflow),
             f"Ask for the upstream reviews of {request.branch}",
         )
         self.notes.fetch()
@@ -352,8 +347,7 @@ class UpstreamReviewAnswering:
             request = UpstreamReviewRequest.from_file(path)
             recording = RecordingGraphQLClient(self.client)
             request.snapshot(recording)
-            saved: dict[str, Any] = {UpstreamReviewKey.ANSWERS: recording.answers}
-            (self.answers / request.name).write_text(json.dumps(saved))
+            (self.answers / request.name).write_text(recording.answers.to_json())
             path.unlink()
             answered.append(request.name)
         return answered

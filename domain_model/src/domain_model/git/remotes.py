@@ -72,6 +72,22 @@ class RemoteOption(GitOption):
     """
 
 
+class RemoteReadingCommand(StrEnum):
+    """
+    The commands of ``git remote`` that only read, named by its first other argument.
+    """
+
+    SHOW = "show"
+    """
+    Show a remote and its branches.
+    """
+
+    GET_URL = "get-url"
+    """
+    Print a remote's URL.
+    """
+
+
 class LsRemoteOption(GitOption):
     """
     The options of ``git ls-remote``.
@@ -141,7 +157,12 @@ class Remote:
             cls.from_push_url(
                 git,
                 name,
-                git.run(GitSubcommand.REMOTE, "get-url", RemoteOption.PUSH, name),
+                git.run(
+                    GitSubcommand.REMOTE,
+                    RemoteReadingCommand.GET_URL,
+                    RemoteOption.PUSH,
+                    name,
+                ),
             )
             for name in git.run(GitSubcommand.REMOTE).split()
         ]
@@ -295,6 +316,17 @@ class ReflogOption(GitOption):
     """
 
 
+class ReflogReadingCommand(StrEnum):
+    """
+    The commands of ``git reflog`` that only read, named by its first other argument.
+    """
+
+    SHOW = "show"
+    """
+    Show where a reference has been.
+    """
+
+
 class TrackingReferenceWrite(StrEnum):
     """
     How the reflog names a write of a remote-tracking branch from its remote, compared
@@ -423,7 +455,10 @@ class RemoteTrackingBranch(Revision):
     def was_fetched_or_pushed(self) -> bool:
         """:return: Whether a fetch, a pull or a push ever wrote it, as its reflog says."""
         reflog = self.git.attempt(
-            GitSubcommand.REFLOG, "show", ReflogOption.SUBJECTS, self.revision_name
+            GitSubcommand.REFLOG,
+            ReflogReadingCommand.SHOW,
+            ReflogOption.SUBJECTS,
+            self.revision_name,
         )
         entries = reflog.output.splitlines() if reflog.succeeded else []
         writes = tuple(TrackingReferenceWrite)

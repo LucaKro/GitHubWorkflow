@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from domain_model.git.revisions import TextFiles
+
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.remotes import OwnedRemotes
@@ -31,7 +33,9 @@ def test_notes_are_saved_to_the_settings_branch_on_the_owner_s_remote(
         OwnedRemotes.read(checkout.git, settings).chosen, settings
     )
 
-    notes.write({Path(NotesFile.STANDING_NOTES): "a standing note\n"}, "Save")
+    notes.write(
+        TextFiles({Path(NotesFile.STANDING_NOTES): "a standing note\n"}), "Save"
+    )
 
     assert settings.notes_branch in repositories.branches(owned_url)
     assert settings.notes_branch not in repositories.branches(foreign_url)

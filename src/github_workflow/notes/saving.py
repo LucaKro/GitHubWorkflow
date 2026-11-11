@@ -7,6 +7,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from domain_model.git.revisions import TextFiles
+
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
@@ -43,7 +45,7 @@ class NotesSave:
             return self.checkout.checked_out_branch_name
         return recorded
 
-    def files(self) -> dict[Path, str]:
+    def files(self) -> TextFiles:
         """
         :return: Each file the block's sections are saved to, with the section's text.
         :raises NotesBlockMissingError: If ``CLAUDE.local.md`` holds no block.
@@ -60,7 +62,7 @@ class NotesSave:
             files[NotesFile.progress_file(branch)] = sections[
                 NotesSection.BRANCH_PROGRESS
             ]
-        return files
+        return TextFiles(files)
 
     def run(self) -> list[Path]:
         """
@@ -72,14 +74,16 @@ class NotesSave:
         files = self.files()
         branch = self.checkout.checked_out_branch_name
         self.notes.fetch()
-        changed = {
-            path: f"{text}\n"
-            for path, text in files.items()
-            if (self.notes.read(path) or "").strip() != text
-        }
-        if changed:
+        changed = TextFiles(
+            {
+                path: f"{text}\n"
+                for path, text in files.texts.items()
+                if (self.notes.read(path) or "").strip() != text
+            }
+        )
+        if changed.texts:
             self.notes.write(changed, f"Save notes from {branch or 'a detached HEAD'}")
         self.checkout.claude_local.write_text(
             NotesBlock.marked_saved(self.checkout.claude_local_text)
         )
-        return list(changed)
+        return changed.paths

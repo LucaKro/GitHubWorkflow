@@ -44,7 +44,7 @@ def test_a_workflow_is_written_with_every_file_it_runs(
 ) -> None:
     files = workflow.files("notes", {})
 
-    assert set(files) == {
+    assert set(files.paths) == {
         workflow.destination.value,
         *(companion.destination.value for companion in workflow.companions),
     }
@@ -54,7 +54,7 @@ def test_a_workflow_is_written_with_every_file_it_runs(
 def test_a_workflow_names_where_the_notes_branch_keeps_its_files(
     workflow: NotesBranchWorkflow,
 ) -> None:
-    text = workflow.files("notes", {})[workflow.destination.value]
+    text = workflow.files("notes", {}).texts[workflow.destination.value]
 
     assert all(str(companion.destination) in text for companion in workflow.companions)
 

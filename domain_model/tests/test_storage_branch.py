@@ -14,6 +14,7 @@ import pytest
 from domain_model.git.commands import GitCommandResult, GitCommandRunner
 from domain_model.git.exceptions import StorageBranchWriteConflict
 from domain_model.git.remotes import Remote, RemoteName
+from domain_model.git.revisions import TextFiles
 from domain_model.git.storage_branch import StorageBranch
 
 # %% fixtures
@@ -67,7 +68,9 @@ def test_before_the_first_write_there_is_nothing_to_read(remote, tmp_path):
 
 
 def test_the_first_write_creates_the_branch_with_the_file(remote, tmp_path):
-    storage(remote, tmp_path, "writer").write({Path("file.md"): "text\n"}, "Write")
+    storage(remote, tmp_path, "writer").write(
+        TextFiles({Path("file.md"): "text\n"}), "Write"
+    )
     reader = storage(remote, tmp_path, "reader")
 
     assert reader.fetch() is True
@@ -76,9 +79,9 @@ def test_the_first_write_creates_the_branch_with_the_file(remote, tmp_path):
 
 def test_a_write_leaves_the_files_it_does_not_write_alone(remote, tmp_path):
     branch = storage(remote, tmp_path, "writer")
-    branch.write({Path("one.md"): "one\n"}, "Write")
+    branch.write(TextFiles({Path("one.md"): "one\n"}), "Write")
 
-    branch.write({Path("two.md"): "two\n"}, "Write")
+    branch.write(TextFiles({Path("two.md"): "two\n"}), "Write")
 
     assert branch.read(Path("one.md")) == "one\n"
     assert branch.read(Path("two.md")) == "two\n"
@@ -91,11 +94,11 @@ def test_a_writer_behind_another_keeps_both_writes(remote, tmp_path):
     """
     first = storage(remote, tmp_path, "first")
     second = storage(remote, tmp_path, "second")
-    first.write({Path("one.md"): "one\n"}, "Write")
+    first.write(TextFiles({Path("one.md"): "one\n"}), "Write")
     second.fetch()
-    first.write({Path("two.md"): "two\n"}, "Write")
+    first.write(TextFiles({Path("two.md"): "two\n"}), "Write")
 
-    second.write({Path("three.md"): "three\n"}, "Write")
+    second.write(TextFiles({Path("three.md"): "three\n"}), "Write")
 
     assert second.read(Path("two.md")) == "two\n"
     assert second.read(Path("three.md")) == "three\n"
@@ -105,7 +108,7 @@ def test_a_file_is_read_back_exactly_as_written(remote: Path, tmp_path: Path) ->
     text = "line\n\n  "
     branch = storage(remote, tmp_path, "writer")
 
-    branch.write({Path("file.md"): text}, "Write")
+    branch.write(TextFiles({Path("file.md"): text}), "Write")
 
     assert branch.read(Path("file.md")) == text
 
@@ -115,12 +118,12 @@ def test_a_writer_behind_another_on_the_same_file_is_refused(
 ) -> None:
     first = storage(remote, tmp_path, "first")
     second = storage(remote, tmp_path, "second")
-    first.write({Path("one.md"): "one\n"}, "Write")
+    first.write(TextFiles({Path("one.md"): "one\n"}), "Write")
     second.fetch()
-    first.write({Path("one.md"): "changed\n"}, "Write")
+    first.write(TextFiles({Path("one.md"): "changed\n"}), "Write")
 
     with pytest.raises(StorageBranchWriteConflict):
-        second.write({Path("one.md"): "overwritten\n"}, "Write")
+        second.write(TextFiles({Path("one.md"): "overwritten\n"}), "Write")
 
 
 def test_a_write_leaves_the_checkout_untouched(remote, tmp_path):
@@ -128,7 +131,7 @@ def test_a_write_leaves_the_checkout_untouched(remote, tmp_path):
     git = branch.branch.remote.git
     before = git.run("status", "--porcelain"), git.run("rev-parse", "HEAD")
 
-    branch.write({Path("file.md"): "text\n"}, "Write")
+    branch.write(TextFiles({Path("file.md"): "text\n"}), "Write")
 
     assert (git.run("status", "--porcelain"), git.run("rev-parse", "HEAD")) == before
 
@@ -152,7 +155,9 @@ class GitCallsRecorded(GitCommandRunner):
 
 
 def test_a_branch_that_did_not_move_is_not_fetched_again(remote, tmp_path):
-    storage(remote, tmp_path, "writer").write({Path("file.md"): "text\n"}, "Write")
+    storage(remote, tmp_path, "writer").write(
+        TextFiles({Path("file.md"): "text\n"}), "Write"
+    )
     reader = storage(remote, tmp_path, "reader")
     reader.fetch()
     origin = reader.branch.remote

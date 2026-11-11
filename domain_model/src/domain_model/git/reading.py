@@ -14,7 +14,12 @@ from pathlib import PurePath
 
 from domain_model.class_property import classproperty
 from domain_model.git.exceptions import UnjudgedSubcommandError
-from domain_model.git.remotes import ReflogOption, RemoteOption
+from domain_model.git.remotes import (
+    ReflogOption,
+    ReflogReadingCommand,
+    RemoteOption,
+    RemoteReadingCommand,
+)
 from domain_model.git.revisions import FetchOption, ReferenceNamespace
 from domain_model.git.subcommands import (
     GitGlobalOption,
@@ -139,7 +144,7 @@ class ReadingFetch(StrEnum):
         return destination.startswith(ReferenceNamespace.REMOTE_TRACKING_BRANCHES)
 
 
-# %% the options only told apart here
+# %% the options and commands only told apart here
 
 
 class GrepOption(GitOption):
@@ -378,6 +383,60 @@ class SubmoduleOption(GitOption):
     """
 
 
+class ConfigReadingCommand(StrEnum):
+    """
+    The commands of ``git config`` that only read.
+    """
+
+    GET = "get"
+    """
+    Print the value of the key given.
+    """
+
+    LIST = "list"
+    """
+    Print every key and value.
+    """
+
+
+class StashReadingCommand(StrEnum):
+    """
+    The commands of ``git stash`` that only read.
+    """
+
+    LIST = "list"
+    """
+    List the stashes.
+    """
+
+    SHOW = "show"
+    """
+    Show a stash's changes.
+    """
+
+
+class WorktreeReadingCommand(StrEnum):
+    """
+    The commands of ``git worktree`` that only read.
+    """
+
+    LIST = "list"
+    """
+    List the worktrees.
+    """
+
+
+class SubmoduleReadingCommand(StrEnum):
+    """
+    The commands of ``git submodule`` that only read.
+    """
+
+    STATUS = "status"
+    """
+    Report each submodule's commit and whether it is checked out there.
+    """
+
+
 class ArchiveOption(GitOption):
     """
     The options of ``git archive``.
@@ -591,24 +650,6 @@ class TagSubcommand(ListingSubcommand):
 
 
 @dataclass(frozen=True)
-class RemoteSubcommand(PartlyReadingSubcommand):
-    """
-    remote, which reads when it lists remotes or shows one.
-    """
-
-    @classproperty
-    def subcommand(cls) -> GitSubcommand:
-        return GitSubcommand.REMOTE
-
-    @classproperty
-    def options(cls) -> type[GitOption]:
-        return RemoteOption
-
-    def form_reads(self, arguments: GitSubcommandArguments) -> bool:
-        return arguments.positional[:1] in ([], ["show"], ["get-url"])
-
-
-@dataclass(frozen=True)
 class ConfigSubcommand(PartlyReadingSubcommand):
     """
     config, which reads when it gets or lists values, or names a single key without
@@ -641,27 +682,59 @@ class ConfigSubcommand(PartlyReadingSubcommand):
     def form_reads(self, arguments: GitSubcommandArguments) -> bool:
         positional = arguments.positional
         options = {self.options.look_up(option) for option in arguments.options}
-        gets = bool(options & self.getting_options)
-        gets = gets or positional[:1] in (["get"], ["list"])
+        first = positional[0] if positional else None
+        gets = bool(options & self.getting_options) or first in ConfigReadingCommand
         return gets or (len(positional) == 1 and "." in positional[0])
 
 
 @dataclass(frozen=True)
 class FirstWordSubcommand(PartlyReadingSubcommand, ABC):
     """
-    A subcommand that reads when its first other argument is one of a few words.
+    A subcommand that reads when its first other argument names one of its reading
+    commands, or, for some, when it has none.
     """
 
     @classproperty
     @abstractmethod
-    def reading_words(cls) -> tuple[tuple[str, ...], ...]:
+    def reading_commands(cls) -> type[StrEnum]:
         """
-        The first words of its reading forms, each as a list of at most one word; an
-        empty one when the bare subcommand reads.
+        The commands of the subcommand that only read.
+        """
+
+    @classproperty
+    @abstractmethod
+    def bare_reads(cls) -> bool:
+        """
+        Whether the subcommand reads when given no other argument.
         """
 
     def form_reads(self, arguments: GitSubcommandArguments) -> bool:
-        return tuple(arguments.positional[:1]) in self.reading_words
+        if not arguments.positional:
+            return self.bare_reads
+        return arguments.positional[0] in self.reading_commands
+
+
+@dataclass(frozen=True)
+class RemoteSubcommand(FirstWordSubcommand):
+    """
+    remote, which reads when it lists remotes or shows one.
+    """
+
+    @classproperty
+    def subcommand(cls) -> GitSubcommand:
+        return GitSubcommand.REMOTE
+
+    @classproperty
+    def options(cls) -> type[GitOption]:
+        return RemoteOption
+
+    @classproperty
+    def reading_commands(cls) -> type[StrEnum]:
+        return RemoteReadingCommand
+
+    @classproperty
+    def bare_reads(cls) -> bool:
+        return True
 
 
 @dataclass(frozen=True)
@@ -679,8 +752,12 @@ class StashSubcommand(FirstWordSubcommand):
         return StashOption
 
     @classproperty
-    def reading_words(cls) -> tuple[tuple[str, ...], ...]:
-        return ("list",), ("show",)
+    def reading_commands(cls) -> type[StrEnum]:
+        return StashReadingCommand
+
+    @classproperty
+    def bare_reads(cls) -> bool:
+        return False
 
 
 @dataclass(frozen=True)
@@ -698,8 +775,12 @@ class WorktreeSubcommand(FirstWordSubcommand):
         return WorktreeOption
 
     @classproperty
-    def reading_words(cls) -> tuple[tuple[str, ...], ...]:
-        return (("list",),)
+    def reading_commands(cls) -> type[StrEnum]:
+        return WorktreeReadingCommand
+
+    @classproperty
+    def bare_reads(cls) -> bool:
+        return False
 
 
 @dataclass(frozen=True)
@@ -717,8 +798,12 @@ class ReflogSubcommand(FirstWordSubcommand):
         return ReflogOption
 
     @classproperty
-    def reading_words(cls) -> tuple[tuple[str, ...], ...]:
-        return (), ("show",)
+    def reading_commands(cls) -> type[StrEnum]:
+        return ReflogReadingCommand
+
+    @classproperty
+    def bare_reads(cls) -> bool:
+        return True
 
 
 @dataclass(frozen=True)
@@ -736,8 +821,12 @@ class SubmoduleSubcommand(FirstWordSubcommand):
         return SubmoduleOption
 
     @classproperty
-    def reading_words(cls) -> tuple[tuple[str, ...], ...]:
-        return (("status",),)
+    def reading_commands(cls) -> type[StrEnum]:
+        return SubmoduleReadingCommand
+
+    @classproperty
+    def bare_reads(cls) -> bool:
+        return False
 
 
 @dataclass(frozen=True)

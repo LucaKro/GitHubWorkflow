@@ -14,6 +14,7 @@ import pytest
 
 from domain_model.github.clients import (
     GraphQLClient,
+    RecordedAnswers,
     RecordingGraphQLClient,
     ReplayingGraphQLClient,
     RestClient,
@@ -347,6 +348,12 @@ def test_a_commit_nothing_reported_on_has_no_checks() -> None:
 # %% recorded and replayed answers
 
 
+def test_recorded_answers_read_back_as_written() -> None:
+    answers = RecordedAnswers([recorded(DatasetLocation.GRAPHQL_BRANCH_SEARCH)])
+
+    assert RecordedAnswers.from_json(answers.to_json()) == answers
+
+
 def test_a_read_replayed_from_its_recorded_answers_sees_the_same_pull_request():
     recording = RecordingGraphQLClient(
         GraphQLAnswersInOrder(
@@ -371,7 +378,9 @@ def test_a_read_replayed_from_its_recorded_answers_sees_the_same_pull_request():
 
 
 def test_a_query_past_the_recorded_answers_is_refused():
-    client = ReplayingGraphQLClient([recorded(DatasetLocation.GRAPHQL_BRANCH_SEARCH)])
+    client = ReplayingGraphQLClient(
+        RecordedAnswers([recorded(DatasetLocation.GRAPHQL_BRANCH_SEARCH)])
+    )
     client.execute("query", {})
 
     with pytest.raises(RecordedAnswersExhaustedError):

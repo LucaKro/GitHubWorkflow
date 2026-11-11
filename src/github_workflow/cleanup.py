@@ -18,7 +18,7 @@ from typing import Self
 
 from domain_model.git.branch_tips import BranchTip
 from domain_model.git.commands import GitCommandRunner
-from domain_model.git.revisions import CommitHash
+from domain_model.git.revisions import CommitHash, TextFiles
 from domain_model.github.repository_client import (
     GitHubRepository,
     PullRequestsFromForks,
@@ -136,7 +136,7 @@ class BranchDiscard(WorkflowStep):
         listed = self.notes.read(NotesFile.DISCARDED_BRANCHES)
         discarded = DiscardedBranches.from_text(listed).extended(BranchTip(branch, tip))
         self.notes.write(
-            {NotesFile.DISCARDED_BRANCHES: discarded.to_text()},
+            TextFiles({NotesFile.DISCARDED_BRANCHES: discarded.to_text()}),
             f"Discard {branch}",
         )
         owner = self.policy.remote.repository.owner
@@ -339,7 +339,9 @@ class BranchCleanup(WorkflowStep):
         )
         self.notes.fetch()
         self.notes.write(
-            {NotesFile.READY_FOR_DELETION: listed.to_text(), **workflow},
+            TextFiles({NotesFile.READY_FOR_DELETION: listed.to_text()}).combined(
+                workflow
+            ),
             f"List {CountedThing.BRANCH.counted(len(refused))} for deletion",
         )
         return (

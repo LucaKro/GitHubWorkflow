@@ -90,10 +90,7 @@ class SessionCommandApproval:
             return False
         if CommandGuard().denial(self.command_line) is not None:
             return False
-        commands = [
-            SimpleCommand(words)
-            for words in CommandLine(self.command_line).simple_commands()
-        ]
+        commands = CommandLine(self.command_line).simple_commands()
         workflow = [command for command in commands if self.is_workflow(command)]
         if len(workflow) != 1:
             return False

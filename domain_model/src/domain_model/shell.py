@@ -448,10 +448,10 @@ class CommandLine:
             rf"|{unescaped}`((?:[^`\\]|\\.)*)`"
         )
 
-    def simple_commands(self) -> list[list[str]]:
+    def simple_commands(self) -> list[SimpleCommand]:
         """
-        :return: The words of every simple command the line runs, those in command
-            substitutions included, without their redirections. A here-document is data
+        :return: Every simple command the line runs, those in command substitutions
+            included, without their redirections. A here-document is data
             unless a shell reads it.
         :raises ValueError: If its quotes do not balance.
         """
@@ -464,7 +464,7 @@ class CommandLine:
             if inner
         ]
         commands = [
-            command
+            command.words
             for inner in inner_lines
             for command in CommandLine(inner).simple_commands()
         ]
@@ -494,7 +494,7 @@ class CommandLine:
             current.append(word)
             descriptor_read = read.ends_in_a_descriptor(word)
         commands.append(current)
-        return [command for command in commands if command]
+        return [SimpleCommand(words) for words in commands if words]
 
     def runs_input_through_a_shell(self) -> bool:
         """

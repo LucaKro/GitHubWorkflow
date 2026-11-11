@@ -11,7 +11,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from domain_model.github.clients import GraphQLClient, ReplayingGraphQLClient
+from domain_model.git.revisions import TextFiles
+from domain_model.github.clients import (
+    GraphQLClient,
+    RecordedAnswers,
+    ReplayingGraphQLClient,
+)
 from domain_model.github.repository_client import RepositoryWorkflows
 from domain_model.github.rest_models import Workflow, WorkflowRun
 from domain_model.github.vocabulary import (
@@ -31,7 +36,6 @@ from github_workflow.upstream_reviews import (
     UpstreamReadNotStarted,
     UpstreamReadUnanswered,
     UpstreamReviewAnswering,
-    UpstreamReviewKey,
     UpstreamReviewRequest,
 )
 from github_workflow.workflow_templates import (
@@ -122,10 +126,10 @@ def test_a_request_is_answered_with_github_s_answers_and_removed(
         requests, answers, AnswersInOrder(recorded)
     ).run()
 
-    saved = json.loads((answers / "1.json").read_text())
+    saved = RecordedAnswers.from_json((answers / "1.json").read_text())
     assert (answered, saved, list(requests.iterdir())) == (
         ["1.json"],
-        {UpstreamReviewKey.ANSWERS: recorded},
+        RecordedAnswers(recorded),
         [],
     )
 
@@ -144,7 +148,7 @@ def test_the_answers_of_an_earlier_run_are_removed(tmp_path: Path) -> None:
 def test_an_answer_read_again_gives_what_github_answered() -> None:
     recorded = UpstreamReviewDataset.ANSWERS.answers()
 
-    replayed = request().snapshot(ReplayingGraphQLClient(recorded))
+    replayed = request().snapshot(ReplayingGraphQLClient(RecordedAnswers(recorded)))
 
     assert replayed == request().snapshot(AnswersInOrder(recorded))
 
@@ -221,12 +225,14 @@ def answered(notes: NotesBranch, name: str) -> None:
     """
     notes.fetch()
     notes.write(
-        {
-            NotesFile.UPSTREAM_REVIEW_ANSWERS.value
-            / name: json.dumps(
-                {UpstreamReviewKey.ANSWERS: UpstreamReviewDataset.ANSWERS.answers()}
-            )
-        },
+        TextFiles(
+            {
+                NotesFile.UPSTREAM_REVIEW_ANSWERS.value
+                / name: RecordedAnswers(
+                    UpstreamReviewDataset.ANSWERS.answers()
+                ).to_json()
+            }
+        ),
         "Answer",
     )
 

@@ -383,6 +383,34 @@ class Revision(ABC):
         return found.output if found.succeeded else None
 
 
+# %% files a commit records
+
+
+@dataclass(frozen=True)
+class TextFiles:
+    """
+    Text files to commit, by their paths relative to the repository's root.
+    """
+
+    texts: Mapping[Path, str]
+    """
+    The text of each file, by its path.
+    """
+
+    @property
+    def paths(self) -> list[Path]:
+        """:return: Every file's path, in the order given."""
+        return list(self.texts)
+
+    def combined(self, other: TextFiles) -> TextFiles:
+        """
+        :param other: More files.
+        :return: These files and *other*'s, *other*'s text winning for a path both
+            hold.
+        """
+        return TextFiles({**self.texts, **other.texts})
+
+
 # %% a commit
 
 
@@ -410,7 +438,7 @@ class Commit(Revision):
     def create(
         cls,
         git: GitCommandRunner,
-        files: Mapping[Path, str],
+        files: TextFiles,
         message: str,
         parent: Commit | None = None,
     ) -> Commit:
@@ -427,7 +455,7 @@ class Commit(Revision):
             index = {GitVariable.INDEX_FILE: str(Path(directory) / "index")}
             if parent is not None:
                 git.run(GitSubcommand.READ_TREE, parent.hash, environment=index)
-            for path, text in files.items():
+            for path, text in files.texts.items():
                 staged = Path(directory) / "content"
                 staged.write_text(text)
                 blob = git.run(

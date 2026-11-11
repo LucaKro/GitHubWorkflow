@@ -11,7 +11,7 @@ import pytest
 
 from domain_model.git.commands import GitCommandRunner
 from domain_model.git.exceptions import GitCommandFailed, UnresolvableReferenceError
-from domain_model.git.revisions import Commit, CommitHash, LocalBranch
+from domain_model.git.revisions import Commit, CommitHash, LocalBranch, TextFiles
 from domain_model.git.working_tree import WorkingTree
 
 from .git_checkouts import checkout, commit_on, head  # noqa: F401
@@ -93,6 +93,24 @@ def test_a_revision_s_file_is_read_as_it_records_it(
     )
 
 
+# %% files to commit
+
+
+def test_combined_files_hold_both_with_the_later_text_winning() -> None:
+    first = TextFiles({Path("one.md"): "one\n", Path("both.md"): "first\n"})
+    later = TextFiles({Path("both.md"): "later\n"})
+
+    assert first.combined(later) == TextFiles(
+        {Path("one.md"): "one\n", Path("both.md"): "later\n"}
+    )
+
+
+def test_files_list_their_paths_in_the_order_given() -> None:
+    files = TextFiles({Path("b.md"): "b\n", Path("a.md"): "a\n"})
+
+    assert files.paths == [Path("b.md"), Path("a.md")]
+
+
 # %% committing without a checkout
 
 
@@ -101,7 +119,7 @@ def test_a_commit_of_files_leaves_the_checkout_untouched(
 ) -> None:
     before = checkout.run("status", "--porcelain")
 
-    commit = Commit.create(checkout, {Path("notes.md"): "a note\n"}, "Save")
+    commit = Commit.create(checkout, TextFiles({Path("notes.md"): "a note\n"}), "Save")
 
     assert commit.file_text(Path("notes.md")) == "a note\n"
     assert checkout.run("status", "--porcelain") == before
@@ -110,10 +128,10 @@ def test_a_commit_of_files_leaves_the_checkout_untouched(
 def test_a_commit_on_a_parent_keeps_the_parent_s_files(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
-    parent = Commit.create(checkout, {Path("notes.md"): "a note\n"}, "Save")
+    parent = Commit.create(checkout, TextFiles({Path("notes.md"): "a note\n"}), "Save")
 
     commit = Commit.create(
-        checkout, {Path("progress/a.md"): "progress\n"}, "Save", parent
+        checkout, TextFiles({Path("progress/a.md"): "progress\n"}), "Save", parent
     )
 
     assert commit.file_text(Path("notes.md")) == "a note\n"

@@ -20,7 +20,7 @@ from domain_model.environment import (
 )
 from domain_model.git.commands import GitCommandRunner, GitIdentity
 from domain_model.git.remotes import ProposedPush, RemoteBranch
-from domain_model.git.revisions import Commit, CommitHash
+from domain_model.git.revisions import Commit, CommitHash, TextFiles
 from domain_model.git.working_tree import WorkingTree
 from domain_model.github.clients import GitHubApi, RestAnswer
 from domain_model.github.rest_models import RestPullRequest
@@ -537,7 +537,7 @@ class Probe:
         """
         self.remote.fetch(default_branch)
         base = self.remote.branch(default_branch).tracking_branch.commit()
-        commit = Commit.create(self.git, {}, ProbeText.COMMIT_MESSAGE, base)
+        commit = Commit.create(self.git, TextFiles({}), ProbeText.COMMIT_MESSAGE, base)
         branch = self.branch(BranchName.PULL_REQUEST)
         pushed = ProposedPush(branch, commit).publish()
         if not self.record_command(
@@ -648,9 +648,11 @@ class Probe:
         """
         self.remote.fetch(default_branch)
         base = self.remote.branch(default_branch).tracking_branch.commit()
-        lower_commit = Commit.create(self.git, {}, ProbeText.STACK_LOWER_TITLE, base)
+        lower_commit = Commit.create(
+            self.git, TextFiles({}), ProbeText.STACK_LOWER_TITLE, base
+        )
         upper_commit = Commit.create(
-            self.git, {}, ProbeText.STACK_UPPER_TITLE, lower_commit
+            self.git, TextFiles({}), ProbeText.STACK_UPPER_TITLE, lower_commit
         )
         lower = self.branch(BranchName.STACK_LOWER)
         upper = self.branch(BranchName.STACK_UPPER)
@@ -840,7 +842,7 @@ class Probe:
         )
         commit = Commit.create(
             self.git,
-            {RepositoryFile.BRANCH_DELETION_WORKFLOW: text},
+            TextFiles({RepositoryFile.BRANCH_DELETION_WORKFLOW: text}),
             ProbeText.WORKFLOW_COMMIT_MESSAGE,
             self.tree.head(),
         )

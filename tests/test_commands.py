@@ -23,6 +23,7 @@ from domain_model.environment import (
     GitHubActionsVariable,
     GitHubCredentialVariable,
 )
+from domain_model.git.revisions import TextFiles
 from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
 from domain_model.github.repository_client import (
     GitHubRepository,
@@ -268,10 +269,12 @@ def test_a_session_starts_with_the_notes_and_this_branch_s_progress(
     NotesBranch.from_settings(
         OwnedRemotes.read(writer.git, settings).chosen, settings
     ).write(
-        {
-            Path(NotesFile.STANDING_NOTES): "a standing note\n",
-            NotesFile.progress_file("feature"): "halfway there\n",
-        },
+        TextFiles(
+            {
+                Path(NotesFile.STANDING_NOTES): "a standing note\n",
+                NotesFile.progress_file("feature"): "halfway there\n",
+            }
+        ),
         "Save",
     )
     checkout = repositories.clone(owned_url, "session")
@@ -291,7 +294,7 @@ def test_a_loaded_note_sits_between_its_markers_as_written(
     writer = repositories.clone(owned_url, "writer")
     NotesBranch.from_settings(
         OwnedRemotes.read(writer.git, settings).chosen, settings
-    ).write({Path(NotesFile.STANDING_NOTES): f"{note}\n"}, "Save")
+    ).write(TextFiles({Path(NotesFile.STANDING_NOTES): f"{note}\n"}), "Save")
     checkout = repositories.clone(owned_url, "session")
 
     start_session(checkout)

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 
+from domain_model.git.revisions import TextFiles
 from domain_model.github.discussions import (
     DefaultDiscussionCategory,
     DiscussionCategory,
@@ -160,11 +161,12 @@ class DiscussionPosting:
         )
         self.notes.fetch()
         self.notes.write(
-            {
-                NotesFile.DISCUSSION_POSTS
-                / NotesBranch.queued_file_name(): post.to_json(),
-                **workflow,
-            },
+            TextFiles(
+                {
+                    NotesFile.DISCUSSION_POSTS
+                    / NotesBranch.queued_file_name(): post.to_json()
+                }
+            ).combined(workflow),
             f"Queue the discussion {post.title!r}",
         )
 

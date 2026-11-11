@@ -21,7 +21,7 @@ from domain_model.claude_code.hooks import (
     HookValue,
 )
 from domain_model.locations import PathEnumeration
-from domain_model.shell import CommandLine
+from domain_model.shell import CommandLine, SimpleCommand
 
 import github_workflow
 import github_workflow.guard as guard
@@ -154,7 +154,7 @@ def test_a_write_is_denied(command: str) -> None:
 def test_a_redirection_is_no_word_of_its_command(
     command: str, words: list[str]
 ) -> None:
-    assert CommandLine(command).simple_commands() == [words]
+    assert CommandLine(command).simple_commands() == [SimpleCommand(words)]
 
 
 def test_a_here_document_a_program_reads_is_data() -> None:
