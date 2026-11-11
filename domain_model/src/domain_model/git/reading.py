@@ -13,6 +13,16 @@ from inspect import isabstract
 from pathlib import PurePath
 
 from domain_model.class_property import classproperty
+from domain_model.git.exceptions import UnjudgedSubcommandError
+from domain_model.git.remotes import ReflogOption, RemoteOption
+from domain_model.git.revisions import FetchOption, ReferenceNamespace
+from domain_model.git.subcommands import (
+    GitGlobalOption,
+    GitOption,
+    GitSubcommand,
+    SubcommandReading,
+)
+from domain_model.git.working_tree import BranchOption
 
 # %% where git reads its configuration
 
@@ -43,37 +53,6 @@ class GitConfigurationLocation(StrEnum):
 
 
 # %% options and subcommands
-
-
-class GitGlobalOption(StrEnum):
-    """
-    The options before a git subcommand that change nothing it writes.
-    """
-
-    DIRECTORY = "-C"
-    """
-    Run as if started in another directory; takes the directory.
-    """
-
-    NO_PAGER = "--no-pager"
-    """
-    Print without a pager.
-    """
-
-    NO_PAGER_SHORT = "-P"
-    """
-    Print without a pager, short form.
-    """
-
-    VERSION = "--version"
-    """
-    Print git's version.
-    """
-
-    HELP = "--help"
-    """
-    Print git's help.
-    """
 
 
 class GitProgramOption(StrEnum):
@@ -127,7 +106,7 @@ class GitProgramOption(StrEnum):
         :param arguments: What follows it.
         :return: Whether one of the arguments runs a program or writes a file.
         """
-        remote = (GitReading.LS_REMOTE, GitListing.FETCH)
+        remote = (GitSubcommand.LS_REMOTE, GitSubcommand.FETCH)
         for argument in arguments:
             if argument.partition("=")[0] in cls:
                 return True
@@ -135,129 +114,6 @@ class GitProgramOption(StrEnum):
             if short and subcommand in remote and cls.short_letter in argument:
                 return True
         return False
-
-
-class GitReading(StrEnum):
-    """
-    The git subcommands that only read, whatever their arguments: they move no
-    reference and leave the index and the working files alone. ``merge-tree`` may store
-    the merged files as objects nothing refers to, which ``git gc`` removes.
-    """
-
-    STATUS = "status"
-    """
-    Shows the working tree's state.
-    """
-
-    DIFF = "diff"
-    """
-    Shows changes.
-    """
-
-    LOG = "log"
-    """
-    Shows commits.
-    """
-
-    SHOW = "show"
-    """
-    Shows objects.
-    """
-
-    BLAME = "blame"
-    """
-    Shows who last changed each line.
-    """
-
-    GREP = "grep"
-    """
-    Searches tracked files.
-    """
-
-    REV_PARSE = "rev-parse"
-    """
-    Resolves references and git's paths.
-    """
-
-    REV_LIST = "rev-list"
-    """
-    Lists commits.
-    """
-
-    LS_FILES = "ls-files"
-    """
-    Lists the index's files.
-    """
-
-    LS_TREE = "ls-tree"
-    """
-    Lists a tree's files.
-    """
-
-    LS_REMOTE = "ls-remote"
-    """
-    Lists a remote's references.
-    """
-
-    CAT_FILE = "cat-file"
-    """
-    Prints objects.
-    """
-
-    MERGE_BASE = "merge-base"
-    """
-    Finds common ancestors.
-    """
-
-    MERGE_TREE = "merge-tree"
-    """
-    Merges without touching a branch, the index or the working tree.
-    """
-
-    DESCRIBE = "describe"
-    """
-    Names a commit after the nearest tag.
-    """
-
-    SHORTLOG = "shortlog"
-    """
-    Summarizes commits by author.
-    """
-
-    FOR_EACH_REF = "for-each-ref"
-    """
-    Lists references.
-    """
-
-    SHOW_REF = "show-ref"
-    """
-    Lists references and their commits.
-    """
-
-    NAME_REV = "name-rev"
-    """
-    Names a commit after the references reaching it.
-    """
-
-    CHECK_IGNORE = "check-ignore"
-    """
-    Says why a path is ignored.
-    """
-
-    VAR = "var"
-    """
-    Prints git's logical variables, such as the author's identity.
-    """
-
-    VERSION = "version"
-    """
-    Prints git's version.
-    """
-
-    HELP = "help"
-    """
-    Prints git's help.
-    """
 
 
 class ReadingFetch(StrEnum):
@@ -270,79 +126,301 @@ class ReadingFetch(StrEnum):
     A repository's URL over HTTPS, a transport that runs no program.
     """
 
-    REMOTE_TRACKING = "refs/remotes/"
-    """
-    Where a refspec stores what it fetches when it moves only a remote-tracking
-    reference, never a local branch.
-    """
-
     @classmethod
     def reads(cls, argument: str) -> bool:
         """
         :param argument: A ``fetch`` argument holding a colon: a URL or a refspec.
-        :return: Whether it only reads.
+        :return: Whether it only reads: an HTTPS URL, or a refspec storing what it
+            fetches as a remote-tracking branch, never a local one.
         """
         if argument.startswith(cls.HTTPS):
             return True
         _, _, destination = argument.removeprefix("+").partition(":")
-        return destination.startswith(cls.REMOTE_TRACKING)
+        return destination.startswith(ReferenceNamespace.REMOTE_TRACKING_BRANCHES)
 
 
-class GitListing(StrEnum):
+# %% the options only told apart here
+
+
+class GrepOption(GitOption):
     """
-    The git subcommands that read only in some of their forms.
+    The options of ``git grep``.
     """
 
-    BRANCH = "branch"
+    OPEN_FILES_IN_PAGER = "--open-files-in-pager", False
     """
-    Reads when it lists branches.
-    """
-
-    TAG = "tag"
-    """
-    Reads when it lists tags.
+    Open the matching files in the given program.
     """
 
-    REMOTE = "remote"
+    OPEN_FILES_IN_PAGER_SHORT = "-O", False
     """
-    Reads when it lists remotes or shows one.
-    """
-
-    CONFIG = "config"
-    """
-    Reads when it gets or lists values, or names a single key without a value.
+    Open the matching files in the given program, short form.
     """
 
-    STASH = "stash"
+
+class TagOption(GitOption):
     """
-    Reads when it lists or shows stashes.
+    The options of ``git tag``.
     """
 
-    WORKTREE = "worktree"
+    LIST = "--list", True
     """
-    Reads when it lists worktrees.
-    """
-
-    REFLOG = "reflog"
-    """
-    Reads when it shows the reflog.
+    List the tags, those matching the patterns given when any is.
     """
 
-    SUBMODULE = "submodule"
+    LIST_SHORT = "-l", True
     """
-    Reads when it reports submodules' status.
-    """
-
-    FETCH = "fetch"
-    """
-    Reads from a remote or an HTTPS URL, moving only remote-tracking references,
-    unless a refspec names a local branch or the URL another transport.
+    List the tags, short form.
     """
 
-    ARCHIVE = "archive"
+    LINES = "-n", True
     """
-    Reads a commit's files into an archive, unless it asks another repository for them
-    or writes the archive where git reads its configuration or hooks.
+    List each tag with the given number of lines of its message.
+    """
+
+    COLOR = "--color", True
+    """
+    Colour the list.
+    """
+
+    NO_COLOR = "--no-color", True
+    """
+    Leave the list uncoloured.
+    """
+
+    CONTAINS = "--contains", True
+    """
+    List only the tags whose history holds the given commit.
+    """
+
+    NO_CONTAINS = "--no-contains", True
+    """
+    List only the tags whose history lacks the given commit.
+    """
+
+    MERGED = "--merged", True
+    """
+    List only the tags the given commit's history holds.
+    """
+
+    NO_MERGED = "--no-merged", True
+    """
+    List only the tags the given commit's history lacks.
+    """
+
+    POINTS_AT = "--points-at", True
+    """
+    List only the tags at the given commit.
+    """
+
+    SORT = "--sort", True
+    """
+    Order the list by the given key.
+    """
+
+    FORMAT = "--format", True
+    """
+    Print each tag as the given format says.
+    """
+
+
+class ConfigOption(GitOption):
+    """
+    The options of ``git config``.
+    """
+
+    GET = "--get", True
+    """
+    Print the value of the key given.
+    """
+
+    GET_ALL = "--get-all", True
+    """
+    Print every value of the key given.
+    """
+
+    GET_REGEXP = "--get-regexp", True
+    """
+    Print every key matching the pattern given, with its values.
+    """
+
+    LIST = "--list", True
+    """
+    Print every key and value.
+    """
+
+    LIST_SHORT = "-l", True
+    """
+    Print every key and value, short form.
+    """
+
+    GLOBAL = "--global", True
+    """
+    Use the user's configuration file.
+    """
+
+    SYSTEM = "--system", True
+    """
+    Use the system's configuration file.
+    """
+
+    LOCAL = "--local", True
+    """
+    Use the repository's configuration file.
+    """
+
+    WORKTREE = "--worktree", True
+    """
+    Use the worktree's configuration file.
+    """
+
+    FILE = "--file", True
+    """
+    Use the configuration file given.
+    """
+
+    SHOW_ORIGIN = "--show-origin", True
+    """
+    Print which file each value comes from.
+    """
+
+    SHOW_SCOPE = "--show-scope", True
+    """
+    Print which scope each value comes from.
+    """
+
+    NAME_ONLY = "--name-only", True
+    """
+    Print the keys without their values.
+    """
+
+    NULL = "--null", True
+    """
+    End each value with a null character rather than a newline.
+    """
+
+    TYPE = "--type", True
+    """
+    Print each value as the type given, such as ``bool``.
+    """
+
+    DEFAULT = "--default", True
+    """
+    Print the value given when the key is not set.
+    """
+
+
+class StashOption(GitOption):
+    """
+    The options of ``git stash``.
+    """
+
+    PATCH = "--patch", True
+    """
+    Show a stash's changes in full.
+    """
+
+    PATCH_SHORT = "-p", True
+    """
+    Show a stash's changes in full, short form.
+    """
+
+    STAT = "--stat", True
+    """
+    Show how much each file of a stash changes.
+    """
+
+    NAME_ONLY = "--name-only", True
+    """
+    Show only the names of the files a stash changes.
+    """
+
+
+class WorktreeOption(GitOption):
+    """
+    The options of ``git worktree``.
+    """
+
+    PORCELAIN = "--porcelain", True
+    """
+    List in a form meant for programs.
+    """
+
+    VERBOSE = "--verbose", True
+    """
+    List each worktree with why it is locked or prunable.
+    """
+
+    VERBOSE_SHORT = "-v", True
+    """
+    List each worktree with why it is locked or prunable, short form.
+    """
+
+
+class SubmoduleOption(GitOption):
+    """
+    The options of ``git submodule``.
+    """
+
+    QUIET = "--quiet", True
+    """
+    Print only errors.
+    """
+
+    RECURSIVE = "--recursive", True
+    """
+    Report the submodules nested in submodules too.
+    """
+
+    CACHED = "--cached", True
+    """
+    Report the commit the superproject records rather than the one checked out.
+    """
+
+
+class ArchiveOption(GitOption):
+    """
+    The options of ``git archive``.
+    """
+
+    OUTPUT_SHORT = "-o", True
+    """
+    Write the archive to the file given; where is told apart by the form.
+    """
+
+    FORMAT = "--format", True
+    """
+    Pack the archive in the format given.
+    """
+
+    PREFIX = "--prefix", True
+    """
+    Put the prefix given before every path in the archive.
+    """
+
+    LIST = "--list", True
+    """
+    List the formats it can pack.
+    """
+
+    LIST_SHORT = "-l", True
+    """
+    List the formats it can pack, short form.
+    """
+
+    VERBOSE = "--verbose", True
+    """
+    Report each file packed.
+    """
+
+    VERBOSE_SHORT = "-v", True
+    """
+    Report each file packed, short form.
+    """
+
+    WORKTREE_ATTRIBUTES = "--worktree-attributes", True
+    """
+    Read the attributes of the working tree too.
     """
 
 
@@ -374,68 +452,142 @@ class GitSubcommandArguments:
 @dataclass(frozen=True)
 class PartlyReadingSubcommand(ABC):
     """
-    The forms of one or more git subcommands that only read.
+    The forms of one git subcommand that only read: every option is one of its own
+    marked as reading, and the form reads.
     """
 
     @classproperty
     @abstractmethod
-    def subcommands(cls) -> tuple[GitListing, ...]:
+    def subcommand(cls) -> GitSubcommand:
         """
-        The subcommands whose forms this tells apart.
+        The subcommand whose forms this tells apart.
+        """
+
+    @classproperty
+    @abstractmethod
+    def options(cls) -> type[GitOption]:
+        """
+        The subcommand's options.
         """
 
     @abstractmethod
-    def reads(self, arguments: GitSubcommandArguments) -> bool:
+    def form_reads(self, arguments: GitSubcommandArguments) -> bool:
         """
-        :param arguments: What follows the subcommand.
+        :param arguments: What follows the subcommand, its options all reading.
         :return: Whether this form only reads.
         """
 
-    @classmethod
-    def judging(cls, subcommand: str) -> PartlyReadingSubcommand | None:
+    def reads(self, arguments: GitSubcommandArguments) -> bool:
         """
-        :param subcommand: A git subcommand.
-        :return: What tells its reading forms apart, None for a subcommand that only
-            reads or never does.
+        :param arguments: What follows the subcommand.
+        :return: Whether the call only reads.
+        """
+        return self.options.only_reading(arguments.options) and self.form_reads(
+            arguments
+        )
+
+    @classmethod
+    def judging(cls, subcommand: GitSubcommand) -> PartlyReadingSubcommand:
+        """
+        :param subcommand: A subcommand reading in some forms.
+        :return: What tells its reading forms apart.
+        :raises UnjudgedSubcommandError: If nothing tells them apart.
         """
         forms = [cls]
         for form in forms:
             forms += form.__subclasses__()
-        return next(
-            (
-                form()
-                for form in forms
-                if not isabstract(form) and subcommand in form.subcommands
-            ),
-            None,
+        judging = (
+            form()
+            for form in forms
+            if not isabstract(form) and form.subcommand == subcommand
+        )
+        found = next(judging, None)
+        if found is None:
+            raise UnjudgedSubcommandError(subcommand)
+        return found
+
+
+@dataclass(frozen=True)
+class ListingSubcommand(PartlyReadingSubcommand, ABC):
+    """
+    A subcommand that reads when it lists rather than creates, moves or deletes.
+    """
+
+    @classproperty
+    @abstractmethod
+    def pattern_options(cls) -> frozenset[GitOption]:
+        """
+        The options after which the other arguments are patterns or commits to list by,
+        never a name to create.
+        """
+
+    def form_reads(self, arguments: GitSubcommandArguments) -> bool:
+        options = {self.options.look_up(option) for option in arguments.options}
+        return not arguments.positional or bool(options & self.pattern_options)
+
+
+@dataclass(frozen=True)
+class BranchSubcommand(ListingSubcommand):
+    """
+    branch, which reads when it lists branches.
+    """
+
+    @classproperty
+    def subcommand(cls) -> GitSubcommand:
+        return GitSubcommand.BRANCH
+
+    @classproperty
+    def options(cls) -> type[GitOption]:
+        return BranchOption
+
+    @classproperty
+    def pattern_options(cls) -> frozenset[GitOption]:
+        return frozenset(
+            {
+                BranchOption.LIST,
+                BranchOption.LIST_SHORT,
+                BranchOption.CONTAINS,
+                BranchOption.NO_CONTAINS,
+                BranchOption.MERGED,
+                BranchOption.NO_MERGED,
+                BranchOption.POINTS_AT,
+                BranchOption.SORT,
+                BranchOption.FORMAT,
+                BranchOption.COLOR,
+            }
         )
 
 
 @dataclass(frozen=True)
-class ListingSubcommand(PartlyReadingSubcommand):
+class TagSubcommand(ListingSubcommand):
     """
-    branch and tag, which read when they list rather than create, move or
-    delete.
+    tag, which reads when it lists tags.
     """
 
     @classproperty
-    def subcommands(cls) -> tuple[GitListing, ...]:
-        return GitListing.BRANCH, GitListing.TAG
+    def subcommand(cls) -> GitSubcommand:
+        return GitSubcommand.TAG
 
-    def reads(self, arguments: GitSubcommandArguments) -> bool:
-        listing = {"-l", "--list", "-a", "--all", "-r", "--remotes", "-v", "-vv"}
-        listing |= {"--show-current", "-n", "--no-color"}
-        filters = ("--contains", "--no-contains", "--merged", "--no-merged")
-        filters += ("--points-at", "--sort", "--format", "--color")
-        options = arguments.options
-        if any(
-            option not in listing and not option.startswith(filters)
-            for option in options
-        ):
-            return False
-        filtered = any(option.startswith(filters) for option in options)
-        listed = bool(options & {"-l", "--list"})
-        return not arguments.positional or listed or filtered
+    @classproperty
+    def options(cls) -> type[GitOption]:
+        return TagOption
+
+    @classproperty
+    def pattern_options(cls) -> frozenset[GitOption]:
+        return frozenset(
+            {
+                TagOption.LIST,
+                TagOption.LIST_SHORT,
+                TagOption.CONTAINS,
+                TagOption.NO_CONTAINS,
+                TagOption.MERGED,
+                TagOption.NO_MERGED,
+                TagOption.POINTS_AT,
+                TagOption.SORT,
+                TagOption.FORMAT,
+                TagOption.COLOR,
+            }
+        )
 
 
 @dataclass(frozen=True)
@@ -445,18 +597,15 @@ class RemoteSubcommand(PartlyReadingSubcommand):
     """
 
     @classproperty
-    def subcommands(cls) -> tuple[GitListing, ...]:
-        return (GitListing.REMOTE,)
+    def subcommand(cls) -> GitSubcommand:
+        return GitSubcommand.REMOTE
 
-    def reads(self, arguments: GitSubcommandArguments) -> bool:
-        shows = arguments.positional[:1] in ([], ["show"], ["get-url"])
-        return shows and arguments.options <= {
-            "-v",
-            "--verbose",
-            "--push",
-            "--all",
-            "-n",
-        }
+    @classproperty
+    def options(cls) -> type[GitOption]:
+        return RemoteOption
+
+    def form_reads(self, arguments: GitSubcommandArguments) -> bool:
+        return arguments.positional[:1] in ([], ["show"], ["get-url"])
 
 
 @dataclass(frozen=True)
@@ -467,17 +616,34 @@ class ConfigSubcommand(PartlyReadingSubcommand):
     """
 
     @classproperty
-    def subcommands(cls) -> tuple[GitListing, ...]:
-        return (GitListing.CONFIG,)
+    def subcommand(cls) -> GitSubcommand:
+        return GitSubcommand.CONFIG
 
-    def reads(self, arguments: GitSubcommandArguments) -> bool:
-        options, positional = arguments.options, arguments.positional
-        getting = {"--get", "--get-all", "--get-regexp", "--list", "-l"}
-        setting = {"--add", "--unset", "--unset-all", "--replace-all", "--edit"}
-        setting |= {"-e", "--rename-section", "--remove-section"}
-        gets = bool(options & getting) or positional[:1] in (["get"], ["list"])
-        names_one_key = len(positional) == 1 and "." in positional[0]
-        return (gets or names_one_key) and not options & setting
+    @classproperty
+    def options(cls) -> type[GitOption]:
+        return ConfigOption
+
+    @classproperty
+    def getting_options(cls) -> frozenset[GitOption]:
+        """
+        The options that get or list values rather than name where to look.
+        """
+        return frozenset(
+            {
+                ConfigOption.GET,
+                ConfigOption.GET_ALL,
+                ConfigOption.GET_REGEXP,
+                ConfigOption.LIST,
+                ConfigOption.LIST_SHORT,
+            }
+        )
+
+    def form_reads(self, arguments: GitSubcommandArguments) -> bool:
+        positional = arguments.positional
+        options = {self.options.look_up(option) for option in arguments.options}
+        gets = bool(options & self.getting_options)
+        gets = gets or positional[:1] in (["get"], ["list"])
+        return gets or (len(positional) == 1 and "." in positional[0])
 
 
 @dataclass(frozen=True)
@@ -494,7 +660,7 @@ class FirstWordSubcommand(PartlyReadingSubcommand, ABC):
         empty one when the bare subcommand reads.
         """
 
-    def reads(self, arguments: GitSubcommandArguments) -> bool:
+    def form_reads(self, arguments: GitSubcommandArguments) -> bool:
         return tuple(arguments.positional[:1]) in self.reading_words
 
 
@@ -505,8 +671,12 @@ class StashSubcommand(FirstWordSubcommand):
     """
 
     @classproperty
-    def subcommands(cls) -> tuple[GitListing, ...]:
-        return (GitListing.STASH,)
+    def subcommand(cls) -> GitSubcommand:
+        return GitSubcommand.STASH
+
+    @classproperty
+    def options(cls) -> type[GitOption]:
+        return StashOption
 
     @classproperty
     def reading_words(cls) -> tuple[tuple[str, ...], ...]:
@@ -520,8 +690,12 @@ class WorktreeSubcommand(FirstWordSubcommand):
     """
 
     @classproperty
-    def subcommands(cls) -> tuple[GitListing, ...]:
-        return (GitListing.WORKTREE,)
+    def subcommand(cls) -> GitSubcommand:
+        return GitSubcommand.WORKTREE
+
+    @classproperty
+    def options(cls) -> type[GitOption]:
+        return WorktreeOption
 
     @classproperty
     def reading_words(cls) -> tuple[tuple[str, ...], ...]:
@@ -535,8 +709,12 @@ class ReflogSubcommand(FirstWordSubcommand):
     """
 
     @classproperty
-    def subcommands(cls) -> tuple[GitListing, ...]:
-        return (GitListing.REFLOG,)
+    def subcommand(cls) -> GitSubcommand:
+        return GitSubcommand.REFLOG
+
+    @classproperty
+    def options(cls) -> type[GitOption]:
+        return ReflogOption
 
     @classproperty
     def reading_words(cls) -> tuple[tuple[str, ...], ...]:
@@ -550,8 +728,12 @@ class SubmoduleSubcommand(FirstWordSubcommand):
     """
 
     @classproperty
-    def subcommands(cls) -> tuple[GitListing, ...]:
-        return (GitListing.SUBMODULE,)
+    def subcommand(cls) -> GitSubcommand:
+        return GitSubcommand.SUBMODULE
+
+    @classproperty
+    def options(cls) -> type[GitOption]:
+        return SubmoduleOption
 
     @classproperty
     def reading_words(cls) -> tuple[tuple[str, ...], ...]:
@@ -566,10 +748,14 @@ class FetchSubcommand(PartlyReadingSubcommand):
     """
 
     @classproperty
-    def subcommands(cls) -> tuple[GitListing, ...]:
-        return (GitListing.FETCH,)
+    def subcommand(cls) -> GitSubcommand:
+        return GitSubcommand.FETCH
 
-    def reads(self, arguments: GitSubcommandArguments) -> bool:
+    @classproperty
+    def options(cls) -> type[GitOption]:
+        return FetchOption
+
+    def form_reads(self, arguments: GitSubcommandArguments) -> bool:
         return all(
             ReadingFetch.reads(argument)
             for argument in arguments.positional
@@ -580,36 +766,26 @@ class FetchSubcommand(PartlyReadingSubcommand):
 @dataclass(frozen=True)
 class ArchiveSubcommand(PartlyReadingSubcommand):
     """
-    archive, which reads unless it asks another repository for the files or writes
-    the archive where git reads its configuration or hooks.
+    archive, which reads unless it writes the archive where git reads its
+    configuration or hooks.
     """
 
     @classproperty
-    def subcommands(cls) -> tuple[GitListing, ...]:
-        return (GitListing.ARCHIVE,)
+    def subcommand(cls) -> GitSubcommand:
+        return GitSubcommand.ARCHIVE
 
-    def reads(self, arguments: GitSubcommandArguments) -> bool:
-        asks_another = any(
-            option.startswith("--remote") for option in arguments.options
-        )
-        return not asks_another and not any(
-            GitConfigurationLocation.holds(PurePath(path))
-            for path in self.archive_files(arguments.arguments)
-        )
+    @classproperty
+    def options(cls) -> type[GitOption]:
+        return ArchiveOption
 
-    @staticmethod
-    def archive_files(arguments: Sequence[str]) -> list[str]:
-        """
-        :param arguments: What follows archive.
-        :return: The files -o writes the archive to.
-        """
-        files = []
-        for index, argument in enumerate(arguments):
-            if argument == "-o" and index + 1 < len(arguments):
-                files.append(arguments[index + 1])
-            elif argument.startswith("-o") and argument != "-o":
-                files.append(argument.removeprefix("-o"))
-        return files
+    def form_reads(self, arguments: GitSubcommandArguments) -> bool:
+        written = arguments.arguments
+        files = [
+            written[index + 1]
+            for index, argument in enumerate(written[:-1])
+            if argument == ArchiveOption.OUTPUT_SHORT
+        ]
+        return not any(GitConfigurationLocation.holds(PurePath(path)) for path in files)
 
 
 # %% one call
@@ -693,14 +869,19 @@ class GitCall:
         if subcommand is None:
             return None
         rest = self.subcommand_arguments.arguments
-        opens_files = subcommand == GitReading.GREP and any(
-            argument.startswith(("-O", "--open-files-in-pager")) for argument in rest
+        pager = (GrepOption.OPEN_FILES_IN_PAGER, GrepOption.OPEN_FILES_IN_PAGER_SHORT)
+        opens_files = subcommand == GitSubcommand.GREP and any(
+            argument.startswith(pager) for argument in rest
         )
         if GitProgramOption.present_in(subcommand, rest) or opens_files:
             return GitCallEffect.RUNS_A_PROGRAM
-        if subcommand in GitReading:
-            return None
-        form = PartlyReadingSubcommand.judging(subcommand)
-        if form is not None and form.reads(self.subcommand_arguments):
-            return None
+        if subcommand not in GitSubcommand:
+            return GitCallEffect.WRITES
+        match GitSubcommand(subcommand).reading:
+            case SubcommandReading.ALWAYS:
+                return None
+            case SubcommandReading.IN_SOME_FORMS:
+                form = PartlyReadingSubcommand.judging(GitSubcommand(subcommand))
+                if form.reads(self.subcommand_arguments):
+                    return None
         return GitCallEffect.WRITES

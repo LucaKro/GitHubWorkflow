@@ -12,7 +12,14 @@ from enum import StrEnum
 
 from domain_model.git.commands import GitCommandResult, GitCommandRunner
 from domain_model.git.exceptions import MalformedReferenceUpdateError
-from domain_model.git.revisions import CommitHash, ReferenceNamespace, Revision
+from domain_model.git.revisions import (
+    CommitHash,
+    FetchOption,
+    ReferenceNamespace,
+    Revision,
+    SpecialReference,
+)
+from domain_model.git.subcommands import GitOption, GitSubcommand
 from domain_model.repository import Repository
 
 # %% remotes
@@ -31,6 +38,64 @@ class RemoteName(StrEnum):
     UPSTREAM = "upstream"
     """
     The remote a fork's checkout reaches the repository it was forked from by.
+    """
+
+
+class RemoteOption(GitOption):
+    """
+    The options of ``git remote``.
+    """
+
+    VERBOSE = "--verbose", True
+    """
+    Print each remote's URLs with its name.
+    """
+
+    VERBOSE_SHORT = "-v", True
+    """
+    Print each remote's URLs with its name, short form.
+    """
+
+    PUSH = "--push", True
+    """
+    Print the URL pushes go to rather than the one fetches come from.
+    """
+
+    ALL = "--all", True
+    """
+    Print every URL of the remote.
+    """
+
+    NO_QUERY = "-n", True
+    """
+    Show a remote without asking it for its branches.
+    """
+
+
+class LsRemoteOption(GitOption):
+    """
+    The options of ``git ls-remote``.
+    """
+
+    HEADS = "--heads", True
+    """
+    List branches only.
+    """
+
+    SYMBOLIC_REFERENCES = "--symref", True
+    """
+    Name the reference each symbolic reference points at.
+    """
+
+
+class SymbolicRefOption(GitOption):
+    """
+    The options of ``git symbolic-ref``.
+    """
+
+    QUIET = "--quiet", True
+    """
+    Fail without a message when the reference is not symbolic.
     """
 
 
@@ -73,8 +138,12 @@ class Remote:
         :return: Every remote the checkout configures, in the order git lists them.
         """
         return [
-            cls.from_push_url(git, name, git.run("remote", "get-url", "--push", name))
-            for name in git.run("remote").split()
+            cls.from_push_url(
+                git,
+                name,
+                git.run(GitSubcommand.REMOTE, "get-url", RemoteOption.PUSH, name),
+            )
+            for name in git.run(GitSubcommand.REMOTE).split()
         ]
 
     @classmethod
@@ -112,14 +181,16 @@ class Remote:
         :param branches: The branches to fetch, by name; all of them when none is named.
         :raises GitCommandFailed: If the remote cannot be reached.
         """
-        self.git.run("fetch", "--quiet", self.location, *branches)
+        self.git.run(GitSubcommand.FETCH, FetchOption.QUIET, self.location, *branches)
 
     def branch_tips(self) -> dict[str, CommitHash]:
         """
         :return: Each branch the remote has, by its name, and the commit it is at.
         :raises GitCommandFailed: If the remote cannot be reached.
         """
-        listed = self.git.run("ls-remote", "--heads", self.location)
+        listed = self.git.run(
+            GitSubcommand.LS_REMOTE, LsRemoteOption.HEADS, self.location
+        )
         return {
             reference.removeprefix(ReferenceNamespace.BRANCHES): CommitHash(commit)
             for commit, reference in (line.split() for line in listed.splitlines())
@@ -131,13 +202,21 @@ class Remote:
             last fetched when it cannot be reached; ``None`` when neither knows.
         """
         branches = ReferenceNamespace.BRANCHES
-        listed = self.git.attempt("ls-remote", "--symref", self.location, "HEAD")
+        head = SpecialReference.CHECKED_OUT
+        listed = self.git.attempt(
+            GitSubcommand.LS_REMOTE,
+            LsRemoteOption.SYMBOLIC_REFERENCES,
+            self.location,
+            head,
+        )
         for line in listed.output.splitlines() if listed.succeeded else []:
             target, _, name = line.partition("\t")
-            if name == "HEAD" and target.startswith(f"ref: {branches}"):
+            if name == head and target.startswith(f"ref: {branches}"):
                 return target.removeprefix(f"ref: {branches}")
         tracking = f"{ReferenceNamespace.REMOTE_TRACKING_BRANCHES}{self.name}/"
-        fetched = self.git.attempt("symbolic-ref", "--quiet", f"{tracking}HEAD")
+        fetched = self.git.attempt(
+            GitSubcommand.SYMBOLIC_REF, SymbolicRefOption.QUIET, f"{tracking}{head}"
+        )
         if not fetched.succeeded:
             return None
         return fetched.output.removeprefix(tracking)
@@ -155,12 +234,16 @@ class Remote:
             return []
         references = {name: self.branch(name).reference for name in tips}
         leases = [
-            f"--force-with-lease={references[name]}:{commit}"
+            f"{PushOption.FORCE_WITH_LEASE}={references[name]}:{commit}"
             for name, commit in tips.items()
         ]
         deletions = [f":{reference}" for reference in references.values()]
         pushed = self.git.attempt(
-            "push", "--porcelain", *leases, self.location, *deletions
+            GitSubcommand.PUSH,
+            PushOption.PORCELAIN,
+            *leases,
+            self.location,
+            *deletions,
         )
         deleted = {
             columns[1].partition(":")[2]
@@ -173,6 +256,43 @@ class Remote:
 
 
 # %% a branch on a remote
+
+
+class UpdateRefOption(GitOption):
+    """
+    The options of ``git update-ref``.
+    """
+
+    DELETE = "-d", False
+    """
+    Delete the reference.
+    """
+
+
+class ReflogOption(GitOption):
+    """
+    The options of ``git reflog``.
+    """
+
+    FORMAT = "--format", True
+    """
+    Print each entry as the given format says.
+    """
+
+    SUBJECTS = "--format=%gs", True
+    """
+    Print each entry's subject alone: what wrote the reference.
+    """
+
+    DATE = "--date", True
+    """
+    Print the entries' dates as the given format says.
+    """
+
+    MAX_COUNT = "--max-count", True
+    """
+    Print at most the given number of entries.
+    """
 
 
 class TrackingReferenceWrite(StrEnum):
@@ -230,9 +350,9 @@ class RemoteBranch:
         :return: The finished fetch, whose failure is an expected outcome.
         """
         return self.remote.git.attempt(
-            "fetch",
-            "--quiet",
-            "--no-write-fetch-head",
+            GitSubcommand.FETCH,
+            FetchOption.QUIET,
+            FetchOption.NO_WRITE_FETCH_HEAD,
             self.remote.location,
             f"+{self.reference}:{self.tracking_branch.revision_name}",
         )
@@ -243,7 +363,9 @@ class RemoteBranch:
             no such branch.
         :raises GitCommandFailed: If the remote cannot be reached.
         """
-        listed = self.remote.git.run("ls-remote", self.remote.location, self.reference)
+        listed = self.remote.git.run(
+            GitSubcommand.LS_REMOTE, self.remote.location, self.reference
+        )
         return next(
             (
                 CommitHash(commit)
@@ -294,11 +416,15 @@ class RemoteTrackingBranch(Revision):
         """
         Forget the branch as last fetched, as when the remote no longer has it.
         """
-        self.git.attempt("update-ref", "-d", self.revision_name)
+        self.git.attempt(
+            GitSubcommand.UPDATE_REF, UpdateRefOption.DELETE, self.revision_name
+        )
 
     def was_fetched_or_pushed(self) -> bool:
         """:return: Whether a fetch, a pull or a push ever wrote it, as its reflog says."""
-        reflog = self.git.attempt("reflog", "show", "--format=%gs", self.revision_name)
+        reflog = self.git.attempt(
+            GitSubcommand.REFLOG, "show", ReflogOption.SUBJECTS, self.revision_name
+        )
         entries = reflog.output.splitlines() if reflog.succeeded else []
         writes = tuple(TrackingReferenceWrite)
         return any(entry.startswith(writes) for entry in entries)
@@ -315,6 +441,38 @@ class PushFlag(StrEnum):
     DELETED = "-"
     """
     The reference was deleted.
+    """
+
+
+class PushOption(GitOption):
+    """
+    The options of ``git push``.
+    """
+
+    QUIET = "--quiet", True
+    """
+    Print nothing but errors.
+    """
+
+    PORCELAIN = "--porcelain", True
+    """
+    Print what happened to each reference in a form meant for programs.
+    """
+
+    FORCE_WITH_LEASE = "--force-with-lease", False
+    """
+    Overwrite the remote's history, but only where it is still where the checkout last
+    saw it.
+    """
+
+    SET_UPSTREAM = "--set-upstream", False
+    """
+    Make the local branch pushed track the branch it was pushed to.
+    """
+
+    NO_VERIFY = "--no-verify", False
+    """
+    Skip the ``pre-push`` hook.
     """
 
 
@@ -365,12 +523,18 @@ class ProposedPush:
 
         :return: The finished push, whose failure the caller reports rather than forces.
         """
-        lease = ["--force-with-lease"] if self.with_lease else []
-        upstream = ["--set-upstream"] if self.sets_upstream else []
-        hook = [] if self.runs_push_hook else ["--no-verify"]
+        lease = [PushOption.FORCE_WITH_LEASE] if self.with_lease else []
+        upstream = [PushOption.SET_UPSTREAM] if self.sets_upstream else []
+        hook = [] if self.runs_push_hook else [PushOption.NO_VERIFY]
         remote = self.destination.remote
         return remote.git.attempt(
-            "push", "--quiet", *lease, *upstream, *hook, remote.location, self.refspec
+            GitSubcommand.PUSH,
+            PushOption.QUIET,
+            *lease,
+            *upstream,
+            *hook,
+            remote.location,
+            self.refspec,
         )
 
 

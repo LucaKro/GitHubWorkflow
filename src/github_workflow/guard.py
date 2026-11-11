@@ -31,6 +31,7 @@ from domain_model.git.reading import (
     GitCallEffect,
     GitConfigurationLocation,
 )
+from domain_model.git.subcommands import GitSubcommand
 from domain_model.github.reading_calls import (
     GitHubCliCall,
     GitHubCliEffect,
@@ -113,47 +114,47 @@ class GitWrite(StrEnum):
     The git subcommands that write and have a workflow command doing the same job.
     """
 
-    PUSH = "push"
+    PUSH = GitSubcommand.PUSH
     """
     Publishing the branch.
     """
 
-    COMMIT = "commit"
+    COMMIT = GitSubcommand.COMMIT
     """
     Recording changes.
     """
 
-    ADD = "add"
+    ADD = GitSubcommand.ADD
     """
     Staging changes, which the workflow's commit does with the files it is given.
     """
 
-    SWITCH = "switch"
+    SWITCH = GitSubcommand.SWITCH
     """
     Changing or creating the checked-out branch.
     """
 
-    CHECKOUT = "checkout"
+    CHECKOUT = GitSubcommand.CHECKOUT
     """
     Changing or creating the checked-out branch, the older way.
     """
 
-    BRANCH = "branch"
+    BRANCH = GitSubcommand.BRANCH
     """
     Creating a branch.
     """
 
-    PULL = "pull"
+    PULL = GitSubcommand.PULL
     """
     Taking in GitHub's copy of the branch.
     """
 
-    MERGE = "merge"
+    MERGE = GitSubcommand.MERGE
     """
     Taking in another branch, which for GitHub's copy is a sync.
     """
 
-    CLONE = "clone"
+    CLONE = GitSubcommand.CLONE
     """
     Making a checkout of another repository.
     """

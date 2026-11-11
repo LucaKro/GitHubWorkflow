@@ -13,6 +13,8 @@ from domain_model.class_property import classproperty
 from domain_model.commands import CommandResult, CommandRunner
 from domain_model.environment import GitVariable
 from domain_model.git.exceptions import GitCommandFailed
+from domain_model.git.subcommands import GitGlobalOption, GitOption, GitSubcommand
+from domain_model.programs import Program
 
 # %% who a commit records
 
@@ -30,6 +32,56 @@ class GitIdentity(StrEnum):
     COMMITTER = "GIT_COMMITTER_IDENT"
     """
     Who recorded the commit.
+    """
+
+
+# %% the options of the subcommands run here
+
+
+class CloneOption(GitOption):
+    """
+    The options of ``git clone``.
+    """
+
+    QUIET = "--quiet", True
+    """
+    Print no progress.
+    """
+
+
+class RevParseOption(GitOption):
+    """
+    The options of ``git rev-parse``.
+    """
+
+    VERIFY = "--verify", True
+    """
+    Resolve exactly one revision, failing when it names none.
+    """
+
+    QUIET = "--quiet", True
+    """
+    Fail without a message when the revision names none.
+    """
+
+    SHOW_TOPLEVEL = "--show-toplevel", True
+    """
+    Print the root of the checkout.
+    """
+
+    COMMON_DIRECTORY = "--git-common-dir", True
+    """
+    Print the git directory every worktree of the repository shares.
+    """
+
+    ABSOLUTE_PATHS = "--path-format=absolute", True
+    """
+    Print the paths after it absolute.
+    """
+
+    GIT_PATH = "--git-path", True
+    """
+    Print where a file inside the git directory is for this worktree.
     """
 
 
@@ -99,7 +151,9 @@ class GitCommandRunner:
         """
         checkout = destination.absolute()
         checkout.parent.mkdir(parents=True, exist_ok=True)
-        cls(checkout.parent).run("clone", "--quiet", url, str(checkout))
+        cls(checkout.parent).run(
+            GitSubcommand.CLONE, CloneOption.QUIET, url, str(checkout)
+        )
         return cls(checkout)
 
     @classmethod
@@ -109,7 +163,9 @@ class GitCommandRunner:
         :return: Runs git at the root of the checkout the directory is inside, ``None``
             when it is inside none.
         """
-        root = cls(directory).attempt("rev-parse", "--show-toplevel")
+        root = cls(directory).attempt(
+            GitSubcommand.REV_PARSE, RevParseOption.SHOW_TOPLEVEL
+        )
         return cls(Path(root.output)) if root.succeeded else None
 
     def attempt(
@@ -126,7 +182,7 @@ class GitCommandRunner:
         """
         return GitCommandResult.of(
             CommandRunner(self.working_directory).run(
-                "git",
+                Program.GIT,
                 *arguments,
                 environment={**self.unattended_environment, **(environment or {})},
             )
@@ -153,7 +209,9 @@ class GitCommandRunner:
             worktree of it.
         """
         common_directory = self.run(
-            "rev-parse", "--path-format=absolute", "--git-common-dir"
+            GitSubcommand.REV_PARSE,
+            RevParseOption.ABSOLUTE_PATHS,
+            RevParseOption.COMMON_DIRECTORY,
         )
         return Path(common_directory) / location
 
@@ -163,12 +221,12 @@ class GitCommandRunner:
         :return: Where it is for this checkout, which may differ between worktrees.
         """
         return self.working_directory / self.run(
-            "rev-parse", "--git-path", str(location)
+            GitSubcommand.REV_PARSE, RevParseOption.GIT_PATH, str(location)
         )
 
     def version(self) -> str:
         """:return: Git's version, as ``git --version`` prints it."""
-        return self.run("--version")
+        return self.run(GitGlobalOption.VERSION)
 
     def identity(self, identity: GitIdentity) -> str:
         """
@@ -176,4 +234,4 @@ class GitCommandRunner:
         :return: It, as a commit made now would record it: ``Name <address>`` followed
             by the time.
         """
-        return self.run("var", identity)
+        return self.run(GitSubcommand.VAR, identity)

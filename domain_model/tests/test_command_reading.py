@@ -28,6 +28,8 @@ from domain_model.github.reading_calls import (
         ["stash", "list"],
         ["reflog"],
         ["fetch", "origin", "+refs/heads/main:refs/remotes/origin/main"],
+        ["fetch", "--prune", "origin"],
+        ["branch", "--sort=-committerdate", "--format=%(refname)"],
         ["archive", "-o", "out.tar", "HEAD"],
     ],
 )
@@ -45,6 +47,8 @@ def test_a_reading_git_call_has_no_effect(arguments: list[str]):
         (["branch", "feature"], GitCallEffect.WRITES),
         (["config", "user.name", "Someone"], GitCallEffect.WRITES),
         (["fetch", "origin", "main:main"], GitCallEffect.WRITES),
+        (["fetch", "--set-upstream", "origin", "main"], GitCallEffect.WRITES),
+        (["branch", "--edit-description"], GitCallEffect.WRITES),
         (["archive", "-o", ".git/hooks/pre-push", "HEAD"], GitCallEffect.WRITES),
     ],
 )
