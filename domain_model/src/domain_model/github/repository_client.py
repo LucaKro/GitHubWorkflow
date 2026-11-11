@@ -697,10 +697,10 @@ class RepositoryFeatures(
 
 
 @dataclass(frozen=True)
-class FollowedFork(PullRequestReader, RepositoryDetails, ForkDetails, ABC):
+class FollowedFork(PullRequestReader, RepositoryDetails, ForkDetails, StackReader, ABC):
     """
-    A fork, as far as following its pull requests upstream goes: its pull requests,
-    its default branch and what it was forked from.
+    A fork, as far as following its pull requests upstream goes: its pull requests and
+    the stacks holding them, its default branch and what it was forked from.
     """
 
 

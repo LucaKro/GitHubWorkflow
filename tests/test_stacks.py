@@ -1,6 +1,6 @@
 """
-Tests for :mod:`github_workflow.stacks`: putting a pull request on top of another in a
-native stack, and only in the owner's repository.
+Tests for :mod:`domain_model.github.stack_placement` and the ``stack on`` command: putting
+a pull request on top of another in a native stack, and only in the owner's repository.
 """
 
 from __future__ import annotations
