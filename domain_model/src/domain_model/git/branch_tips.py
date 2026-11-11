@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from domain_model.class_property import classproperty
+from domain_model.git.revisions import CommitHash
 
 # %% one branch
 
@@ -22,26 +22,11 @@ class BranchTip:
     The branch.
     """
 
-    commit: str
+    commit: CommitHash
     """
     The commit it was at.
     """
 
-    @classproperty
-    def abbreviation_length(cls) -> int:
-        """
-        How many of a commit's leading hexadecimal digits name it in a report.
-        """
-        return 7
-
-    @classmethod
-    def abbreviated(cls, commit: str) -> str:
-        """
-        :param commit: A commit.
-        :return: It, as a report names it.
-        """
-        return commit[: cls.abbreviation_length]
-
     def __str__(self) -> str:
         """:return: The branch and its commit, abbreviated."""
-        return f"{self.branch} at {self.abbreviated(self.commit)}"
+        return f"{self.branch} at {self.commit.abbreviated}"

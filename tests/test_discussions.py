@@ -122,9 +122,7 @@ def notes_in(
     :return: The notes branch of a fresh clone.
     """
     git = repositories.clone(url, "session").git
-    return NotesBranch.from_settings(
-        git, OwnedRemotes.read(git, settings).chosen, settings
-    )
+    return NotesBranch.from_settings(OwnedRemotes.read(git, settings).chosen, settings)
 
 
 def queued_posts(notes: NotesBranch) -> list[dict[str, str]]:
@@ -133,10 +131,10 @@ def queued_posts(notes: NotesBranch) -> list[dict[str, str]]:
     :return: The posts waiting on it, in order, as the posting script reads them.
     """
     notes.fetch()
-    listed = notes.git.run(
+    listed = notes.branch.remote.git.run(
         "ls-tree",
         "--name-only",
-        notes.branch.tracking_reference,
+        notes.branch.tracking_branch.revision_name,
         f"{NotesFile.DISCUSSION_POSTS.value}/",
     ).split()
     return [json.loads(notes.read(Path(path))) for path in sorted(listed)]
@@ -242,7 +240,7 @@ def test_an_idea_is_queued_for_the_repository_s_ideas_discussions(
     )
 
     notes = NotesBranch.from_settings(
-        checkout.git, OwnedRemotes.read(checkout.git, settings).chosen, settings
+        OwnedRemotes.read(checkout.git, settings).chosen, settings
     )
     assert queued_posts(notes) == [
         {
@@ -462,7 +460,7 @@ def test_a_branch_the_cleanup_deletes_is_entered_in_the_session_log(
     closed = json.loads(UpstreamDataset.FORK_PULL_REQUESTS.value.read_text())[0]
     closed["state"] = "closed"
     closed["head"]["ref"] = "closed-work"
-    closed["head"]["sha"] = git.commit_at("HEAD")
+    closed["head"]["sha"] = git.run("rev-parse", "HEAD")
     closed["head"]["repo"]["full_name"] = repository.full_name
     route = RepositoryRoute(repository)
     listing = route.listing(
@@ -474,9 +472,7 @@ def test_a_branch_the_cleanup_deletes_is_entered_in_the_session_log(
 
     run(github_workflow.__name__, checkout, WorkflowCommand.CLEANUP)
 
-    notes = NotesBranch.from_settings(
-        git, OwnedRemotes.read(git, settings).chosen, settings
-    )
+    notes = NotesBranch.from_settings(OwnedRemotes.read(git, settings).chosen, settings)
     [entry] = queued_posts(notes)
     assert entry[DiscussionPostKey.TITLE] == DiscussionTitle.SESSION_LOG
     assert "`closed-work`" in entry[DiscussionPostKey.BODY]

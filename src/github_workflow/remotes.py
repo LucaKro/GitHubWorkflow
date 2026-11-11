@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from domain_model.git.commands import GitCommandRunner, Remote, RemoteName
+from domain_model.git.commands import GitCommandRunner
+from domain_model.git.remotes import Remote, RemoteName
 from domain_model.repository import Repository
 
 from github_workflow.exceptions import AmbiguousOwnedRemoteError, NoOwnedRemoteError
@@ -59,9 +60,9 @@ class OwnedRemotes:
         :param settings: Whose repositories count as owned.
         :return: The checkout's remotes, sorted into owned and the rest.
         """
-        remotes = git.remotes()
+        remotes = Remote.configured(git)
         owned = tuple(
-            OwnedRemote(remote.name, remote.push_url, remote.repository)
+            OwnedRemote(remote.git, remote.name, remote.push_url, remote.repository)
             for remote in remotes
             if remote.repository is not None and settings.owns(remote.repository)
         )

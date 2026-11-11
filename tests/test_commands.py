@@ -23,7 +23,6 @@ from domain_model.environment import (
     GitHubActionsVariable,
     GitHubCredentialVariable,
 )
-from domain_model.git.commands import RemoteName
 from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
 from domain_model.github.repository_client import (
     GitHubRepository,
@@ -253,7 +252,7 @@ def saved_notes(
     """
     checkout = repositories.clone(url, "inspector")
     notes = NotesBranch.from_settings(
-        checkout.git, OwnedRemotes.read(checkout.git, settings).chosen, settings
+        OwnedRemotes.read(checkout.git, settings).chosen, settings
     )
     notes.fetch()
     return notes
@@ -267,7 +266,7 @@ def test_a_session_starts_with_the_notes_and_this_branch_s_progress(
 ) -> None:
     writer = repositories.clone(owned_url, "writer")
     NotesBranch.from_settings(
-        writer.git, OwnedRemotes.read(writer.git, settings).chosen, settings
+        OwnedRemotes.read(writer.git, settings).chosen, settings
     ).write(
         {
             Path(NotesFile.STANDING_NOTES): "a standing note\n",
@@ -291,7 +290,7 @@ def test_a_loaded_note_sits_between_its_markers_as_written(
     note = "a standing note"
     writer = repositories.clone(owned_url, "writer")
     NotesBranch.from_settings(
-        writer.git, OwnedRemotes.read(writer.git, settings).chosen, settings
+        OwnedRemotes.read(writer.git, settings).chosen, settings
     ).write({Path(NotesFile.STANDING_NOTES): f"{note}\n"}, "Save")
     checkout = repositories.clone(owned_url, "session")
 
@@ -647,11 +646,9 @@ def runner_in(checkout: ProjectCheckout) -> BranchProofRunner:
     """:param checkout: The checkout.
     :return: Runs tests on its owner's default branch with an interpreter named
     ``project-python``."""
+    remote = OwnedRemotes.read(checkout.git, WorkflowSettings()).chosen
     return BranchProofRunner(
-        checkout.git,
-        RemoteName.ORIGIN,
-        RepositoriesByOwner.default_branch,
-        "project-python",
+        remote.branch(RepositoriesByOwner.default_branch), "project-python"
     )
 
 
@@ -756,7 +753,8 @@ def test_proving_on_a_pull_request_runs_the_test_on_its_branch(
         "--python=project-python",
     )
 
-    assert step.runner == replace(runner_in(finding_checkout), branch="below")
+    runner = runner_in(finding_checkout)
+    assert step.runner == replace(runner, branch=runner.branch.remote.branch("below"))
 
 
 def test_proving_on_a_branch_runs_the_test_there(
@@ -772,8 +770,9 @@ def test_proving_on_a_branch_runs_the_test_there(
         "--python=project-python",
     )
 
+    runner = runner_in(finding_checkout)
     assert step.runner == replace(
-        runner_in(finding_checkout), branch="without-pull-request"
+        runner, branch=runner.branch.remote.branch("without-pull-request")
     )
 
 
@@ -794,7 +793,8 @@ def test_rechecking_on_a_pull_request_runs_the_test_on_its_branch(
         "--python=project-python",
     )
 
-    assert step.runner == replace(runner_in(finding_checkout), branch="below")
+    runner = runner_in(finding_checkout)
+    assert step.runner == replace(runner, branch=runner.branch.remote.branch("below"))
 
 
 def test_proving_on_a_closed_pull_request_is_refused(
@@ -862,9 +862,7 @@ def test_a_fixed_finding_is_closed_through_the_command_line(
 
     github = owner_s_github(settings)
     git = finding_checkout.git
-    notes = NotesBranch.from_settings(
-        git, OwnedRemotes.read(git, settings).chosen, settings
-    )
+    notes = NotesBranch.from_settings(OwnedRemotes.read(git, settings).chosen, settings)
     assert step == FindingClosing(
         github,
         3,
@@ -873,7 +871,7 @@ def test_a_fixed_finding_is_closed_through_the_command_line(
         RepositoriesByOwner.default_branch,
         157,
         DiscussionSessionLog(
-            github, DiscussionPosting(notes), git.checked_out_branch()
+            github, DiscussionPosting(notes), git.run("branch", "--show-current")
         ),
     )
 
@@ -927,7 +925,10 @@ def test_a_draft_building_on_a_pull_request_rechecks_on_its_branch(
     )
 
     assert isinstance(step, FindingDraftOpening)
-    assert step.recheck.runner == replace(runner_in(finding_checkout), branch="below")
+    runner = runner_in(finding_checkout)
+    assert step.recheck.runner == replace(
+        runner, branch=runner.branch.remote.branch("below")
+    )
 
 
 # %% commenting on and editing a finding
@@ -1402,7 +1403,7 @@ def test_a_fork_s_main_behind_its_upstream_is_synced_through_the_command_line(
     run(github_workflow.__name__, checkout, WorkflowCommand.SYNC, "--upstream")
 
     fork_tip = checkout.git.run("ls-remote", owned_url, default).split()[0]
-    assert (non_reads(github), fork_tip) == ([], writer.commit_at("HEAD"))
+    assert (non_reads(github), fork_tip) == ([], writer.run("rev-parse", "HEAD"))
 
 
 # %% taking in the default branch
@@ -1431,7 +1432,9 @@ def test_the_default_branch_s_new_commits_are_merged_through_the_command_line(
 
     run(github_workflow.__name__, checkout, WorkflowCommand.SYNC, "--base")
 
-    assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
+    assert RepositoriesByOwner.is_ancestor(
+        git, other.run("rev-parse", "HEAD"), git.run("rev-parse", "HEAD")
+    )
 
 
 def test_another_open_pull_request_s_commits_are_merged_into_the_work_branch(
@@ -1464,7 +1467,9 @@ def test_another_open_pull_request_s_commits_are_merged_into_the_work_branch(
 
     run(github_workflow.__name__, checkout, WorkflowCommand.SYNC, "--on", "56")
 
-    assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
+    assert RepositoriesByOwner.is_ancestor(
+        git, other.run("rev-parse", "HEAD"), git.run("rev-parse", "HEAD")
+    )
 
 
 def test_a_conflicting_merge_is_resolved_and_finished_through_the_command_line(
@@ -1502,7 +1507,9 @@ def test_a_conflicting_merge_is_resolved_and_finished_through_the_command_line(
         "shared.txt",
     )
 
-    assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
+    assert RepositoriesByOwner.is_ancestor(
+        git, other.run("rev-parse", "HEAD"), git.run("rev-parse", "HEAD")
+    )
     assert (
         checkout.root / "shared.txt"
     ).read_text() == "main's line\nthe branch's line\n"

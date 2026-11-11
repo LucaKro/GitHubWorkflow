@@ -51,7 +51,7 @@ def change_on_github(
     other.run("add", name)
     other.run("commit", "--quiet", "--message", f"Write {name}")
     other.run("push", "--quiet", "origin", branch)
-    return other.commit_at("HEAD")
+    return other.run("rev-parse", "HEAD")
 
 
 def freshening(work: WritePolicy, base: str | None = None) -> BranchFreshening:
@@ -87,32 +87,32 @@ def test_a_work_branch_behind_its_base_is_merged_with_it(
 
     [line] = freshening(work).lines()
 
-    assert work.checkout.git.contains(changed, "HEAD")
+    assert RepositoriesByOwner.is_ancestor(work.checkout.git, changed, "HEAD")
     assert line.tone is Tone.NEWS
 
 
 def test_a_conflicting_merge_is_left_for_the_session(
     work: WritePolicy, repositories: RepositoriesByOwner
 ) -> None:
-    head = work.checkout.git.commit_at("HEAD")
+    head = work.checkout.git.run("rev-parse", "HEAD")
     change_on_github(work, repositories, RepositoriesByOwner.default_branch, "a.txt")
 
     [line] = freshening(work).lines()
 
-    assert work.checkout.git.commit_at("HEAD") == head
+    assert work.checkout.git.run("rev-parse", "HEAD") == head
     assert line.tone is Tone.ACTION
 
 
 def test_changes_in_the_working_tree_keep_the_merge_off(
     work: WritePolicy, repositories: RepositoriesByOwner
 ) -> None:
-    head = work.checkout.git.commit_at("HEAD")
+    head = work.checkout.git.run("rev-parse", "HEAD")
     change_on_github(work, repositories, RepositoriesByOwner.default_branch, "b.txt")
     (work.checkout.root / "a.txt").write_text("changed, not committed\n")
 
     [line] = freshening(work).lines()
 
-    assert work.checkout.git.commit_at("HEAD") == head
+    assert work.checkout.git.run("rev-parse", "HEAD") == head
     assert line.tone is Tone.ACTION
 
 
@@ -128,8 +128,8 @@ def test_a_stacked_branch_is_merged_with_the_branch_below(
 
     freshening(work, base="below").lines()
 
-    assert git.contains(below, "HEAD")
-    assert not git.contains(elsewhere, "HEAD")
+    assert RepositoriesByOwner.is_ancestor(git, below, "HEAD")
+    assert not RepositoriesByOwner.is_ancestor(git, elsewhere, "HEAD")
 
 
 def test_an_up_to_date_work_branch_says_nothing(work: WritePolicy) -> None:
@@ -140,11 +140,11 @@ def test_the_default_branch_checked_out_is_left_alone(
     work: WritePolicy, repositories: RepositoriesByOwner
 ) -> None:
     BranchSwitch(work, RepositoriesByOwner.default_branch).run()
-    head = work.checkout.git.commit_at("HEAD")
+    head = work.checkout.git.run("rev-parse", "HEAD")
     change_on_github(work, repositories, RepositoriesByOwner.default_branch, "b.txt")
 
     assert freshening(work).lines() == []
-    assert work.checkout.git.commit_at("HEAD") == head
+    assert work.checkout.git.run("rev-parse", "HEAD") == head
 
 
 # %% the fork's default branch
@@ -214,10 +214,12 @@ def test_a_push_brings_the_work_branch_up_to_the_default_branch(
     (checkout.root / "more.txt").write_text("more\n")
     git.run("add", "more.txt")
     git.run("commit", "--quiet", "--message", "Do more work")
-    more_work = git.commit_at("HEAD")
+    more_work = git.run("rev-parse", "HEAD")
 
     run(github_workflow.__name__, checkout, WorkflowCommand.PUSH)
 
     git.run("fetch", "--quiet", "origin")
-    assert git.contains(more_work, "origin/work")
-    assert git.contains(other.commit_at("HEAD"), "origin/work")
+    assert RepositoriesByOwner.is_ancestor(git, more_work, "origin/work")
+    assert RepositoriesByOwner.is_ancestor(
+        git, other.run("rev-parse", "HEAD"), "origin/work"
+    )

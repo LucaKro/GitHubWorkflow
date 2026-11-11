@@ -310,7 +310,7 @@ class ForwardedUpstreamReviews(UpstreamReviews):
             f"Ask for the upstream reviews of {request.branch}",
         )
         self.notes.fetch()
-        return self.notes.git.commit_at(self.notes.branch.tracking_reference)
+        return self.notes.branch.tracking_branch.commit().hash
 
 
 # %% answering them, on the runner

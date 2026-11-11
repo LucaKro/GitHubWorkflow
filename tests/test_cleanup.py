@@ -13,7 +13,9 @@ import time
 from pathlib import Path
 
 import pytest
-from domain_model.git.commands import GitCommandRunner, RemoteBranch
+from domain_model.git.commands import GitCommandRunner
+from domain_model.git.remotes import RemoteName
+from domain_model.git.revisions import CommitHash
 from domain_model.github.replayed_api import ReplayedApi
 from domain_model.github.rest_models import RestPullRequest
 from domain_model.github.vocabulary import PullRequestState
@@ -191,9 +193,9 @@ def cleanup_in(
     checkout = repositories.clone(url, "cleaner")
     git = checkout.git
     remote = OwnedRemotes.read(git, settings).chosen
-    branch = RemoteBranch(remote.name, "closed-work")
+    branch = remote.branch("closed-work")
     git.run("push", "--quiet", remote.name, f"HEAD:{branch.reference}")
-    commit = git.commit_at("HEAD")
+    commit = CommitHash(git.run("rev-parse", "HEAD"))
     branches = KeptBranches(
         {branch.name: commit},
         [
@@ -208,8 +210,8 @@ def cleanup_in(
         remote.repository.full_name,
         frozenset({RepositoriesByOwner.default_branch, settings.notes_branch}),
     )
-    notes = NotesBranch.from_settings(git, remote, settings)
-    return BranchCleanup(git, remote, branches, notes, EntriesInMemory()), git
+    notes = NotesBranch.from_settings(remote, settings)
+    return BranchCleanup(remote, branches, notes, EntriesInMemory()), git
 
 
 def test_a_ready_branch_is_deleted(
@@ -328,7 +330,7 @@ def test_the_workflow_keeps_a_listed_branch_that_moved_since(
 
     run_deletion_workflow(repositories, owned_url, settings)
 
-    moved = f"{reused.commit_at('HEAD')}\trefs/heads/closed-work"
+    moved = f"{reused.run("rev-parse", 'HEAD')}\trefs/heads/closed-work"
     assert moved in repositories.branches(owned_url)
 
 
@@ -348,9 +350,7 @@ def pushed_work(
     BranchStart(policy, "tried").run()
     CommitWork(policy, "Try", [write(policy.checkout, "tried.txt")]).run()
     PushWork(policy).run()
-    return policy, NotesBranch.from_settings(
-        policy.checkout.git, policy.remote, settings
-    )
+    return policy, NotesBranch.from_settings(policy.remote, settings)
 
 
 def discard(
@@ -402,7 +402,7 @@ def test_a_discarded_branch_is_listed_with_its_commit(
 
     listed = notes.read(NotesFile.DISCARDED_BRANCHES.value)
     assert DiscardedBranches.from_text(listed) == DiscardedBranches(
-        {"tried": policy.checkout.git.commit_at("tried")}
+        {"tried": policy.checkout.git.run("rev-parse", "tried")}
     )
 
 
@@ -489,7 +489,7 @@ def test_a_fetch_into_an_old_clone_counts_as_using_it(
     clone = foreign_clone(removal.clones, foreign_url)
     clone_used(clone, 2 * removal.unused_for.total_seconds())
 
-    GitCommandRunner(clone).fetch("origin")
+    GitCommandRunner(clone).run("fetch", "--quiet", RemoteName.ORIGIN)
 
     removal.run()
 

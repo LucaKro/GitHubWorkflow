@@ -8,7 +8,6 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
-from domain_model.git.commands import GitCommandRunner
 from domain_model.git.storage_branch import StorageBranch
 
 from github_workflow.remotes import OwnedRemote
@@ -26,15 +25,14 @@ class NotesBranch(StorageBranch):
 
     @classmethod
     def from_settings(
-        cls, git: GitCommandRunner, remote: OwnedRemote, settings: WorkflowSettings
+        cls, remote: OwnedRemote, settings: WorkflowSettings
     ) -> NotesBranch:
         """
-        :param git: Runs git in the checkout.
         :param remote: The owner's remote the branch lives on.
         :param settings: The branch's name.
         :return: The notes branch.
         """
-        return cls(git, remote.branch(settings.notes_branch))
+        return cls(remote.branch(settings.notes_branch))
 
     @staticmethod
     def queued_file_name() -> str:

@@ -5,9 +5,11 @@ The checkout a session works in.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 
 from domain_model.git.commands import GitCommandRunner
+from domain_model.git.working_tree import Merge, WorkingTree
 from domain_model.locations import GitStateFile
 
 from github_workflow.exceptions import NotACheckoutError
@@ -47,6 +49,26 @@ class ProjectCheckout:
         """
         git = GitCommandRunner.enclosing(directory)
         return None if git is None else cls(git)
+
+    @cached_property
+    def working_tree(self) -> WorkingTree:
+        """
+        The files checked out, and the branch they are on.
+        """
+        return WorkingTree(self.git)
+
+    @cached_property
+    def merge(self) -> Merge:
+        """
+        A merge into the checked-out branch, in progress or not.
+        """
+        return Merge(self.working_tree)
+
+    @property
+    def checked_out_branch_name(self) -> str:
+        """:return: The checked-out branch's name, empty on a detached ``HEAD``."""
+        branch = self.working_tree.checked_out_branch()
+        return "" if branch is None else branch.name
 
     @property
     def root(self) -> Path:

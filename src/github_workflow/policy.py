@@ -107,19 +107,19 @@ class WritePolicy:
         :raises DetachedHeadError: If no branch is checked out.
         :raises DefaultBranchWriteError: If it is the default branch.
         """
-        branch = self.checkout.git.checked_out_branch()
-        if not branch:
+        branch = self.checkout.working_tree.checked_out_branch()
+        if branch is None:
             raise DetachedHeadError()
-        if branch == self.default_branch:
-            raise DefaultBranchWriteError(branch)
-        return branch
+        if branch.name == self.default_branch:
+            raise DefaultBranchWriteError(branch.name)
+        return branch.name
 
     def refuse_while_merging(self, branch: str) -> None:
         """
         :param branch: The checked-out branch.
         :raises MergeInProgressError: If a merge is in progress on it.
         """
-        if self.checkout.git.merge_in_progress():
+        if self.checkout.merge.in_progress():
             raise MergeInProgressError(branch)
 
     def branch_being_merged(self) -> str:
@@ -130,7 +130,7 @@ class WritePolicy:
         :raises NoMergeInProgressError: If no merge is in progress.
         """
         branch = self.work_branch()
-        if not self.checkout.git.merge_in_progress():
+        if not self.checkout.merge.in_progress():
             raise NoMergeInProgressError(branch)
         return branch
 

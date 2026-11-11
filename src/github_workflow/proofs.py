@@ -17,7 +17,8 @@ from typing import Any
 
 from domain_model.class_property import classproperty
 from domain_model.git.branch_tips import BranchTip
-from domain_model.git.commands import GitCommandRunner, RemoteBranch
+from domain_model.git.remotes import RemoteBranch
+from domain_model.git.revisions import CommitHash
 from domain_model.github.issue_models import IssueComment
 from domain_model.pytest_run import (
     BrokenTestException,
@@ -243,19 +244,10 @@ class BranchProofRunner(ProofRunner):
     files: the default branch, or the branch of the pull request a draft builds on.
     """
 
-    git: GitCommandRunner
+    branch: RemoteBranch
     """
-    The checkout, which only fetches; its files are left alone.
-    """
-
-    remote: str
-    """
-    The owner's remote, holding the branch.
-    """
-
-    branch: str
-    """
-    The branch the test runs on.
+    The branch the test runs on, on the owner's remote; the checkout it is fetched into
+    keeps its files as they are.
     """
 
     python: str
@@ -271,13 +263,12 @@ class BranchProofRunner(ProofRunner):
 
         :raises GitCommandFailed: If the branch cannot be fetched.
         """
-        branch = RemoteBranch(self.remote, self.branch)
-        fetched = self.git.fetch_branch(branch)
-        fetched.raise_if_failed()
-        tip = BranchTip(branch.name, self.git.commit_at(branch.tracking_reference))
+        self.branch.fetch().raise_if_failed()
+        commit = self.branch.tracking_branch.commit()
+        tip = BranchTip(self.branch.name, commit.hash)
         with tempfile.TemporaryDirectory() as directory:
             files = Path(directory) / ProofFile.DEFAULT_BRANCH
-            self.git.export_files(tip.commit, files)
+            commit.export_files(files)
             (files / test.path).parent.mkdir(parents=True, exist_ok=True)
             (files / test.path).write_text(test.source)
             result = PytestRun(
@@ -372,7 +363,7 @@ class Proof:
         """
         return cls(
             FindingTest(Path(data[ProofKey.PATH]), data[ProofKey.SOURCE]),
-            BranchTip(data[ProofKey.BRANCH], data[ProofKey.COMMIT]),
+            BranchTip(data[ProofKey.BRANCH], CommitHash(data[ProofKey.COMMIT])),
             data[ProofKey.FAILURE],
         )
 

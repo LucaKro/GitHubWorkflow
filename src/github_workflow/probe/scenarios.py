@@ -18,12 +18,10 @@ from domain_model.environment import (
     ClaudeCodeVariable,
     GitHubCredentialVariable,
 )
-from domain_model.git.commands import (
-    GitCommandRunner,
-    GitIdentity,
-    ProposedPush,
-    RemoteBranch,
-)
+from domain_model.git.commands import GitCommandRunner, GitIdentity
+from domain_model.git.remotes import ProposedPush, RemoteBranch
+from domain_model.git.revisions import Commit, CommitHash
+from domain_model.git.working_tree import WorkingTree
 from domain_model.github.clients import GitHubApi, RestAnswer
 from domain_model.github.rest_models import RestPullRequest
 from domain_model.github.routes import RepositoryRoute, StackAction
@@ -251,6 +249,11 @@ class Probe:
         return RepositoryRoute(self.remote.repository)
 
     @property
+    def tree(self) -> WorkingTree:
+        """:return: The working tree of the checkout the probe runs in."""
+        return WorkingTree(self.git)
+
+    @property
     def runner(self) -> CommandRunner:
         """:return: Runs the library checks and the stacks command in the checkout."""
         return CommandRunner(self.git.working_directory)
@@ -268,13 +271,14 @@ class Probe:
         :param git: Runs git in the checkout.
         :return: What the session runs on, by what was looked at.
         """
+        branch = WorkingTree(git).checked_out_branch()
         return {
             EnvironmentFact.PYTHON: platform.python_version(),
             EnvironmentFact.CLOUD_SESSION: str(ClaudeCodeVariable.REMOTE.read()),
             EnvironmentFact.TOKEN_VARIABLE_SET: str(
                 GitHubCredentialVariable.first_token() is not None
             ),
-            EnvironmentFact.CHECKED_OUT_BRANCH: git.checked_out_branch(),
+            EnvironmentFact.CHECKED_OUT_BRANCH: "" if branch is None else branch.name,
             EnvironmentFact.GIT_AUTHOR: git.identity(GitIdentity.AUTHOR).rsplit(" ", 2)[
                 0
             ],
@@ -348,7 +352,7 @@ class Probe:
 
     # %% the domain model, used live
 
-    def check_library(self, commit: str) -> None:
+    def check_library(self, commit: CommitHash) -> None:
         """
         :param commit: The commit the check verdict is read on.
         """
@@ -386,14 +390,12 @@ class Probe:
         """
         for shape in (BranchName.PLAIN, BranchName.SESSION_STYLE):
             branch = self.branch(shape)
-            pushed = self.git.push(
-                ProposedPush(branch.remote, f"HEAD:{branch.reference}")
-            )
+            pushed = ProposedPush(branch, self.tree.head()).publish()
             if not self.record_command(
                 CheckGroup.GIT, f"push {branch.name}", pushed, "pushed"
             ):
                 continue
-            found = self.git.has_remote_branch(branch)
+            found = branch.exists()
             self.report.record(
                 CheckGroup.GIT,
                 f"read {branch.name} back",
@@ -411,7 +413,7 @@ class Probe:
         self.record_command(
             group,
             f"delete {branch.name}",
-            self.git.delete_remote_branch(branch),
+            branch.delete(),
             "deleted",
         )
 
@@ -533,13 +535,11 @@ class Probe:
 
         :param default_branch: The branch the pull request targets.
         """
-        self.git.fetch(self.remote.name, default_branch)
-        base = self.remote.branch(default_branch).tracking_reference
-        commit = self.git.commit_files(base, {}, ProbeText.COMMIT_MESSAGE)
+        self.remote.fetch(default_branch)
+        base = self.remote.branch(default_branch).tracking_branch.commit()
+        commit = Commit.create(self.git, {}, ProbeText.COMMIT_MESSAGE, base)
         branch = self.branch(BranchName.PULL_REQUEST)
-        pushed = self.git.push(
-            ProposedPush(branch.remote, f"{commit}:{branch.reference}")
-        )
+        pushed = ProposedPush(branch, commit).publish()
         if not self.record_command(
             CheckGroup.PULL_REQUEST, f"push {branch.name}", pushed, "pushed"
         ):
@@ -646,16 +646,16 @@ class Probe:
 
         :param default_branch: The branch the lower pull request targets.
         """
-        self.git.fetch(self.remote.name, default_branch)
-        base = self.remote.branch(default_branch).tracking_reference
-        lower_commit = self.git.commit_files(base, {}, ProbeText.STACK_LOWER_TITLE)
-        upper_commit = self.git.commit_files(
-            lower_commit, {}, ProbeText.STACK_UPPER_TITLE
+        self.remote.fetch(default_branch)
+        base = self.remote.branch(default_branch).tracking_branch.commit()
+        lower_commit = Commit.create(self.git, {}, ProbeText.STACK_LOWER_TITLE, base)
+        upper_commit = Commit.create(
+            self.git, {}, ProbeText.STACK_UPPER_TITLE, lower_commit
         )
         lower = self.branch(BranchName.STACK_LOWER)
         upper = self.branch(BranchName.STACK_UPPER)
         pushed = [
-            self.git.push(ProposedPush(branch.remote, f"{commit}:{branch.reference}"))
+            ProposedPush(branch, commit).publish()
             for branch, commit in ((lower, lower_commit), (upper, upper_commit))
         ]
         recorded = [
@@ -799,17 +799,13 @@ class Probe:
         """
         deleted = self.branch(BranchName.DELETED_BY_WORKFLOW)
         workflow = self.branch(BranchName.WORKFLOW)
-        pushed = self.git.push(
-            ProposedPush(deleted.remote, f"HEAD:{deleted.reference}")
-        )
+        pushed = ProposedPush(deleted, self.tree.head()).publish()
         if not self.record_command(
             CheckGroup.ACTIONS, f"push {deleted.name}", pushed, "pushed"
         ):
             return
         commit = self.commit_with_workflow(workflow.name, deleted.name)
-        pushed = self.git.push(
-            ProposedPush(workflow.remote, f"{commit}:{workflow.reference}")
-        )
+        pushed = ProposedPush(workflow, commit).publish()
         if self.record_command(
             CheckGroup.ACTIONS,
             f"push the workflow on {workflow.name}",
@@ -817,11 +813,7 @@ class Probe:
             "pushed",
         ):
             self.wait_for_run(workflow.name)
-        left = [
-            branch.name
-            for branch in (deleted, workflow)
-            if self.git.has_remote_branch(branch)
-        ]
+        left = [branch.name for branch in (deleted, workflow) if branch.exists()]
         self.report.record(
             CheckGroup.ACTIONS,
             "branches gone afterwards",
@@ -830,7 +822,7 @@ class Probe:
             0.0,
         )
 
-    def commit_with_workflow(self, workflow: str, deleted: str) -> str:
+    def commit_with_workflow(self, workflow: str, deleted: str) -> Commit:
         """
         Build a commit on top of the checked-out one that adds the filled-in workflow,
         leaving the checkout untouched.
@@ -846,10 +838,11 @@ class Probe:
                 ProbeWorkflowPlaceholder.DELETED_BRANCH: deleted,
             },
         )
-        commit = self.git.commit_files(
-            "HEAD",
+        commit = Commit.create(
+            self.git,
             {RepositoryFile.BRANCH_DELETION_WORKFLOW: text},
             ProbeText.WORKFLOW_COMMIT_MESSAGE,
+            self.tree.head(),
         )
         self.report.record(
             CheckGroup.ACTIONS,

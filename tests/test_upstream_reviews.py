@@ -180,7 +180,9 @@ class RunsOfTheQueuedRequest(RepositoryWorkflows):
     def runs_on(self, branch: str) -> list[WorkflowRun]:
         if self.status is None:
             return []
-        tip = self.notes.git.commit_at(self.notes.branch.tracking_reference)
+        tip = self.notes.branch.remote.git.run(
+            "rev-parse", self.notes.branch.tracking_branch.revision_name
+        )
         return [
             WorkflowRun(
                 1,
@@ -275,10 +277,10 @@ def queued_requests(notes: NotesBranch) -> list[str]:
     """:param notes: The notes branch.
     :return: The names of the requests waiting on it."""
     notes.fetch()
-    listed = notes.git.run(
+    listed = notes.branch.remote.git.run(
         "ls-tree",
         "--name-only",
-        f"{notes.branch.tracking_reference}:{NotesFile.UPSTREAM_REVIEW_REQUESTS.value}",
+        f"{notes.branch.tracking_branch.revision_name}:{NotesFile.UPSTREAM_REVIEW_REQUESTS.value}",
     )
     return listed.split()
 

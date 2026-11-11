@@ -50,7 +50,7 @@ class UnsavedNotes:
         if not NotesBlock.holds_unsaved_edits(self.checkout.claude_local_text):
             return None
         remote = OwnedRemotes.read(self.checkout.git, self.settings).chosen
-        notes = NotesBranch.from_settings(self.checkout.git, remote, self.settings)
+        notes = NotesBranch.from_settings(remote, self.settings)
         saved = NotesSave(self.checkout, notes).run()
         files = ", ".join(str(path) for path in saved) or "nothing new"
         return ReportLine(

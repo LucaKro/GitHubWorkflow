@@ -11,13 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from domain_model.git.commands import (
-    GitCommandResult,
-    GitCommandRunner,
-    RemoteBranch,
-    RemoteName,
-)
+from domain_model.git.commands import GitCommandResult, GitCommandRunner
 from domain_model.git.exceptions import StorageBranchWriteConflict
+from domain_model.git.remotes import Remote, RemoteName
 from domain_model.git.storage_branch import StorageBranch
 
 # %% fixtures
@@ -56,7 +52,8 @@ def storage(remote: Path, tmp_path: Path, name: str) -> StorageBranch:
     git.run("clone", "--quiet", str(remote), name)
     clone = GitCommandRunner(tmp_path / name)
     identify(clone)
-    return StorageBranch(clone, RemoteBranch(RemoteName.ORIGIN, "storage"))
+    origin = Remote(clone, RemoteName.ORIGIN, str(remote), None)
+    return StorageBranch(origin.branch("storage"))
 
 
 # %% reading and writing
@@ -128,16 +125,12 @@ def test_a_writer_behind_another_on_the_same_file_is_refused(
 
 def test_a_write_leaves_the_checkout_untouched(remote, tmp_path):
     branch = storage(remote, tmp_path, "writer")
-    before = branch.git.run("status", "--porcelain"), branch.git.run(
-        "rev-parse", "HEAD"
-    )
+    git = branch.branch.remote.git
+    before = git.run("status", "--porcelain"), git.run("rev-parse", "HEAD")
 
     branch.write({Path("file.md"): "text\n"}, "Write")
 
-    assert (
-        branch.git.run("status", "--porcelain"),
-        branch.git.run("rev-parse", "HEAD"),
-    ) == before
+    assert (git.run("status", "--porcelain"), git.run("rev-parse", "HEAD")) == before
 
 
 @dataclass(frozen=True)
@@ -162,7 +155,9 @@ def test_a_branch_that_did_not_move_is_not_fetched_again(remote, tmp_path):
     storage(remote, tmp_path, "writer").write({Path("file.md"): "text\n"}, "Write")
     reader = storage(remote, tmp_path, "reader")
     reader.fetch()
-    recorded = GitCallsRecorded(reader.git.working_directory)
+    origin = reader.branch.remote
+    recorded = GitCallsRecorded(origin.git.working_directory)
+    watched = Remote(recorded, origin.name, origin.push_url, origin.repository)
 
-    assert StorageBranch(recorded, reader.branch).fetch() is True
+    assert StorageBranch(watched.branch(reader.branch.name)).fetch() is True
     assert "fetch" not in recorded.subcommands

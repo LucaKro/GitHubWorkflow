@@ -11,11 +11,9 @@ from pathlib import Path
 
 import pytest
 from domain_model.environment import ClaudeCodeVariable
-from domain_model.git.commands import (
-    GitCommandRunner,
-    ReferenceUpdate,
-    RemoteBranch,
-)
+from domain_model.git.commands import GitCommandRunner
+from domain_model.git.remotes import ReferenceUpdate, Remote
+from domain_model.git.revisions import CommitHash, ReferenceNamespace
 
 from github_workflow.exceptions import (
     DefaultBranchWriteError,
@@ -36,8 +34,10 @@ def update_of(branch: str) -> ReferenceUpdate:
     :param branch: The branch on the remote a push changes.
     :return: A push of a new commit to it.
     """
-    reference = RemoteBranch(RepositoriesByOwner.default_branch, branch).reference
-    return ReferenceUpdate(reference, "1" * 40, reference, "2" * 40)
+    reference = f"{ReferenceNamespace.BRANCHES}{branch}"
+    return ReferenceUpdate(
+        reference, CommitHash("1" * 40), reference, CommitHash("2" * 40)
+    )
 
 
 def hooked(repositories: RepositoriesByOwner, url: str) -> GitCommandRunner:
@@ -67,7 +67,7 @@ def test_a_push_to_a_foreign_repository_is_refused(
     repositories: RepositoriesByOwner, foreign_url: str, settings: WorkflowSettings
 ) -> None:
     git = repositories.clone(foreign_url, "foreign").git
-    check = PushCheck(git, "origin", foreign_url, settings)
+    check = PushCheck(Remote.from_push_url(git, "origin", foreign_url), settings)
 
     with pytest.raises(ForeignPushError):
         check.raise_if_forbidden([update_of("work")])
@@ -77,7 +77,7 @@ def test_a_push_to_the_default_branch_is_refused(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
     git = repositories.clone(owned_url, "owned").git
-    check = PushCheck(git, "origin", owned_url, settings)
+    check = PushCheck(Remote.from_push_url(git, "origin", owned_url), settings)
 
     with pytest.raises(DefaultBranchWriteError):
         check.raise_if_forbidden([update_of(RepositoriesByOwner.default_branch)])
@@ -87,7 +87,7 @@ def test_a_push_of_a_work_branch_to_the_owner_is_allowed(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
     git = repositories.clone(owned_url, "owned").git
-    check = PushCheck(git, "origin", owned_url, settings)
+    check = PushCheck(Remote.from_push_url(git, "origin", owned_url), settings)
 
     assert check.raise_if_forbidden([update_of("work")]) is None
 
@@ -100,7 +100,7 @@ def test_a_push_to_a_remote_whose_default_branch_cannot_be_read_is_refused(
 ) -> None:
     git = repositories.clone(owned_url, "owned").git
     unreachable = f"file://{tmp_path / 'missing' / settings.owner / 'project.git'}"
-    check = PushCheck(git, unreachable, unreachable, settings)
+    check = PushCheck(Remote.from_push_url(git, unreachable, unreachable), settings)
 
     with pytest.raises(UnknownDefaultBranchError):
         check.raise_if_forbidden([update_of("work")])
@@ -140,7 +140,7 @@ def test_a_session_s_push_of_a_work_branch_passes_the_hook(
 
     git.run("push", "--quiet", "origin", "HEAD:refs/heads/work")
 
-    assert f"{git.commit_at('HEAD')}\trefs/heads/work" in repositories.branches(
+    assert f"{git.run("rev-parse", 'HEAD')}\trefs/heads/work" in repositories.branches(
         owned_url
     )
 
@@ -152,7 +152,7 @@ def test_a_person_s_own_push_passes_the_hook_unchecked(
 
     git.run("push", "--quiet", "origin", "HEAD:refs/heads/main")
 
-    assert f"{git.commit_at('HEAD')}\trefs/heads/main" in repositories.branches(
+    assert f"{git.run("rev-parse", 'HEAD')}\trefs/heads/main" in repositories.branches(
         owned_url
     )
 

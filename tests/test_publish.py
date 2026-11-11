@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from domain_model.git.commands import RemoteBranch, RemoteName
+from domain_model.git.remotes import Remote
 from domain_model.git.storage_branch import StorageBranch
 
 from github_workflow.probe.publish import ResultsBranch, ResultsPublication
@@ -33,10 +33,11 @@ def test_results_land_on_the_results_branch_under_their_directory_s_name(
 
     remote = OwnedRemotes.read(checkout.git, settings).chosen
 
-    ResultsPublication(checkout.git, remote, directory).publish()
+    ResultsPublication(remote, directory).publish()
 
     reader = repositories.clone(owned_url, "reader").git
-    results = StorageBranch(reader, RemoteBranch(RemoteName.ORIGIN, ResultsBranch.NAME))
+    [origin] = Remote.configured(reader)
+    results = StorageBranch(origin.branch(ResultsBranch.NAME))
     results.fetch()
     assert results.read(Path("check-1/report.md")) == "all well\n"
     assert checkout.git.run("status", "--porcelain") == before

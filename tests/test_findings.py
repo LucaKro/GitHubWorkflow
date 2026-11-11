@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 from domain_model.git.branch_tips import BranchTip
+from domain_model.git.revisions import CommitHash
 from domain_model.github.issue_models import Issue, IssueComment
 from domain_model.github.number_links import NumberLink
 from domain_model.github.rest_models import RestPullRequest
@@ -101,7 +102,10 @@ def runner(outcome: ProofOutcome) -> PresetOutcomeRunner:
     message = "" if outcome is ProofOutcome.PASSES else "assert False"
     return PresetOutcomeRunner(
         ProofAttempt(
-            finding_test(), BranchTip("main", "0123456789abcdef"), outcome, message
+            finding_test(),
+            BranchTip("main", CommitHash("0123456789abcdef")),
+            outcome,
+            message,
         )
     )
 

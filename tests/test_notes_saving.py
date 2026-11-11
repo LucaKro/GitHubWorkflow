@@ -46,7 +46,7 @@ def notes_of(checkout: ProjectCheckout, settings: WorkflowSettings) -> NotesBran
     :return: Its notes branch, fetched.
     """
     remote = OwnedRemotes.read(checkout.git, settings).chosen
-    notes = NotesBranch.from_settings(checkout.git, remote, settings)
+    notes = NotesBranch.from_settings(remote, settings)
     notes.fetch()
     return notes
 

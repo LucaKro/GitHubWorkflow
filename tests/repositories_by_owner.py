@@ -98,3 +98,15 @@ class RepositoriesByOwner:
         :return: Every branch it holds, as ``git ls-remote`` lists them.
         """
         return GitCommandRunner(self.root).run("ls-remote", "--heads", url)
+
+    @staticmethod
+    def is_ancestor(git: GitCommandRunner, candidate: str, descendant: str) -> bool:
+        """
+        :param git: A checkout.
+        :param candidate: Anything git resolves to a commit.
+        :param descendant: Another.
+        :return: Whether *candidate* is in *descendant*'s history, as git answers.
+        """
+        return git.attempt(
+            "merge-base", "--is-ancestor", candidate, descendant
+        ).succeeded

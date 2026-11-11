@@ -9,7 +9,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from domain_model.git.branch_tips import BranchTip
-from domain_model.git.commands import ProposedPush, RemoteBranch
+from domain_model.git.remotes import ProposedPush, Remote, RemoteBranch, RemoteName
+from domain_model.git.revisions import Commit
 from domain_model.github.labels import LabelWrite
 from domain_model.github.number_links import NumberLink
 from domain_model.github.repository_client import (
@@ -208,9 +209,10 @@ class ForkMainSync(WorkflowStep):
     Reads which repository the fork was forked from.
     """
 
-    upstream_name: str = "upstream"
+    upstream_name: str = RemoteName.UPSTREAM
     """
-    The remote name the upstream's branch is fetched under, as ``refs/remotes/<name>``.
+    The remote name the upstream's branch is fetched under, whether or not the checkout
+    configures a remote of that name.
     """
 
     def run(self) -> str:
@@ -236,18 +238,21 @@ class ForkMainSync(WorkflowStep):
         :param upstream: The repository the fork was forked from.
         :return: The fork's default branch and the upstream's, as fetched now.
         """
-        git = self.policy.checkout.git
+        url = upstream.clone_url_under()
+        remote = Remote(
+            self.policy.checkout.git, self.upstream_name, url, upstream, url
+        )
         fork = self.fork_branch
-        theirs = RemoteBranch(self.upstream_name, self.policy.default_branch)
-        git.fetch_branch(fork).raise_if_failed()
-        git.fetch_branch(theirs, upstream.clone_url_under()).raise_if_failed()
-        fork_tip = BranchTip(fork.name, git.commit_at(fork.tracking_reference))
-        upstream_tip = BranchTip(theirs.name, git.commit_at(theirs.tracking_reference))
+        theirs = remote.branch(self.policy.default_branch)
+        fork.fetch().raise_if_failed()
+        theirs.fetch().raise_if_failed()
+        fork_commit = fork.tracking_branch.commit()
+        upstream_commit = theirs.tracking_branch.commit()
         return ForkTips(
-            fork_tip,
-            upstream_tip,
-            git.commits_between(upstream_tip.commit, fork_tip.commit),
-            git.commits_between(fork_tip.commit, upstream_tip.commit),
+            BranchTip(fork.name, fork_commit.hash),
+            BranchTip(theirs.name, upstream_commit.hash),
+            fork_commit.commits_ahead(upstream_commit),
+            upstream_commit.commits_ahead(fork_commit),
         )
 
     def fast_forward(self, upstream: Repository, tips: ForkTips) -> str:
@@ -257,17 +262,14 @@ class ForkMainSync(WorkflowStep):
             its own.
         :return: What was fast-forwarded, the local copy included.
         """
-        git = self.policy.checkout.git
+        checkout = self.policy.checkout
         fork = self.fork_branch
-        git.push(
-            ProposedPush(
-                fork.remote,
-                f"{tips.upstream.commit}:{fork.reference}",
-                runs_push_hook=False,
-            )
-        ).raise_if_failed()
-        git.fetch_branch(fork).raise_if_failed()
-        local = LocalBranchFollowing(git).follow(fork)
+        upstream_commit = Commit(checkout.git, tips.upstream.commit)
+        ProposedPush(
+            fork, upstream_commit, runs_push_hook=False
+        ).publish().raise_if_failed()
+        fork.fetch().raise_if_failed()
+        local = LocalBranchFollowing(checkout.working_tree).follow(fork)
         behind = CountedThing.COMMIT.counted(tips.behind)
         return f"{fork.name} fast-forwarded by {behind} to {upstream}'s{local}"
 

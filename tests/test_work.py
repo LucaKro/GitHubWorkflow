@@ -14,8 +14,9 @@ from pathlib import Path
 
 import pytest
 from domain_model.environment import GitIdentityVariable
-from domain_model.git.commands import GitCommandRunner, RemoteBranch
+from domain_model.git.commands import GitCommandRunner
 from domain_model.git.exceptions import GitCommandFailed
+from domain_model.git.working_tree import Merge, WorkingTree
 from domain_model.github.exceptions import StackContinuesAboveError
 from domain_model.github.repository_client import (
     BranchStacks,
@@ -154,9 +155,10 @@ def test_a_work_branch_starts_from_github_s_default_branch(
     BranchStart(policy, "feature").run()
 
     git = policy.checkout.git
-    assert git.checked_out_branch() == "feature"
-    assert git.commit_at("HEAD") == git.commit_at(
-        RemoteBranch(policy.remote.name, policy.default_branch).tracking_reference
+    assert git.run("branch", "--show-current") == "feature"
+    assert git.run("rev-parse", "HEAD") == git.run(
+        "rev-parse",
+        policy.remote.branch(policy.default_branch).tracking_branch.revision_name,
     )
 
 
@@ -165,7 +167,7 @@ def test_a_work_branch_starts_on_another_branch_when_asked(work: WritePolicy) ->
 
     BranchStart(work, "upper", "feature").run()
 
-    assert git.commit_at("upper") == git.commit_at("feature")
+    assert git.run("rev-parse", "upper") == git.run("rev-parse", "feature")
 
 
 def test_a_work_branch_starts_on_a_local_branch_github_does_not_have(
@@ -177,7 +179,7 @@ def test_a_work_branch_starts_on_a_local_branch_github_does_not_have(
 
     BranchStart(work, "upper", "unpushed").run()
 
-    assert git.commit_at("upper") == git.commit_at("unpushed")
+    assert git.run("rev-parse", "upper") == git.run("rev-parse", "unpushed")
 
 
 def github_s_default_branch_moved_on(
@@ -190,9 +192,9 @@ def github_s_default_branch_moved_on(
     write(mover.checkout, "moved.txt")
     git.run("add", "moved.txt")
     git.run("commit", "--quiet", "--message", "Move on")
-    default = RemoteBranch(mover.remote.name, RepositoriesByOwner.default_branch)
-    git.run("push", "--quiet", default.remote, f"HEAD:{default.reference}")
-    return git.commit_at("HEAD")
+    default = mover.remote.branch(RepositoriesByOwner.default_branch)
+    git.run("push", "--quiet", default.remote.name, f"HEAD:{default.reference}")
+    return git.run("rev-parse", "HEAD")
 
 
 def test_starting_from_the_default_branch_fast_forwards_the_local_one(
@@ -203,7 +205,7 @@ def test_starting_from_the_default_branch_fast_forwards_the_local_one(
 
     BranchStart(policy, "feature").run()
 
-    assert policy.checkout.git.commit_at(policy.default_branch) == moved
+    assert policy.checkout.git.run("rev-parse", policy.default_branch) == moved
 
 
 def test_a_local_default_branch_with_commits_of_its_own_is_kept(
@@ -214,12 +216,12 @@ def test_a_local_default_branch_with_commits_of_its_own_is_kept(
     write(policy.checkout, "own.txt")
     git.run("add", "own.txt")
     git.run("commit", "--quiet", "--message", "Own")
-    own = git.commit_at("HEAD")
+    own = git.run("rev-parse", "HEAD")
     github_s_default_branch_moved_on(repositories, owned_url, settings)
 
     BranchStart(policy, "feature").run()
 
-    assert git.commit_at(policy.default_branch) == own
+    assert git.run("rev-parse", policy.default_branch) == own
 
 
 def test_starting_from_another_branch_leaves_the_local_default_branch_alone(
@@ -229,18 +231,21 @@ def test_starting_from_another_branch_leaves_the_local_default_branch_alone(
     settings: WorkflowSettings,
 ) -> None:
     git = work.checkout.git
-    before = git.commit_at(work.default_branch)
+    before = git.run("rev-parse", work.default_branch)
     github_s_default_branch_moved_on(repositories, owned_url, settings)
 
     BranchStart(work, "upper", "feature").run()
 
-    assert git.commit_at(work.default_branch) == before
+    assert git.run("rev-parse", work.default_branch) == before
 
 
 def test_switching_checks_out_the_branch(work: WritePolicy) -> None:
     BranchSwitch(work, RepositoriesByOwner.default_branch).run()
 
-    assert work.checkout.git.checked_out_branch() == RepositoriesByOwner.default_branch
+    assert (
+        work.checkout.git.run("branch", "--show-current")
+        == RepositoriesByOwner.default_branch
+    )
 
 
 def test_switching_to_a_branch_only_github_has_checks_it_out(
@@ -255,9 +260,9 @@ def test_switching_to_a_branch_only_github_has_checks_it_out(
     BranchSwitch(session, "pushed-elsewhere").run()
 
     git = session.checkout.git
-    assert (git.checked_out_branch(), git.commit_at("HEAD")) == (
+    assert (git.run("branch", "--show-current"), git.run("rev-parse", "HEAD")) == (
         "pushed-elsewhere",
-        elsewhere.checkout.git.commit_at("HEAD"),
+        elsewhere.checkout.git.run("rev-parse", "HEAD"),
     )
 
 
@@ -269,7 +274,7 @@ def test_switching_to_a_branch_github_lacks_checks_out_the_local_one(
 
     BranchSwitch(work, "unpushed").run()
 
-    assert work.checkout.git.checked_out_branch() == "unpushed"
+    assert work.checkout.git.run("branch", "--show-current") == "unpushed"
 
 
 # %% committing
@@ -293,12 +298,12 @@ def test_a_commit_crediting_an_assistant_as_co_author_is_refused(
     work: WritePolicy,
 ) -> None:
     message = "Add b\n\nCo-Authored-By: Claude <noreply@anthropic.com>"
-    before = work.checkout.git.commit_at("HEAD")
+    before = work.checkout.git.run("rev-parse", "HEAD")
 
     with pytest.raises(AssistantCreditError):
         CommitWork(work, message, [write(work.checkout, "b.txt")]).run()
 
-    assert work.checkout.git.commit_at("HEAD") == before
+    assert work.checkout.git.run("rev-parse", "HEAD") == before
 
 
 def test_a_commit_authored_as_an_assistant_is_refused(work: WritePolicy) -> None:
@@ -312,12 +317,12 @@ def test_a_commit_committed_as_an_assistant_is_refused(
     work: WritePolicy, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv(GitIdentityVariable.COMMITTER_EMAIL, "noreply@anthropic.com")
-    before = work.checkout.git.commit_at("HEAD")
+    before = work.checkout.git.run("rev-parse", "HEAD")
 
     with pytest.raises(AssistantCreditError):
         CommitWork(work, "Add b", [write(work.checkout, "b.txt")]).run()
 
-    assert work.checkout.git.commit_at("HEAD") == before
+    assert work.checkout.git.run("rev-parse", "HEAD") == before
 
 
 def test_a_person_named_like_the_assistant_may_commit(work: WritePolicy) -> None:
@@ -366,9 +371,9 @@ def test_a_commit_without_a_branch_is_refused(work: WritePolicy) -> None:
 
 
 def test_a_pushed_branch_is_on_the_owner_s_repository(work: WritePolicy) -> None:
-    branch = RemoteBranch(work.remote.name, "feature")
+    branch = work.remote.branch("feature")
 
-    assert work.checkout.git.has_remote_branch(branch)
+    assert branch.exists()
 
 
 def test_a_pushed_branch_tracks_its_copy_on_the_owner_s_repository(
@@ -645,12 +650,12 @@ def test_a_checked_out_default_branch_behind_github_s_is_fast_forwarded(
     other.run("push", "--quiet", "origin", f"HEAD:{RepositoriesByOwner.default_branch}")
     git = work.checkout.git
     git.run("switch", "--quiet", RepositoriesByOwner.default_branch)
-    default = RemoteBranch(work.remote.name, RepositoriesByOwner.default_branch)
-    git.fetch_branch(default).raise_if_failed()
+    default = work.remote.branch(RepositoriesByOwner.default_branch)
+    default.fetch().raise_if_failed()
 
-    LocalBranchFollowing(git).follow(default)
+    LocalBranchFollowing(work.checkout.working_tree).follow(default)
 
-    assert git.commit_at("HEAD") == other.commit_at("HEAD")
+    assert git.run("rev-parse", "HEAD") == other.run("rev-parse", "HEAD")
 
 
 # %% syncing
@@ -677,7 +682,9 @@ def test_a_branch_github_moved_on_is_fast_forwarded(
 
     BranchSync(work, PullRequestsFromBranchesInMemory()).run()
 
-    assert work.checkout.git.commit_at("HEAD") == other.checkout.git.commit_at("HEAD")
+    assert work.checkout.git.run("rev-parse", "HEAD") == other.checkout.git.run(
+        "rev-parse", "HEAD"
+    )
 
 
 def test_a_branch_github_rebased_is_moved_to_github_s(
@@ -696,7 +703,9 @@ def test_a_branch_github_rebased_is_moved_to_github_s(
 
     BranchSync(work, PullRequestsFromBranchesInMemory()).run()
 
-    assert work.checkout.git.commit_at("HEAD") == rebaser.commit_at("HEAD")
+    assert work.checkout.git.run("rev-parse", "HEAD") == rebaser.run(
+        "rev-parse", "HEAD"
+    )
 
 
 def test_a_branch_with_unpushed_commits_github_diverged_from_is_left_alone(
@@ -707,12 +716,12 @@ def test_a_branch_with_unpushed_commits_github_diverged_from_is_left_alone(
 ) -> None:
     other_clone_pushing(repositories, owned_url, settings)
     CommitWork(work, "Add b", [write(work.checkout, "b.txt")]).run()
-    before = work.checkout.git.commit_at("HEAD")
+    before = work.checkout.git.run("rev-parse", "HEAD")
 
     with pytest.raises(UnpushedCommitsError):
         BranchSync(work, PullRequestsFromBranchesInMemory()).run()
 
-    assert work.checkout.git.commit_at("HEAD") == before
+    assert work.checkout.git.run("rev-parse", "HEAD") == before
 
 
 def test_a_branch_deleted_from_github_is_not_reported_as_never_pushed(
@@ -870,7 +879,9 @@ def test_the_default_branch_s_new_commits_are_merged_into_the_work_branch(
     base_merge(work).run()
 
     git = work.checkout.git
-    assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
+    assert RepositoriesByOwner.is_ancestor(
+        git, other.run("rev-parse", "HEAD"), git.run("rev-parse", "HEAD")
+    )
     assert Attribution.ACKNOWLEDGEMENT in last_message(git)
 
 
@@ -884,7 +895,7 @@ def test_a_conflicting_merge_is_left_in_progress_naming_its_files(
         base_merge(work).run()
 
     assert raised.value.files == ("a.txt",)
-    assert git.merge_in_progress()
+    assert Merge(WorkingTree(git)).in_progress()
 
 
 # %% finishing or undoing a conflicting merge
@@ -918,9 +929,15 @@ def test_a_resolved_merge_is_committed_as_the_person(
 
     git = work.checkout.git
     parents = git.run("log", "--max-count=1", "--format=%P").split()
-    assert (len(parents), git.contains(other.commit_at("HEAD"), "HEAD")) == (2, True)
+    assert (
+        len(parents),
+        RepositoriesByOwner.is_ancestor(git, other.run("rev-parse", "HEAD"), "HEAD"),
+    ) == (
+        2,
+        True,
+    )
     assert Attribution.ACKNOWLEDGEMENT in last_message(git)
-    assert not git.merge_in_progress()
+    assert not Merge(WorkingTree(git)).in_progress()
 
 
 def test_a_file_still_marking_a_conflict_is_refused(
@@ -931,7 +948,7 @@ def test_a_file_still_marking_a_conflict_is_refused(
     with pytest.raises(ConflictMarkersLeftError):
         MergeCompletion(work, [Path("a.txt")]).run()
 
-    assert work.checkout.git.merge_in_progress()
+    assert work.checkout.merge.in_progress()
 
 
 def test_a_conflicting_file_left_out_is_refused(
@@ -943,19 +960,22 @@ def test_a_conflicting_file_left_out_is_refused(
     with pytest.raises(UnresolvedConflictError):
         MergeCompletion(work, [Path("b.txt")]).run()
 
-    assert work.checkout.git.merge_in_progress()
+    assert work.checkout.merge.in_progress()
 
 
 def test_an_undone_merge_leaves_the_branch_as_it_was(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
 ) -> None:
     git = work.checkout.git
-    before = git.commit_at("HEAD")
+    before = git.run("rev-parse", "HEAD")
     conflicted(work, repositories, owned_url)
 
     MergeAbort(work).run()
 
-    assert (git.commit_at("HEAD"), git.run("status", "--porcelain")) == (before, "")
+    assert (git.run("rev-parse", "HEAD"), git.run("status", "--porcelain")) == (
+        before,
+        "",
+    )
 
 
 def test_no_merge_in_progress_has_nothing_to_finish(work: WritePolicy) -> None:
@@ -991,12 +1011,12 @@ def test_a_branch_higher_in_a_stack_does_not_take_in_the_default_branch(
     branches = BranchStacksInMemory({}, opened=[above])
     branches.existing_stacks.append(Stack(1, "main", True, branches.stacked([3, 4])))
     git = work.checkout.git
-    before = git.commit_at("HEAD")
+    before = git.run("rev-parse", "HEAD")
 
     with pytest.raises(StackedBranchMergeError):
         BaseMerge(work, branches).run()
 
-    assert git.commit_at("HEAD") == before
+    assert git.run("rev-parse", "HEAD") == before
 
 
 def test_the_bottom_of_a_stack_takes_in_the_default_branch(
@@ -1009,7 +1029,9 @@ def test_the_bottom_of_a_stack_takes_in_the_default_branch(
     BaseMerge(work, branches).run()
 
     git = work.checkout.git
-    assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
+    assert RepositoriesByOwner.is_ancestor(
+        git, other.run("rev-parse", "HEAD"), git.run("rev-parse", "HEAD")
+    )
 
 
 def test_the_default_branch_takes_in_nothing(
@@ -1025,11 +1047,11 @@ def test_a_branch_that_has_the_default_branch_s_commits_is_left_alone(
     work: WritePolicy,
 ) -> None:
     git = work.checkout.git
-    before = git.commit_at("HEAD")
+    before = git.run("rev-parse", "HEAD")
 
     base_merge(work).run()
 
-    assert git.commit_at("HEAD") == before
+    assert git.run("rev-parse", "HEAD") == before
 
 
 # %% building on another pull request
@@ -1090,7 +1112,9 @@ def test_another_pull_request_s_branch_is_merged_into_the_work_branch(
     merge.run()
 
     git = work.checkout.git
-    assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
+    assert RepositoriesByOwner.is_ancestor(
+        git, other.run("rev-parse", "HEAD"), git.run("rev-parse", "HEAD")
+    )
     assert Attribution.ACKNOWLEDGEMENT in last_message(git)
 
 
@@ -1108,12 +1132,12 @@ def test_a_pull_request_that_cannot_be_built_on_is_refused(
 ) -> None:
     merge, _ = pushed_below(work, repositories, owned_url, state, repository)
     git = work.checkout.git
-    before = git.commit_at("HEAD")
+    before = git.run("rev-parse", "HEAD")
 
     with pytest.raises(UnbuildablePullRequestError):
         merge.run()
 
-    assert git.commit_at("HEAD") == before
+    assert git.run("rev-parse", "HEAD") == before
 
 
 def test_the_default_branch_builds_on_no_pull_request(
@@ -1240,7 +1264,7 @@ def test_a_repository_of_the_owner_s_is_cloned_into_the_directory(
 
     [published] = repositories.branches(owned_url).splitlines()
     clone = GitCommandRunner(directory / repository.name)
-    assert clone.commit_at("HEAD") == published.split()[0]
+    assert clone.run("rev-parse", "HEAD") == published.split()[0]
 
 
 def test_somebody_else_s_repository_is_cloned_to_be_read(
@@ -1257,7 +1281,7 @@ def test_somebody_else_s_repository_is_cloned_to_be_read(
 
     [published] = repositories.branches(foreign_url).splitlines()
     clone = GitCommandRunner(directory / repository.name)
-    assert clone.commit_at("HEAD") == published.split()[0]
+    assert clone.run("rev-parse", "HEAD") == published.split()[0]
 
 
 def test_a_clone_carries_the_workflow_s_push_hook(
@@ -1374,11 +1398,11 @@ def test_a_repository_cloned_before_is_reused(
     cloning.run()
     clone = GitCommandRunner(cloning.directory / repository.name)
     clone.run("commit", "--quiet", "--allow-empty", "--message", "Read along")
-    reviewed = clone.commit_at("HEAD")
+    reviewed = clone.run("rev-parse", "HEAD")
 
     cloning.run()
 
-    assert clone.commit_at("HEAD") == reviewed
+    assert clone.run("rev-parse", "HEAD") == reviewed
 
 
 def test_a_clone_from_outside_a_checkout_goes_into_the_directory(

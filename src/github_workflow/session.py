@@ -91,17 +91,14 @@ class WorkflowSession(RepositoryDetails):
         """
         The notes branch on the owner's remote.
         """
-        return NotesBranch.from_settings(self.checkout.git, self.remote, self.settings)
+        return NotesBranch.from_settings(self.remote, self.settings)
 
     def default_branch(self) -> str:
         """
         :return: The branch pull requests target unless told otherwise, as git reads it
             from the owner's remote, and from GitHub's API only when git cannot tell.
         """
-        return (
-            self.checkout.git.remote_default_branch(self.remote.name)
-            or self.github.default_branch()
-        )
+        return self.remote.default_branch() or self.github.default_branch()
 
     @property
     def policy(self) -> WritePolicy:
@@ -122,7 +119,7 @@ class WorkflowSession(RepositoryDetails):
     def session_log(self) -> DiscussionSessionLog:
         """:return: Where what the session does without asking is entered."""
         return DiscussionSessionLog.from_checkout(
-            self.github, self.checkout.git, self.notes
+            self.github, self.checkout, self.notes
         )
 
     @property
@@ -154,9 +151,7 @@ class WorkflowSession(RepositoryDetails):
         :return: The repository's branches and pull requests, the notes branch's list of
             discarded branches as last fetched.
         """
-        return KeptBranches.read(
-            self.checkout.git, self.remote, self.github, self.notes
-        )
+        return KeptBranches.read(self.remote, self.github, self.notes)
 
     @property
     def trusted_authors(self) -> set[str]:
@@ -214,7 +209,7 @@ class WorkflowSession(RepositoryDetails):
         :param branch: The owner's branch to run it on.
         :return: Runs a finding's test on the branch.
         """
-        return BranchProofRunner(self.checkout.git, self.remote.name, branch, python)
+        return BranchProofRunner(self.remote.branch(branch), python)
 
     def findings_board(self, repository: str | None) -> GitHubRepository:
         """

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from domain_model.class_property import classproperty
+from domain_model.git.revisions import CommitHash
 from domain_model.github.exceptions import (
     MissingPullRequestFieldError,
     ReviewThreadWithoutCommentsError,
@@ -79,7 +80,7 @@ class PullRequestHead(JSONModel):
     repository is deleted.
     """
 
-    commit: str
+    commit: CommitHash
     """
     The commit the head branch points at, which the checks are reported against.
     """
@@ -103,7 +104,7 @@ class PullRequestHead(JSONModel):
             repository=(
                 None if repository is None else repository[RestJSONKey.FULL_NAME]
             ),
-            commit=data[RestJSONKey.SHA],
+            commit=CommitHash(data[RestJSONKey.SHA]),
             owner=Author.from_json(data[RestJSONKey.USER]),
         )
 
@@ -383,7 +384,7 @@ class WorkflowRun(JSONModel):
     The file of the workflow run.
     """
 
-    commit: str
+    commit: CommitHash
     """
     The commit whose push or event started it.
     """
@@ -415,7 +416,7 @@ class WorkflowRun(JSONModel):
         return cls(
             identifier=data[RestJSONKey.IDENTIFIER],
             path=data[RestJSONKey.PATH],
-            commit=data[RestJSONKey.HEAD_SHA],
+            commit=CommitHash(data[RestJSONKey.HEAD_SHA]),
             status=WorkflowRunStatus(data[RestJSONKey.STATUS]),
             conclusion=(
                 None

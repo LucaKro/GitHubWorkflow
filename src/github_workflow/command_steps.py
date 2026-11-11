@@ -697,7 +697,6 @@ class CleanupStep(CommandStep):
         clones = session.foreign_clones
         return Cleanup(
             BranchCleanup(
-                session.checkout.git,
                 session.remote,
                 session.kept_branches,
                 session.notes,

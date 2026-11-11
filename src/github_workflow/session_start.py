@@ -130,10 +130,9 @@ class SessionStart:
                 Tone.ACTION,
             )
         remote = remotes.chosen
-        git = self.checkout.git
-        notes = NotesBranch.from_settings(git, remote, self.settings)
+        notes = NotesBranch.from_settings(remote, self.settings)
         exists = notes.fetch()
-        branch = git.checked_out_branch()
+        branch = self.checkout.checked_out_branch_name
         sections = {
             NotesSection.STANDING_NOTES: (
                 notes.read(NotesFile.STANDING_NOTES) or ""

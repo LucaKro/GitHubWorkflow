@@ -11,7 +11,8 @@ from pathlib import Path
 
 import pytest
 from domain_model.environment import PythonVariable
-from domain_model.git.commands import RemoteName
+from domain_model.git.remotes import Remote, RemoteName
+from domain_model.git.revisions import CommitHash
 from domain_model.github.issue_models import IssueComment
 from domain_model.locations import PathEnumeration, PythonProjectFile
 
@@ -174,9 +175,8 @@ def runner(
     :param python: The interpreter the tests run with.
     :return: Runs tests on the checkout's default branch on GitHub.
     """
-    return BranchProofRunner(
-        checkout.git, RemoteName.ORIGIN, RepositoriesByOwner.default_branch, python
-    )
+    [origin] = Remote.configured(checkout.git)
+    return BranchProofRunner(origin.branch(RepositoriesByOwner.default_branch), python)
 
 
 def finding_test(source: ProofDataset) -> FindingTest:
@@ -189,9 +189,8 @@ def github_s_tip(checkout: ProjectCheckout) -> BranchTip:
     """:param checkout: The checkout.
     :return: Where GitHub's default branch is."""
     branch = RepositoriesByOwner.default_branch
-    return BranchTip(
-        branch, checkout.git.run("ls-remote", RemoteName.ORIGIN, branch).split()[0]
-    )
+    listed = checkout.git.run("ls-remote", RemoteName.ORIGIN, branch)
+    return BranchTip(branch, CommitHash(listed.split()[0]))
 
 
 # %% running on the default branch
@@ -422,7 +421,7 @@ def proof_of(source: str, commit: str = "0123456789abcdef") -> Proof:
     :return: A proof by that test."""
     return Proof(
         FindingTest(DoublingProjectFile.TEST, source),
-        BranchTip(RepositoriesByOwner.default_branch, commit),
+        BranchTip(RepositoriesByOwner.default_branch, CommitHash(commit)),
         "assert 6 == 4",
     )
 

@@ -1,6 +1,8 @@
 """
-Tests for :mod:`domain_model.github.stack_placement` and the ``stack on`` command: putting
-a pull request on top of another in a native stack, and only in the owner's repository.
+Tests for :mod:`domain_model.github.stack_placement` and the ``stack on`` command:
+
+putting a pull request on top of another in a native stack, and only in the owner's
+repository.
 """
 
 from __future__ import annotations
@@ -9,7 +11,7 @@ import subprocess
 import sys
 
 import pytest
-from domain_model.git.commands import RemoteName
+from domain_model.git.remotes import RemoteName
 from domain_model.github.exceptions import StackContinuesAboveError
 from domain_model.github.stack_models import Stack
 from domain_model.github.stack_placement import StackPlacement

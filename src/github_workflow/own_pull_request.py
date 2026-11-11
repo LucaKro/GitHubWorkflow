@@ -349,9 +349,9 @@ class ReviewResolution(ReviewThreadWrite):
     def run(self) -> str:
         policy = self.pull_request.policy
         branch = policy.remote.branch(policy.work_branch())
-        git = policy.checkout.git
-        fetched = git.fetch_branch(branch)
-        pushed = fetched.succeeded and git.contains("HEAD", branch.tracking_reference)
+        fetched = branch.fetch()
+        head = policy.checkout.working_tree.head()
+        pushed = fetched.succeeded and head.is_contained_in(branch.tracking_branch)
         if not pushed:
             raise UnpushedWorkError(branch.name)
         found = self.thread()

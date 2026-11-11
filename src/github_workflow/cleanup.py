@@ -18,6 +18,7 @@ from typing import Self
 
 from domain_model.git.branch_tips import BranchTip
 from domain_model.git.commands import GitCommandRunner
+from domain_model.git.revisions import CommitHash
 from domain_model.github.repository_client import (
     GitHubRepository,
     PullRequestsFromForks,
@@ -50,7 +51,7 @@ class BranchTips:
     Branches, each with the commit it may be deleted at, as the notes branch lists them.
     """
 
-    commits: Mapping[str, str] = field(default_factory=dict)
+    commits: Mapping[str, CommitHash] = field(default_factory=dict)
     """
     Each branch, and the commit it may be deleted at.
     """
@@ -62,7 +63,7 @@ class BranchTips:
         :return: The branches it names.
         """
         pairs = (line.split() for line in (text or "").splitlines() if line.strip())
-        return cls({branch: commit for branch, commit in pairs})
+        return cls({branch: CommitHash(commit) for branch, commit in pairs})
 
     def to_text(self) -> str:
         """:return: The list as the notes branch keeps it."""
@@ -123,13 +124,12 @@ class BranchDiscard(WorkflowStep):
     """
 
     def run(self) -> str:
-        git = self.policy.checkout.git
-        branch = self.name or git.checked_out_branch()
+        branch = self.name or self.policy.checkout.checked_out_branch_name
         if not branch:
             raise DetachedHeadError()
         if branch in {self.policy.default_branch, self.notes.branch.name}:
             raise UndiscardableBranchError(branch)
-        tip = git.remote_branch_tip(self.policy.remote.branch(branch))
+        tip = self.policy.remote.branch(branch).tip()
         if tip is None:
             raise NothingToDiscardError(branch)
         self.notes.fetch()
@@ -168,7 +168,7 @@ class KeptBranches:
     branches ready for deletion follow.
     """
 
-    tips: Mapping[str, str]
+    tips: Mapping[str, CommitHash]
     """
     Each branch on the repository, and the commit it is at.
     """
@@ -226,14 +226,9 @@ class KeptBranches:
 
     @classmethod
     def read(
-        cls,
-        git: GitCommandRunner,
-        remote: OwnedRemote,
-        github: GitHubRepository,
-        notes: NotesBranch,
+        cls, remote: OwnedRemote, github: GitHubRepository, notes: NotesBranch
     ) -> KeptBranches:
         """
-        :param git: Runs git in the checkout.
         :param remote: The owner's remote.
         :param github: The owner's repository on GitHub.
         :param notes: The notes branch, as last fetched.
@@ -241,7 +236,7 @@ class KeptBranches:
             branches the notes branch lists as discarded.
         """
         with ThreadPoolExecutor() as pool:
-            tips = pool.submit(git.remote_branch_tips, remote.name)
+            tips = pool.submit(remote.branch_tips)
             pull_requests = pool.submit(github.all_pull_requests)
             default_branch = pool.submit(github.default_branch)
         return cls(
@@ -295,11 +290,6 @@ class BranchCleanup(WorkflowStep):
     pushed.
     """
 
-    git: GitCommandRunner
-    """
-    Runs git in the checkout.
-    """
-
     remote: OwnedRemote
     """
     The owner's remote.
@@ -324,8 +314,8 @@ class BranchCleanup(WorkflowStep):
         ready = self.kept.ready()
         if not ready:
             return "no branch is ready for deletion"
-        refused = self.git.delete_remote_branches(
-            self.remote.name, {branch: self.kept.tips[branch] for branch in ready}
+        refused = self.remote.delete_branches(
+            {branch: self.kept.tips[branch] for branch in ready}
         )
         deleted = len(ready) - len(refused)
         removed = {

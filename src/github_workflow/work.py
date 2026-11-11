@@ -11,13 +11,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from domain_model.git.branch_tips import BranchTip
-from domain_model.git.commands import (
-    GitCommandRunner,
-    ProposedPush,
-    RemoteBranch,
-)
+from domain_model.git.commands import GitCommandRunner
 from domain_model.git.conflict_markers import ConflictMarker
+from domain_model.git.remotes import ProposedPush, RemoteBranch
+from domain_model.git.revisions import LocalBranch
+from domain_model.git.working_tree import WorkingTree
 from domain_model.github.closing_lines import ClosingLines
 from domain_model.github.number_links import NumberLink
 from domain_model.github.repository_client import (
@@ -82,9 +80,9 @@ class LocalBranchFollowing:
     A local branch fast-forwarded to GitHub's copy, unless it has commits of its own.
     """
 
-    git: GitCommandRunner
+    tree: WorkingTree
     """
-    Runs git in the checkout.
+    The checkout's working tree, whose branches follow.
     """
 
     def follow(self, branch: RemoteBranch) -> str:
@@ -93,15 +91,17 @@ class LocalBranchFollowing:
         :return: What happened to the local copy, as an addition to a report; empty
             when there is none or it is up to date.
         """
-        local = self.git.commit_or_none(branch.reference)
-        if local is None or local == self.git.commit_at(branch.tracking_reference):
+        local = LocalBranch(self.tree.git, branch.name)
+        fetched = branch.tracking_branch
+        at = local.commit_or_none()
+        if at is None or at == fetched.commit():
             return ""
-        if not self.git.contains(local, branch.tracking_reference):
+        if not at.is_contained_in(fetched):
             return f"; local {branch.name} kept: it has commits GitHub's lacks"
-        if self.git.checked_out_branch() == branch.name:
-            self.git.fast_forward(branch.tracking_reference).raise_if_failed()
+        if self.tree.checked_out_branch() == local:
+            self.tree.fast_forward(fetched).raise_if_failed()
             return f"; local {branch.name} fast-forwarded to it"
-        moved = self.git.fast_forward_branch(branch.name, branch.tracking_reference)
+        moved = local.fast_forward(fetched)
         if not moved.succeeded:
             return f"; local {branch.name} kept: it is checked out in another worktree"
         return f"; local {branch.name} fast-forwarded to it"
@@ -133,17 +133,19 @@ class BranchStart(WorkflowStep):
 
     def run(self) -> str:
         base = self.policy.remote.branch(self.base or self.policy.default_branch)
-        git = self.policy.checkout.git
-        fetched = git.fetch_branch(base)
+        checkout = self.policy.checkout
+        started = LocalBranch(checkout.git, self.name)
+        fetched = base.fetch()
         if fetched.succeeded:
-            git.create_branch(self.name, base.tracking_reference)
-            started = f"on {self.name}, started from {base.remote}/{base.name}"
+            started.create(base.tracking_branch)
+            line = f"on {self.name}, started from {base.remote.name}/{base.name}"
             if base.name != self.policy.default_branch:
-                return started
-            return f"{started}{LocalBranchFollowing(git).follow(base)}"
-        if git.commit_or_none(base.reference) is None:
+                return line
+            return f"{line}{LocalBranchFollowing(checkout.working_tree).follow(base)}"
+        local_base = LocalBranch(checkout.git, base.name)
+        if local_base.commit_or_none() is None:
             fetched.raise_if_failed()
-        git.create_branch(self.name, base.name)
+        started.create(local_base)
         return f"on {self.name}, started from the local {base.name}"
 
 
@@ -164,9 +166,8 @@ class BranchSwitch(WorkflowStep):
     """
 
     def run(self) -> str:
-        git = self.policy.checkout.git
-        git.fetch_branch(self.policy.remote.branch(self.name))
-        git.switch_to(self.name)
+        self.policy.remote.branch(self.name).fetch()
+        LocalBranch(self.policy.checkout.git, self.name).switch()
         return f"on {self.name}"
 
 
@@ -200,10 +201,10 @@ class CommitWork(WorkflowStep):
         """
         branch = self.policy.work_branch()
         self.policy.refuse_while_merging(branch)
-        commit = self.policy.checkout.git.commit(
+        commit = self.policy.checkout.working_tree.commit(
             self.policy.commit_message(self.message), self.paths
         )
-        return f"committed {BranchTip.abbreviated(commit)} on {branch}"
+        return f"committed {commit.hash.abbreviated} on {branch}"
 
 
 @dataclass(frozen=True)
@@ -224,11 +225,8 @@ class PushWork(WorkflowStep):
         """
         branch = self.policy.remote.branch(self.policy.work_branch())
         self.policy.refuse_while_merging(branch.name)
-        pushed = self.policy.checkout.git.push(
-            ProposedPush(
-                branch.remote, f"{branch.name}:{branch.reference}", sets_upstream=True
-            )
-        )
+        local = LocalBranch(self.policy.checkout.git, branch.name)
+        pushed = ProposedPush(branch, local, sets_upstream=True).publish()
         if not pushed.succeeded:
             raise PushRefusedError(branch.name, pushed.error_output)
         return f"pushed {branch.name} to {self.policy.remote.repository.full_name}"
@@ -360,7 +358,7 @@ class DraftOpening(WorkflowStep):
             the issues or stacking the draft fails once it is opened.
         """
         branch = self.policy.remote.branch(self.policy.work_branch())
-        if not self.policy.checkout.git.has_remote_branch(branch):
+        if not branch.exists():
             raise BranchNotPushedError(branch.name)
         if self.replacement is not None:
             self.check_replaceable(self.replacement.number, branch.name)
@@ -556,14 +554,15 @@ class BranchSync(WorkflowStep):
     """
 
     def run(self) -> str:
-        git = self.policy.checkout.git
-        name = git.checked_out_branch()
-        if not name:
+        tree = self.policy.checkout.working_tree
+        checked_out = tree.checked_out_branch()
+        if checked_out is None:
             raise DetachedHeadError()
+        name = checked_out.name
         branch = self.policy.remote.branch(name)
-        last_seen = git.commit_or_none(branch.tracking_reference)
-        fetched = git.fetch_branch(branch)
-        if not fetched.succeeded and git.has_remote_branch(branch):
+        last_seen = branch.tracking_branch.commit_or_none()
+        fetched = branch.fetch()
+        if not fetched.succeeded and branch.exists():
             fetched.raise_if_failed()
         if (
             not fetched.succeeded
@@ -573,28 +572,28 @@ class BranchSync(WorkflowStep):
             raise BranchDeletedFromGitHubError(name)
         if not fetched.succeeded:
             return f"{name} is not on GitHub yet"
-        on_github = git.commit_at(branch.tracking_reference)
-        local = git.commit_at("HEAD")
+        on_github = branch.tracking_branch.commit()
+        local = tree.head()
         if local == on_github:
             return f"{name} is up to date"
-        if git.contains(local, on_github):
-            git.fast_forward(on_github).raise_if_failed()
+        if local.is_contained_in(on_github):
+            tree.fast_forward(on_github).raise_if_failed()
             return f"{name} fast-forwarded to GitHub's"
-        if git.contains(on_github, local):
+        if on_github.is_contained_in(local):
             return f"{name} is ahead of GitHub's: push it"
-        if last_seen is None or not git.contains(local, last_seen):
+        if last_seen is None or not local.is_contained_in(last_seen):
             raise UnpushedCommitsError(name)
-        git.reset_kept(on_github)
+        tree.reset_kept(on_github)
         return f"{name} moved to the branch GitHub rebased"
 
     def was_on_github(self, branch: RemoteBranch) -> bool:
         """
-        :param branch: A branch GitHub does not have, whose remote-tracking reference
-            the checkout has.
+        :param branch: A branch GitHub does not have, whose remote-tracking branch the
+            checkout has.
         :return: Whether GitHub had it: a fetch or a push wrote its remote-tracking
-            reference, or a pull request was opened from it.
+            branch, or a pull request was opened from it.
         """
-        if self.policy.checkout.git.fetched_or_pushed(branch.tracking_reference):
+        if branch.tracking_branch.was_fetched_or_pushed():
             return True
         owner = self.policy.remote.repository.owner
         return bool(self.pull_requests.pull_requests_from(owner, branch.name))
@@ -626,17 +625,17 @@ class WorkBranchMerge:
         :raises MergeConflictError: If the merge conflicts.
         """
         branch = self.policy.work_branch()
-        git = self.policy.checkout.git
+        checkout = self.policy.checkout
         self.policy.refuse_while_merging(branch)
-        git.fetch_branch(merged).raise_if_failed()
-        if git.contains(merged.tracking_reference, "HEAD"):
+        merged.fetch().raise_if_failed()
+        fetched = merged.tracking_branch
+        if fetched.is_contained_in(checkout.working_tree.head()):
             return f"{branch} has {described}'s commits already"
-        result = git.merge(
-            merged.tracking_reference,
-            self.policy.commit_message(f"Merge {described} into {branch}"),
+        result = checkout.merge.start(
+            fetched, self.policy.commit_message(f"Merge {described} into {branch}")
         )
         if not result.succeeded:
-            conflicted = git.conflicted_files()
+            conflicted = checkout.merge.conflicted_files()
             if not conflicted:
                 result.raise_if_failed()
             raise MergeConflictError(branch, described, tuple(conflicted))
@@ -669,23 +668,24 @@ class MergeCompletion(WorkflowStep):
 
     def run(self) -> str:
         branch = self.policy.branch_being_merged()
-        git = self.policy.checkout.git
+        checkout = self.policy.checkout
         marked = [
             str(path)
             for path in self.resolved
-            if ConflictMarker.left_in((git.working_directory / path).read_text())
+            if ConflictMarker.left_in((checkout.root / path).read_text())
         ]
         if marked:
             raise ConflictMarkersLeftError(tuple(marked))
-        git.stage(self.resolved)
-        unresolved = git.conflicted_files()
+        checkout.working_tree.stage(self.resolved)
+        unresolved = checkout.merge.conflicted_files()
         if unresolved:
             raise UnresolvedConflictError(tuple(unresolved))
-        commit = git.commit_staged(self.policy.commit_message(git.merge_message()))
+        message = self.policy.commit_message(checkout.merge.message())
+        commit = checkout.working_tree.commit_staged(message)
         push = RunnableCommand.PUSH.usage()
         return (
-            f"committed the merge {BranchTip.abbreviated(commit)} on {branch}; push it "
-            f"with `{push}`"
+            f"committed the merge {commit.hash.abbreviated} on {branch}; push it with "
+            f"`{push}`"
         )
 
 
@@ -705,8 +705,7 @@ class MergeAbort(WorkflowStep):
 
     def run(self) -> str:
         branch = self.policy.branch_being_merged()
-        git = self.policy.checkout.git
-        git.abort_merge()
+        self.policy.checkout.merge.abort()
         return f"undid the merge on {branch}; it is as it was before"
 
 
@@ -869,7 +868,7 @@ class NotesSaving(WorkflowStep):
                 f"nothing changed since the last save to {self.save.notes.branch.name}"
             )
         line = f"saved {', '.join(map(str, saved))} to {self.save.notes.branch.name}"
-        checked_out = self.save.checkout.git.checked_out_branch()
+        checked_out = self.save.checkout.checked_out_branch_name
         if self.save.progress_branch in {"", checked_out}:
             return line
         return (

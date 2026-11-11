@@ -414,7 +414,7 @@ def test_a_fork_s_main_behind_its_upstream_is_fast_forwarded(
     ForkMainSync(work, ForkOfTheUpstream()).run()
 
     ours, theirs = default_branch_tips(work, repositories)
-    local = work.checkout.git.commit_at(RepositoriesByOwner.default_branch)
+    local = work.checkout.git.run("rev-parse", RepositoriesByOwner.default_branch)
     assert (ours, local) == (theirs, theirs)
 
 

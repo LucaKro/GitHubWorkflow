@@ -40,7 +40,7 @@ class NotesSave:
         """
         recorded = BlockRecord.BRANCH.read(self.checkout.claude_local_text)
         if recorded is None:
-            return self.checkout.git.checked_out_branch()
+            return self.checkout.checked_out_branch_name
         return recorded
 
     def files(self) -> dict[Path, str]:
@@ -70,7 +70,7 @@ class NotesSave:
         :return: The files saved, empty when nothing changed.
         """
         files = self.files()
-        branch = self.checkout.git.checked_out_branch()
+        branch = self.checkout.checked_out_branch_name
         self.notes.fetch()
         changed = {
             path: f"{text}\n"

@@ -79,9 +79,10 @@ class BranchFreshening:
             no work branch is checked out, a merge is in progress already, or it is up
             to date.
         """
-        git = self.policy.checkout.git
-        branch = git.checked_out_branch()
-        if branch in {"", self.policy.default_branch} or git.merge_in_progress():
+        checkout = self.policy.checkout
+        tree = checkout.working_tree
+        branch = checkout.checked_out_branch_name
+        if branch in {"", self.policy.default_branch} or checkout.merge.in_progress():
             return []
         base = self.base_branch(branch)
         sync = (
@@ -93,14 +94,14 @@ class BranchFreshening:
             )
         )
         merged = self.policy.remote.branch(base)
-        git.fetch_branch(merged).raise_if_failed()
-        if git.contains(merged.tracking_reference, "HEAD"):
+        merged.fetch().raise_if_failed()
+        fetched = merged.tracking_branch
+        head = tree.head()
+        if fetched.is_contained_in(head):
             return []
-        behind = CountedThing.COMMIT.counted(
-            git.commits_between("HEAD", merged.tracking_reference)
-        )
+        behind = CountedThing.COMMIT.counted(fetched.commits_ahead(head))
         stale = f"{branch} is {behind} behind {base}"
-        if git.has_uncommitted_changes():
+        if tree.has_uncommitted_changes():
             return [
                 ReportLine(
                     f"{stale}, not merged since the working tree holds "
@@ -108,7 +109,7 @@ class BranchFreshening:
                     Tone.ACTION,
                 )
             ]
-        if git.automatic_merge_tree("HEAD", merged.tracking_reference) is None:
+        if head.conflicts_when_merged(fetched):
             finish = RunnableCommand.SYNC.usage(CommandOption.CONTINUE)
             return [
                 ReportLine(

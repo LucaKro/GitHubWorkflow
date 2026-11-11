@@ -41,11 +41,6 @@ class ResultsPublication:
     One directory of results, published to the results branch of the owner's remote.
     """
 
-    git: GitCommandRunner
-    """
-    Runs git in the checkout.
-    """
-
     remote: OwnedRemote
     """
     The owner's remote the results branch is pushed to.
@@ -60,7 +55,7 @@ class ResultsPublication:
         """
         :return: Where the results were published, in one line.
         """
-        results = StorageBranch(self.git, self.remote.branch(ResultsBranch.NAME))
+        results = StorageBranch(self.remote.branch(ResultsBranch.NAME))
         results.fetch()
         results.write(
             {
@@ -85,7 +80,7 @@ def main() -> None:
     """
     git = GitCommandRunner(Path.cwd())
     remote = OwnedRemotes.read(git, WorkflowSettings()).chosen
-    print(ResultsPublication(git, remote, Path(sys.argv[1])).publish())
+    print(ResultsPublication(remote, Path(sys.argv[1])).publish())
 
 
 if __name__ == "__main__":

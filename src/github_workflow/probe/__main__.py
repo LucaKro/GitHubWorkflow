@@ -46,7 +46,7 @@ def main() -> None:
         probe.remote.repository.full_name
     )
     probe.report.environment[EnvironmentFact.DEFAULT_BRANCH] = str(default_branch)
-    probe.check_library(git.commit_at("HEAD"))
+    probe.check_library(probe.tree.head().hash)
     probe.check_notes_branch()
     probe.check_issue_board()
     if default_branch is not None:
@@ -58,7 +58,7 @@ def main() -> None:
     (output / ProbeFile.REPORT).write_text(probe.report.markdown())
     (output / ProbeFile.RESULTS).write_text(probe.report.to_json())
     print(probe.report.markdown())
-    print(ResultsPublication(git, remote, output).publish())
+    print(ResultsPublication(remote, output).publish())
 
 
 if __name__ == "__main__":

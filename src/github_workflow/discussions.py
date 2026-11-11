@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from domain_model.git.commands import GitCommandRunner
 from domain_model.github.discussions import (
     DefaultDiscussionCategory,
     DiscussionCategory,
@@ -19,6 +18,7 @@ from domain_model.github.discussions import (
 from domain_model.github.repository_client import RepositoryDiscussions
 from domain_model.repository import Repository
 
+from github_workflow.checkout import ProjectCheckout
 from github_workflow.exceptions import DiscussionsDisabledError
 from github_workflow.locations import NotesFile, WorkflowTemplate
 from github_workflow.notes.branch import NotesBranch
@@ -252,16 +252,18 @@ class DiscussionSessionLog(SessionLog):
     def from_checkout(
         cls,
         discussions: RepositoryDiscussions,
-        git: GitCommandRunner,
+        checkout: ProjectCheckout,
         notes: NotesBranch,
     ) -> DiscussionSessionLog:
         """
         :param discussions: Says whether the repository has Discussions turned on.
-        :param git: Runs git in the checkout the session works in.
+        :param checkout: The checkout the session works in.
         :param notes: The notes branch, which queues the entries.
         :return: The session log of a session working on the checked-out branch.
         """
-        return cls(discussions, DiscussionPosting(notes), git.checked_out_branch())
+        return cls(
+            discussions, DiscussionPosting(notes), checkout.checked_out_branch_name
+        )
 
     def enter(self, action: str) -> None:
         if not self.discussions.discussions_enabled():

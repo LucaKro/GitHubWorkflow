@@ -16,13 +16,8 @@ from enum import auto
 from pathlib import Path
 
 from domain_model.environment import ClaudeCodeVariable
-from domain_model.git.commands import (
-    GitCommandRunner,
-    ReferenceUpdate,
-    RemoteBranch,
-)
+from domain_model.git.remotes import ReferenceUpdate, Remote
 from domain_model.locations import GitStateFile
-from domain_model.repository import Repository
 from domain_model.templates import Placeholder
 
 from github_workflow.checkout import ProjectCheckout
@@ -70,20 +65,10 @@ class PushCheck:
     leaves the default branch alone.
     """
 
-    git: GitCommandRunner
+    destination: Remote
     """
-    Runs git in the checkout pushing.
-    """
-
-    destination: str
-    """
-    The remote pushed to, as git names it to the hook: its name, or its URL when the
-    push names no remote.
-    """
-
-    url: str
-    """
-    The URL the push goes to.
+    The remote pushed to, named as git names it to the hook: its name, or its URL when
+    the push names no remote.
     """
 
     settings: WorkflowSettings
@@ -99,15 +84,13 @@ class PushCheck:
             read.
         :raises DefaultBranchWriteError: If the push changes the default branch.
         """
-        owned = Repository.names_a_repository(self.url) and self.settings.owns(
-            Repository.from_remote_url(self.url)
-        )
-        if not owned:
-            raise ForeignPushError(self.url, self.settings.owner)
-        default_branch = self.git.remote_default_branch(self.destination)
+        repository = self.destination.repository
+        if repository is None or not self.settings.owns(repository):
+            raise ForeignPushError(self.destination.push_url, self.settings.owner)
+        default_branch = self.destination.default_branch()
         if default_branch is None:
-            raise UnknownDefaultBranchError(self.destination)
-        reference = RemoteBranch(self.destination, default_branch).reference
+            raise UnknownDefaultBranchError(self.destination.name)
+        reference = self.destination.branch(default_branch).reference
         if any(update.remote_reference == reference for update in updates):
             raise DefaultBranchWriteError(default_branch)
 
@@ -190,9 +173,8 @@ def main() -> None:
     destination, url = sys.argv[1:3]
     checkout = ProjectCheckout.containing(Path.cwd())
     updates = [ReferenceUpdate.from_line(line) for line in sys.stdin if line.strip()]
-    PushCheck(checkout.git, destination, url, WorkflowSettings()).raise_if_forbidden(
-        updates
-    )
+    remote = Remote.from_push_url(checkout.git, destination, url)
+    PushCheck(remote, WorkflowSettings()).raise_if_forbidden(updates)
 
 
 if __name__ == "__main__":

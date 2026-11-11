@@ -133,7 +133,7 @@ class PullRequestsBuilder(SectionBuilder):
         return PullRequestOverview(
             github,
             self.session.thread_source,
-            self.session.checkout.git.checked_out_branch(),
+            self.session.checkout.checked_out_branch_name,
         )
 
 
