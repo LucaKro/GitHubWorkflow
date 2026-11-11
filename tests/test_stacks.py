@@ -157,7 +157,7 @@ def test_the_pull_request_above_a_done_one_moves_onto_the_default_branch() -> No
 
     assert (moved, repository.writes) == (
         2,
-        ["set_base 2 main", f"unstack {existing.number}", "create_stack [2, 3]"],
+        [f"unstack {existing.number}", "set_base 2 main", "create_stack [2, 3]"],
     )
 
 
@@ -171,7 +171,7 @@ def test_a_single_pull_request_left_above_forms_no_stack() -> None:
 
     assert (moved, repository.writes) == (
         2,
-        ["set_base 2 main", f"unstack {existing.number}"],
+        [f"unstack {existing.number}", "set_base 2 main"],
     )
 
 
