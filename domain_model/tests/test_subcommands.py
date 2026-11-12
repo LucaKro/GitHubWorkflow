@@ -11,7 +11,7 @@ import pytest
 
 from domain_model.git.commands import GitCommandResult, GitCommandRunner
 from domain_model.git.exceptions import UnjudgedSubcommandError
-from domain_model.git.reading import GitCall, PartlyReadingSubcommand
+from domain_model.git.reading import GitCall, ReadingForms
 from domain_model.git.remotes import PushOption, Remote, RemoteBranch
 from domain_model.git.revisions import BranchName, LocalBranch
 from domain_model.git.subcommands import GitSubcommand, SubcommandReading
@@ -61,12 +61,12 @@ def test_options_read_only_when_each_is_a_member_marked_reading(
 def test_a_subcommand_reading_in_some_forms_has_them_told_apart(
     subcommand: GitSubcommand,
 ) -> None:
-    assert PartlyReadingSubcommand.judging(subcommand).subcommand is subcommand
+    assert ReadingForms.judging(subcommand).subcommand is subcommand
 
 
 def test_a_subcommand_reading_in_no_form_has_none_told_apart() -> None:
     with pytest.raises(UnjudgedSubcommandError):
-        PartlyReadingSubcommand.judging(GitSubcommand.PUSH)
+        ReadingForms.judging(GitSubcommand.PUSH)
 
 
 # %% the options the runner passes
@@ -117,7 +117,7 @@ def test_every_option_the_runner_passes_a_partly_reading_subcommand_is_one_of_it
     operation(published)
 
     judged = [
-        (PartlyReadingSubcommand.judging(GitSubcommand(call.subcommand)), call)
+        (ReadingForms.judging(GitSubcommand(call.subcommand)), call)
         for call in calls
         if GitSubcommand(call.subcommand).reading is SubcommandReading.IN_SOME_FORMS
     ]

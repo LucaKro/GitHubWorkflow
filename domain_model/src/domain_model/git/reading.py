@@ -509,7 +509,7 @@ class GitSubcommandArguments:
 
 
 @dataclass(frozen=True)
-class PartlyReadingSubcommand(ABC):
+class ReadingForms(ABC):
     """
     The forms of one git subcommand that only read: every option is one of its own
     marked as reading, and the form reads.
@@ -546,7 +546,7 @@ class PartlyReadingSubcommand(ABC):
         )
 
     @classmethod
-    def judging(cls, subcommand: GitSubcommand) -> PartlyReadingSubcommand:
+    def judging(cls, subcommand: GitSubcommand) -> ReadingForms:
         """
         :param subcommand: A subcommand reading in some forms.
         :return: What tells its reading forms apart.
@@ -567,9 +567,10 @@ class PartlyReadingSubcommand(ABC):
 
 
 @dataclass(frozen=True)
-class ListingSubcommand(PartlyReadingSubcommand, ABC):
+class ListingReadingForms(ReadingForms, ABC):
     """
-    A subcommand that reads when it lists rather than creates, moves or deletes.
+    The reading forms of a subcommand that reads when it lists rather than creates,
+    moves or deletes.
     """
 
     @classproperty
@@ -586,7 +587,7 @@ class ListingSubcommand(PartlyReadingSubcommand, ABC):
 
 
 @dataclass(frozen=True)
-class BranchSubcommand(ListingSubcommand):
+class BranchReadingForms(ListingReadingForms):
     """
     branch, which reads when it lists branches.
     """
@@ -618,7 +619,7 @@ class BranchSubcommand(ListingSubcommand):
 
 
 @dataclass(frozen=True)
-class TagSubcommand(ListingSubcommand):
+class TagReadingForms(ListingReadingForms):
     """
     tag, which reads when it lists tags.
     """
@@ -650,7 +651,7 @@ class TagSubcommand(ListingSubcommand):
 
 
 @dataclass(frozen=True)
-class ConfigSubcommand(PartlyReadingSubcommand):
+class ConfigReadingForms(ReadingForms):
     """
     config, which reads when it gets or lists values, or names a single key without
     a value.
@@ -688,10 +689,10 @@ class ConfigSubcommand(PartlyReadingSubcommand):
 
 
 @dataclass(frozen=True)
-class FirstWordSubcommand(PartlyReadingSubcommand, ABC):
+class FirstWordReadingForms(ReadingForms, ABC):
     """
-    A subcommand that reads when its first other argument names one of its reading
-    commands, or, for some, when it has none.
+    The reading forms of a subcommand that reads when its first other argument names
+    one of its reading commands, or, for some, when it has none.
     """
 
     @classproperty
@@ -715,7 +716,7 @@ class FirstWordSubcommand(PartlyReadingSubcommand, ABC):
 
 
 @dataclass(frozen=True)
-class RemoteSubcommand(FirstWordSubcommand):
+class RemoteReadingForms(FirstWordReadingForms):
     """
     remote, which reads when it lists remotes or shows one.
     """
@@ -738,7 +739,7 @@ class RemoteSubcommand(FirstWordSubcommand):
 
 
 @dataclass(frozen=True)
-class StashSubcommand(FirstWordSubcommand):
+class StashReadingForms(FirstWordReadingForms):
     """
     stash, which reads when it lists or shows stashes.
     """
@@ -761,7 +762,7 @@ class StashSubcommand(FirstWordSubcommand):
 
 
 @dataclass(frozen=True)
-class WorktreeSubcommand(FirstWordSubcommand):
+class WorktreeReadingForms(FirstWordReadingForms):
     """
     worktree, which reads when it lists worktrees.
     """
@@ -784,7 +785,7 @@ class WorktreeSubcommand(FirstWordSubcommand):
 
 
 @dataclass(frozen=True)
-class ReflogSubcommand(FirstWordSubcommand):
+class ReflogReadingForms(FirstWordReadingForms):
     """
     reflog, which reads when it shows the reflog.
     """
@@ -807,7 +808,7 @@ class ReflogSubcommand(FirstWordSubcommand):
 
 
 @dataclass(frozen=True)
-class SubmoduleSubcommand(FirstWordSubcommand):
+class SubmoduleReadingForms(FirstWordReadingForms):
     """
     submodule, which reads when it reports submodules' status.
     """
@@ -830,7 +831,7 @@ class SubmoduleSubcommand(FirstWordSubcommand):
 
 
 @dataclass(frozen=True)
-class FetchSubcommand(PartlyReadingSubcommand):
+class FetchReadingForms(ReadingForms):
     """
     fetch, which reads unless a refspec names a local branch or the URL another
     transport than HTTPS.
@@ -853,7 +854,7 @@ class FetchSubcommand(PartlyReadingSubcommand):
 
 
 @dataclass(frozen=True)
-class ArchiveSubcommand(PartlyReadingSubcommand):
+class ArchiveReadingForms(ReadingForms):
     """
     archive, which reads unless it writes the archive where git reads its
     configuration or hooks.
@@ -970,7 +971,7 @@ class GitCall:
             case SubcommandReading.ALWAYS:
                 return None
             case SubcommandReading.IN_SOME_FORMS:
-                form = PartlyReadingSubcommand.judging(GitSubcommand(subcommand))
+                form = ReadingForms.judging(GitSubcommand(subcommand))
                 if form.reads(self.subcommand_arguments):
                     return None
         return GitCallEffect.WRITES

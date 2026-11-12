@@ -145,6 +145,5 @@ class UnjudgedSubcommandError(DataclassException, LookupError):
 
     def suggest_correction(self) -> str:
         return (
-            "add a PartlyReadingSubcommand for it, or mark it as never reading in "
-            "GitSubcommand"
+            "add a ReadingForms for it, or mark it as never reading in " "GitSubcommand"
         )

@@ -110,7 +110,7 @@ class EnvironmentFact(StrEnum):
 
 
 @dataclass(frozen=True)
-class CheckOutcome:
+class ProbeCheckOutcome:
     """
     One check and what it found.
     """
@@ -155,7 +155,7 @@ class ProbeReport:
     What the session runs on, by what was looked at.
     """
 
-    outcomes: list[CheckOutcome] = field(default_factory=list)
+    outcomes: list[ProbeCheckOutcome] = field(default_factory=list)
     """
     Every check, in the order it ran.
     """
@@ -176,7 +176,9 @@ class ProbeReport:
         :param seconds: How long it took.
         :return: *succeeded*, so a scenario can stop at a failed step.
         """
-        self.outcomes.append(CheckOutcome(group, check, succeeded, detail, seconds))
+        self.outcomes.append(
+            ProbeCheckOutcome(group, check, succeeded, detail, seconds)
+        )
         return succeeded
 
     def markdown(self) -> str:
