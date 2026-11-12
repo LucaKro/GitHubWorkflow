@@ -29,17 +29,18 @@ from domain_model.repository import Repository
 
 class RemoteName(StrEnum):
     """
-    The remote names git gives a meaning of their own.
+    The remote names tools give a meaning of their own.
     """
 
     ORIGIN = "origin"
     """
-    The remote a clone starts with.
+    The remote a clone starts with, as git names it.
     """
 
     UPSTREAM = "upstream"
     """
-    The remote a fork's checkout reaches the repository it was forked from by.
+    The remote reaching the repository a fork was forked from, as ``gh repo fork``
+    names it.
     """
 
 
@@ -143,12 +144,6 @@ class Remote:
     The repository the push URL names, ``None`` when it names none.
     """
 
-    fetch_url: str | None = None
-    """
-    The URL it is reached at when the checkout configures no remote of its name,
-    ``None`` to reach it by its name.
-    """
-
     @classmethod
     def configured(cls, git: GitCommandRunner) -> list[Remote]:
         """
@@ -187,8 +182,8 @@ class Remote:
 
     @property
     def location(self) -> str:
-        """:return: How git is told to reach the remote: its URL, or its name."""
-        return self.fetch_url or self.name
+        """:return: How git is told to reach the remote."""
+        return self.name
 
     def branch(self, name: BranchName) -> RemoteBranch:
         """
@@ -281,6 +276,18 @@ class Remote:
             if len(columns) > 1 and columns[0] == PushFlag.DELETED
         }
         return [tip.branch for tip in tips if tip.branch.reference not in deleted]
+
+
+@dataclass(frozen=True)
+class UnconfiguredRemote(Remote):
+    """
+    A remote the checkout does not configure, reached by its URL, whose branches are
+    fetched under its name all the same.
+    """
+
+    @property
+    def location(self) -> str:
+        return self.push_url
 
 
 # %% a branch on a remote

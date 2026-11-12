@@ -17,6 +17,7 @@ from domain_model.git.remotes import (
     Remote,
     RemoteBranch,
     RemoteName,
+    UnconfiguredRemote,
 )
 from domain_model.git.revisions import BranchName, BranchTip, CommitHash, LocalBranch
 from domain_model.git.working_tree import WorkingTree
@@ -188,7 +189,9 @@ def test_a_branch_is_fetched_from_a_url_into_its_remote_s_tracking_branch(
     checkout: GitCommandRunner, published: RemoteBranch, tmp_path: Path  # noqa: F811
 ) -> None:
     url = str(tmp_path / "remote.git")
-    elsewhere = Remote(checkout, "elsewhere", url, None, url).branch(published.name)
+    elsewhere = UnconfiguredRemote(checkout, "elsewhere", url, None).branch(
+        published.name
+    )
 
     elsewhere.fetch().raise_if_failed()
 

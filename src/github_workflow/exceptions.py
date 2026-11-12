@@ -14,6 +14,7 @@ from domain_model.git.revisions import BranchName
 from github_workflow.command_line import CommandOption, RunnableCommand
 
 if TYPE_CHECKING:
+    from domain_model.git.remotes import Remote
     from domain_model.git.revisions import BranchTip
     from domain_model.github.vocabulary import WorkflowRunConclusion
     from domain_model.repository import Repository
@@ -789,6 +790,37 @@ class ForkBranchDivergedError(DataclassException, ValueError):
 
     def suggest_correction(self) -> str:
         return "Ask the person what to do with those commits."
+
+
+@dataclass
+class UpstreamRemoteNameTakenError(DataclassException, ValueError):
+    """
+    Raised when the checkout configures no remote reaching the repository a fork was
+    forked from, and the remote named for that repository reaches another.
+    """
+
+    remote: Remote
+    """
+    The remote holding the name.
+    """
+
+    upstream: Repository
+    """
+    The repository the fork was forked from.
+    """
+
+    def error_message(self) -> str:
+        reached = self.remote.repository or self.remote.push_url
+        return (
+            f"the checkout's remote {self.remote.name} reaches {reached}, not "
+            f"{self.upstream}, which the fork was forked from"
+        )
+
+    def suggest_correction(self) -> str:
+        return (
+            f"Ask the person to point the remote {self.remote.name} at "
+            f"{self.upstream.rooted_clone_url()}, or to add a remote reaching it."
+        )
 
 
 @dataclass

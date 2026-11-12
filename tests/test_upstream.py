@@ -11,6 +11,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
+from domain_model.git.remotes import RemoteName
 from domain_model.git.revisions import BranchName
 from domain_model.github.labels import GitHubLabel
 from domain_model.github.repository_client import (
@@ -34,6 +35,7 @@ from github_workflow.exceptions import (
     NotAForkError,
     PersonOnlyCommandError,
     PullRequestNotProposableError,
+    UpstreamRemoteNameTakenError,
 )
 from github_workflow.policy import WritePolicy
 from github_workflow.push_hook import PushHook
@@ -462,6 +464,68 @@ def test_a_fork_s_main_with_commits_of_its_own_is_refused(
         ForkMainSync(work, ForkOfTheUpstream()).run()
 
     assert default_branch_tips(work, repositories)[0] == before
+
+
+def tracked_tip(work: WritePolicy, remote: str) -> str | None:
+    """
+    :param work: The rules of a clone of the fork.
+    :param remote: A remote's name.
+    :return: Where the clone last saw that remote's default branch, ``None`` when it
+        never fetched it.
+    """
+    branch = RepositoriesByOwner.default_branch
+    found = work.checkout.git.attempt(
+        "rev-parse", "--verify", "--quiet", f"refs/remotes/{remote}/{branch}"
+    )
+    return found.output if found.succeeded else None
+
+
+def test_the_upstream_configured_under_another_name_is_fetched_under_it(
+    work: WritePolicy, repositories: RepositoriesByOwner
+) -> None:
+    with_upstream(work, repositories, ahead=1, own=0)
+    url = ScratchGitHub.upstream.rooted_clone_url()
+    work.checkout.git.run("remote", "add", "parent", url)
+
+    ForkMainSync(work, ForkOfTheUpstream()).run()
+
+    _, theirs = default_branch_tips(work, repositories)
+    assert (tracked_tip(work, "parent"), tracked_tip(work, RemoteName.UPSTREAM)) == (
+        theirs,
+        None,
+    )
+
+
+def test_the_remote_named_upstream_is_preferred_among_those_reaching_it(
+    work: WritePolicy, repositories: RepositoriesByOwner
+) -> None:
+    with_upstream(work, repositories, ahead=1, own=0)
+    url = ScratchGitHub.upstream.rooted_clone_url()
+    work.checkout.git.run("remote", "add", "parent", url)
+    work.checkout.git.run("remote", "add", RemoteName.UPSTREAM, url)
+
+    ForkMainSync(work, ForkOfTheUpstream()).run()
+
+    _, theirs = default_branch_tips(work, repositories)
+    assert (tracked_tip(work, RemoteName.UPSTREAM), tracked_tip(work, "parent")) == (
+        theirs,
+        None,
+    )
+
+
+def test_a_remote_named_upstream_reaching_another_repository_is_refused(
+    work: WritePolicy, repositories: RepositoriesByOwner
+) -> None:
+    with_upstream(work, repositories, ahead=1, own=0)
+    other = Repository(RepositoriesByOwner.foreign_owner, "elsewhere")
+    work.checkout.git.run(
+        "remote", "add", RemoteName.UPSTREAM, other.rooted_clone_url()
+    )
+
+    with pytest.raises(UpstreamRemoteNameTakenError):
+        ForkMainSync(work, ForkOfTheUpstream()).run()
+
+    assert tracked_tip(work, RemoteName.UPSTREAM) is None
 
 
 def test_a_repository_that_is_no_fork_follows_no_upstream(work: WritePolicy) -> None:
