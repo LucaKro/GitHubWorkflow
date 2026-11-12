@@ -5,6 +5,9 @@ progress every session starts with, and every write to git and GitHub made throu
 workflow's own commands. It is built on the domain model of git and GitHub in
 [`domain_model/`](domain_model), shipped with the plugin as a package of its own.
 
+[TUTORIAL.md](TUTORIAL.md) walks through how the parts work together;
+[REQUIREMENTS.md](REQUIREMENTS.md) says what the workflow has to do.
+
 ## Licence
 
 This project is licensed under the [Apache License 2.0](LICENSE), except for
