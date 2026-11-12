@@ -175,7 +175,7 @@ def runner(
     :param python: The interpreter the tests run with.
     :return: Runs tests on the checkout's default branch on GitHub.
     """
-    [origin] = Remote.configured(checkout.git)
+    [origin] = Remote.read_configured(checkout.git)
     return BranchProofRunner(origin.branch(RepositoriesByOwner.default_branch), python)
 
 

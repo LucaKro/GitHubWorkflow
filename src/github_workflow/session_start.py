@@ -174,7 +174,7 @@ def main() -> None:
     """
     Print what the session starts with, as the hook's answer.
     """
-    checkout = ProjectCheckout.around(Path.cwd())
+    checkout = ProjectCheckout.from_directory_or_none(Path.cwd())
     if checkout is None:
         lines = [
             ReportLine(

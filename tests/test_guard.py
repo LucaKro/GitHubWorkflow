@@ -181,14 +181,14 @@ def test_a_write_around_a_here_document_is_denied(location: GuardDataset) -> Non
 
 @pytest.mark.parametrize("write", [*GitWrite, *GitHubCliWrite, *GitHubToolWrite])
 def test_every_write_with_a_workflow_command_has_its_alternative(write: str) -> None:
-    assert write in WorkflowAlternative.doing(write).writes
+    assert write in WorkflowAlternative.from_write(write).writes
 
 
 @pytest.mark.parametrize("write", list(GitWrite))
 def test_a_git_write_names_the_workflow_command_doing_its_job(write: GitWrite) -> None:
     denial = CommandGuard().denial(f"git {write} feature")
 
-    assert denial.instead == WorkflowAlternative.doing(write).command_line()
+    assert denial.instead == WorkflowAlternative.from_write(write).command_line()
 
 
 def test_opening_a_pull_request_names_the_workflow_s_draft() -> None:
@@ -257,7 +257,7 @@ def test_a_github_tool_with_a_workflow_command_names_it(tool: GitHubToolWrite) -
         )
     ).denial()
 
-    assert denial.instead == WorkflowAlternative.doing(tool).command_line()
+    assert denial.instead == WorkflowAlternative.from_write(tool).command_line()
 
 
 def test_every_denial_says_how_to_report_an_unnecessary_one() -> None:

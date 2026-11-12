@@ -540,7 +540,9 @@ def test_a_trimmed_recording_replays_the_read_it_was_recorded_from(
 
 
 def test_a_recording_names_the_code_that_made_it() -> None:
-    assert AnswerRecording.started().recorder == CodeVersion.running()
+    assert (
+        AnswerRecording.from_running_code().recorder == CodeVersion.from_installation()
+    )
 
 
 def test_a_read_the_recording_lacks_is_refused_naming_both_versions() -> None:
@@ -553,12 +555,12 @@ def test_a_read_the_recording_lacks_is_refused_naming_both_versions() -> None:
     assert (raised.value.read, raised.value.recorder, raised.value.replayer) == (
         GitHubRead(ReadTransport.REST, ROUTE.pull_request(10)).described,
         recorder,
-        CodeVersion.running(),
+        CodeVersion.from_installation(),
     )
 
 
 def test_a_read_is_answered_whatever_order_the_reads_come_in() -> None:
-    recording = AnswerRecording(CodeVersion.running())
+    recording = AnswerRecording(CodeVersion.from_installation())
     first, second = ROUTE.pull_request(1), ROUTE.pull_request(2)
     recording.keep(GitHubRead(ReadTransport.REST, first), "first")
     recording.keep(GitHubRead(ReadTransport.REST, second), "second")

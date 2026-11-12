@@ -75,7 +75,7 @@ class Remote:
     """
 
     @classmethod
-    def configured(cls, git: GitCommandRunner) -> list[Remote]:
+    def read_configured(cls, git: GitCommandRunner) -> list[Remote]:
         """
         :param git: Runs git in a checkout.
         :return: Every remote the checkout configures, in the order git lists them.

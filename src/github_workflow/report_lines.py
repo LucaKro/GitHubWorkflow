@@ -106,7 +106,7 @@ class CountedThing(Enum):
     Pull requests waiting on someone, the verb agreeing with the count.
     """
 
-    def counted(self, count: int) -> CountedNoun:
+    def quantify(self, count: int) -> CountedNoun:
         """
         :param count: How many there are.
         :return: The number of them, worded.

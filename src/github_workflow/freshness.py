@@ -64,7 +64,7 @@ class BranchFreshening:
             return [
                 ReportLine(
                     f"{self.policy.default_branch} is "
-                    f"{CountedThing.COMMIT.counted(tips.behind)} behind "
+                    f"{CountedThing.COMMIT.quantify(tips.behind)} behind "
                     f"{upstream}'s but has {tips.ahead} of its own, so it is not "
                     f"fast-forwarded; ask the person what to do with them",
                     Tone.ACTION,
@@ -101,7 +101,7 @@ class BranchFreshening:
         head = tree.head()
         if fetched.is_contained_in(head):
             return []
-        behind = CountedThing.COMMIT.counted(fetched.commits_ahead(head))
+        behind = CountedThing.COMMIT.quantify(fetched.commits_ahead(head))
         stale = f"{branch} is {behind} behind {base}"
         if tree.has_uncommitted_changes():
             return [

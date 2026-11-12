@@ -119,7 +119,7 @@ def test_combined_files_hold_both_with_the_later_text_winning() -> None:
     first = TextFiles({Path("one.md"): "one\n", Path("both.md"): "first\n"})
     later = TextFiles({Path("both.md"): "later\n"})
 
-    assert first.combined(later) == TextFiles(
+    assert first.combine(later) == TextFiles(
         {Path("one.md"): "one\n", Path("both.md"): "later\n"}
     )
 

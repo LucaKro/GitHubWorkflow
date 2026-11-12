@@ -130,7 +130,9 @@ class UpstreamProposal(WorkflowStep):
         self.fork.create_missing_labels([UpstreamLabel.OPENED_UPSTREAM])
         self.fork.replace_labels(
             local.number,
-            LabelWrite.replacing(local.labels, [UpstreamLabel.OPENED_UPSTREAM]).labels,
+            LabelWrite.from_changes(
+                local.labels, [UpstreamLabel.OPENED_UPSTREAM]
+            ).labels,
         )
         return f"opened {upstream}#{opened.number}: {opened.url}"
 
@@ -244,7 +246,7 @@ class ForkMainSync(WorkflowStep):
             name reaches another repository.
         """
         git = self.policy.checkout.git
-        configured = Remote.configured(git)
+        configured = Remote.read_configured(git)
         reaching = [remote for remote in configured if remote.repository == upstream]
         named = [remote for remote in reaching if remote.name == RemoteName.UPSTREAM]
         if named or reaching:
@@ -291,7 +293,7 @@ class ForkMainSync(WorkflowStep):
         ).publish().raise_if_failed()
         fork.fetch().raise_if_failed()
         local = LocalBranchFollowing(checkout.working_tree).follow(fork)
-        behind = CountedThing.COMMIT.counted(tips.behind)
+        behind = CountedThing.COMMIT.quantify(tips.behind)
         return f"{fork.name} fast-forwarded by {behind} to {upstream}'s{local}"
 
 

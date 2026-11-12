@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from domain_model.class_family import ClassFamily
 from domain_model.class_property import classproperty
 from domain_model.github.repository_client import GitHubRepository
 
@@ -70,7 +71,7 @@ class SectionName(StrEnum):
 
 
 @dataclass(frozen=True)
-class SectionBuilder(ABC):
+class SectionBuilder(ClassFamily, ABC):
     """
     Builds one section from the checkout the session starts in.
     """
@@ -94,14 +95,20 @@ class SectionBuilder(ABC):
         """
 
     @classmethod
-    def building(cls, name: SectionName) -> type[SectionBuilder]:
+    def from_section_name(
+        cls, session: WorkflowSession, name: SectionName
+    ) -> SectionBuilder:
         """
+        :param session: The checkout the session starts in.
         :param name: A section.
-        :return: The class building it.
+        :return: What builds it from that checkout.
         """
-        return next(
-            builder for builder in cls.__subclasses__() if builder.section_name is name
+        builder = next(
+            builder
+            for builder in cls.concrete_subclasses()
+            if builder.section_name is name
         )
+        return builder(session)
 
 
 @dataclass(frozen=True)
@@ -212,8 +219,8 @@ def main() -> None:
     Compute the section the command line names, and print its lines.
     """
     session = WorkflowSession(Path.cwd(), WorkflowSettings())
-    builder = SectionBuilder.building(SectionName(sys.argv[1]))
-    for line in builder(session).section().lines():
+    builder = SectionBuilder.from_section_name(session, SectionName(sys.argv[1]))
+    for line in builder.section().lines():
         print(line.to_json())
 
 

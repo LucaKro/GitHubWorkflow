@@ -6,6 +6,7 @@ declared once, and its parser, the lines naming it and who may run it follow fro
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 import pytest
 
@@ -17,6 +18,8 @@ from github_workflow.command_line import (
 )
 from github_workflow.command_steps import CommandStep
 from github_workflow.findings import Priority
+from github_workflow.session import WorkflowSession
+from github_workflow.settings import WorkflowSettings
 
 # %% the parser
 
@@ -38,13 +41,15 @@ def test_every_command_is_parsed_under_its_words(command: RunnableCommand) -> No
 
 @pytest.mark.parametrize("command", list(RunnableCommand))
 def test_every_command_has_the_class_building_its_step(
-    command: RunnableCommand,
+    command: RunnableCommand, tmp_path: Path, settings: WorkflowSettings
 ) -> None:
     arguments = argparse.Namespace(
         command=command.words[0], action=(command.words[1:] or [None])[0]
     )
 
-    assert CommandStep.handling(arguments).command is command
+    step = CommandStep.from_arguments(WorkflowSession(tmp_path, settings), arguments)
+
+    assert step.command is command
 
 
 # %% lines naming a command

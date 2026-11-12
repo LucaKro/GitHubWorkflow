@@ -156,9 +156,9 @@ class AnswerRecording:
     """
 
     @classmethod
-    def started(cls) -> AnswerRecording:
+    def from_running_code(cls) -> AnswerRecording:
         """:return: An empty recording, made by the code running now."""
-        return cls(CodeVersion.running())
+        return cls(CodeVersion.from_installation())
 
     def keep(self, read: GitHubRead, answer: Any) -> None:
         """
@@ -222,7 +222,9 @@ class RecordingClient(GitHubReader):
     The client the reads go through.
     """
 
-    recording: AnswerRecording = field(default_factory=AnswerRecording.started)
+    recording: AnswerRecording = field(
+        default_factory=AnswerRecording.from_running_code
+    )
     """
     Every answer so far.
     """
@@ -236,17 +238,17 @@ class RecordingClient(GitHubReader):
 
     def get(self, path: str) -> Any:
         read = GitHubRead(ReadTransport.REST, path)
-        return self.kept(read, self.client.get(path))
+        return self.record_answer(read, self.client.get(path))
 
     def get_pages(self, path: str) -> list[Any]:
         read = GitHubRead(ReadTransport.REST_PAGES, path)
-        return self.kept(read, self.client.get_pages(path))
+        return self.record_answer(read, self.client.get_pages(path))
 
     def execute(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
         read = GitHubRead(ReadTransport.GRAPHQL, query, variables)
-        return self.kept(read, self.client.execute(query, variables))
+        return self.record_answer(read, self.client.execute(query, variables))
 
-    def kept(self, read: GitHubRead, answer: Any) -> Any:
+    def record_answer(self, read: GitHubRead, answer: Any) -> Any:
         """
         Keep a read's answer, trimmed to :attr:`read_keys`.
 
@@ -254,10 +256,10 @@ class RecordingClient(GitHubReader):
         :param answer: What GitHub answered it.
         :return: The answer, whole.
         """
-        self.recording.keep(read, self.trimmed(answer))
+        self.recording.keep(read, self.trim_to_read_keys(answer))
         return answer
 
-    def trimmed(self, answer: Any) -> Any:
+    def trim_to_read_keys(self, answer: Any) -> Any:
         """
         :param answer: A parsed answer.
         :return: It with every object, nested ones included, holding only the keys of
@@ -265,12 +267,12 @@ class RecordingClient(GitHubReader):
         """
         if isinstance(answer, dict):
             return {
-                key: self.trimmed(value)
+                key: self.trim_to_read_keys(value)
                 for key, value in answer.items()
                 if key in self.read_keys
             }
         if isinstance(answer, list):
-            return [self.trimmed(value) for value in answer]
+            return [self.trim_to_read_keys(value) for value in answer]
         return answer
 
 
@@ -292,7 +294,7 @@ class ReplayingClient(GitHubReader):
 
         :raises RecordedReadMissingError: If the recording holds no answer to it.
         """
-        return self.recorded(GitHubRead(ReadTransport.REST, path))
+        return self.replay_answer(GitHubRead(ReadTransport.REST, path))
 
     def get_pages(self, path: str) -> list[Any]:
         """
@@ -300,7 +302,7 @@ class ReplayingClient(GitHubReader):
 
         :raises RecordedReadMissingError: If the recording holds no answer to it.
         """
-        return self.recorded(GitHubRead(ReadTransport.REST_PAGES, path))
+        return self.replay_answer(GitHubRead(ReadTransport.REST_PAGES, path))
 
     def execute(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
         """
@@ -308,9 +310,9 @@ class ReplayingClient(GitHubReader):
 
         :raises RecordedReadMissingError: If the recording holds no answer to it.
         """
-        return self.recorded(GitHubRead(ReadTransport.GRAPHQL, query, variables))
+        return self.replay_answer(GitHubRead(ReadTransport.GRAPHQL, query, variables))
 
-    def recorded(self, read: GitHubRead) -> Any:
+    def replay_answer(self, read: GitHubRead) -> Any:
         """
         :param read: A read.
         :return: The answer recorded for it.
@@ -319,6 +321,6 @@ class ReplayingClient(GitHubReader):
         recorded = self.recording.answers.get(read.key)
         if recorded is None:
             raise RecordedReadMissingError(
-                read.described, self.recording.recorder, CodeVersion.running()
+                read.described, self.recording.recorder, CodeVersion.from_installation()
             )
         return recorded.answer

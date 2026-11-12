@@ -9,9 +9,9 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum, StrEnum, auto
-from inspect import isabstract
 from pathlib import PurePath
 
+from domain_model.class_family import ClassFamily
 from domain_model.class_property import classproperty
 from domain_model.git.exceptions import UnjudgedSubcommandError
 from domain_model.git.options import (
@@ -179,7 +179,7 @@ class GitSubcommandArguments:
 
 
 @dataclass(frozen=True)
-class ReadingForms(ABC):
+class ReadingForms(ClassFamily, ABC):
     """
     The forms of one git subcommand that only read: every option is one of its own
     marked as reading, and the form reads.
@@ -216,21 +216,20 @@ class ReadingForms(ABC):
         )
 
     @classmethod
-    def judging(cls, subcommand: GitSubcommand) -> ReadingForms:
+    def from_subcommand(cls, subcommand: GitSubcommand) -> ReadingForms:
         """
         :param subcommand: A subcommand reading in some forms.
         :return: What tells its reading forms apart.
         :raises UnjudgedSubcommandError: If nothing tells them apart.
         """
-        forms = [cls]
-        for form in forms:
-            forms += form.__subclasses__()
-        judging = (
-            form()
-            for form in forms
-            if not isabstract(form) and form.subcommand == subcommand
+        found = next(
+            (
+                form()
+                for form in cls.concrete_subclasses()
+                if form.subcommand == subcommand
+            ),
+            None,
         )
-        found = next(judging, None)
         if found is None:
             raise UnjudgedSubcommandError(subcommand)
         return found
@@ -641,7 +640,7 @@ class GitCall:
             case SubcommandReading.ALWAYS:
                 return None
             case SubcommandReading.IN_SOME_FORMS:
-                form = ReadingForms.judging(GitSubcommand(subcommand))
+                form = ReadingForms.from_subcommand(GitSubcommand(subcommand))
                 if form.reads(self.subcommand_arguments):
                     return None
         return GitCallEffect.WRITES

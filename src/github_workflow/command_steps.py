@@ -8,9 +8,9 @@ from __future__ import annotations
 import argparse
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from inspect import isabstract
 from typing import TYPE_CHECKING
 
+from domain_model.class_family import ClassFamily
 from domain_model.class_property import classproperty
 from domain_model.environment import ClaudeCodeVariable
 from domain_model.github.discussions import (
@@ -91,7 +91,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class CommandStep(ABC):
+class CommandStep(ClassFamily, ABC):
     """
     Builds the step one command line asks for.
     """
@@ -119,7 +119,7 @@ class CommandStep(ABC):
         :return: The step the command line asks for.
         """
 
-    def prepared(self) -> WorkflowStep:
+    def prepare_step(self) -> WorkflowStep:
         """
         :return: The step, run once what it relies on is up to date; the step itself
             unless the command relies on anything.
@@ -127,21 +127,22 @@ class CommandStep(ABC):
         return self.step()
 
     @classmethod
-    def handling(cls, arguments: argparse.Namespace) -> type[CommandStep]:
+    def from_arguments(
+        cls, session: WorkflowSession, arguments: argparse.Namespace
+    ) -> CommandStep:
         """
+        :param session: The checkout the command runs in.
         :param arguments: A parsed command line.
-        :return: The class building the step it asks for.
+        :return: What builds the step it asks for in that checkout.
         """
         words = [word for word in (arguments.command, arguments.action) if word]
         command = RunnableCommand.from_words(words)
-        builders = [cls]
-        for builder in builders:
-            builders += builder.__subclasses__()
-        return next(
+        builder = next(
             builder
-            for builder in builders
-            if not isabstract(builder) and builder.command is command
+            for builder in cls.concrete_subclasses()
+            if builder.command is command
         )
+        return builder(session, arguments)
 
     @property
     def body(self) -> str | None:
@@ -164,9 +165,9 @@ class FreshenedCommandStep(CommandStep, ABC):
     Builds a step run once the branches are brought up to date.
     """
 
-    def prepared(self) -> WorkflowStep:
+    def prepare_step(self) -> WorkflowStep:
         """
-        Unlike :meth:`CommandStep.prepared`, runs once the branches are up to date.
+        Unlike :meth:`CommandStep.prepare_step`, runs once the branches are up to date.
         """
         return FreshenedStep(self.session.freshening, self.step())
 
@@ -375,14 +376,14 @@ class DescribeStep(FreshenedCommandStep):
             UpstreamSuggestion(session.github, session.remote.repository),
         )
 
-    def prepared(self) -> WorkflowStep:
+    def prepare_step(self) -> WorkflowStep:
         """
-        Unlike :meth:`FreshenedCommandStep.prepared`, freshens the branches only when it
-        rewrites the work branch's own pull request.
+        Unlike :meth:`FreshenedCommandStep.prepare_step`, freshens the branches only
+        when it rewrites the work branch's own pull request.
         """
         if self.arguments.number is not None:
             return self.step()
-        return super().prepared()
+        return super().prepare_step()
 
 
 @dataclass(frozen=True)
@@ -478,10 +479,10 @@ class FindingListStep(CommandStep):
         board = self.session.findings_board(self.arguments.repository)
         return FindingListing(board, board.repository)
 
-    def prepared(self) -> WorkflowStep:
+    def prepare_step(self) -> WorkflowStep:
         """
-        Unlike :meth:`CommandStep.prepared`, runs once the labels picked on GitHub are
-        completed.
+        Unlike :meth:`CommandStep.prepare_step`, runs once the labels picked on GitHub
+        are completed.
         """
         board = self.session.findings_board(self.arguments.repository)
         return LabelsCompletedStep(PickedLabelCompletion(board), self.step())

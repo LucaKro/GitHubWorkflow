@@ -30,24 +30,24 @@ class ProjectCheckout:
     """
 
     @classmethod
-    def containing(cls, directory: Path) -> ProjectCheckout:
+    def from_directory(cls, directory: Path) -> ProjectCheckout:
         """
         :param directory: Any directory inside the checkout.
         :return: The checkout.
         :raises NotACheckoutError: If *directory* is not inside a git checkout.
         """
-        checkout = cls.around(directory)
+        checkout = cls.from_directory_or_none(directory)
         if checkout is None:
             raise NotACheckoutError(str(directory))
         return checkout
 
     @classmethod
-    def around(cls, directory: Path) -> ProjectCheckout | None:
+    def from_directory_or_none(cls, directory: Path) -> ProjectCheckout | None:
         """
         :param directory: A directory.
         :return: The checkout it is inside, ``None`` when it is inside none.
         """
-        git = GitCommandRunner.enclosing(directory)
+        git = GitCommandRunner.from_enclosed_directory(directory)
         return None if git is None else cls(git)
 
     @cached_property

@@ -37,7 +37,7 @@ def test_results_land_on_the_results_branch_under_their_directory_s_name(
     ResultsPublication(remote, directory).publish()
 
     reader = repositories.clone(owned_url, "reader").git
-    [origin] = Remote.configured(reader)
+    [origin] = Remote.read_configured(reader)
     results = StorageBranch(origin.branch(BranchName(ResultsBranch.NAME)))
     results.fetch()
     assert results.read(Path("check-1/report.md")) == "all well\n"

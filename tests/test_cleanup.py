@@ -182,7 +182,7 @@ def test_the_discarded_list_reads_back_what_it_wrote() -> None:
 def test_a_branch_listed_again_replaces_its_earlier_entry() -> None:
     discarded = DiscardedBranches((tip("one", "a1"), tip("two", "b2")))
 
-    assert discarded.extended(tip("one", "c3")) == DiscardedBranches(
+    assert discarded.add_tip(tip("one", "c3")) == DiscardedBranches(
         (tip("two", "b2"), tip("one", "c3"))
     )
 
@@ -196,7 +196,7 @@ def test_the_reminder_names_how_many_and_the_command() -> None:
 
     [line] = CleanupReminder(branches).lines()
 
-    assert f"{CountedThing.BRANCH.counted(2)} ready for deletion" in line.text
+    assert f"{CountedThing.BRANCH.quantify(2)} ready for deletion" in line.text
     assert line.tone is Tone.ACTION
 
 

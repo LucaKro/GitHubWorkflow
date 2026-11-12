@@ -35,7 +35,7 @@ def test_a_remote_names_the_repository_it_pushes_to(
         "remote", "add", "origin", "https://github.com/an-owner/a-repository.git"
     )
 
-    [remote] = Remote.configured(checkout)
+    [remote] = Remote.read_configured(checkout)
 
     assert remote.repository == Repository("an-owner", "a-repository")
 
@@ -45,7 +45,7 @@ def test_a_remote_that_names_no_repository_has_none(
 ) -> None:
     checkout.run("remote", "add", "local", "/a/plain/path")
 
-    assert Remote.configured(checkout)[0].repository is None
+    assert Remote.read_configured(checkout)[0].repository is None
 
 
 def test_a_remote_s_branch_is_the_branch_of_that_name_on_it(
@@ -65,7 +65,9 @@ def cloned(checkout: GitCommandRunner, tmp_path: Path) -> Remote:  # noqa: F811
     bare = tmp_path / "trunk.git"
     checkout.run("init", "--quiet", "--bare", "--initial-branch=trunk", str(bare))
     checkout.run("push", "--quiet", str(bare), "HEAD:refs/heads/trunk")
-    [origin] = Remote.configured(GitCommandRunner.clone(str(bare), tmp_path / "clone"))
+    [origin] = Remote.read_configured(
+        GitCommandRunner.clone(str(bare), tmp_path / "clone")
+    )
     return origin
 
 
@@ -85,7 +87,7 @@ def test_an_unreachable_remote_never_fetched_has_no_known_default_branch(
     checkout: GitCommandRunner, tmp_path: Path  # noqa: F811
 ) -> None:
     checkout.run("remote", "add", RemoteName.ORIGIN, str(tmp_path / "gone.git"))
-    [origin] = Remote.configured(checkout)
+    [origin] = Remote.read_configured(checkout)
 
     assert origin.default_branch() is None
 

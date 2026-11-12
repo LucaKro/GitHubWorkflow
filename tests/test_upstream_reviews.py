@@ -202,7 +202,7 @@ def test_an_answer_lacking_a_read_is_unavailable_with_both_versions() -> None:
     assert isinstance(unavailable, UpstreamAnswerUnreadable)
     assert (unavailable.recorder, unavailable.replayer) == (
         recorder,
-        CodeVersion.running(),
+        CodeVersion.from_installation(),
     )
 
 

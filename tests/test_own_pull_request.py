@@ -326,7 +326,7 @@ def test_the_upstream_pull_request_s_reviews_and_threads_follow_with_addresses(
     assert listed[1:] == [
         f"upstream {ScratchGitHub.upstream}#9 {ScratchGitHub.upstream.pull_request_url(9)}:",
         f"review by upstream-reviewer ({ReviewState.CHANGES_REQUESTED}): Rename it.",
-        f"{ReviewThreadListing.described(upstream_thread)} "
+        f"{ReviewThreadListing.describe_thread(upstream_thread)} "
         f"{upstream_thread.comments[0].url}",
     ]
     assert [(request.upstream, request.branch) for request in upstream.requests] == [
@@ -364,7 +364,10 @@ def test_the_own_threads_are_listed_with_why_upstream_was_not_read(
 
     listed = listing.run().splitlines()
 
-    assert listed == [ReviewThreadListing.described(thread(8)), unavailable.line()]
+    assert listed == [
+        ReviewThreadListing.describe_thread(thread(8)),
+        unavailable.line(),
+    ]
 
 
 def test_a_pull_request_not_opened_upstream_reads_nothing_upstream(

@@ -280,7 +280,7 @@ def test_a_finding_accepted_on_github_is_listed_once_as_accepted() -> None:
     listed = FindingListing(board, ScratchGitHub.owned).run().splitlines()
 
     assert listed == [
-        f"{Priority.named(unreviewed, ScratchGitHub.owned)} ({FindingStage.ACCEPTED})"
+        f"{Priority.describe_finding(unreviewed, ScratchGitHub.owned)} ({FindingStage.ACCEPTED})"
     ]
 
 
@@ -979,7 +979,7 @@ def grouped(group: FindingGroup, issues: list[Issue], tone: Tone) -> list[Report
     """
     items = [
         ReportLine(
-            Priority.named(issue, ScratchGitHub.owned),
+            Priority.describe_finding(issue, ScratchGitHub.owned),
             tone,
             emphases=Priority.emphases(issue),
         )

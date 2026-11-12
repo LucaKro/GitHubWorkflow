@@ -74,7 +74,7 @@ class BranchTips:
         ordered = sorted(self.tips, key=lambda tip: tip.branch)
         return "".join(f"{tip.branch} {tip.commit}\n" for tip in ordered)
 
-    def extended(self, tip: BranchTip) -> Self:
+    def add_tip(self, tip: BranchTip) -> Self:
         """
         :param tip: Another branch, and its commit.
         :return: These branches and that one, in place of an earlier entry of its
@@ -140,7 +140,7 @@ class BranchDiscard(WorkflowStep):
             raise NothingToDiscardError(branch)
         self.notes.fetch()
         listed = self.notes.read(NotesFile.DISCARDED_BRANCHES)
-        discarded = DiscardedBranches.from_text(listed).extended(BranchTip(branch, tip))
+        discarded = DiscardedBranches.from_text(listed).add_tip(BranchTip(branch, tip))
         self.notes.write(
             TextFiles({NotesFile.DISCARDED_BRANCHES: discarded.to_text()}),
             f"Discard {branch}",
@@ -270,7 +270,7 @@ class CleanupReminder(ReportSection):
         ready = self.kept.ready()
         if not ready:
             return []
-        branches = CountedThing.BRANCH.counted(len(ready))
+        branches = CountedThing.BRANCH.quantify(len(ready))
         command = RunnableCommand.CLEANUP.usage()
         return [
             ReportLine(
@@ -333,7 +333,7 @@ class BranchCleanup(WorkflowStep):
             )
         )
         if not refused:
-            return f"deleted {CountedThing.BRANCH.counted(deleted)}"
+            return f"deleted {CountedThing.BRANCH.quantify(deleted)}"
         listed = BranchTips(tuple(tip for tip in ready if tip.branch in refused))
         workflow = NotesBranchWorkflow.DELETION.files(
             self.notes.branch.name,
@@ -341,10 +341,10 @@ class BranchCleanup(WorkflowStep):
         )
         self.notes.fetch()
         self.notes.write(
-            TextFiles({NotesFile.READY_FOR_DELETION: listed.to_text()}).combined(
+            TextFiles({NotesFile.READY_FOR_DELETION: listed.to_text()}).combine(
                 workflow
             ),
-            f"List {CountedThing.BRANCH.counted(len(refused))} for deletion",
+            f"List {CountedThing.BRANCH.quantify(len(refused))} for deletion",
         )
         return (
             f"deleted {deleted}; this session may not delete the other {len(refused)}, "
@@ -386,7 +386,7 @@ class UnusedCloneRemoval(WorkflowStep):
                 clone.parent.rmdir()
         if not unused:
             return "no clone of somebody else's repository is unused"
-        clones = CountedThing.CLONE.counted(len(unused))
+        clones = CountedThing.CLONE.quantify(len(unused))
         return (
             f"removed {clones} of somebody else's repositories unused for "
             f"{self.unused_for.days} days"

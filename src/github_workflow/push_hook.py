@@ -172,7 +172,7 @@ def main() -> None:
     Check the push git is about to run, as its ``pre-push`` hook.
     """
     destination, url = sys.argv[1:3]
-    checkout = ProjectCheckout.containing(Path.cwd())
+    checkout = ProjectCheckout.from_directory(Path.cwd())
     updates = [ReferenceUpdate.from_line(line) for line in sys.stdin if line.strip()]
     remote = Remote.from_push_url(checkout.git, destination, url)
     PushCheck(remote, WorkflowSettings()).raise_if_forbidden(updates)

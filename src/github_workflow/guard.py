@@ -15,10 +15,10 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from inspect import isabstract
 from pathlib import PurePath
 from typing import Any
 
+from domain_model.class_family import ClassFamily
 from domain_model.class_property import classproperty
 from domain_model.claude_code.hooks import HookInput, ToolCallDenial, ToolKind
 from domain_model.environment import ClaudeCodeVariable, GitVariable
@@ -79,14 +79,14 @@ class Denial:
     """
 
     @classmethod
-    def writing(cls, reason: str, write: str) -> Denial:
+    def from_write(cls, reason: str, write: str) -> Denial:
         """
         :param reason: Why a call is denied.
         :param write: The git subcommand, ``gh`` command or GitHub MCP tool it writes
             with.
         :return: The denial, naming the workflow command doing the job when one does.
         """
-        alternative = WorkflowAlternative.doing(write)
+        alternative = WorkflowAlternative.from_write(write)
         return cls(reason, None if alternative is None else alternative.command_line())
 
     def message(self) -> str:
@@ -201,7 +201,7 @@ class GitHubToolWrite(StrEnum):
 
 
 @dataclass(frozen=True)
-class WorkflowAlternative(ABC):
+class WorkflowAlternative(ClassFamily, ABC):
     """
     A job done by writing to git or GitHub directly that a workflow command does
     instead.
@@ -221,7 +221,7 @@ class WorkflowAlternative(ABC):
         """
 
     @classmethod
-    def doing(cls, write: str) -> WorkflowAlternative | None:
+    def from_write(cls, write: str) -> WorkflowAlternative | None:
         """
         :param write: A git subcommand, ``gh`` command or GitHub MCP tool that writes.
         :return: The workflow command doing its job, ``None`` when none does.
@@ -229,7 +229,7 @@ class WorkflowAlternative(ABC):
         return next(
             (
                 alternative()
-                for alternative in cls.__subclasses__()
+                for alternative in cls.concrete_subclasses()
                 if write in alternative.writes
             ),
             None,
@@ -423,7 +423,7 @@ class ReviewResolveAlternative(WorkflowAlternative):
 
 
 @dataclass(frozen=True)
-class ProgramCheck(ABC):
+class ProgramCheck(ClassFamily, ABC):
     """
     Judges the calls of one program.
     """
@@ -443,19 +443,16 @@ class ProgramCheck(ABC):
         """
 
     @classmethod
-    def judging(cls, program: str) -> ProgramCheck | None:
+    def from_program(cls, program: str) -> ProgramCheck | None:
         """
         :param program: A program's name.
         :return: The check of its calls, ``None`` for a program the guard leaves alone.
         """
-        checks = [cls]
-        for check in checks:
-            checks += check.__subclasses__()
         return next(
             (
                 check()
-                for check in checks
-                if not isabstract(check) and check.program == program
+                for check in cls.concrete_subclasses()
+                if check.program == program
             ),
             None,
         )
@@ -485,7 +482,7 @@ class GitCheck(ProgramCheck):
                 )
             case GitCallEffect.WRITES:
                 subcommand = call.subcommand or ""
-                return Denial.writing(
+                return Denial.from_write(
                     f"git {subcommand} writes, or is not a form the guard knows reads",
                     subcommand,
                 )
@@ -513,7 +510,7 @@ class GitHubCliCheck(ProgramCheck):
             case GitHubCliEffect.API_SENDS:
                 return Denial("gh api with a method, a field or an input writes")
             case GitHubCliEffect.WRITES:
-                return Denial.writing(
+                return Denial.from_write(
                     f"gh {call.command} writes, or is not a command the guard knows "
                     f"reads",
                     call.command,
@@ -700,7 +697,7 @@ class CommandGuard:
             return self._wrapped_denial(Wrapper(program), arguments)
         if program in Shell:
             return self._shell_denial(Shell(program), arguments)
-        check = ProgramCheck.judging(program)
+        check = ProgramCheck.from_program(program)
         return None if check is None else check.denial(arguments)
 
     def _wrapped_denial(self, wrapper: Wrapper, arguments: list[str]) -> Denial | None:
@@ -804,7 +801,7 @@ class ToolGuard:
                 name = self.call.tool_without_server
                 if GitHubToolReading.names_a_read(name):
                     return None
-                return Denial.writing(f"the GitHub tool {name} writes", name)
+                return Denial.from_write(f"the GitHub tool {name} writes", name)
         return None
 
     def output(self) -> dict[str, Any] | None:

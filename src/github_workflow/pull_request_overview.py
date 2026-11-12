@@ -113,7 +113,7 @@ class PullRequestSignals(HasNumberLink):
             problems.append("behind its base")
         unresolved = len(self.snapshot.unresolved_threads)
         if unresolved:
-            problems.append(str(CountedThing.UNRESOLVED_THREAD.counted(unresolved)))
+            problems.append(str(CountedThing.UNRESOLVED_THREAD.quantify(unresolved)))
         return problems
 
     def line(self, checked_out: BranchName | None) -> ReportLine:
@@ -248,7 +248,7 @@ class PullRequestOverview(ReportSection):
         ]
         waiting = counted.result()
         if waiting:
-            requests = CountedThing.WAITING_PULL_REQUEST.counted(waiting)
+            requests = CountedThing.WAITING_PULL_REQUEST.quantify(waiting)
             lines.append(
                 ReportLine(
                     Speaker.WORKFLOW.says(f"{requests} on your review"), Tone.ACTION

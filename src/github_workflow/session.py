@@ -68,7 +68,7 @@ class WorkflowSession(RepositoryDetails):
         """
         The checkout the command works on.
         """
-        return ProjectCheckout.containing(self.directory)
+        return ProjectCheckout.from_directory(self.directory)
 
     @cached_property
     def remote(self) -> OwnedRemote:
@@ -183,8 +183,8 @@ class WorkflowSession(RepositoryDetails):
             if clones is None:
                 raise UnknownPluginDataError(repository)
             return clones / repository.owner
-        around = ProjectCheckout.around(self.directory)
-        return self.directory if around is None else around.root.parent
+        checkout = ProjectCheckout.from_directory_or_none(self.directory)
+        return self.directory if checkout is None else checkout.root.parent
 
     def named_branch(self, name: str | None) -> BranchName:
         """
@@ -256,11 +256,11 @@ class WorkflowSession(RepositoryDetails):
         :param arguments: The parsed command line.
         :return: The step it asks for.
         """
-        return CommandStep.handling(arguments)(self, arguments).step()
+        return CommandStep.from_arguments(self, arguments).step()
 
     def command(self, arguments: argparse.Namespace) -> WorkflowStep:
         """
         :param arguments: The parsed command line.
         :return: The step it asks for, run once what it relies on is up to date.
         """
-        return CommandStep.handling(arguments)(self, arguments).prepared()
+        return CommandStep.from_arguments(self, arguments).prepare_step()

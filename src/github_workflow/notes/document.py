@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum, StrEnum, auto
 
+from domain_model.class_family import ClassFamily
 from domain_model.class_property import classproperty
 from domain_model.git.revisions import BranchName
 from domain_model.github.discussions import DefaultDiscussionCategory
@@ -170,7 +171,7 @@ class ReferenceKind(StrEnum):
 
 
 @dataclass(frozen=True)
-class CommandReference(ABC):
+class CommandReference(ClassFamily, ABC):
     """
     A command, an option or an argument the notes header names, written as
     ``{<kind>:<name> <argument>...}``.
@@ -218,7 +219,7 @@ class CommandReference(ABC):
         kind, name, arguments = found.groups()
         referenced = next(
             reference
-            for reference in cls.__subclasses__()
+            for reference in cls.concrete_subclasses()
             if reference.kind is ReferenceKind(kind)
         )
         return referenced(name, tuple(arguments.split()))

@@ -210,7 +210,7 @@ class TextFiles:
         """:return: Every file's path, in the order given."""
         return list(self.texts)
 
-    def combined(self, other: TextFiles) -> TextFiles:
+    def combine(self, other: TextFiles) -> TextFiles:
         """
         :param other: More files.
         :return: These files and *other*'s, *other*'s text winning for a path both

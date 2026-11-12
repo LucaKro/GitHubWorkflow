@@ -108,7 +108,7 @@ class GitCommandRunner:
         return cls(checkout)
 
     @classmethod
-    def enclosing(cls, directory: Path) -> GitCommandRunner | None:
+    def from_enclosed_directory(cls, directory: Path) -> GitCommandRunner | None:
         """
         :param directory: A directory.
         :return: Runs git at the root of the checkout the directory is inside, ``None``

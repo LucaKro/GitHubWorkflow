@@ -14,6 +14,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import StrEnum
 
+from domain_model.class_family import ClassFamily
 from domain_model.class_property import classproperty
 from domain_model.github.clients import GitHubApi
 from domain_model.github.pull_request_models import UpstreamPullRequestSnapshot
@@ -60,7 +61,7 @@ class LibraryCheck(StrEnum):
 
 
 @dataclass(frozen=True)
-class LibraryCall(ABC):
+class LibraryCall(ClassFamily, ABC):
     """
     One check's call through the library.
     """
@@ -81,12 +82,12 @@ class LibraryCall(ABC):
         """
 
     @classmethod
-    def making(cls, check: LibraryCheck) -> LibraryCall:
+    def from_check(cls, check: LibraryCheck) -> LibraryCall:
         """
         :param check: A check.
         :return: The call it makes.
         """
-        return next(call() for call in cls.__subclasses__() if call.check is check)
+        return next(call() for call in cls.concrete_subclasses() if call.check is check)
 
 
 @dataclass(frozen=True)
@@ -213,7 +214,7 @@ def main() -> None:
     Run the check the command line names and print what it read.
     """
     check, repository, *argument = sys.argv[1:]
-    call = LibraryCall.making(LibraryCheck(check))
+    call = LibraryCall.from_check(LibraryCheck(check))
     print(call.read(Repository.parse(repository), "".join(argument)))
 
 

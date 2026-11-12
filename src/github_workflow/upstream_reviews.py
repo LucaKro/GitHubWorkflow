@@ -274,7 +274,7 @@ class ForwardedUpstreamReviews(UpstreamReviews):
             )
         except UnreadableRecordingError as unreadable:
             return UpstreamAnswerUnreadable(
-                unreadable.error_message(), None, CodeVersion.running()
+                unreadable.error_message(), None, CodeVersion.from_installation()
             )
 
     def stopped_run(
@@ -326,7 +326,7 @@ class ForwardedUpstreamReviews(UpstreamReviews):
         self.notes.write(
             TextFiles(
                 {NotesFile.UPSTREAM_REVIEW_REQUESTS / request.name: request.to_json()}
-            ).combined(workflow),
+            ).combine(workflow),
             f"Ask for the upstream reviews of {request.branch}",
         )
         self.notes.fetch()

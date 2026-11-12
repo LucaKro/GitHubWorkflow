@@ -54,7 +54,7 @@ class LabelWrite:
     """
 
     @classmethod
-    def replacing(
+    def from_changes(
         cls,
         current: Iterable[str],
         added: Iterable[str] = (),

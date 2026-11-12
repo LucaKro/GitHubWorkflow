@@ -81,7 +81,7 @@ class RepositoriesByOwner:
         """
         destination = self.root / "clones" / directory
         GitCommandRunner(self.root).run("clone", "--quiet", url, str(destination))
-        checkout = ProjectCheckout.containing(destination)
+        checkout = ProjectCheckout.from_directory(destination)
         self.identify(checkout.git)
         return checkout
 

@@ -60,7 +60,7 @@ class OwnedRemotes:
         :param settings: Whose repositories count as owned.
         :return: The checkout's remotes, sorted into owned and the rest.
         """
-        remotes = Remote.configured(git)
+        remotes = Remote.read_configured(git)
         owned = tuple(
             OwnedRemote(remote.git, remote.name, remote.push_url, remote.repository)
             for remote in remotes

@@ -342,7 +342,7 @@ class Probe:
         )
 
     @staticmethod
-    def listed(values: dict[str, object]) -> str:
+    def format_values(values: dict[str, object]) -> str:
         """
         :param values: Settings or fields, by name.
         :return: Them as ``name value`` pairs on one line.
@@ -772,7 +772,7 @@ class Probe:
             CheckGroup.SETTINGS,
             "read the repository settings",
             repository,
-            self.listed(settings),
+            self.format_values(settings),
         ):
             return
         written = self.call(HTTPMethod.PATCH, self.route.root, settings)
@@ -782,7 +782,7 @@ class Probe:
             CheckGroup.SETTINGS,
             "read the Actions permissions",
             permissions,
-            self.listed(permissions.body),
+            self.format_values(permissions.body),
         ):
             return
         unchanged = {

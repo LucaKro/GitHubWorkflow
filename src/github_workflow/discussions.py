@@ -166,7 +166,7 @@ class DiscussionPosting:
                     NotesFile.DISCUSSION_POSTS
                     / NotesBranch.queued_file_name(): post.to_json()
                 }
-            ).combined(workflow),
+            ).combine(workflow),
             f"Queue the discussion {post.title!r}",
         )
 

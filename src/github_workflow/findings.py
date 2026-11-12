@@ -199,7 +199,7 @@ class Priority(FindingLabel):
         )
 
     @classmethod
-    def named(cls, issue: Issue, repository: Repository) -> str:
+    def describe_finding(cls, issue: Issue, repository: Repository) -> str:
         """
         :param issue: A finding.
         :param repository: The repository it is filed on.
@@ -214,7 +214,7 @@ class Priority(FindingLabel):
     def emphases(cls, issue: Issue) -> tuple[Emphasis, ...]:
         """
         :param issue: A finding.
-        :return: Its priority tag, as :meth:`named` writes it, in the priority's own
+        :return: Its priority tag, as :meth:`describe_finding` writes it, in the priority's own
             style; nothing for a finding without a priority.
         """
         priority = cls.from_issue(issue)
@@ -436,7 +436,9 @@ class FindingListing(WorkflowStep):
             for issue in Priority.most_urgent_first(issues):
                 evidence = Evidence.from_issue(issue)
                 labels = f"{stage}, {evidence}" if evidence else stage
-                lines.append(f"{Priority.named(issue, self.repository)} ({labels})")
+                lines.append(
+                    f"{Priority.describe_finding(issue, self.repository)} ({labels})"
+                )
         return "\n".join(lines) or "no open findings"
 
 
@@ -939,7 +941,7 @@ class FindingsSummary(ReportSection):
             tone = Tone.ACTION if group is FindingGroup.UNREVIEWED else Tone.NEWS
             items = [
                 ReportLine(
-                    Priority.named(issue, self.repository),
+                    Priority.describe_finding(issue, self.repository),
                     tone,
                     emphases=Priority.emphases(issue),
                 )

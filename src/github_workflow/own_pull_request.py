@@ -236,7 +236,7 @@ class ReviewThreadListing(WorkflowStep):
         """
         threaded = ReviewThreads(self.pull_request, self.source).read()
         found = threaded.pull_request
-        lines = [self.described(thread) for thread in threaded.threads]
+        lines = [self.describe_thread(thread) for thread in threaded.threads]
         lines = lines or [f"#{found.number} has no review threads"]
         if UpstreamLabel.OPENED_UPSTREAM not in found.labels:
             return "\n".join(lines)
@@ -261,13 +261,13 @@ class ReviewThreadListing(WorkflowStep):
             for review in snapshot.reviews
         ]
         lines += [
-            f"{self.described(thread)} {thread.comments[0].url}"
+            f"{self.describe_thread(thread)} {thread.comments[0].url}"
             for thread in sorted(snapshot.threads, key=lambda each: each.is_resolved)
         ]
         return "\n".join(lines)
 
     @staticmethod
-    def described(thread: ReviewThread) -> str:
+    def describe_thread(thread: ReviewThread) -> str:
         """
         :param thread: A review thread.
         :return: It in one line: its first comment's identifier, whether it is

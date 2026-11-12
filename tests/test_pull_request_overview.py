@@ -254,7 +254,7 @@ def test_pull_requests_waiting_on_the_person_are_counted() -> None:
     [line] = github.overview().lines()
 
     assert line.text == Speaker.WORKFLOW.says(
-        f"{CountedThing.WAITING_PULL_REQUEST.counted(2)} on your review"
+        f"{CountedThing.WAITING_PULL_REQUEST.quantify(2)} on your review"
     )
 
 

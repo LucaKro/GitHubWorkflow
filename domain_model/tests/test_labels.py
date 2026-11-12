@@ -51,29 +51,29 @@ def test_an_enumerated_label_is_a_label():
 
 
 def test_a_label_added_twice_is_written_once() -> None:
-    assert LabelWrite.replacing(["kept"], added=["new", "new"]).labels == (
+    assert LabelWrite.from_changes(["kept"], added=["new", "new"]).labels == (
         "kept",
         "new",
     )
 
 
 def test_a_label_carried_in_another_case_is_not_added_again() -> None:
-    assert LabelWrite.replacing(["Ready"], added=["ready"]).labels == ("Ready",)
+    assert LabelWrite.from_changes(["Ready"], added=["ready"]).labels == ("Ready",)
 
 
 def test_a_label_is_removed_whatever_its_case() -> None:
-    assert LabelWrite.replacing(["Ready", "kept"], removed=["ready"]).labels == (
+    assert LabelWrite.from_changes(["Ready", "kept"], removed=["ready"]).labels == (
         "kept",
     )
 
 
 def test_a_label_both_added_and_removed_in_different_cases_is_refused() -> None:
     with pytest.raises(ContradictoryLabelWriteError):
-        LabelWrite.replacing([], added=["Ready"], removed=["ready"])
+        LabelWrite.from_changes([], added=["Ready"], removed=["ready"])
 
 
 def test_labels_are_kept_in_the_order_carried_then_added() -> None:
-    assert LabelWrite.replacing(
+    assert LabelWrite.from_changes(
         ["b", "a", "gone"], added=["d", "c"], removed=["gone"]
     ).labels == (
         "b",

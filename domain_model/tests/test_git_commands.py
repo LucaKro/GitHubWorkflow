@@ -58,14 +58,14 @@ def test_a_directory_inside_a_checkout_finds_the_checkout_s_root(
     inside = checkout.working_directory / "nested"
     inside.mkdir()
 
-    assert GitCommandRunner.enclosing(inside) == checkout
+    assert GitCommandRunner.from_enclosed_directory(inside) == checkout
 
 
 def test_a_directory_outside_every_checkout_finds_none(tmp_path: Path) -> None:
     outside = tmp_path / "outside"
     outside.mkdir()
 
-    assert GitCommandRunner.enclosing(outside) is None
+    assert GitCommandRunner.from_enclosed_directory(outside) is None
 
 
 # %% identity
@@ -113,7 +113,7 @@ def test_a_clone_s_origin_is_the_repository_cloned(
 
     clone = GitCommandRunner.clone(url, tmp_path / "clones" / hosted.name)
 
-    [origin] = Remote.configured(clone)
+    [origin] = Remote.read_configured(clone)
     assert (origin.name, origin.repository) == (RemoteName.ORIGIN, hosted)
 
 

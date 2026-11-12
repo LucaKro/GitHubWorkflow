@@ -69,7 +69,7 @@ def main() -> None:
     Save the notes of the checkout around the working directory, and print the hook's
     answer when anything was saved.
     """
-    checkout = ProjectCheckout.around(Path.cwd())
+    checkout = ProjectCheckout.from_directory_or_none(Path.cwd())
     if checkout is None:
         return
     line = UnsavedNotes(checkout, WorkflowSettings()).save()

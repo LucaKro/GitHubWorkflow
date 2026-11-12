@@ -141,7 +141,7 @@ class CodeVersion:
         return module.relative_to(module.parents[1])
 
     @classmethod
-    def running(cls) -> CodeVersion:
+    def from_installation(cls) -> CodeVersion:
         """
         :return: The version running now; what it cannot tell is ``None``, never
             guessed.
