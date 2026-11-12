@@ -35,6 +35,7 @@ from domain_model.github.readers import (
     RestReviewThreadSource,
 )
 from domain_model.github.rest_models import RestReviewThread
+from domain_model.github.review_models import Review
 from domain_model.github.routes import RepositoryRoute
 from domain_model.github.vocabulary import (
     CheckOutcome,
@@ -255,6 +256,22 @@ def test_a_rest_read_carries_the_submitted_reviews(
             review[RestJSONKey.USER][RestJSONKey.LOGIN],
             ReviewState[review[RestJSONKey.STATE]],
         )
+    ]
+
+
+def test_a_pending_review_is_left_out_of_the_read(
+    rest_pull_request: dict[str, Any], rest_pages: dict[str, list[Any]]
+) -> None:
+    number = rest_pull_request[RestJSONKey.NUMBER]
+    listed = recorded(DatasetLocation.REST_REVIEWS_WITH_PENDING)
+    rest_pages[ROUTE.reviews(number)] = [listed]
+
+    snapshot = rest_reader(rest_pages).read_current_state(number)
+
+    assert snapshot.reviews == [
+        Review.from_json(entry)
+        for entry in listed
+        if ReviewState[entry[RestJSONKey.STATE]] is not ReviewState.PENDING
     ]
 
 
@@ -505,7 +522,7 @@ def test_a_recording_keeps_only_the_keys_the_models_read(
         for key in keys_in(answered.answer)
     }
 
-    assert kept - {*RestJSONKey, *PullRequestJSONKey} == set()
+    assert kept - RecordingClient.read_keys == set()
 
 
 def test_a_trimmed_recording_replays_the_read_it_was_recorded_from(

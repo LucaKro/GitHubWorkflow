@@ -171,6 +171,14 @@ class DatasetLocation(PathEnumeration):
     Its submitted reviews.
     """
 
+    REST_REVIEWS_WITH_PENDING = (
+        DIRECTORY / "readers" / "rest" / "reviews-with-pending.json"
+    )
+    """
+    A submitted review, and the reader's own pending one, which REST lists without a
+    submission time.
+    """
+
     REST_REVIEW_COMMENTS = DIRECTORY / "readers" / "rest" / "review-comments.json"
     """
     Every review comment on it.

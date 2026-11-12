@@ -1,0 +1,17 @@
+[
+  {
+    "user": {
+      "login": "a-reviewer"
+    },
+    "state": "COMMENTED",
+    "body": "Looks close",
+    "submitted_at": "2026-01-02T00:00:00Z"
+  },
+  {
+    "user": {
+      "login": "the-reader"
+    },
+    "state": "PENDING",
+    "body": ""
+  }
+]

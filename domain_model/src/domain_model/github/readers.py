@@ -40,6 +40,8 @@ from domain_model.github.vocabulary import (
     PullRequestJSONKey,
     PullRequestState,
     QueryVariable,
+    RestJSONKey,
+    ReviewState,
 )
 from domain_model.repository import Repository
 
@@ -77,7 +79,8 @@ class PullRequestSource(ABC):
         self, pull_request_number: int
     ) -> UpstreamPullRequestSnapshot:
         """
-        Read the checks, reviews and review threads on one upstream pull request.
+        Read the checks, submitted reviews and review threads on one upstream pull
+        request; a pending review, which only its author sees, is left out.
 
         :param pull_request_number: The upstream pull request's number.
         :return: The assembled snapshot.
@@ -273,6 +276,8 @@ class GitHubPullRequestSource(PullRequestSource):
                     Review.from_json(entry)
                     for page in reviews.result()
                     for entry in page
+                    if ReviewState.from_name(entry[RestJSONKey.STATE])
+                    is not ReviewState.PENDING
                 ],
                 threads=threads.result(),
                 checks=checks,
