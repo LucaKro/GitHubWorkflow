@@ -8,8 +8,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from enum import StrEnum
 
+from domain_model.class_property import classproperty
 from domain_model.environment import ClaudeCodeVariable
 from domain_model.git.revisions import BranchName
 from domain_model.github.clients import (
@@ -284,20 +284,18 @@ class GitHubPullRequestSource(PullRequestSource):
             )
 
 
-class ReadSource(StrEnum):
+@dataclass(frozen=True)
+class ReadSource(ABC):
     """
-    The two APIs a pull request's review threads can be read and written through.
-    """
-
-    REST = "rest"
-    """
-    REST, the only one a Claude Code cloud session's proxy answers.
+    The API a pull request's review threads are read and written through.
     """
 
-    GRAPHQL = "graphql"
-    """
-    GraphQL, which a runner or a developer's own machine reaches.
-    """
+    @classproperty
+    @abstractmethod
+    def reaches_graphql(cls) -> bool:
+        """
+        Whether the place reading through this API reaches GitHub's GraphQL.
+        """
 
     @classmethod
     def detect(cls) -> ReadSource:
@@ -305,8 +303,8 @@ class ReadSource(StrEnum):
         :return: The API the place this runs in can reach.
         """
         if ClaudeCodeVariable.REMOTE.read() == "true":
-            return cls.REST
-        return cls.GRAPHQL
+            return RestReadSource()
+        return GraphQLReadSource()
 
     def reader(
         self,
@@ -321,19 +319,61 @@ class ReadSource(StrEnum):
         :return: A source reading the pull request over REST, its threads through this
             API.
         """
-        threads = (
-            RestReviewThreadSource(client, RepositoryRoute(upstream_repository))
-            if self is ReadSource.REST
-            else GraphQLReviewThreadSource(client, upstream_repository)
-        )
+        threads = self.thread_source(client, upstream_repository)
         return GitHubPullRequestSource(client, threads, upstream_repository, fork_owner)
 
+    @abstractmethod
+    def thread_source(
+        self, client: GitHubReader, upstream_repository: Repository
+    ) -> ReviewThreadSource:
+        """
+        :param client: The client every read goes through.
+        :param upstream_repository: The repository to read.
+        :return: What reads its pull requests' review threads through this API.
+        """
+
+    @abstractmethod
     def writer(self, client: GitHubApi, repository: Repository) -> ReviewThreadWriter:
         """
         :param client: The client the writer goes through.
         :param repository: The repository whose review threads it writes.
         :return: The review thread writer for this API.
         """
-        if self is ReadSource.REST:
-            return RestReviewThreadWriter(client, repository)
+
+
+@dataclass(frozen=True)
+class RestReadSource(ReadSource):
+    """
+    REST, the only API a Claude Code cloud session's proxy answers.
+    """
+
+    @classproperty
+    def reaches_graphql(cls) -> bool:
+        return False
+
+    def thread_source(
+        self, client: GitHubReader, upstream_repository: Repository
+    ) -> ReviewThreadSource:
+        return RestReviewThreadSource(client, RepositoryRoute(upstream_repository))
+
+    def writer(self, client: GitHubApi, repository: Repository) -> ReviewThreadWriter:
+        return RestReviewThreadWriter(client, repository)
+
+
+@dataclass(frozen=True)
+class GraphQLReadSource(ReadSource):
+    """
+    GraphQL, which a runner or a developer's own machine reaches.
+    """
+
+    @classproperty
+    def reaches_graphql(cls) -> bool:
+        return True
+
+    def thread_source(
+        self, client: GitHubReader, upstream_repository: Repository
+    ) -> ReviewThreadSource:
+        return GraphQLReviewThreadSource(client, upstream_repository)
+
+    def writer(self, client: GitHubApi, repository: Repository) -> ReviewThreadWriter:
         return GraphQLReviewThreadWriter(client, repository, client)

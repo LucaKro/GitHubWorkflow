@@ -230,7 +230,7 @@ class WorkflowSession(RepositoryDetails):
         Reads the pull requests opened upstream from the owner's fork: directly where
         GitHub's GraphQL is reached, else through the fork's Actions.
         """
-        if ReadSource.detect() is ReadSource.GRAPHQL:
+        if ReadSource.detect().reaches_graphql:
             return DirectUpstreamReviews(self.github.api)
         return ForwardedUpstreamReviews(self.notes, self.remote.repository, self.github)
 

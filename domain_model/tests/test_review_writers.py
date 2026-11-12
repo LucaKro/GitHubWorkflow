@@ -8,6 +8,9 @@ from __future__ import annotations
 import json
 from http import HTTPStatus
 
+import pytest
+
+from domain_model.environment import ClaudeCodeVariable
 from domain_model.github.clients import GitHubApi
 from domain_model.github.readers import ReadSource
 from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
@@ -104,9 +107,16 @@ def test_a_thread_is_resolved_through_graphql_by_its_node_identifier():
 # %% choosing
 
 
-def test_a_cloud_session_resolves_through_rest_and_any_other_place_through_graphql():
+def test_a_cloud_session_resolves_through_rest_and_any_other_place_through_graphql(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     api = GitHubApi("a-token", "https://api.example")
+    monkeypatch.setenv(ClaudeCodeVariable.REMOTE, "true")
+    in_a_cloud_session = ReadSource.detect().writer(api, REPOSITORY)
+    monkeypatch.delenv(ClaudeCodeVariable.REMOTE)
+    elsewhere = ReadSource.detect().writer(api, REPOSITORY)
 
-    writers = [type(source.writer(api, REPOSITORY)) for source in ReadSource]
-
-    assert writers == [RestReviewThreadWriter, GraphQLReviewThreadWriter]
+    assert [type(in_a_cloud_session), type(elsewhere)] == [
+        RestReviewThreadWriter,
+        GraphQLReviewThreadWriter,
+    ]

@@ -10,7 +10,7 @@ import pytest
 from domain_model.git.revisions import BranchName
 from domain_model.github.clients import GitHubApi
 from domain_model.github.exceptions import UpstreamPullRequestNotFound
-from domain_model.github.readers import PullRequestSource, ReadSource
+from domain_model.github.readers import PullRequestSource, RestReadSource
 from domain_model.github.review_models import Author, BranchPullRequest
 from domain_model.github.vocabulary import PullRequestState
 from domain_model.repository import Repository
@@ -21,7 +21,7 @@ from domain_model.repository import Repository
 def source(fork_owner: str = "an-owner") -> PullRequestSource:
     """:param fork_owner: Whose branches to claim.
     :return: A source of the upstream's pull requests, claiming that owner's."""
-    return ReadSource.REST.reader(
+    return RestReadSource().reader(
         GitHubApi("a-token"), Repository("upstream-owner", "a-repository"), fork_owner
     )
 

@@ -872,22 +872,49 @@ class FindingGroup(StrEnum):
     member's value its heading; a shelved finding is in none.
     """
 
-    UNREVIEWED = "findings waiting on your review"
+    stage: FindingStage
+    """
+    The stage of the findings it lists.
+    """
+
+    evidence: tuple[Evidence | None, ...]
+    """
+    The evidence the findings it lists carry, ``None`` for none yet.
+    """
+
+    def __new__(
+        cls, heading: str, stage: FindingStage, evidence: tuple[Evidence | None, ...]
+    ) -> FindingGroup:
+        member = str.__new__(cls, heading)
+        member._value_ = heading
+        member.stage = stage
+        member.evidence = evidence
+        return member
+
+    UNREVIEWED = (
+        "findings waiting on your review",
+        FindingStage.UNREVIEWED,
+        (*Evidence, None),
+    )
     """
     Filed, and not looked at by the person yet.
     """
 
-    PROVEN = "accepted findings, proven"
+    PROVEN = "accepted findings, proven", FindingStage.ACCEPTED, (Evidence.PROVEN,)
     """
     Accepted, with a test failing on the default branch: ready to work on.
     """
 
-    TO_PROVE = "accepted findings, not proven yet"
+    TO_PROVE = "accepted findings, not proven yet", FindingStage.ACCEPTED, (None,)
     """
     Accepted, with no attempt at a failing test yet.
     """
 
-    UNPROVABLE = "accepted findings, marked unproven"
+    UNPROVABLE = (
+        "accepted findings, marked unproven",
+        FindingStage.ACCEPTED,
+        (Evidence.UNPROVEN,),
+    )
     """
     Accepted, and no test failing on the default branch could be written.
     """
@@ -899,17 +926,15 @@ class FindingGroup(StrEnum):
         :param issue: The finding.
         :return: The group it is listed in, ``None`` for a shelved one.
         """
-        if stage is FindingStage.UNREVIEWED:
-            return cls.UNREVIEWED
-        if stage is not FindingStage.ACCEPTED:
-            return None
-        match Evidence.from_issue(issue):
-            case Evidence.PROVEN:
-                return cls.PROVEN
-            case Evidence.UNPROVEN:
-                return cls.UNPROVABLE
-            case None:
-                return cls.TO_PROVE
+        evidence = Evidence.from_issue(issue)
+        return next(
+            (
+                group
+                for group in cls
+                if group.stage is stage and evidence in group.evidence
+            ),
+            None,
+        )
 
 
 @dataclass(frozen=True)

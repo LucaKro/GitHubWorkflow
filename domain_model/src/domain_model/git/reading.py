@@ -8,12 +8,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
-from enum import Enum, StrEnum, auto
+from enum import StrEnum
 from pathlib import PurePath
 
+from domain_model.call_effects import CallEffect
 from domain_model.class_family import ClassFamily
 from domain_model.class_property import classproperty
-from domain_model.git.exceptions import UnjudgedSubcommandError
 from domain_model.git.options import (
     ArchiveOption,
     BranchOption,
@@ -36,7 +36,7 @@ from domain_model.git.options import (
     WorktreeReadingCommand,
 )
 from domain_model.git.references import ReferenceNamespace
-from domain_model.git.subcommands import GitSubcommand, SubcommandReading
+from domain_model.git.subcommands import GitSubcommand
 
 # %% where git reads its configuration
 
@@ -181,8 +181,100 @@ class GitSubcommandArguments:
 @dataclass(frozen=True)
 class ReadingForms(ClassFamily, ABC):
     """
-    The forms of one git subcommand that only read: every option is one of its own
-    marked as reading, and the form reads.
+    The forms of git subcommands that only read: move no reference, leave the index and
+    the working files alone and run no program of the caller's choosing.
+    """
+
+    @classproperty
+    @abstractmethod
+    def subcommands(cls) -> frozenset[GitSubcommand]:
+        """
+        The subcommands whose forms this tells apart.
+        """
+
+    @abstractmethod
+    def reads(self, arguments: GitSubcommandArguments) -> bool:
+        """
+        :param arguments: What follows the subcommand.
+        :return: Whether the call only reads.
+        """
+
+    @classmethod
+    def from_subcommand(cls, subcommand: GitSubcommand) -> ReadingForms:
+        """
+        :param subcommand: A subcommand.
+        :return: What tells its reading forms apart; :class:`NeverReadingForms` when
+            nothing does.
+        """
+        return next(
+            (
+                form()
+                for form in cls.concrete_subclasses()
+                if subcommand in form.subcommands
+            ),
+            NeverReadingForms(),
+        )
+
+
+@dataclass(frozen=True)
+class AlwaysReadingForms(ReadingForms):
+    """
+    The subcommands that read whatever their arguments.
+    """
+
+    @classproperty
+    def subcommands(cls) -> frozenset[GitSubcommand]:
+        return frozenset(
+            {
+                GitSubcommand.STATUS,
+                GitSubcommand.DIFF,
+                GitSubcommand.LOG,
+                GitSubcommand.SHOW,
+                GitSubcommand.BLAME,
+                GitSubcommand.GREP,
+                GitSubcommand.REV_PARSE,
+                GitSubcommand.REV_LIST,
+                GitSubcommand.LS_FILES,
+                GitSubcommand.LS_TREE,
+                GitSubcommand.LS_REMOTE,
+                GitSubcommand.CAT_FILE,
+                GitSubcommand.MERGE_BASE,
+                GitSubcommand.MERGE_TREE,
+                GitSubcommand.DESCRIBE,
+                GitSubcommand.SHORTLOG,
+                GitSubcommand.FOR_EACH_REF,
+                GitSubcommand.SHOW_REF,
+                GitSubcommand.NAME_REV,
+                GitSubcommand.CHECK_IGNORE,
+                GitSubcommand.VAR,
+                GitSubcommand.VERSION,
+                GitSubcommand.HELP,
+            }
+        )
+
+    def reads(self, arguments: GitSubcommandArguments) -> bool:
+        return True
+
+
+@dataclass(frozen=True)
+class NeverReadingForms(ReadingForms):
+    """
+    The forms of a subcommand that writes, or reads in no form known to: none reads.
+    """
+
+    @classproperty
+    def subcommands(cls) -> frozenset[GitSubcommand]:
+        return frozenset()
+
+    def reads(self, arguments: GitSubcommandArguments) -> bool:
+        return False
+
+
+@dataclass(frozen=True)
+class PartlyReadingForms(ReadingForms, ABC):
+    """
+    The forms of one subcommand that only read, told apart by its arguments: every
+    option is one of its own marked as reading, and the form reads.
     """
 
     @classproperty
@@ -199,6 +291,10 @@ class ReadingForms(ClassFamily, ABC):
         The subcommand's options.
         """
 
+    @classproperty
+    def subcommands(cls) -> frozenset[GitSubcommand]:
+        return frozenset({cls.subcommand})
+
     @abstractmethod
     def form_reads(self, arguments: GitSubcommandArguments) -> bool:
         """
@@ -207,36 +303,13 @@ class ReadingForms(ClassFamily, ABC):
         """
 
     def reads(self, arguments: GitSubcommandArguments) -> bool:
-        """
-        :param arguments: What follows the subcommand.
-        :return: Whether the call only reads.
-        """
         return self.options.only_reading(arguments.options) and self.form_reads(
             arguments
         )
 
-    @classmethod
-    def from_subcommand(cls, subcommand: GitSubcommand) -> ReadingForms:
-        """
-        :param subcommand: A subcommand reading in some forms.
-        :return: What tells its reading forms apart.
-        :raises UnjudgedSubcommandError: If nothing tells them apart.
-        """
-        found = next(
-            (
-                form()
-                for form in cls.concrete_subclasses()
-                if form.subcommand == subcommand
-            ),
-            None,
-        )
-        if found is None:
-            raise UnjudgedSubcommandError(subcommand)
-        return found
-
 
 @dataclass(frozen=True)
-class ListingReadingForms(ReadingForms, ABC):
+class ListingReadingForms(PartlyReadingForms, ABC):
     """
     The reading forms of a subcommand that reads when it lists rather than creates,
     moves or deletes.
@@ -258,7 +331,7 @@ class ListingReadingForms(ReadingForms, ABC):
 @dataclass(frozen=True)
 class BranchReadingForms(ListingReadingForms):
     """
-    branch, which reads when it lists branches.
+    Branch, which reads when it lists branches.
     """
 
     @classproperty
@@ -290,7 +363,7 @@ class BranchReadingForms(ListingReadingForms):
 @dataclass(frozen=True)
 class TagReadingForms(ListingReadingForms):
     """
-    tag, which reads when it lists tags.
+    Tag, which reads when it lists tags.
     """
 
     @classproperty
@@ -320,10 +393,10 @@ class TagReadingForms(ListingReadingForms):
 
 
 @dataclass(frozen=True)
-class ConfigReadingForms(ReadingForms):
+class ConfigReadingForms(PartlyReadingForms):
     """
-    config, which reads when it gets or lists values, or names a single key without
-    a value.
+    Config, which reads when it gets or lists values, or names a single key without a
+    value.
     """
 
     @classproperty
@@ -358,10 +431,10 @@ class ConfigReadingForms(ReadingForms):
 
 
 @dataclass(frozen=True)
-class FirstWordReadingForms(ReadingForms, ABC):
+class FirstWordReadingForms(PartlyReadingForms, ABC):
     """
-    The reading forms of a subcommand that reads when its first other argument names
-    one of its reading commands, or, for some, when it has none.
+    The reading forms of a subcommand that reads when its first other argument names one
+    of its reading commands, or, for some, when it has none.
     """
 
     @classproperty
@@ -387,7 +460,7 @@ class FirstWordReadingForms(ReadingForms, ABC):
 @dataclass(frozen=True)
 class RemoteReadingForms(FirstWordReadingForms):
     """
-    remote, which reads when it lists remotes or shows one.
+    Remote, which reads when it lists remotes or shows one.
     """
 
     @classproperty
@@ -410,7 +483,7 @@ class RemoteReadingForms(FirstWordReadingForms):
 @dataclass(frozen=True)
 class StashReadingForms(FirstWordReadingForms):
     """
-    stash, which reads when it lists or shows stashes.
+    Stash, which reads when it lists or shows stashes.
     """
 
     @classproperty
@@ -433,7 +506,7 @@ class StashReadingForms(FirstWordReadingForms):
 @dataclass(frozen=True)
 class WorktreeReadingForms(FirstWordReadingForms):
     """
-    worktree, which reads when it lists worktrees.
+    Worktree, which reads when it lists worktrees.
     """
 
     @classproperty
@@ -456,7 +529,7 @@ class WorktreeReadingForms(FirstWordReadingForms):
 @dataclass(frozen=True)
 class ReflogReadingForms(FirstWordReadingForms):
     """
-    reflog, which reads when it shows the reflog.
+    Reflog, which reads when it shows the reflog.
     """
 
     @classproperty
@@ -479,7 +552,7 @@ class ReflogReadingForms(FirstWordReadingForms):
 @dataclass(frozen=True)
 class SubmoduleReadingForms(FirstWordReadingForms):
     """
-    submodule, which reads when it reports submodules' status.
+    Submodule, which reads when it reports submodules' status.
     """
 
     @classproperty
@@ -500,9 +573,9 @@ class SubmoduleReadingForms(FirstWordReadingForms):
 
 
 @dataclass(frozen=True)
-class FetchReadingForms(ReadingForms):
+class FetchReadingForms(PartlyReadingForms):
     """
-    fetch, which reads unless a refspec names a local branch or the URL another
+    Fetch, which reads unless a refspec names a local branch or the URL another
     transport than HTTPS.
     """
 
@@ -523,10 +596,10 @@ class FetchReadingForms(ReadingForms):
 
 
 @dataclass(frozen=True)
-class ArchiveReadingForms(ReadingForms):
+class ArchiveReadingForms(PartlyReadingForms):
     """
-    archive, which reads unless it writes the archive where git reads its
-    configuration or hooks.
+    Archive, which reads unless it writes the archive where git reads its configuration
+    or hooks.
     """
 
     @classproperty
@@ -550,25 +623,63 @@ class ArchiveReadingForms(ReadingForms):
 # %% one call
 
 
-class GitCallEffect(Enum):
+@dataclass(frozen=True)
+class GitCallEffect(CallEffect, ABC):
     """
     What a git call does beyond reading.
     """
 
-    UNKNOWN_GLOBAL_OPTION = auto()
+
+@dataclass(frozen=True)
+class UnknownGlobalOption(GitCallEffect):
     """
     An option before the subcommand is not one known to change nothing it writes.
     """
 
-    RUNS_A_PROGRAM = auto()
+    option: str
     """
-    An option makes it run a program of the caller's choosing, or write a file.
+    The first such option.
     """
 
-    WRITES = auto()
+    @property
+    def description(self) -> str:
+        return f"git {self.option} is not a global option known to change nothing"
+
+
+@dataclass(frozen=True)
+class ProgramRunningOption(GitCallEffect):
     """
-    It writes, or is in no form known to only read.
+    An option makes the call run a program of the caller's choosing, or write a file.
     """
+
+    subcommand: str
+    """
+    The subcommand the option is given to.
+    """
+
+    @property
+    def description(self) -> str:
+        return f"git {self.subcommand} with this option runs a program or writes"
+
+
+@dataclass(frozen=True)
+class WritingSubcommand(GitCallEffect):
+    """
+    The call writes, or is in no form known to only read.
+    """
+
+    subcommand: str
+    """
+    The subcommand it was given.
+    """
+
+    @property
+    def description(self) -> str:
+        return f"git {self.subcommand} writes, or is not a form known to only read"
+
+    @property
+    def write(self) -> str:
+        return self.subcommand
 
 
 @dataclass(frozen=True)
@@ -622,8 +733,9 @@ class GitCall:
         """
         :return: What the call does beyond reading, None when it only reads.
         """
-        if self.unknown_global_option is not None:
-            return GitCallEffect.UNKNOWN_GLOBAL_OPTION
+        unknown = self.unknown_global_option
+        if unknown is not None:
+            return UnknownGlobalOption(unknown)
         subcommand = self.subcommand
         if subcommand is None:
             return None
@@ -633,14 +745,10 @@ class GitCall:
             argument.startswith(pager) for argument in rest
         )
         if GitProgramOption.runs_program(subcommand, rest) or opens_files:
-            return GitCallEffect.RUNS_A_PROGRAM
+            return ProgramRunningOption(subcommand)
         if subcommand not in GitSubcommand:
-            return GitCallEffect.WRITES
-        match GitSubcommand(subcommand).reading:
-            case SubcommandReading.ALWAYS:
-                return None
-            case SubcommandReading.IN_SOME_FORMS:
-                form = ReadingForms.from_subcommand(GitSubcommand(subcommand))
-                if form.reads(self.subcommand_arguments):
-                    return None
-        return GitCallEffect.WRITES
+            return WritingSubcommand(subcommand)
+        forms = ReadingForms.from_subcommand(GitSubcommand(subcommand))
+        if forms.reads(self.subcommand_arguments):
+            return None
+        return WritingSubcommand(subcommand)

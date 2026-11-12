@@ -1,13 +1,14 @@
 """
-What Claude Code hands a hook and what the hook answers: the keys and values of both, the
-tool call a PreToolUse hook is asked about, and its answer denying it.
+What Claude Code hands a hook and what the hook answers: the keys and values of both,
+the tool call a PreToolUse hook is asked about, and its answer denying it.
 """
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 # %% vocabulary
 
@@ -169,37 +170,17 @@ class GitHubTool(StrEnum):
 
 # %% one tool call
 
-
-class ToolKind(StrEnum):
-    """
-    The kinds of tool call that can reach git or GitHub, and every other.
-    """
-
-    BASH = "bash"
-    """
-    A shell command line.
-    """
-
-    FILE_WRITE = "file write"
-    """
-    A write of one file.
-    """
-
-    GITHUB = "github"
-    """
-    A call to an MCP tool reaching GitHub.
-    """
-
-    OTHER = "other"
-    """
-    Any other call, which reaches neither git nor GitHub.
-    """
+Decision = TypeVar("Decision")
+"""
+What a :class:`ToolCallJudge` decides over a tool call.
+"""
 
 
 @dataclass(frozen=True)
-class HookInput:
+class ToolCall(ABC):
     """
-    The tool call a ``PreToolUse`` hook is asked about.
+    The tool call a ``PreToolUse`` hook is asked about, of one kind, carrying what that
+    kind hands its tool.
     """
 
     tool: str
@@ -207,44 +188,143 @@ class HookInput:
     The tool's name.
     """
 
-    command: str = ""
-    """
-    The command line a Bash call runs, empty for any other tool.
-    """
-
-    file_path: str = ""
-    """
-    The file a file-writing call writes, empty for any other tool.
-    """
-
     @property
-    def kind(self) -> ToolKind:
-        """:return: What kind of call it is."""
-        if self.tool == HookValue.BASH_TOOL:
-            return ToolKind.BASH
-        if self.tool in FileWritingTool:
-            return ToolKind.FILE_WRITE
-        if GitHubTool.names(self.tool):
-            return ToolKind.GITHUB
-        return ToolKind.OTHER
+    @abstractmethod
+    def shown_input(self) -> str:
+        """
+        :return: What the call hands its tool that tells it apart, as the person is
+            shown it.
+        """
 
-    @property
-    def tool_without_server(self) -> str:
-        """:return: The tool's name, without the MCP server's prefix it may carry."""
-        return self.tool.rsplit("__", 1)[-1]
+    @abstractmethod
+    def request_decision(self, judge: ToolCallJudge[Decision]) -> Decision:
+        """
+        :param judge: What decides over tool calls.
+        :return: Its decision over this call, by the method for this call's kind.
+        """
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> HookInput:
+    def from_json(cls, data: dict[str, Any]) -> ToolCall:
         """
         :param data: The hook's input, as Claude Code sends it.
         :return: The call it is about.
         """
+        tool = data.get(HookKey.TOOL_NAME, "")
         tool_input = data.get(HookKey.TOOL_INPUT, {})
-        return cls(
-            data.get(HookKey.TOOL_NAME, ""),
-            tool_input.get(HookKey.COMMAND, ""),
-            tool_input.get(HookKey.FILE_PATH, ""),
-        )
+        if tool == HookValue.BASH_TOOL:
+            return ShellCommandCall(tool, tool_input.get(HookKey.COMMAND, ""))
+        if tool in FileWritingTool:
+            return FileWriteCall(tool, tool_input.get(HookKey.FILE_PATH, ""))
+        if GitHubTool.names(tool):
+            return GitHubToolCall(tool)
+        return OtherToolCall(tool)
+
+
+@dataclass(frozen=True)
+class ShellCommandCall(ToolCall):
+    """
+    A shell command line, run by the Bash tool.
+    """
+
+    command: str
+    """
+    The command line.
+    """
+
+    @property
+    def shown_input(self) -> str:
+        return self.command
+
+    def request_decision(self, judge: ToolCallJudge[Decision]) -> Decision:
+        return judge.decide_shell_command(self)
+
+
+@dataclass(frozen=True)
+class FileWriteCall(ToolCall):
+    """
+    A write of one file.
+    """
+
+    file_path: str
+    """
+    The file written.
+    """
+
+    @property
+    def shown_input(self) -> str:
+        return self.file_path
+
+    def request_decision(self, judge: ToolCallJudge[Decision]) -> Decision:
+        return judge.decide_file_write(self)
+
+
+@dataclass(frozen=True)
+class GitHubToolCall(ToolCall):
+    """
+    A call to an MCP tool reaching GitHub.
+    """
+
+    @property
+    def tool_without_server(self) -> str:
+        """:return: The tool's name, without the MCP server's prefix."""
+        return self.tool.rsplit("__", 1)[-1]
+
+    @property
+    def shown_input(self) -> str:
+        return self.tool
+
+    def request_decision(self, judge: ToolCallJudge[Decision]) -> Decision:
+        return judge.decide_github_tool(self)
+
+
+@dataclass(frozen=True)
+class OtherToolCall(ToolCall):
+    """
+    Any other call, which reaches neither git nor GitHub.
+    """
+
+    @property
+    def shown_input(self) -> str:
+        return self.tool
+
+    def request_decision(self, judge: ToolCallJudge[Decision]) -> Decision:
+        return judge.decide_other_tool(self)
+
+
+@dataclass(frozen=True)
+class ToolCallJudge(ABC, Generic[Decision]):
+    """
+    Decides over a tool call of every kind, one method per kind, so a new kind of call
+    is decided by every judge.
+    """
+
+    @abstractmethod
+    def decide_shell_command(self, call: ShellCommandCall) -> Decision:
+        """
+        :param call: A shell command line.
+        :return: The decision over it.
+        """
+
+    @abstractmethod
+    def decide_file_write(self, call: FileWriteCall) -> Decision:
+        """
+        :param call: A write of one file.
+        :return: The decision over it.
+        """
+
+    @abstractmethod
+    def decide_github_tool(self, call: GitHubToolCall) -> Decision:
+        """
+        :param call: A call to an MCP tool reaching GitHub.
+        :return: The decision over it.
+        """
+
+    @abstractmethod
+    def decide_other_tool(self, call: OtherToolCall) -> Decision:
+        """
+        :param call: A call reaching neither git nor GitHub.
+        :return: The decision over it.
+        """
 
 
 @dataclass(frozen=True)

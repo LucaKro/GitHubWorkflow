@@ -11,7 +11,7 @@ import sys
 from dataclasses import dataclass
 from enum import IntEnum
 
-from domain_model.claude_code.hooks import HookInput, HookValue
+from domain_model.claude_code.hooks import HookValue, ShellCommandCall
 
 import github_workflow.session  # noqa: F401 - checks that the commands load
 from github_workflow.command_line import RunnableCommand
@@ -51,8 +51,8 @@ class RuntimeCheck:
         """
         :return: What failed, ``None`` when the runtime works.
         """
-        call = HookInput(HookValue.BASH_TOOL, self.probed_command)
-        if ToolGuard(call).denial() is None:
+        call = ShellCommandCall(HookValue.BASH_TOOL, self.probed_command)
+        if call.request_decision(ToolGuard()) is None:
             return f"the guard let `{self.probed_command}` run"
         RunnableCommand.parser()
         return None

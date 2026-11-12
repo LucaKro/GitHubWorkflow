@@ -138,59 +138,59 @@ class EnvironmentOption(StrEnum):
     The options of ``env`` that come before the command it runs.
     """
 
-    IGNORE_ENVIRONMENT = "-i"
+    drops_every_variable: bool
+    """
+    Whether the command runs with no variables at all.
+    """
+
+    takes_value: bool
+    """
+    Whether the option is followed by a value of its own.
+    """
+
+    def __new__(
+        cls, value: str, drops_every_variable: bool, takes_value: bool
+    ) -> EnvironmentOption:
+        member = str.__new__(cls, value)
+        member._value_ = value
+        member.drops_every_variable = drops_every_variable
+        member.takes_value = takes_value
+        return member
+
+    IGNORE_ENVIRONMENT = "-i", True, False
     """
     Runs the command with no variables at all.
     """
 
-    IGNORE_ENVIRONMENT_LONG = "--ignore-environment"
+    IGNORE_ENVIRONMENT_LONG = "--ignore-environment", True, False
     """
     Runs the command with no variables at all.
     """
 
-    EMPTY_ENVIRONMENT = "-"
+    EMPTY_ENVIRONMENT = "-", True, False
     """
     Runs the command with no variables at all, the older way.
     """
 
-    UNSET = "-u"
+    UNSET = "-u", False, True
     """
     Removes the variable it is followed by.
     """
 
-    UNSET_LONG = "--unset"
+    UNSET_LONG = "--unset", False, True
     """
     Removes the variable it is followed by.
     """
 
-    DIRECTORY = "-C"
+    DIRECTORY = "-C", False, True
     """
     Runs the command in the directory it is followed by.
     """
 
-    DIRECTORY_LONG = "--chdir"
+    DIRECTORY_LONG = "--chdir", False, True
     """
     Runs the command in the directory it is followed by.
     """
-
-    @property
-    def drops_every_variable(self) -> bool:
-        """:return: Whether the command runs with no variables at all."""
-        return self in (
-            EnvironmentOption.IGNORE_ENVIRONMENT,
-            EnvironmentOption.IGNORE_ENVIRONMENT_LONG,
-            EnvironmentOption.EMPTY_ENVIRONMENT,
-        )
-
-    @property
-    def takes_value(self) -> bool:
-        """:return: Whether the option is followed by a value of its own."""
-        return self in (
-            EnvironmentOption.UNSET,
-            EnvironmentOption.UNSET_LONG,
-            EnvironmentOption.DIRECTORY,
-            EnvironmentOption.DIRECTORY_LONG,
-        )
 
 
 # %% syntax

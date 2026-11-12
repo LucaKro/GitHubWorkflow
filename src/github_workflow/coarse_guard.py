@@ -16,7 +16,15 @@ from dataclasses import dataclass
 from pathlib import PurePath
 from typing import Any
 
-from domain_model.claude_code.hooks import HookInput, ToolCallDenial, ToolKind
+from domain_model.claude_code.hooks import (
+    FileWriteCall,
+    GitHubToolCall,
+    OtherToolCall,
+    ShellCommandCall,
+    ToolCall,
+    ToolCallDenial,
+    ToolCallJudge,
+)
 from domain_model.git.reading import GitConfigurationLocation
 from domain_model.programs import Program
 
@@ -26,14 +34,10 @@ from github_workflow.report_lines import Speaker
 
 
 @dataclass(frozen=True)
-class CoarseGuard:
+class CoarseGuard(ToolCallJudge[str | None]):
     """
-    The decision over one tool call while the guard cannot run.
-    """
-
-    call: HookInput
-    """
-    The tool call.
+    The decision over a tool call while the guard cannot run: what the call could reach
+    that the guard would have judged, ``None`` when it reaches neither git nor GitHub.
     """
 
     guard_failure: str
@@ -41,28 +45,29 @@ class CoarseGuard:
     Why the guard could not run, as the denial names it.
     """
 
-    def denied_reach(self) -> str | None:
-        """
-        :return: What the call could reach that the guard would have judged, ``None``
-            when it reaches neither git nor GitHub.
-        """
-        match self.call.kind:
-            case ToolKind.BASH if Program.any_named(self.call.command):
-                return f"a command naming one of {', '.join(Program)}"
-            case ToolKind.FILE_WRITE if GitConfigurationLocation.holds(
-                PurePath(self.call.file_path)
-            ):
-                return "a write to git's configuration or hooks"
-            case ToolKind.GITHUB:
-                return "a GitHub tool"
+    def decide_shell_command(self, call: ShellCommandCall) -> str | None:
+        if Program.any_named(call.command):
+            return f"a command naming one of {', '.join(Program)}"
         return None
 
-    def output(self) -> dict[str, Any] | None:
+    def decide_file_write(self, call: FileWriteCall) -> str | None:
+        if GitConfigurationLocation.holds(PurePath(call.file_path)):
+            return "a write to git's configuration or hooks"
+        return None
+
+    def decide_github_tool(self, call: GitHubToolCall) -> str | None:
+        return "a GitHub tool"
+
+    def decide_other_tool(self, call: OtherToolCall) -> str | None:
+        return None
+
+    def output(self, call: ToolCall) -> dict[str, Any] | None:
         """
-        :return: The hook's output denying the call, ``None`` to leave it to the usual
+        :param call: A tool call.
+        :return: The hook's output denying it, ``None`` to leave it to the usual
             permissions.
         """
-        reach = self.denied_reach()
+        reach = call.request_decision(self)
         if reach is None:
             return None
         return ToolCallDenial(
@@ -83,8 +88,6 @@ def main(guard_failure: str) -> None:
 
     :param guard_failure: Why the guard could not run.
     """
-    output = CoarseGuard(
-        HookInput.from_json(json.load(sys.stdin)), guard_failure
-    ).output()
+    output = CoarseGuard(guard_failure).output(ToolCall.from_json(json.load(sys.stdin)))
     if output is not None:
         print(json.dumps(output))

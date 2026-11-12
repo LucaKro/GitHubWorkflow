@@ -1,16 +1,18 @@
 """
-Which calls to GitHub only read: gh commands, GraphQL documents, the GitHub MCP
-server's tools, and HTTP clients sending to GitHub.
+Which calls to GitHub only read: gh commands, GraphQL documents, the GitHub MCP server's
+tools, and HTTP clients sending to GitHub.
 """
 
 from __future__ import annotations
 
 import re
+from abc import ABC
 from collections.abc import Sequence
 from dataclasses import dataclass
-from enum import Enum, StrEnum, auto
+from enum import Enum, StrEnum
 from http import HTTPMethod
 
+from domain_model.call_effects import CallEffect
 from domain_model.class_property import classproperty
 from domain_model.github.vocabulary import (
     GitHubCliReading,
@@ -184,25 +186,55 @@ class GraphQLCall:
         )
 
 
-class GitHubCliEffect(Enum):
+@dataclass(frozen=True)
+class GitHubCliEffect(CallEffect, ABC):
     """
     What a gh call does beyond reading.
     """
 
-    GRAPHQL_WRITE = auto()
+
+@dataclass(frozen=True)
+class GraphQLWrite(GitHubCliEffect):
     """
-    It sends GraphQL a mutation, or a document that cannot be read.
+    The call sends GraphQL a mutation, or a document that cannot be read.
     """
 
-    API_SENDS = auto()
+    @property
+    def description(self) -> str:
+        return (
+            "gh api graphql with a mutation, or a document that cannot be read, writes"
+        )
+
+
+@dataclass(frozen=True)
+class ApiSending(GitHubCliEffect):
     """
-    gh api sends a method other than GET, a field or an input.
+    Gh api sends a method other than GET, a field or an input.
     """
 
-    WRITES = auto()
+    @property
+    def description(self) -> str:
+        return "gh api with a method, a field or an input writes"
+
+
+@dataclass(frozen=True)
+class WritingGitHubCliCommand(GitHubCliEffect):
     """
-    It writes, or is no command known to only read.
+    The call writes, or is no command known to only read.
     """
+
+    command: str
+    """
+    The command's first two words.
+    """
+
+    @property
+    def description(self) -> str:
+        return f"gh {self.command} writes, or is not a command known to only read"
+
+    @property
+    def write(self) -> str:
+        return self.command
 
 
 @dataclass(frozen=True)
@@ -219,8 +251,7 @@ class GitHubCliCall:
     @classproperty
     def api_sending(cls) -> SendingOptions:
         """
-        The options with which gh api sends something; a field alone makes it a
-        POST.
+        The options with which gh api sends something; a field alone makes it a POST.
         """
         return SendingOptions(
             "fF", ("--field", "--raw-field", "--input"), "X", ("--method",)
@@ -250,7 +281,7 @@ class GitHubCliCall:
             return self.api_effect(self.arguments[1:])
         if first == GitHubCliSubcommand.SEARCH or self.command in GitHubCliReading:
             return None
-        return GitHubCliEffect.WRITES
+        return WritingGitHubCliCommand(self.command)
 
     def api_effect(self, options: Sequence[str]) -> GitHubCliEffect | None:
         """
@@ -260,12 +291,12 @@ class GitHubCliCall:
         if options[:1] == [GraphQLCall.endpoint]:
             if GraphQLCall(options[1:]).reads():
                 return None
-            return GitHubCliEffect.GRAPHQL_WRITE
+            return GraphQLWrite()
         queries = self.api_sending.named_method(options) == HTTPMethod.GET and not any(
             argument.startswith(self.api_input) for argument in options
         )
         if self.api_sending.sends(options) and not queries:
-            return GitHubCliEffect.API_SENDS
+            return ApiSending()
         return None
 
 
@@ -354,10 +385,30 @@ class GitHubToolReading(StrEnum):
         )
 
 
+@dataclass(frozen=True)
+class WritingGitHubTool(CallEffect):
+    """
+    A GitHub MCP tool whose name says it does more than read.
+    """
+
+    tool: str
+    """
+    The tool's name, without its server's prefix.
+    """
+
+    @property
+    def description(self) -> str:
+        return f"the GitHub tool {self.tool} writes"
+
+    @property
+    def write(self) -> str:
+        return self.tool
+
+
 class GitHubToolReadingEnding(StrEnum):
     """
-    How the names of GitHub MCP tools that only read end, in the newer tool names,
-    which name the thing first and what they do with it last.
+    How the names of GitHub MCP tools that only read end, in the newer tool names, which
+    name the thing first and what they do with it last.
     """
 
     READ = "_read"

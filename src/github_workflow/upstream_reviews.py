@@ -30,7 +30,7 @@ from domain_model.github.exceptions import (
     UnreadableRecordingError,
 )
 from domain_model.github.pull_request_models import UpstreamPullRequestSnapshot
-from domain_model.github.readers import ReadSource
+from domain_model.github.readers import GraphQLReadSource
 from domain_model.github.repository_client import RepositoryWorkflows
 from domain_model.github.vocabulary import WorkflowRunConclusion
 from domain_model.repository import Repository
@@ -131,7 +131,7 @@ class UpstreamReviewRequest:
         :return: The upstream pull request's reviews, threads and checks.
         :raises UpstreamPullRequestNotFound: If the branch has none upstream.
         """
-        reader = ReadSource.GRAPHQL.reader(client, self.upstream, self.fork_owner)
+        reader = GraphQLReadSource().reader(client, self.upstream, self.fork_owner)
         return reader.read_current_state(
             reader.resolve_pull_request_number(self.branch)
         )

@@ -126,24 +126,3 @@ class StorageBranchWriteConflict(DataclassException, RuntimeError):
 
     def suggest_correction(self) -> str:
         return "Fetch the branch, read the files again and write them anew."
-
-
-@dataclass
-class UnjudgedSubcommandError(DataclassException, LookupError):
-    """
-    Raised when a git subcommand said to read in some forms has nothing telling those
-    forms apart.
-    """
-
-    subcommand: str
-    """
-    The subcommand.
-    """
-
-    def error_message(self) -> str:
-        return f"nothing tells apart the forms of git {self.subcommand} that read"
-
-    def suggest_correction(self) -> str:
-        return (
-            "add a ReadingForms for it, or mark it as never reading in " "GitSubcommand"
-        )

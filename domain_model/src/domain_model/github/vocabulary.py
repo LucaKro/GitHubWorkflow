@@ -216,90 +216,6 @@ class PullRequestState(GitHubVocabulary):
     """
 
 
-class CheckOutcome(GitHubVocabulary):
-    """
-    Where one check stands, a check run and a commit status alike.
-
-    Members are named as GitHub spells them, so a payload's value is looked up by
-    name, and each member's value is how the outcome reads in the report. A check run
-    that has not finished reports no conclusion at all, which reads here as
-    :attr:`PENDING` so an unfinished check is never mistaken for a passing one.
-    """
-
-    SUCCESS = "success"
-    """
-    The check passed.
-    """
-
-    FAILURE = "failure"
-    """
-    The check failed.
-    """
-
-    ERROR = "error"
-    """
-    The commit status reported an error.
-    """
-
-    CANCELLED = "cancelled"
-    """
-    The check run was cancelled before it finished.
-    """
-
-    TIMED_OUT = "timed out"
-    """
-    The check run exceeded its time limit.
-    """
-
-    ACTION_REQUIRED = "action required"
-    """
-    The check run needs someone to act before it can conclude.
-    """
-
-    NEUTRAL = "neutral"
-    """
-    The check run finished without passing or failing.
-    """
-
-    SKIPPED = "skipped"
-    """
-    The check run was skipped.
-    """
-
-    STALE = "stale"
-    """
-    GitHub marked the check run stale after it went too long without finishing.
-    """
-
-    STARTUP_FAILURE = "startup failure"
-    """
-    The check run failed before it could start.
-    """
-
-    PENDING = "pending"
-    """
-    The check has not finished yet.
-    """
-
-    EXPECTED = "expected"
-    """
-    A required commit status that has not been reported yet.
-    """
-
-    @property
-    def rolls_up_to(self) -> RollupState:
-        """
-        :return: The verdict this outcome alone would give the whole rollup, the way
-            GitHub counts it: a neutral or skipped check does not hold a pull request
-            back, and everything that ended without passing fails it.
-        """
-        if self in {CheckOutcome.SUCCESS, CheckOutcome.NEUTRAL, CheckOutcome.SKIPPED}:
-            return RollupState.SUCCESS
-        if self in {CheckOutcome.ERROR, CheckOutcome.PENDING, CheckOutcome.EXPECTED}:
-            return RollupState[self.name]
-        return RollupState.FAILURE
-
-
 class RollupState(GitHubVocabulary):
     """
     The verdict GitHub itself computes over all of a pull request's checks, or that
@@ -309,40 +225,46 @@ class RollupState(GitHubVocabulary):
     name, and each member's value is how the verdict reads in the report.
     """
 
-    SUCCESS = "success"
+    failed: bool
+    """
+    Whether at least one check failed or reported an error.
+    """
+
+    def __new__(cls, value: str, failed: bool) -> RollupState:
+        member = str.__new__(cls, value)
+        member._value_ = value
+        member.failed = failed
+        return member
+
+    SUCCESS = "success", False
     """
     Every check passed.
     """
 
-    FAILURE = "failure"
+    FAILURE = "failure", True
     """
     At least one check failed.
     """
 
-    ERROR = "error"
+    ERROR = "error", True
     """
     At least one commit status reported an error.
     """
 
-    PENDING = "pending"
+    PENDING = "pending", False
     """
     At least one check has not finished yet.
     """
 
-    EXPECTED = "expected"
+    EXPECTED = "expected", False
     """
     At least one required commit status has not been reported yet.
     """
 
-    NOT_REPORTED = "not reported"
+    NOT_REPORTED = "not reported", False
     """
     No check run or commit status has been reported at all.
     """
-
-    @property
-    def failed(self) -> bool:
-        """:return: Whether at least one check failed or reported an error."""
-        return self in {RollupState.FAILURE, RollupState.ERROR}
 
     @classmethod
     def over(cls, outcomes: list[CheckOutcome]) -> RollupState:
@@ -365,6 +287,90 @@ class RollupState(GitHubVocabulary):
         :return: Every verdict a reported check can give, worst first.
         """
         return [cls.FAILURE, cls.ERROR, cls.PENDING, cls.EXPECTED, cls.SUCCESS]
+
+
+class CheckOutcome(GitHubVocabulary):
+    """
+    Where one check stands, a check run and a commit status alike.
+
+    Members are named as GitHub spells them, so a payload's value is looked up by
+    name, and each member's value is how the outcome reads in the report. A check run
+    that has not finished reports no conclusion at all, which reads here as
+    :attr:`PENDING` so an unfinished check is never mistaken for a passing one.
+    """
+
+    rolls_up_to: RollupState
+    """
+    The verdict this outcome alone would give the whole rollup, the way GitHub counts
+    it: a neutral or skipped check does not hold a pull request back, and everything
+    that ended without passing fails it.
+    """
+
+    def __new__(cls, value: str, rolls_up_to: RollupState) -> CheckOutcome:
+        member = str.__new__(cls, value)
+        member._value_ = value
+        member.rolls_up_to = rolls_up_to
+        return member
+
+    SUCCESS = "success", RollupState.SUCCESS
+    """
+    The check passed.
+    """
+
+    FAILURE = "failure", RollupState.FAILURE
+    """
+    The check failed.
+    """
+
+    ERROR = "error", RollupState.ERROR
+    """
+    The commit status reported an error.
+    """
+
+    CANCELLED = "cancelled", RollupState.FAILURE
+    """
+    The check run was cancelled before it finished.
+    """
+
+    TIMED_OUT = "timed out", RollupState.FAILURE
+    """
+    The check run exceeded its time limit.
+    """
+
+    ACTION_REQUIRED = "action required", RollupState.FAILURE
+    """
+    The check run needs someone to act before it can conclude.
+    """
+
+    NEUTRAL = "neutral", RollupState.SUCCESS
+    """
+    The check run finished without passing or failing.
+    """
+
+    SKIPPED = "skipped", RollupState.SUCCESS
+    """
+    The check run was skipped.
+    """
+
+    STALE = "stale", RollupState.FAILURE
+    """
+    GitHub marked the check run stale after it went too long without finishing.
+    """
+
+    STARTUP_FAILURE = "startup failure", RollupState.FAILURE
+    """
+    The check run failed before it could start.
+    """
+
+    PENDING = "pending", RollupState.PENDING
+    """
+    The check has not finished yet.
+    """
+
+    EXPECTED = "expected", RollupState.EXPECTED
+    """
+    A required commit status that has not been reported yet.
+    """
 
 
 class ThreadMarker(StrEnum):
@@ -589,56 +595,58 @@ class MergeableState(GitHubVocabulary):
     Whether a branch conflicts with its base is read from :attr:`conflicts`.
     """
 
-    DIRTY = "dirty"
+    conflicts: bool | None
+    """
+    Whether the branch conflicts with its base, ``None`` when this state does not say:
+    GitHub has not computed it yet, or reports a draft as a draft whether or not it
+    conflicts.
+    """
+
+    def __new__(cls, value: str, conflicts: bool | None) -> MergeableState:
+        member = str.__new__(cls, value)
+        member._value_ = value
+        member.conflicts = conflicts
+        return member
+
+    DIRTY = "dirty", True
     """
     The branch conflicts with its base.
     """
 
-    CLEAN = "clean"
+    CLEAN = "clean", False
     """
     Mergeable, with every required check passing.
     """
 
-    UNSTABLE = "unstable"
+    UNSTABLE = "unstable", False
     """
     Mergeable, with a check that is not required failing.
     """
 
-    BLOCKED = "blocked"
+    BLOCKED = "blocked", False
     """
     Mergeable once a required review or check passes.
     """
 
-    BEHIND = "behind"
+    BEHIND = "behind", False
     """
     Mergeable once brought up to date with its base.
     """
 
-    HAS_HOOKS = "has_hooks"
+    HAS_HOOKS = "has_hooks", False
     """
     Mergeable, with pre-receive hooks configured.
     """
 
-    DRAFT = "draft"
+    DRAFT = "draft", None
     """
     A draft, which cannot be merged until it is marked ready.
     """
 
-    UNKNOWN = "unknown"
+    UNKNOWN = "unknown", None
     """
     Not yet computed by GitHub.
     """
-
-    @property
-    def conflicts(self) -> bool | None:
-        """
-        :return: Whether the branch conflicts with its base, ``None`` when this state
-            does not say: GitHub has not computed it yet, or reports a draft as a draft
-            whether or not it conflicts.
-        """
-        if self in {MergeableState.UNKNOWN, MergeableState.DRAFT}:
-            return None
-        return self is MergeableState.DIRTY
 
 
 # %% the GitHub command line and hosts

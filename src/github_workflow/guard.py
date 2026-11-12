@@ -18,17 +18,26 @@ from enum import StrEnum
 from pathlib import PurePath
 from typing import Any
 
+from domain_model.call_effects import CallEffect
 from domain_model.class_family import ClassFamily
 from domain_model.class_property import classproperty
-from domain_model.claude_code.hooks import HookInput, ToolCallDenial, ToolKind
+from domain_model.claude_code.hooks import (
+    FileWriteCall,
+    GitHubToolCall,
+    OtherToolCall,
+    ShellCommandCall,
+    ToolCall,
+    ToolCallDenial,
+    ToolCallJudge,
+)
 from domain_model.environment import ClaudeCodeVariable, GitVariable
-from domain_model.git.reading import GitCall, GitCallEffect, GitConfigurationLocation
+from domain_model.git.reading import GitCall, GitConfigurationLocation
 from domain_model.git.subcommands import GitSubcommand
 from domain_model.github.reading_calls import (
     GitHubCliCall,
-    GitHubCliEffect,
     GitHubToolReading,
     HttpClient,
+    WritingGitHubTool,
 )
 from domain_model.programs import Program
 from domain_model.shell import (
@@ -44,7 +53,6 @@ from domain_model.shell import (
 import github_workflow
 from github_workflow.command_line import (
     ArgumentName,
-    CommandAuthority,
     CommandOption,
     RefusalAdvice,
     RunnableCommand,
@@ -79,15 +87,17 @@ class Denial:
     """
 
     @classmethod
-    def from_write(cls, reason: str, write: str) -> Denial:
+    def from_effect(cls, effect: CallEffect) -> Denial:
         """
-        :param reason: Why a call is denied.
-        :param write: The git subcommand, ``gh`` command or GitHub MCP tool it writes
-            with.
+        :param effect: What a call does beyond reading.
         :return: The denial, naming the workflow command doing the job when one does.
         """
-        alternative = WorkflowAlternative.from_write(write)
-        return cls(reason, None if alternative is None else alternative.command_line())
+        write = effect.write
+        alternative = None if write is None else WorkflowAlternative.from_write(write)
+        return cls(
+            effect.description,
+            None if alternative is None else alternative.command_line(),
+        )
 
     def message(self) -> str:
         """:return: What the hook tells the model: the reason, and what to run instead."""
@@ -459,7 +469,25 @@ class ProgramCheck(ClassFamily, ABC):
 
 
 @dataclass(frozen=True)
-class GitCheck(ProgramCheck):
+class ReadOnlyCheck(ProgramCheck, ABC):
+    """
+    Lets a program read, and denies every call doing more.
+    """
+
+    @abstractmethod
+    def effect(self, arguments: Sequence[str]) -> CallEffect | None:
+        """
+        :param arguments: What follows the program's name.
+        :return: What the call does beyond reading, ``None`` when it only reads.
+        """
+
+    def denial(self, arguments: Sequence[str]) -> Denial | None:
+        effect = self.effect(arguments)
+        return None if effect is None else Denial.from_effect(effect)
+
+
+@dataclass(frozen=True)
+class GitCheck(ReadOnlyCheck):
     """
     Lets git read, and denies every write.
     """
@@ -468,29 +496,12 @@ class GitCheck(ProgramCheck):
     def program(cls) -> Program:
         return Program.GIT
 
-    def denial(self, arguments: Sequence[str]) -> Denial | None:
-        call = GitCall(arguments)
-        match call.effect():
-            case GitCallEffect.UNKNOWN_GLOBAL_OPTION:
-                return Denial(
-                    f"git {call.unknown_global_option} is not an option the guard "
-                    f"lets through"
-                )
-            case GitCallEffect.RUNS_A_PROGRAM:
-                return Denial(
-                    f"git {call.subcommand} with this option runs a program or writes"
-                )
-            case GitCallEffect.WRITES:
-                subcommand = call.subcommand or ""
-                return Denial.from_write(
-                    f"git {subcommand} writes, or is not a form the guard knows reads",
-                    subcommand,
-                )
-        return None
+    def effect(self, arguments: Sequence[str]) -> CallEffect | None:
+        return GitCall(arguments).effect()
 
 
 @dataclass(frozen=True)
-class GitHubCliCheck(ProgramCheck):
+class GitHubCliCheck(ReadOnlyCheck):
     """
     Lets ``gh`` read, and denies every write.
     """
@@ -499,23 +510,8 @@ class GitHubCliCheck(ProgramCheck):
     def program(cls) -> Program:
         return Program.GITHUB_CLI
 
-    def denial(self, arguments: Sequence[str]) -> Denial | None:
-        call = GitHubCliCall(arguments)
-        match call.effect():
-            case GitHubCliEffect.GRAPHQL_WRITE:
-                return Denial(
-                    "gh api graphql with a mutation, or a document the guard cannot "
-                    "read, writes"
-                )
-            case GitHubCliEffect.API_SENDS:
-                return Denial("gh api with a method, a field or an input writes")
-            case GitHubCliEffect.WRITES:
-                return Denial.from_write(
-                    f"gh {call.command} writes, or is not a command the guard knows "
-                    f"reads",
-                    call.command,
-                )
-        return None
+    def effect(self, arguments: Sequence[str]) -> CallEffect | None:
+        return GitHubCliCall(arguments).effect()
 
 
 @dataclass(frozen=True)
@@ -646,7 +642,7 @@ class CommandGuard:
                 (
                     workflow_command
                     for workflow_command in RunnableCommand
-                    if workflow_command.authority is CommandAuthority.PERSON
+                    if not workflow_command.authority.session_may_run
                     and WorkflowInvocation(command).runs(workflow_command)
                 ),
                 None,
@@ -775,41 +771,36 @@ class CommandGuard:
 
 
 @dataclass(frozen=True)
-class ToolGuard:
+class ToolGuard(ToolCallJudge[Denial | None]):
     """
-    The hook's decision over one tool call.
-    """
-
-    call: HookInput
-    """
-    The tool call.
+    The hook's decision over a tool call: why it is denied, ``None`` when it may run.
     """
 
-    def denial(self) -> Denial | None:
-        """
-        :return: Why the call is denied, ``None`` when it may run.
-        """
-        match self.call.kind:
-            case ToolKind.FILE_WRITE:
-                path = PurePath(self.call.file_path)
-                if GitConfigurationLocation.holds(path):
-                    return Denial(f"git runs programs that {path} names")
-                return None
-            case ToolKind.BASH:
-                return CommandGuard().denial(self.call.command)
-            case ToolKind.GITHUB:
-                name = self.call.tool_without_server
-                if GitHubToolReading.names_a_read(name):
-                    return None
-                return Denial.from_write(f"the GitHub tool {name} writes", name)
+    def decide_shell_command(self, call: ShellCommandCall) -> Denial | None:
+        return CommandGuard().denial(call.command)
+
+    def decide_file_write(self, call: FileWriteCall) -> Denial | None:
+        path = PurePath(call.file_path)
+        if GitConfigurationLocation.holds(path):
+            return Denial(f"git runs programs that {path} names")
         return None
 
-    def output(self) -> dict[str, Any] | None:
+    def decide_github_tool(self, call: GitHubToolCall) -> Denial | None:
+        name = call.tool_without_server
+        if GitHubToolReading.names_a_read(name):
+            return None
+        return Denial.from_effect(WritingGitHubTool(name))
+
+    def decide_other_tool(self, call: OtherToolCall) -> Denial | None:
+        return None
+
+    def output(self, call: ToolCall) -> dict[str, Any] | None:
         """
-        :return: The hook's output denying the call, ``None`` to leave it to the usual
+        :param call: A tool call.
+        :return: The hook's output denying it, ``None`` to leave it to the usual
             permissions.
         """
-        denial = self.denial()
+        denial = call.request_decision(self)
         if denial is None:
             return None
         shown = (
@@ -817,7 +808,7 @@ class ToolGuard:
             if denial.saw_write
             else Speaker.WORKFLOW.says(
                 f"denied a command it cannot see into ({denial.reason}): "
-                f"{self.call.command}"
+                f"{call.shown_input}"
             )
         )
         return ToolCallDenial(denial.message(), shown).answer()
@@ -830,7 +821,7 @@ def main() -> None:
     """
     Read the hook's input and print its decision.
     """
-    output = ToolGuard(HookInput.from_json(json.load(sys.stdin))).output()
+    output = ToolGuard().output(ToolCall.from_json(json.load(sys.stdin)))
     if output is not None:
         print(json.dumps(output))
 

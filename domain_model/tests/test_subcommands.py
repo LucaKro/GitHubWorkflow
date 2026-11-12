@@ -10,12 +10,17 @@ from collections.abc import Callable, Mapping
 import pytest
 
 from domain_model.git.commands import GitCommandResult, GitCommandRunner
-from domain_model.git.exceptions import UnjudgedSubcommandError
 from domain_model.git.options import PushOption
-from domain_model.git.reading import GitCall, ReadingForms
+from domain_model.git.reading import (
+    GitCall,
+    GitSubcommandArguments,
+    NeverReadingForms,
+    PartlyReadingForms,
+    ReadingForms,
+)
 from domain_model.git.remotes import Remote, RemoteBranch
 from domain_model.git.revisions import BranchName, LocalBranch
-from domain_model.git.subcommands import GitSubcommand, SubcommandReading
+from domain_model.git.subcommands import GitSubcommand
 from domain_model.git.working_tree import WorkingTree
 
 from .git_checkouts import checkout, published  # noqa: F401
@@ -51,23 +56,36 @@ def test_options_read_only_when_each_is_a_member_marked_reading(
 # %% subcommands reading in some forms
 
 
-@pytest.mark.parametrize(
-    "subcommand",
-    [
-        subcommand
-        for subcommand in GitSubcommand
-        if subcommand.reading is SubcommandReading.IN_SOME_FORMS
-    ],
-)
-def test_a_subcommand_reading_in_some_forms_has_them_told_apart(
+@pytest.mark.parametrize("subcommand", list(GitSubcommand))
+def test_a_subcommand_s_forms_are_told_apart_by_one_member_at_most(
     subcommand: GitSubcommand,
 ) -> None:
-    assert ReadingForms.from_subcommand(subcommand).subcommand is subcommand
+    telling_apart = [
+        form
+        for form in ReadingForms.concrete_subclasses()
+        if subcommand in form.subcommands
+    ]
+
+    assert len(telling_apart) <= 1
 
 
-def test_a_subcommand_reading_in_no_form_has_none_told_apart() -> None:
-    with pytest.raises(UnjudgedSubcommandError):
-        ReadingForms.from_subcommand(GitSubcommand.PUSH)
+@pytest.mark.parametrize("form", PartlyReadingForms.concrete_subclasses())
+def test_a_subcommand_reading_in_some_forms_has_them_told_apart(
+    form: type[PartlyReadingForms],
+) -> None:
+    assert type(ReadingForms.from_subcommand(form.subcommand)) is form
+
+
+def test_a_subcommand_reading_always_reads_whatever_its_arguments() -> None:
+    forms = ReadingForms.from_subcommand(GitSubcommand.LOG)
+
+    assert forms.reads(GitSubcommandArguments(["--all", "--oneline"])) is True
+
+
+def test_a_subcommand_nothing_tells_forms_apart_of_reads_in_none() -> None:
+    forms = ReadingForms.from_subcommand(GitSubcommand.PUSH)
+
+    assert type(forms) is NeverReadingForms
 
 
 # %% the options the runner passes
@@ -117,10 +135,12 @@ def test_every_option_the_runner_passes_a_partly_reading_subcommand_is_one_of_it
 
     operation(published)
 
-    judged = [
+    forms = [
         (ReadingForms.from_subcommand(GitSubcommand(call.subcommand)), call)
         for call in calls
-        if GitSubcommand(call.subcommand).reading is SubcommandReading.IN_SOME_FORMS
+    ]
+    judged = [
+        (form, call) for form, call in forms if isinstance(form, PartlyReadingForms)
     ]
     unknown = [
         option

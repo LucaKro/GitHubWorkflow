@@ -11,10 +11,11 @@ from pathlib import Path
 import pytest
 
 from github_workflow.command_line import (
-    CommandAuthority,
     CommandOption,
+    PersonRuns,
     PriorityLevel,
     RunnableCommand,
+    SessionRunsOnPersonsWord,
 )
 from github_workflow.command_steps import CommandStep
 from github_workflow.findings import Priority
@@ -92,7 +93,7 @@ def test_describing_another_pull_request_is_the_person_s_word() -> None:
     [
         command
         for command in RunnableCommand
-        if command.authority in (CommandAuthority.PERSONS_WORD, CommandAuthority.PERSON)
+        if isinstance(command.authority, (SessionRunsOnPersonsWord, PersonRuns))
     ],
 )
 def test_a_command_on_the_person_s_word_is_never_run_unasked(

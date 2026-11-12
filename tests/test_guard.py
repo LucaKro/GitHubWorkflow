@@ -16,9 +16,9 @@ import domain_model
 import pytest
 from domain_model.claude_code.hooks import (
     FileWritingTool,
-    HookInput,
     HookKey,
     HookValue,
+    ToolCall,
 )
 from domain_model.locations import PathEnumeration
 from domain_model.shell import CommandLine, SimpleCommand
@@ -229,7 +229,10 @@ def test_a_write_no_workflow_command_does_names_none() -> None:
     ],
 )
 def test_a_reading_tool_is_let_through(tool: str) -> None:
-    assert ToolGuard(HookInput.from_json({HookKey.TOOL_NAME: tool})).denial() is None
+    assert (
+        ToolCall.from_json({HookKey.TOOL_NAME: tool}).request_decision(ToolGuard())
+        is None
+    )
 
 
 @pytest.mark.parametrize(
@@ -245,17 +248,16 @@ def test_a_reading_tool_is_let_through(tool: str) -> None:
 )
 def test_a_github_tool_that_writes_is_denied(tool: str) -> None:
     assert (
-        ToolGuard(HookInput.from_json({HookKey.TOOL_NAME: tool})).denial() is not None
+        ToolCall.from_json({HookKey.TOOL_NAME: tool}).request_decision(ToolGuard())
+        is not None
     )
 
 
 @pytest.mark.parametrize("tool", list(GitHubToolWrite))
 def test_a_github_tool_with_a_workflow_command_names_it(tool: GitHubToolWrite) -> None:
-    denial = ToolGuard(
-        HookInput.from_json(
-            {HookKey.TOOL_NAME: f"{HookValue.MCP_TOOL_PREFIX}github__{tool}"}
-        )
-    ).denial()
+    denial = ToolCall.from_json(
+        {HookKey.TOOL_NAME: f"{HookValue.MCP_TOOL_PREFIX}github__{tool}"}
+    ).request_decision(ToolGuard())
 
     assert denial.instead == WorkflowAlternative.from_write(tool).command_line()
 
@@ -289,7 +291,7 @@ def test_a_command_only_the_person_runs_is_denied_not_asked(command: str) -> Non
     """
     Not even the person's go-ahead lets a session run it.
     """
-    output = ToolGuard(HookInput.from_json(hook_input(command))).output()[
+    output = ToolGuard().output(ToolCall.from_json(hook_input(command)))[
         HookKey.HOOK_SPECIFIC_OUTPUT
     ]
 
@@ -298,13 +300,13 @@ def test_a_command_only_the_person_runs_is_denied_not_asked(command: str) -> Non
 
 @pytest.mark.parametrize("command", GuardDataset.WITHOUT_GO_AHEAD.lines())
 def test_a_workflow_command_runs_without_the_person_being_asked(command: str) -> None:
-    assert ToolGuard(HookInput.from_json(hook_input(command))).output() is None
+    assert ToolGuard().output(ToolCall.from_json(hook_input(command))) is None
 
 
 def test_a_write_chained_to_a_workflow_command_is_still_denied() -> None:
     command = f"{GuardDataset.WITHOUT_GO_AHEAD.lines()[0]} && git push"
 
-    output = ToolGuard(HookInput.from_json(hook_input(command))).output()[
+    output = ToolGuard().output(ToolCall.from_json(hook_input(command)))[
         HookKey.HOOK_SPECIFIC_OUTPUT
     ]
 
@@ -326,7 +328,7 @@ def test_writing_a_file_git_runs_programs_from_is_denied(
         HookKey.TOOL_INPUT: {HookKey.FILE_PATH: path},
     }
 
-    assert ToolGuard(HookInput.from_json(hook_input)).denial() is not None
+    assert ToolCall.from_json(hook_input).request_decision(ToolGuard()) is not None
 
 
 @pytest.mark.parametrize("path", ["/checkout/src/module.py", "/checkout/.gitignore"])
@@ -336,7 +338,7 @@ def test_writing_another_file_is_let_through(path: str) -> None:
         HookKey.TOOL_INPUT: {HookKey.FILE_PATH: path},
     }
 
-    assert ToolGuard(HookInput.from_json(hook_input)).denial() is None
+    assert ToolCall.from_json(hook_input).request_decision(ToolGuard()) is None
 
 
 @pytest.mark.parametrize("tool", list(FileWritingTool))
@@ -356,7 +358,7 @@ def test_a_command_denied_unseen_is_shown_to_the_person(command: str) -> None:
     The person judges how often the guard denies what it cannot see into, and so whether
     that rule is worth its cost.
     """
-    output = ToolGuard(HookInput.from_json(hook_input(command))).output()
+    output = ToolGuard().output(ToolCall.from_json(hook_input(command)))
 
     assert output[HookKey.HOOK_SPECIFIC_OUTPUT][HookKey.PERMISSION_DECISION] == (
         HookValue.DENY
@@ -366,7 +368,7 @@ def test_a_command_denied_unseen_is_shown_to_the_person(command: str) -> None:
 
 @pytest.mark.parametrize("command", GuardDataset.DENIED.lines())
 def test_a_write_the_guard_saw_is_not_shown_to_the_person(command: str) -> None:
-    output = ToolGuard(HookInput.from_json(hook_input(command))).output()
+    output = ToolGuard().output(ToolCall.from_json(hook_input(command)))
 
     assert HookKey.SYSTEM_MESSAGE not in output
 

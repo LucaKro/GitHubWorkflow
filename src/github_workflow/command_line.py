@@ -11,12 +11,14 @@ from __future__ import annotations
 import argparse
 import shutil
 import sys
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from enum import Enum, StrEnum, auto
+from enum import Enum, StrEnum
 from pathlib import Path
 from typing import Any
 
+from domain_model.class_property import classproperty
 from domain_model.git.revisions import BranchName
 
 import github_workflow
@@ -494,31 +496,71 @@ class PriorityLevel(StrEnum):
 # %% who runs a command
 
 
-class CommandAuthority(Enum):
+@dataclass(frozen=True)
+class CommandAuthority(ABC):
     """
     Whose decision runs a command.
     """
 
-    SESSION = auto()
+    @classproperty
+    def session_may_run(cls) -> bool:
+        """
+        Whether a session runs the command at all, on its own or on the person's word.
+        """
+        return True
+
+    @abstractmethod
+    def runs_unasked(self, arguments: Sequence[str]) -> bool:
+        """
+        :param arguments: The words following the command's own, options left out.
+        :return: Whether a session runs the command line on its own.
+        """
+
+
+@dataclass(frozen=True)
+class SessionRuns(CommandAuthority):
     """
-    A session runs it on its own, without asking.
+    A session runs the command on its own, without asking.
     """
 
-    OWN_PULL_REQUEST = auto()
+    def runs_unasked(self, arguments: Sequence[str]) -> bool:
+        return True
+
+
+@dataclass(frozen=True)
+class SessionRunsOnOwnPullRequest(CommandAuthority):
     """
-    A session runs it on its own on the work branch's own pull request, naming no
-    number; naming another's is the person's word.
+    A session runs the command on its own on the work branch's own pull request,
+    naming no number; naming another's is the person's word.
     """
 
-    PERSONS_WORD = auto()
+    def runs_unasked(self, arguments: Sequence[str]) -> bool:
+        return not any(word.isdigit() for word in arguments)
+
+
+@dataclass(frozen=True)
+class SessionRunsOnPersonsWord(CommandAuthority):
     """
-    A session runs it only on the person's word.
+    A session runs the command only on the person's word.
     """
 
-    PERSON = auto()
+    def runs_unasked(self, arguments: Sequence[str]) -> bool:
+        return False
+
+
+@dataclass(frozen=True)
+class PersonRuns(CommandAuthority):
     """
-    Only the person runs it, never a session, even with the person's go-ahead.
+    Only the person runs the command, never a session, even with the person's
+    go-ahead.
     """
+
+    @classproperty
+    def session_may_run(cls) -> bool:
+        return False
+
+    def runs_unasked(self, arguments: Sequence[str]) -> bool:
+        return False
 
 
 # %% the arguments
@@ -837,12 +879,7 @@ class CommandSpecification:
             out.
         :return: Whether a session runs that line on its own.
         """
-        match self.authority:
-            case CommandAuthority.SESSION:
-                return True
-            case CommandAuthority.OWN_PULL_REQUEST:
-                return not any(word.isdigit() for word in words[len(self.words) :])
-        return False
+        return self.authority.runs_unasked(words[len(self.words) :])
 
 
 class RunnableCommand(CommandSpecification, Enum):
@@ -853,7 +890,7 @@ class RunnableCommand(CommandSpecification, Enum):
     BRANCH_START = (
         (WorkflowCommand.BRANCH, BranchSubcommand.START),
         "start a work branch",
-        CommandAuthority.SESSION,
+        SessionRuns(),
         (
             CommandArgument(ArgumentName.NAME, "name", value_type=BranchName),
             CommandArgument(
@@ -868,7 +905,7 @@ class RunnableCommand(CommandSpecification, Enum):
     BRANCH_SWITCH = (
         (WorkflowCommand.BRANCH, BranchSubcommand.SWITCH),
         "switch to a branch",
-        CommandAuthority.SESSION,
+        SessionRuns(),
         (CommandArgument(ArgumentName.NAME, "branch", value_type=BranchName),),
     )
     """
@@ -878,7 +915,7 @@ class RunnableCommand(CommandSpecification, Enum):
     BRANCH_DISCARD = (
         (WorkflowCommand.BRANCH, BranchSubcommand.DISCARD),
         "mark a pushed branch as thrown away, for the cleanup to delete",
-        CommandAuthority.SESSION,
+        SessionRuns(),
         (
             CommandArgument(
                 ArgumentName.NAME,
@@ -896,7 +933,7 @@ class RunnableCommand(CommandSpecification, Enum):
     COMMIT = (
         (WorkflowCommand.COMMIT,),
         "commit files",
-        CommandAuthority.SESSION,
+        SessionRuns(),
         (
             CommandArgument(
                 CommandOption.MESSAGE, "message", required=True, short_name="-m"
@@ -913,7 +950,7 @@ class RunnableCommand(CommandSpecification, Enum):
     ``commit``.
     """
 
-    PUSH = ((WorkflowCommand.PUSH,), "push the work branch", CommandAuthority.SESSION)
+    PUSH = ((WorkflowCommand.PUSH,), "push the work branch", SessionRuns())
     """
     ``push``.
     """
@@ -921,7 +958,7 @@ class RunnableCommand(CommandSpecification, Enum):
     DRAFT = (
         (WorkflowCommand.DRAFT,),
         "open a draft",
-        CommandAuthority.SESSION,
+        SessionRuns(),
         (
             CommandArgument(CommandOption.TITLE, "title", required=True),
             CommandArgument.body_file(),
@@ -950,7 +987,7 @@ class RunnableCommand(CommandSpecification, Enum):
     SYNC = (
         (WorkflowCommand.SYNC,),
         "bring the branch up to date",
-        CommandAuthority.SESSION,
+        SessionRuns(),
         (
             CommandArgument(
                 CommandOption.UPSTREAM,
@@ -997,7 +1034,7 @@ class RunnableCommand(CommandSpecification, Enum):
     STACK_ON = (
         (WorkflowCommand.STACK, StackSubcommand.ON),
         "put above on below",
-        CommandAuthority.PERSONS_WORD,
+        SessionRunsOnPersonsWord(),
         (
             CommandArgument(ArgumentName.BELOW, "below", value_type=int),
             CommandArgument(ArgumentName.ABOVE, "above", value_type=int),
@@ -1010,7 +1047,7 @@ class RunnableCommand(CommandSpecification, Enum):
     NOTES_SAVE = (
         (WorkflowCommand.NOTES, NotesSubcommand.SAVE),
         "save the notes block",
-        CommandAuthority.SESSION,
+        SessionRuns(),
     )
     """
     ``notes save``.
@@ -1019,7 +1056,7 @@ class RunnableCommand(CommandSpecification, Enum):
     FINDING_FILE = (
         (WorkflowCommand.FINDING, FindingSubcommand.FILE),
         "file something noticed outside the current work",
-        CommandAuthority.SESSION,
+        SessionRuns(),
         (
             CommandArgument.priority(),
             CommandArgument(CommandOption.TITLE, "title", required=True),
@@ -1042,7 +1079,7 @@ class RunnableCommand(CommandSpecification, Enum):
     FINDING_PRIORITIZE = (
         (WorkflowCommand.FINDING, FindingSubcommand.PRIORITIZE),
         "give an existing issue a priority, as a finding",
-        CommandAuthority.PERSONS_WORD,
+        SessionRunsOnPersonsWord(),
         (CommandArgument.number("the issue"), CommandArgument.priority()),
     )
     """
@@ -1052,7 +1089,7 @@ class RunnableCommand(CommandSpecification, Enum):
     FINDING_LIST = (
         (WorkflowCommand.FINDING, FindingSubcommand.LIST),
         "list open findings",
-        CommandAuthority.SESSION,
+        SessionRuns(),
         (CommandArgument.other_repository(),),
     )
     """
@@ -1062,7 +1099,7 @@ class RunnableCommand(CommandSpecification, Enum):
     FINDING_ACCEPT = (
         (WorkflowCommand.FINDING, FindingSubcommand.ACCEPT),
         "accept a finding, on the person's word",
-        CommandAuthority.PERSONS_WORD,
+        SessionRunsOnPersonsWord(),
         (CommandArgument.number(),),
     )
     """
@@ -1072,7 +1109,7 @@ class RunnableCommand(CommandSpecification, Enum):
     FINDING_SHELVE = (
         (WorkflowCommand.FINDING, FindingSubcommand.SHELVE),
         "set a finding aside, on the person's word",
-        CommandAuthority.PERSONS_WORD,
+        SessionRunsOnPersonsWord(),
         (CommandArgument.number(),),
     )
     """
@@ -1082,7 +1119,7 @@ class RunnableCommand(CommandSpecification, Enum):
     FINDING_REJECT = (
         (WorkflowCommand.FINDING, FindingSubcommand.REJECT),
         "reject a finding as incorrect, on the person's word",
-        CommandAuthority.PERSONS_WORD,
+        SessionRunsOnPersonsWord(),
         (
             CommandArgument.number(),
             CommandArgument(CommandOption.REASON, "reason", required=True),
@@ -1095,7 +1132,7 @@ class RunnableCommand(CommandSpecification, Enum):
     FINDING_COMMENT = (
         (WorkflowCommand.FINDING, FindingSubcommand.COMMENT),
         "comment on a finding, open or closed",
-        CommandAuthority.SESSION,
+        SessionRuns(),
         (
             CommandArgument.number(),
             CommandArgument.body_file(),
@@ -1109,7 +1146,7 @@ class RunnableCommand(CommandSpecification, Enum):
     FINDING_EDIT = (
         (WorkflowCommand.FINDING, FindingSubcommand.EDIT),
         "rewrite an open finding's title or text",
-        CommandAuthority.PERSONS_WORD,
+        SessionRunsOnPersonsWord(),
         (
             CommandArgument.number(),
             CommandArgument(CommandOption.TITLE, "title"),
@@ -1125,7 +1162,7 @@ class RunnableCommand(CommandSpecification, Enum):
         (WorkflowCommand.FINDING, FindingSubcommand.PROVE),
         "prove an open finding with a test failing on the default branch, or on the "
         "branch --on names",
-        CommandAuthority.SESSION,
+        SessionRuns(),
         (
             CommandArgument.number(),
             CommandArgument(
@@ -1146,7 +1183,7 @@ class RunnableCommand(CommandSpecification, Enum):
     FINDING_MARK_UNPROVEN = (
         (WorkflowCommand.FINDING, FindingSubcommand.MARK_UNPROVEN),
         "mark an open finding no failing test could be written for",
-        CommandAuthority.SESSION,
+        SessionRuns(),
         (
             CommandArgument.number(),
             CommandArgument(CommandOption.REASON, "reason", required=True),
@@ -1160,7 +1197,7 @@ class RunnableCommand(CommandSpecification, Enum):
         (WorkflowCommand.FINDING, FindingSubcommand.RECHECK),
         "run a finding's proof again on the default branch, or on the branch --on "
         "names",
-        CommandAuthority.SESSION,
+        SessionRuns(),
         (
             CommandArgument.number(),
             CommandArgument.branch_to_run_on(),
@@ -1175,7 +1212,7 @@ class RunnableCommand(CommandSpecification, Enum):
         (WorkflowCommand.FINDING, FindingSubcommand.CLOSE),
         "close an accepted, proven finding once its fix is merged and its proof passes "
         "on the default branch",
-        CommandAuthority.SESSION,
+        SessionRuns(),
         (
             CommandArgument.number(),
             CommandArgument(
@@ -1195,7 +1232,7 @@ class RunnableCommand(CommandSpecification, Enum):
     FINDING_AUTOMATE = (
         (WorkflowCommand.FINDING, FindingSubcommand.AUTOMATE),
         "write the Actions workflow completing finding labels picked on GitHub",
-        CommandAuthority.PERSONS_WORD,
+        SessionRunsOnPersonsWord(),
     )
     """
     ``finding automate``.
@@ -1204,7 +1241,7 @@ class RunnableCommand(CommandSpecification, Enum):
     IDEA_FILE = (
         (WorkflowCommand.IDEA, IdeaSubcommand.FILE),
         "queue an idea; the repository's Actions post it",
-        CommandAuthority.SESSION,
+        SessionRuns(),
         (
             CommandArgument(CommandOption.TITLE, "title", required=True),
             CommandArgument.body_file(),
@@ -1223,7 +1260,7 @@ class RunnableCommand(CommandSpecification, Enum):
         (WorkflowCommand.CLEANUP,),
         "delete branches of closed pull requests, and clones of somebody else's "
         "repositories no session uses",
-        CommandAuthority.SESSION,
+        SessionRuns(),
     )
     """
     ``cleanup``.
@@ -1232,7 +1269,7 @@ class RunnableCommand(CommandSpecification, Enum):
     DETAILS = (
         (WorkflowCommand.DETAILS,),
         "what a pull request's signals are about",
-        CommandAuthority.SESSION,
+        SessionRuns(),
         (CommandArgument.number("the pull request"),),
     )
     """
@@ -1242,7 +1279,7 @@ class RunnableCommand(CommandSpecification, Enum):
     DESCRIBE = (
         (WorkflowCommand.DESCRIBE,),
         "rewrite an open pull request's description or title",
-        CommandAuthority.OWN_PULL_REQUEST,
+        SessionRunsOnOwnPullRequest(),
         (
             CommandArgument(
                 ArgumentName.NUMBER,
@@ -1262,7 +1299,7 @@ class RunnableCommand(CommandSpecification, Enum):
     CLONE = (
         (WorkflowCommand.CLONE,),
         "clone a repository: the owner's to work in, anyone's to read",
-        CommandAuthority.SESSION,
+        SessionRuns(),
         (
             CommandArgument(
                 ArgumentName.REPOSITORY, "owner/name", "the repository, as owner/name"
@@ -1276,7 +1313,7 @@ class RunnableCommand(CommandSpecification, Enum):
     LABEL = (
         (WorkflowCommand.LABEL,),
         "label the work branch's own pull request, without asking",
-        CommandAuthority.SESSION,
+        SessionRuns(),
         (
             CommandArgument(
                 CommandOption.ADD,
@@ -1299,7 +1336,7 @@ class RunnableCommand(CommandSpecification, Enum):
     REVIEW_LIST = (
         (WorkflowCommand.REVIEW, ReviewSubcommand.LIST),
         "list the threads, each with its identifier",
-        CommandAuthority.SESSION,
+        SessionRuns(),
     )
     """
     ``review list``.
@@ -1308,7 +1345,7 @@ class RunnableCommand(CommandSpecification, Enum):
     REVIEW_REPLY = (
         (WorkflowCommand.REVIEW, ReviewSubcommand.REPLY),
         "reply in a thread, without asking",
-        CommandAuthority.SESSION,
+        SessionRuns(),
         (
             CommandArgument(
                 ArgumentName.COMMENT, "comment", "the thread's identifier", int
@@ -1323,7 +1360,7 @@ class RunnableCommand(CommandSpecification, Enum):
     REVIEW_RESOLVE = (
         (WorkflowCommand.REVIEW, ReviewSubcommand.RESOLVE),
         "resolve a thread once its fix is pushed, without asking",
-        CommandAuthority.SESSION,
+        SessionRuns(),
         (
             CommandArgument(
                 ArgumentName.COMMENT, "comment", "the thread's identifier", int
@@ -1338,7 +1375,7 @@ class RunnableCommand(CommandSpecification, Enum):
         (WorkflowCommand.REVIEW, ReviewSubcommand.ADDRESSED),
         "say on the pull request what was changed for a review comment upstream, "
         "without asking; nothing is written upstream",
-        CommandAuthority.SESSION,
+        SessionRuns(),
         (
             CommandArgument(
                 ArgumentName.ADDRESS,
@@ -1355,7 +1392,7 @@ class RunnableCommand(CommandSpecification, Enum):
     UPSTREAM = (
         (WorkflowCommand.UPSTREAM,),
         "open a fork's pull request on its upstream; the person's alone",
-        CommandAuthority.PERSON,
+        PersonRuns(),
         (
             CommandArgument(
                 ArgumentName.REPOSITORY, "owner/name", "the owner's fork, as owner/name"

@@ -7,8 +7,21 @@ from __future__ import annotations
 
 import pytest
 
-from domain_model.git.reading import GitCall, GitCallEffect
-from domain_model.github.reading_calls import GitHubCliCall, GitHubCliEffect, HttpClient
+from domain_model.git.reading import (
+    GitCall,
+    GitCallEffect,
+    ProgramRunningOption,
+    UnknownGlobalOption,
+    WritingSubcommand,
+)
+from domain_model.github.reading_calls import (
+    ApiSending,
+    GitHubCliCall,
+    GitHubCliEffect,
+    GraphQLWrite,
+    HttpClient,
+    WritingGitHubCliCommand,
+)
 
 # %% git
 
@@ -36,22 +49,38 @@ def test_a_reading_git_call_has_no_effect(arguments: list[str]):
 @pytest.mark.parametrize(
     ("arguments", "effect"),
     [
-        (["--git-dir=x", "log"], GitCallEffect.UNKNOWN_GLOBAL_OPTION),
-        (["ls-remote", "--upload-pack=x", "origin"], GitCallEffect.RUNS_A_PROGRAM),
-        (["grep", "-O", "needle"], GitCallEffect.RUNS_A_PROGRAM),
-        (["push"], GitCallEffect.WRITES),
-        (["branch", "feature"], GitCallEffect.WRITES),
-        (["config", "user.name", "Someone"], GitCallEffect.WRITES),
-        (["fetch", "origin", "main:main"], GitCallEffect.WRITES),
-        (["fetch", "--set-upstream", "origin", "main"], GitCallEffect.WRITES),
-        (["branch", "--edit-description"], GitCallEffect.WRITES),
-        (["archive", "-o", ".git/hooks/pre-push", "HEAD"], GitCallEffect.WRITES),
+        (["--git-dir=x", "log"], UnknownGlobalOption),
+        (["ls-remote", "--upload-pack=x", "origin"], ProgramRunningOption),
+        (["grep", "-O", "needle"], ProgramRunningOption),
+        (["push"], WritingSubcommand),
+        (["branch", "feature"], WritingSubcommand),
+        (["config", "user.name", "Someone"], WritingSubcommand),
+        (["fetch", "origin", "main:main"], WritingSubcommand),
+        (["fetch", "--set-upstream", "origin", "main"], WritingSubcommand),
+        (["branch", "--edit-description"], WritingSubcommand),
+        (["archive", "-o", ".git/hooks/pre-push", "HEAD"], WritingSubcommand),
     ],
 )
 def test_a_git_call_beyond_reading_names_what_it_does(
-    arguments: list[str], effect: GitCallEffect
+    arguments: list[str], effect: type[GitCallEffect]
 ):
-    assert GitCall(arguments).effect() is effect
+    assert type(GitCall(arguments).effect()) is effect
+
+
+def test_a_writing_git_call_s_effect_writes_with_its_subcommand():
+    call = GitCall(["-C", "elsewhere", "push", "origin"])
+
+    assert call.effect().write == call.subcommand
+
+
+def test_an_unknown_global_option_s_effect_carries_the_option():
+    call = GitCall(["--git-dir=x", "log"])
+
+    assert call.effect() == UnknownGlobalOption(call.unknown_global_option)
+
+
+def test_an_option_running_a_program_is_no_write_a_workflow_command_does():
+    assert GitCall(["grep", "-O", "needle"]).effect().write is None
 
 
 def test_a_git_call_names_its_subcommand_past_the_global_options():
@@ -78,19 +107,25 @@ def test_a_reading_gh_call_has_no_effect(arguments: list[str]):
 @pytest.mark.parametrize(
     ("arguments", "effect"),
     [
-        (["pr", "create", "--title", "x"], GitHubCliEffect.WRITES),
-        (["api", "-X", "POST", "repos/owner/name/issues"], GitHubCliEffect.API_SENDS),
-        (["api", "repos/owner/name/labels", "-f", "name=x"], GitHubCliEffect.API_SENDS),
+        (["pr", "create", "--title", "x"], WritingGitHubCliCommand),
+        (["api", "-X", "POST", "repos/owner/name/issues"], ApiSending),
+        (["api", "repos/owner/name/labels", "-f", "name=x"], ApiSending),
         (
             ["api", "graphql", "-f", "query=mutation { addStar }"],
-            GitHubCliEffect.GRAPHQL_WRITE,
+            GraphQLWrite,
         ),
     ],
 )
 def test_a_gh_call_beyond_reading_names_what_it_does(
-    arguments: list[str], effect: GitHubCliEffect
+    arguments: list[str], effect: type[GitHubCliEffect]
 ):
-    assert GitHubCliCall(arguments).effect() is effect
+    assert type(GitHubCliCall(arguments).effect()) is effect
+
+
+def test_a_writing_gh_call_s_effect_writes_with_its_command():
+    call = GitHubCliCall(["pr", "create", "--title", "x"])
+
+    assert call.effect().write == call.command
 
 
 def test_a_gh_command_is_named_by_its_first_two_words():

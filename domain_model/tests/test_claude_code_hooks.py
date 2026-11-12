@@ -8,45 +8,50 @@ from __future__ import annotations
 import pytest
 
 from domain_model.claude_code.hooks import (
+    FileWriteCall,
     FileWritingTool,
-    HookInput,
+    GitHubToolCall,
     HookKey,
     HookValue,
+    OtherToolCall,
+    ShellCommandCall,
+    ToolCall,
     ToolCallDenial,
-    ToolKind,
 )
 
 # %% the tool call
 
 
 def test_a_bash_call_is_read_with_its_command_line():
-    call = HookInput.from_json(
+    call = ToolCall.from_json(
         {
             HookKey.TOOL_NAME: HookValue.BASH_TOOL,
             HookKey.TOOL_INPUT: {HookKey.COMMAND: "git log"},
         }
     )
 
-    assert (call.kind, call.command) == (ToolKind.BASH, "git log")
+    assert call == ShellCommandCall(HookValue.BASH_TOOL, "git log")
 
 
 @pytest.mark.parametrize("tool", list(FileWritingTool))
 def test_a_file_writing_call_is_read_with_its_file(tool: FileWritingTool):
-    call = HookInput.from_json(
+    call = ToolCall.from_json(
         {HookKey.TOOL_NAME: tool, HookKey.TOOL_INPUT: {HookKey.FILE_PATH: "/a/file"}}
     )
 
-    assert (call.kind, call.file_path) == (ToolKind.FILE_WRITE, "/a/file")
+    assert call == FileWriteCall(tool, "/a/file")
 
 
 def test_a_github_mcp_tool_is_named_without_its_server():
-    call = HookInput(f"{HookValue.MCP_TOOL_PREFIX}github__get_issue")
+    call = ToolCall.from_json(
+        {HookKey.TOOL_NAME: f"{HookValue.MCP_TOOL_PREFIX}github__get_issue"}
+    )
 
-    assert (call.kind, call.tool_without_server) == (ToolKind.GITHUB, "get_issue")
+    assert (type(call), call.tool_without_server) == (GitHubToolCall, "get_issue")
 
 
 def test_another_tool_is_neither():
-    assert HookInput("Read").kind is ToolKind.OTHER
+    assert ToolCall.from_json({HookKey.TOOL_NAME: "Read"}) == OtherToolCall("Read")
 
 
 # %% the answer
