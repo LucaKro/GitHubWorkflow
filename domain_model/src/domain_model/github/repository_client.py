@@ -103,17 +103,6 @@ class PullRequestWriter(LabelWriter, Commenter, ABC):
 
 
 @dataclass(frozen=True)
-class ForkPullRequests(PullRequestReader, PullRequestWriter, ABC):
-    """
-    Everything a pass does to the fork's pull requests.
-
-    A pass reads state and writes back to the same fork, so the two halves are named
-    together wherever both are needed; the board export takes the reading half alone,
-    which is what keeps an export from being able to write.
-    """
-
-
-@dataclass(frozen=True)
 class RepositoryLabels(ABC):
     """
     The labels a repository carries, and adding one it lacks.
@@ -756,7 +745,6 @@ class GitHubRepository(
     ClosablePullRequests,
     FollowedFork,
     ProposingFork,
-    ForkPullRequests,
     RewritablePullRequests,
 ):
     """
