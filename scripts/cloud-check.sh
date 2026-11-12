@@ -55,7 +55,7 @@ check "branch start" "${PYTHON}" -m github_workflow branch start "${BRANCH}" &&
   check "commit" "${PYTHON}" -m github_workflow commit -m "Cloud check ${STAMP}" "${FILE}" &&
   check "push" "${PYTHON}" -m github_workflow push &&
   DRAFT="$(check "draft" "${PYTHON}" -m github_workflow draft --title "Cloud check ${STAMP} (close me)" --body-file "${RESULTS}/draft.md")" &&
-  NUMBER="$(printf '%s' "${DRAFT}" | sed -n 's/.*draft #\([0-9]*\).*/\1/p')" &&
+  NUMBER="$(printf '%s' "${DRAFT}" | sed -n 's/.*draft \[#\([0-9]*\)\].*/\1/p')" &&
   check "describe" "${PYTHON}" -m github_workflow describe "${NUMBER}" --body-file "${RESULTS}/draft.md"
 check "back to ${START_BRANCH}" "${PYTHON}" -m github_workflow branch switch "${START_BRANCH}"
 check "cleanup runs" "${PYTHON}" -m github_workflow cleanup
