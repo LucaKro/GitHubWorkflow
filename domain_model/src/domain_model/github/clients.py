@@ -340,14 +340,25 @@ class GitHubApi(GitHubReader, RestApi, JobLogReader):
 
     def get_pages(self, path: str) -> list[Any]:
         """
+        Reads every page at the first page's path, taking only the query from each
+        page's next link; see :meth:`RestClient.get_pages`.
+
         :raises GitHubRequestFailed: If the API refuses a page.
         """
+        listing = urllib.parse.urlsplit(path)
         pages = []
         address: str | None = path
         while address is not None:
             answer = self.attempt("GET", address).raise_if_failed("GET", address)
             pages.append(answer.body)
-            address = answer.next_page
+            next_page = answer.next_page
+            address = (
+                None
+                if next_page is None
+                else listing._replace(
+                    query=urllib.parse.urlsplit(next_page).query
+                ).geturl()
+            )
         return pages
 
     def read_job_log(self, repository: Repository, job_identifier: int) -> str:

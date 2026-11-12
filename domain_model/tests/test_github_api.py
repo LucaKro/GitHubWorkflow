@@ -73,6 +73,27 @@ def test_every_page_is_collected_by_following_the_next_link():
     ]
 
 
+def test_the_next_page_is_read_from_the_listing_s_own_path():
+    listing = f"/{REPOSITORY.api_path}/pulls"
+    first, second = f"{listing}?state=all", f"{listing}?state=all&page=2"
+    with ReplayedApi() as api:
+        api.answers[("GET", first)] = RecordedAnswer(
+            HTTPStatus.OK,
+            DatasetLocation.PAGE_ONE.read_text(),
+            {"Link": f'<{api.url}/repositories/1/pulls?state=all&page=2>; rel="next"'},
+        )
+        api.answers[("GET", second)] = RecordedAnswer.from_file(
+            HTTPStatus.OK, DatasetLocation.PAGE_TWO
+        )
+
+        pages = GitHubApi(TOKEN, api.url).get_pages(first)
+
+    assert pages == [
+        json.loads(DatasetLocation.PAGE_ONE.read_text()),
+        json.loads(DatasetLocation.PAGE_TWO.read_text()),
+    ]
+
+
 def test_a_refused_call_is_raised_with_its_status():
     with ReplayedApi() as api:
         with pytest.raises(GitHubRequestFailed) as raised:
