@@ -4,12 +4,13 @@
 # kept. Never deletes the default branch or the notes branch. Run by the deletion
 # workflow in a checkout of the notes branch.
 #
-# Usage: delete-ready-branches.sh <list file> <default branch> <notes branch>
+# Usage: delete-ready-branches.sh <list file> <default branch> <notes branch> <commit script>
 set -euo pipefail
 
 LIST="$1"
 DEFAULT_BRANCH="$2"
 NOTES_BRANCH="$3"
+COMMIT_SCRIPT="$4"
 
 if [ ! -s "${LIST}" ]; then
   exit 0
@@ -25,6 +26,4 @@ while read -r branch commit; do
   fi
 done < "${LIST}"
 : > "${LIST}"
-git add "${LIST}"
-git commit --quiet --message "Empty the list of branches ready for deletion"
-git push --quiet origin "HEAD:refs/heads/${NOTES_BRANCH}"
+bash "${COMMIT_SCRIPT}" "Empty the list of branches ready for deletion" "${NOTES_BRANCH}" "${LIST}"
