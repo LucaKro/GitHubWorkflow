@@ -138,19 +138,31 @@ def test_a_commit_of_files_leaves_the_checkout_untouched(
 ) -> None:
     before = checkout.run("status", "--porcelain")
 
-    commit = Commit.create(checkout, TextFiles({Path("notes.md"): "a note\n"}), "Save")
+    commit = Commit.write_root(
+        checkout, TextFiles({Path("notes.md"): "a note\n"}), "Save"
+    )
 
     assert commit.file_text(Path("notes.md")) == "a note\n"
     assert checkout.run("status", "--porcelain") == before
 
 
+def test_a_root_commit_has_no_parent(
+    checkout: GitCommandRunner,  # noqa: F811
+) -> None:
+    commit = Commit.write_root(checkout, TextFiles({}), "Start over")
+
+    assert not checkout.attempt("rev-parse", "--verify", f"{commit.hash}^").succeeded
+
+
 def test_a_commit_on_a_parent_keeps_the_parent_s_files(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
-    parent = Commit.create(checkout, TextFiles({Path("notes.md"): "a note\n"}), "Save")
+    parent = Commit.write_root(
+        checkout, TextFiles({Path("notes.md"): "a note\n"}), "Save"
+    )
 
-    commit = Commit.create(
-        checkout, TextFiles({Path("progress/a.md"): "progress\n"}), "Save", parent
+    commit = parent.write_child(
+        TextFiles({Path("progress/a.md"): "progress\n"}), "Save"
     )
 
     assert commit.file_text(Path("notes.md")) == "a note\n"

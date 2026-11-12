@@ -102,10 +102,10 @@ class StorageBranch:
         :param message: The commit message.
         :return: The finished push of a commit holding *files* on the fetched tip.
         """
-        commit = Commit.create(
-            self.branch.remote.git,
-            files,
-            message,
-            self.branch.tracking_branch.commit_or_none(),
+        tip = self.branch.tracking_branch.commit_or_none()
+        commit = (
+            Commit.write_root(self.branch.remote.git, files, message)
+            if tip is None
+            else tip.write_child(files, message)
         )
         return ProposedPush(self.branch, commit).publish()

@@ -537,7 +537,7 @@ class Probe:
         """
         self.remote.fetch(self.remote.branch(default_branch))
         base = self.remote.branch(default_branch).tracking_branch.commit()
-        commit = Commit.create(self.git, TextFiles({}), ProbeText.COMMIT_MESSAGE, base)
+        commit = base.write_child(TextFiles({}), ProbeText.COMMIT_MESSAGE)
         branch = self.branch(ProbeBranchShape.PULL_REQUEST)
         pushed = ProposedPush(branch, commit).publish()
         if not self.record_command(
@@ -650,11 +650,9 @@ class Probe:
         """
         self.remote.fetch(self.remote.branch(default_branch))
         base = self.remote.branch(default_branch).tracking_branch.commit()
-        lower_commit = Commit.create(
-            self.git, TextFiles({}), ProbeText.STACK_LOWER_TITLE, base
-        )
-        upper_commit = Commit.create(
-            self.git, TextFiles({}), ProbeText.STACK_UPPER_TITLE, lower_commit
+        lower_commit = base.write_child(TextFiles({}), ProbeText.STACK_LOWER_TITLE)
+        upper_commit = lower_commit.write_child(
+            TextFiles({}), ProbeText.STACK_UPPER_TITLE
         )
         lower = self.branch(ProbeBranchShape.STACK_LOWER)
         upper = self.branch(ProbeBranchShape.STACK_UPPER)
@@ -844,11 +842,9 @@ class Probe:
                 ProbeWorkflowPlaceholder.DELETED_BRANCH: deleted,
             },
         )
-        commit = Commit.create(
-            self.git,
+        commit = self.tree.head().write_child(
             TextFiles({RepositoryFile.BRANCH_DELETION_WORKFLOW: text}),
             ProbeText.WORKFLOW_COMMIT_MESSAGE,
-            self.tree.head(),
         )
         self.report.record(
             CheckGroup.ACTIONS,

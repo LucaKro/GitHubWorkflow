@@ -473,18 +473,44 @@ class Commit(Revision):
     def revision_name(self) -> str:
         return self.hash
 
+    def write_child(self, files: TextFiles, message: str) -> Commit:
+        """
+        Write a new commit on this one into the repository, holding this commit's files
+        and *files* over them, without checking anything out.
+
+        :param files: The text of each file to write.
+        :param message: The commit message.
+        :return: The new commit.
+        """
+        return self._write(self.git, files, message, self)
+
     @classmethod
-    def create(
+    def write_root(
+        cls, git: GitCommandRunner, files: TextFiles, message: str
+    ) -> Commit:
+        """
+        Write a new commit with no parent into the repository, holding *files* alone,
+        without checking anything out.
+
+        :param git: Runs git in the checkout the commit is written in.
+        :param files: The text of each file to write.
+        :param message: The commit message.
+        :return: The new commit.
+        """
+        return cls._write(git, files, message, None)
+
+    @classmethod
+    def _write(
         cls,
         git: GitCommandRunner,
         files: TextFiles,
         message: str,
-        parent: Commit | None = None,
+        parent: Commit | None,
     ) -> Commit:
         """
-        Commit files without checking anything out, in an index of the commit's own.
+        Write a commit object from files, in an index of the commit's own.
 
-        :param git: Runs git in the checkout the commit is made in.
+        :param git: Runs git in the checkout the commit is written in.
         :param files: The text of each file to write, over the parent's files.
         :param message: The commit message.
         :param parent: The commit to build on, ``None`` for a commit with no parent.
