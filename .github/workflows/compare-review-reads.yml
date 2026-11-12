@@ -1,0 +1,70 @@
+# Temporary: reads the review state of three pull requests with the code before the reads
+# moved to REST and with this pull request's head, on a runner, which reaches GraphQL,
+# and fails when they differ; then answers and replays an upstream review request with
+# the head's code. Removed before the pull request is ready for review.
+name: Compare review reads
+on:
+  pull_request:
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      BEFORE: c2e0dbdab048bddb8350b346853216a1590ea33b
+      READS: ${{ github.workspace }}/reads
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: after
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BEFORE }}
+          path: before
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install both versions
+        run: |
+          for version in before after; do
+            python -m venv "$version-venv"
+            "$version-venv/bin/pip" install --quiet "./$version/domain_model" "./$version"
+          done
+      - name: Read the review state with both versions
+        run: |
+          mkdir -p "$READS"
+          for version in before after; do
+            "$version-venv/bin/python" -m github_workflow.probe.library_check \
+              pull-request-review-state LucaKro/GitHubWorkflow 259 \
+              > "$READS/$version-workflow-259.txt"
+            "$version-venv/bin/python" -m github_workflow.probe.library_check \
+              pull-request-review-state LucaKro/cognitive_robot_abstract_machine 58 \
+              > "$READS/$version-cram-58.txt"
+            "$version-venv/bin/python" -m github_workflow.probe.library_check \
+              pull-request-review-state LucaKro/cognitive_robot_abstract_machine 31 \
+              > "$READS/$version-cram-31.txt"
+          done
+          tail -n 1 "$READS"/*.txt
+      - name: Compare them
+        run: |
+          status=0
+          for read in workflow-259 cram-58 cram-31; do
+            echo "== $read: $(head -n -1 "$READS/before-$read.txt" | wc -l) lines"
+            diff -u <(head -n -1 "$READS/before-$read.txt") \
+              <(head -n -1 "$READS/after-$read.txt") || status=1
+          done
+          exit $status
+      - name: Answer and replay an upstream review request
+        if: always()
+        run: |
+          mkdir -p "$READS/requests" "$READS/answers"
+          cp after/.github/review-reads/request.json "$READS/requests/request.json"
+          after-venv/bin/python -m github_workflow.upstream_reviews \
+            "$READS/requests" "$READS/answers"
+          after-venv/bin/python after/.github/review-reads/replay.py \
+            after/.github/review-reads/request.json "$READS/answers/request.json"
