@@ -38,13 +38,28 @@ def test_an_installation_from_a_directory_names_it(tmp_path: Path) -> None:
 # %% the commit of a checkout
 
 
-def test_a_directory_in_a_checkout_has_its_checked_out_commit(
+def test_a_checkout_tracking_the_module_gives_its_checked_out_commit(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
-    inside = checkout.working_directory / "inside"
-    inside.mkdir()
+    source = checkout.working_directory / "source"
+    module = source / CodeVersion.module_path
+    module.parent.mkdir(parents=True)
+    module.write_text("")
+    checkout.run("add", str(module))
+    checkout.run("commit", "--quiet", "--message", "Add the module")
 
-    assert CodeVersion.checkout_commit(inside) == head(checkout)
+    assert CodeVersion.checkout_commit(source) == head(checkout)
+
+
+def test_an_unrelated_checkout_enclosing_the_package_gives_no_commit(
+    checkout: GitCommandRunner,  # noqa: F811
+) -> None:
+    environment = checkout.working_directory / "venv" / "site-packages"
+    module = environment / CodeVersion.module_path
+    module.parent.mkdir(parents=True)
+    module.write_text("")
+
+    assert CodeVersion.checkout_commit(environment) is None
 
 
 def test_a_directory_in_no_checkout_has_no_commit(tmp_path: Path) -> None:

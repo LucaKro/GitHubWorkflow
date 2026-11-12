@@ -1,6 +1,6 @@
 """
 How git names what it stores: the namespaces of references, the references outside
-them, and the modes of a tree's entries.
+them, the modes of a tree's entries, and how a path given to git is matched.
 """
 
 from __future__ import annotations
@@ -51,4 +51,18 @@ class TreeEntryMode(StrEnum):
     REGULAR_FILE = "100644"
     """
     A file that is not executable.
+    """
+
+
+# %% paths
+
+
+class PathspecMagic(StrEnum):
+    """
+    The prefixes that change how git matches a path it is given.
+    """
+
+    GLOB = ":(glob)"
+    """
+    Match the path as a glob, ``**`` standing for any number of directories.
     """

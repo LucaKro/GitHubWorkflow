@@ -9,15 +9,15 @@ import importlib.metadata
 import json
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 from urllib.parse import urlsplit
 from urllib.request import url2pathname
 
 from domain_model.class_property import classproperty
 from domain_model.git.commands import GitCommandRunner
-from domain_model.git.options import RevParseOption
-from domain_model.git.references import SpecialReference
+from domain_model.git.options import GitOption, RevParseOption
+from domain_model.git.references import PathspecMagic, SpecialReference
 from domain_model.git.revisions import CommitHash
 from domain_model.git.subcommands import GitSubcommand
 
@@ -132,6 +132,14 @@ class CodeVersion:
         """
         return "domain-model"
 
+    @classproperty
+    def module_path(cls) -> PurePath:
+        """
+        This module's file, below the directory its package sits in.
+        """
+        module = Path(__file__)
+        return module.relative_to(module.parents[1])
+
     @classmethod
     def running(cls) -> CodeVersion:
         """
@@ -140,13 +148,14 @@ class CodeVersion:
         """
         found = importlib.metadata.distributions(name=cls.distribution_name)
         distribution = next(iter(found), None)
+        package_directory = Path(__file__).parents[1]
         if distribution is None:
-            return cls(None, cls.checkout_commit(Path(__file__).parent))
+            return cls(None, cls.checkout_commit(package_directory))
         recorded = distribution.read_text(DirectUrl.file_name)
         source = None if recorded is None else DirectUrl.from_json(json.loads(recorded))
         if source is not None and source.commit is not None:
             return cls(distribution.version, source.commit)
-        directories = [Path(__file__).parent]
+        directories = [package_directory]
         if source is not None and source.directory is not None:
             directories.insert(0, source.directory)
         commits = (cls.checkout_commit(directory) for directory in directories)
@@ -155,17 +164,22 @@ class CodeVersion:
             next((commit for commit in commits if commit is not None), None),
         )
 
-    @staticmethod
-    def checkout_commit(directory: Path) -> CommitHash | None:
+    @classmethod
+    def checkout_commit(cls, directory: Path) -> CommitHash | None:
         """
         :param directory: A directory.
         :return: The commit checked out in the git checkout it is inside, ``None`` when
-            it is inside none or git cannot tell.
+            that checkout does not track this module below the directory, it is inside
+            none, or git cannot tell.
         """
-        git = GitCommandRunner.enclosing(directory)
-        if git is None:
+        tracked = GitCommandRunner(directory).attempt(
+            GitSubcommand.LS_FILES,
+            GitOption.end_of_options,
+            f"{PathspecMagic.GLOB}**/{cls.module_path}",
+        )
+        if not (tracked.succeeded and tracked.output):
             return None
-        resolved = git.attempt(
+        resolved = GitCommandRunner(directory).attempt(
             GitSubcommand.REV_PARSE,
             RevParseOption.VERIFY,
             RevParseOption.QUIET,
