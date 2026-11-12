@@ -102,7 +102,7 @@ class CheckStatus:
     """
 
     @classmethod
-    def over(cls, results: list[CheckResult]) -> CheckStatus | None:
+    def from_results(cls, results: list[CheckResult]) -> CheckStatus | None:
         """
         Gather checks read one by one, computing the verdict GitHub would give them.
 
@@ -112,7 +112,7 @@ class CheckStatus:
         if not results:
             return None
         return cls(
-            state=RollupState.over([result.outcome for result in results]),
+            state=RollupState.from_outcomes([result.outcome for result in results]),
             results=results,
         )
 

@@ -50,7 +50,7 @@ from .test_work import (
     EntriesInMemory,
     PullRequestsFromBranchesInMemory,
     RetiredInMemory,
-    policy_in,
+    build_write_policy,
     write,
 )
 
@@ -66,12 +66,14 @@ def tip(branch: str, commit: str) -> BranchTip:
     return BranchTip(BranchName(branch), CommitHash(commit))
 
 
-def protected() -> frozenset[BranchName]:
+def list_protected_branches() -> frozenset[BranchName]:
     """:return: ``main`` and the notes branch."""
     return frozenset({BranchName("main"), BranchName("notes")})
 
 
-def kept(tips: dict[str, str], *pull_requests: RestPullRequest) -> KeptBranches:
+def build_kept_branches(
+    tips: dict[str, str], *pull_requests: RestPullRequest
+) -> KeptBranches:
     """:param tips: Each branch and its commit.
     :param pull_requests: The repository's pull requests.
     :return: Them, with ``main`` and the notes branch protected."""
@@ -79,7 +81,7 @@ def kept(tips: dict[str, str], *pull_requests: RestPullRequest) -> KeptBranches:
         [tip(branch, commit) for branch, commit in tips.items()],
         list(pull_requests),
         ScratchGitHub.owned.full_name,
-        protected(),
+        list_protected_branches(),
     )
 
 
@@ -87,7 +89,7 @@ def kept(tips: dict[str, str], *pull_requests: RestPullRequest) -> KeptBranches:
 
 
 def test_a_closed_pull_request_s_branch_is_ready() -> None:
-    branches = kept(
+    branches = build_kept_branches(
         {"done": "a1"}, pull_request(1, "done", "a1", PullRequestState.CLOSED)
     )
 
@@ -95,7 +97,7 @@ def test_a_closed_pull_request_s_branch_is_ready() -> None:
 
 
 def test_a_branch_with_new_commits_since_closing_is_kept() -> None:
-    branches = kept(
+    branches = build_kept_branches(
         {"reused": "b2"}, pull_request(1, "reused", "b1", PullRequestState.CLOSED)
     )
 
@@ -103,7 +105,7 @@ def test_a_branch_with_new_commits_since_closing_is_kept() -> None:
 
 
 def test_a_branch_with_an_open_pull_request_is_kept() -> None:
-    branches = kept(
+    branches = build_kept_branches(
         {"again": "c1"},
         pull_request(1, "again", "c1", PullRequestState.CLOSED),
         pull_request(2, "again", "c1", PullRequestState.OPEN),
@@ -117,7 +119,7 @@ def test_the_base_of_an_open_pull_request_is_kept() -> None:
     Deleting the branch of a closed, unmerged lower pull request would close the open
     one stacked on it, for good.
     """
-    branches = kept(
+    branches = build_kept_branches(
         {"lower": "h1", "upper": "h2"},
         pull_request(1, "lower", "h1", PullRequestState.CLOSED),
         pull_request(2, "upper", "h2", PullRequestState.OPEN, base="lower"),
@@ -127,11 +129,11 @@ def test_the_base_of_an_open_pull_request_is_kept() -> None:
 
 
 def test_a_branch_that_never_had_a_pull_request_is_kept() -> None:
-    assert kept({"work": "d1"}).ready() == []
+    assert build_kept_branches({"work": "d1"}).ready() == []
 
 
 def test_a_protected_branch_is_never_ready() -> None:
-    branches = kept(
+    branches = build_kept_branches(
         {"main": "e1", "notes": "e2"},
         pull_request(1, "main", "e1", PullRequestState.CLOSED),
         pull_request(2, "notes", "e2", PullRequestState.CLOSED),
@@ -141,7 +143,7 @@ def test_a_protected_branch_is_never_ready() -> None:
 
 
 def test_a_pull_request_from_another_repository_says_nothing_about_this_one() -> None:
-    branches = kept(
+    branches = build_kept_branches(
         {"same-name": "f1"},
         pull_request(1, "same-name", "f1", PullRequestState.CLOSED, "someone/fork"),
     )
@@ -154,7 +156,7 @@ def test_a_discarded_branch_still_at_its_commit_is_ready() -> None:
         [tip("tried", "g1")],
         [],
         ScratchGitHub.owned.full_name,
-        protected(),
+        list_protected_branches(),
         DiscardedBranches((tip("tried", "g1"),)),
     )
 
@@ -166,7 +168,7 @@ def test_a_discarded_branch_with_new_commits_is_kept() -> None:
         [tip("tried", "g2")],
         [],
         ScratchGitHub.owned.full_name,
-        protected(),
+        list_protected_branches(),
         DiscardedBranches((tip("tried", "g1"),)),
     )
 
@@ -188,7 +190,7 @@ def test_a_branch_listed_again_replaces_its_earlier_entry() -> None:
 
 
 def test_the_reminder_names_how_many_and_the_command() -> None:
-    branches = kept(
+    branches = build_kept_branches(
         {"one": "a", "two": "b"},
         pull_request(1, "one", "a", PullRequestState.CLOSED),
         pull_request(2, "two", "b", PullRequestState.CLOSED),
@@ -203,7 +205,7 @@ def test_the_reminder_names_how_many_and_the_command() -> None:
 # %% deleting them
 
 
-def cleanup_in(
+def build_cleanup(
     repositories: RepositoriesByOwner, url: str, settings: WorkflowSettings
 ) -> tuple[BranchCleanup, GitCommandRunner]:
     """
@@ -239,7 +241,7 @@ def cleanup_in(
 def test_a_ready_branch_is_deleted(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
-    cleanup, git = cleanup_in(repositories, owned_url, settings)
+    cleanup, git = build_cleanup(repositories, owned_url, settings)
 
     cleanup.run()
 
@@ -249,7 +251,7 @@ def test_a_ready_branch_is_deleted(
 def test_a_deleted_branch_is_entered_in_the_session_log(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
-    cleanup, _ = cleanup_in(repositories, owned_url, settings)
+    cleanup, _ = build_cleanup(repositories, owned_url, settings)
 
     cleanup.run()
 
@@ -262,7 +264,7 @@ def test_a_branch_the_session_may_not_delete_is_listed_for_the_workflow(
 ) -> None:
     bare = Path(owned_url.removeprefix("file://"))
     GitCommandRunner(bare).run("config", "receive.denyDeletes", "true")
-    cleanup, git = cleanup_in(repositories, owned_url, settings)
+    cleanup, git = build_cleanup(repositories, owned_url, settings)
 
     cleanup.run()
 
@@ -287,7 +289,7 @@ def listed_for_the_workflow(
     """
     bare = Path(url.removeprefix("file://"))
     GitCommandRunner(bare).run("config", "receive.denyDeletes", "true")
-    cleanup, _ = cleanup_in(repositories, url, settings)
+    cleanup, _ = build_cleanup(repositories, url, settings)
     cleanup.run()
     return cleanup
 
@@ -368,7 +370,7 @@ def pushed_work(
     :param settings: The workflow's settings.
     :return: The rules of a clone on a pushed branch ``tried``, and its notes branch.
     """
-    policy = policy_in(repositories.clone(url, "thrower"), settings)
+    policy = build_write_policy(repositories.clone(url, "thrower"), settings)
     BranchStart(policy, BranchName("tried")).run()
     CommitWork(policy, "Try", [write(policy.checkout, "tried.txt")]).run()
     PushWork(policy).run()

@@ -21,7 +21,7 @@ from domain_model.git.revisions import (
 )
 from domain_model.git.working_tree import WorkingTree
 
-from .git_checkouts import checkout, commit_on, head  # noqa: F401
+from .git_checkouts import checkout, create_branch_with_commit, head  # noqa: F401
 
 # %% a commit's name
 
@@ -63,7 +63,7 @@ def test_a_branch_that_does_not_exist_is_refused_where_a_commit_is_needed(
 def test_a_revision_is_contained_in_a_descendant_and_not_the_other_way(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
-    commit_on(checkout, "ahead", "main", "ahead.txt")
+    create_branch_with_commit(checkout, "ahead", "main", "ahead.txt")
     main, ahead = LocalBranch(checkout, BranchName("main")), LocalBranch(
         checkout, BranchName("ahead")
     )
@@ -74,8 +74,8 @@ def test_a_revision_is_contained_in_a_descendant_and_not_the_other_way(
 def test_the_commits_one_revision_holds_beyond_another_are_counted(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
-    commit_on(checkout, "ahead", "main", "first.txt")
-    commit_on(checkout, "further", "ahead", "second.txt")
+    create_branch_with_commit(checkout, "ahead", "main", "first.txt")
+    create_branch_with_commit(checkout, "further", "ahead", "second.txt")
     main, further = LocalBranch(checkout, BranchName("main")), LocalBranch(
         checkout, BranchName("further")
     )
@@ -176,7 +176,7 @@ def test_a_commit_s_files_are_written_into_a_directory(
     checkout: GitCommandRunner, tmp_path: Path  # noqa: F811
 ) -> None:
     start = WorkingTree(checkout).head()
-    commit_on(checkout, "later", "main", "later.txt")
+    create_branch_with_commit(checkout, "later", "main", "later.txt")
     destination = tmp_path / "files"
 
     start.export_files(destination)
@@ -227,7 +227,7 @@ def test_creating_a_branch_that_exists_is_refused(
 def test_switching_checks_the_branch_out(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
-    commit_on(checkout, "feature", "main", "feature.txt")
+    create_branch_with_commit(checkout, "feature", "main", "feature.txt")
 
     LocalBranch(checkout, BranchName("main")).switch()
 
@@ -239,7 +239,7 @@ def test_switching_checks_the_branch_out(
 def test_a_branch_not_checked_out_is_fast_forwarded(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
-    commit_on(checkout, "ahead", "main", "ahead.txt")
+    create_branch_with_commit(checkout, "ahead", "main", "ahead.txt")
     main, ahead = LocalBranch(checkout, BranchName("main")), LocalBranch(
         checkout, BranchName("ahead")
     )
@@ -252,8 +252,8 @@ def test_a_branch_not_checked_out_is_fast_forwarded(
 def test_a_branch_with_commits_the_target_lacks_is_not_moved(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
-    commit_on(checkout, "ahead", "main", "ahead.txt")
-    commit_on(checkout, "diverged", "main", "own.txt")
+    create_branch_with_commit(checkout, "ahead", "main", "ahead.txt")
+    create_branch_with_commit(checkout, "diverged", "main", "own.txt")
     diverged = LocalBranch(checkout, BranchName("diverged"))
     before = diverged.commit()
     LocalBranch(checkout, BranchName("ahead")).switch()
@@ -266,7 +266,7 @@ def test_a_branch_with_commits_the_target_lacks_is_not_moved(
 def test_the_checked_out_branch_is_not_moved(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
-    commit_on(checkout, "ahead", "main", "ahead.txt")
+    create_branch_with_commit(checkout, "ahead", "main", "ahead.txt")
     main = LocalBranch(checkout, BranchName("main"))
     main.switch()
     before = main.commit()

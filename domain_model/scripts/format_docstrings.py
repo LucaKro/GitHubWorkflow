@@ -71,7 +71,7 @@ class FileFormatting:
     The ``pyproject.toml`` holding docformatter's settings.
     """
 
-    def formatted(self) -> str:
+    def format_text(self) -> str:
         """
         :return: The file's text formatted by black, then by docformatter where a
             second black pass keeps docformatter's result; the text as it is when black
@@ -143,7 +143,7 @@ class FormattingHook:
         """
         status = HookStatus.UNCHANGED
         for file in self.files:
-            formatted = FileFormatting(file, self.configuration).formatted()
+            formatted = FileFormatting(file, self.configuration).format_text()
             if formatted != file.read_text():
                 file.write_text(formatted)
                 status = HookStatus.CHANGED

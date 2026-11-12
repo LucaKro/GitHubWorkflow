@@ -79,7 +79,7 @@ def test_a_branch_without_an_open_pull_request_has_none_to_write_to(
 # %% labels
 
 
-def labelled() -> IssuesInMemory:
+def build_labelled_board() -> IssuesInMemory:
     """
     :return: A board whose repository has the labels ``bug-fix`` and ``api-break``.
     """
@@ -89,7 +89,7 @@ def labelled() -> IssuesInMemory:
 def test_labels_the_repository_has_are_added_to_the_pull_request(
     work: WritePolicy,  # noqa: F811
 ) -> None:
-    board = labelled()
+    board = build_labelled_board()
 
     PullRequestLabelling(
         own(work, pull_request(3, "feature")), board, ("bug-fix",), ()
@@ -101,7 +101,7 @@ def test_labels_the_repository_has_are_added_to_the_pull_request(
 def test_a_label_the_repository_lacks_is_refused_before_anything_is_written(
     work: WritePolicy,  # noqa: F811
 ) -> None:
-    board = labelled()
+    board = build_labelled_board()
 
     with pytest.raises(UnknownLabelError):
         PullRequestLabelling(
@@ -114,7 +114,7 @@ def test_a_label_the_repository_lacks_is_refused_before_anything_is_written(
 def test_only_labels_the_pull_request_carries_are_removed(
     work: WritePolicy,  # noqa: F811
 ) -> None:
-    board = labelled()
+    board = build_labelled_board()
     carrying = replace(pull_request(3, "feature"), labels=("api-break",))
 
     PullRequestLabelling(own(work, carrying), board, (), ("api-break", "bug-fix")).run()
@@ -123,7 +123,7 @@ def test_only_labels_the_pull_request_carries_are_removed(
 
 
 def test_labelling_nothing_is_refused(work: WritePolicy) -> None:  # noqa: F811
-    board = labelled()
+    board = build_labelled_board()
 
     with pytest.raises(NothingToLabelError):
         PullRequestLabelling(own(work, pull_request(3, "feature")), board, (), ()).run()

@@ -46,17 +46,17 @@ class StackedPullRequestsInMemory(StackHost):
     """
 
     @staticmethod
-    def branch_of(number: int) -> str:
+    def name_branch(number: int) -> str:
         """:param number: A pull request.
         :return: Its branch."""
         return f"branch-{number}"
 
-    def stacked(self, numbers: Sequence[int]) -> list[StackedPullRequest]:
+    def build_stack(self, numbers: Sequence[int]) -> list[StackedPullRequest]:
         """:param numbers: Pull requests, bottom first.
         :return: Them as a stack holds them."""
         return [
             StackedPullRequest(
-                number, PullRequestState.OPEN, True, self.branch_of(number)
+                number, PullRequestState.OPEN, True, self.name_branch(number)
             )
             for number in numbers
         ]
@@ -65,7 +65,7 @@ class StackedPullRequestsInMemory(StackHost):
         return [self.pull_request(number) for number in self.bases]
 
     def pull_request(self, number: int) -> RestPullRequest:
-        return pull_request(number, self.branch_of(number), base=self.bases[number])
+        return pull_request(number, self.name_branch(number), base=self.bases[number])
 
     def set_base(self, number: int, branch: BranchName) -> None:
         self.writes.append(f"set_base {number} {branch}")
@@ -85,7 +85,7 @@ class StackedPullRequestsInMemory(StackHost):
 
     def create_stack(self, pull_requests: Sequence[int]) -> Stack:
         self.writes.append(f"create_stack {list(pull_requests)}")
-        return Stack(1, "main", True, self.stacked(pull_requests))
+        return Stack(1, "main", True, self.build_stack(pull_requests))
 
     def add_to_stack(self, stack: Stack, pull_requests: Sequence[int]) -> Stack:
         self.writes.append(f"add_to_stack {stack.number} {list(pull_requests)}")
@@ -93,7 +93,7 @@ class StackedPullRequestsInMemory(StackHost):
             stack.number,
             stack.base,
             True,
-            stack.pull_requests + self.stacked(pull_requests),
+            stack.pull_requests + self.build_stack(pull_requests),
         )
 
     def unstack(self, stack: Stack) -> Stack | None:

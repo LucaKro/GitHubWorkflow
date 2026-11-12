@@ -269,7 +269,7 @@ class ArgumentReference(CommandReference):
 
     def text(self, program: str) -> str:
         [argument] = self.arguments
-        return RunnableCommand[self.name].argument(argument).shown()
+        return RunnableCommand[self.name].argument(argument).format_usage()
 
 
 # %% the block

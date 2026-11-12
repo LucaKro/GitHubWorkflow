@@ -123,7 +123,7 @@ def test_every_option_the_runner_passes_a_partly_reading_subcommand_is_one_of_it
     calls: list[GitCall] = []
     attempt = GitCommandRunner.attempt
 
-    def recording(
+    def record_call(
         runner: GitCommandRunner,
         *arguments: str,
         environment: Mapping[str, str] | None = None,
@@ -131,7 +131,7 @@ def test_every_option_the_runner_passes_a_partly_reading_subcommand_is_one_of_it
         calls.append(GitCall(arguments))
         return attempt(runner, *arguments, environment=environment)
 
-    monkeypatch.setattr(GitCommandRunner, "attempt", recording)
+    monkeypatch.setattr(GitCommandRunner, "attempt", record_call)
 
     operation(published)
 

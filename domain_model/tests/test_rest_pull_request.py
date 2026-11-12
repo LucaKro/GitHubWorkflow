@@ -37,7 +37,7 @@ def record() -> dict[str, Any]:
     return json.loads(DatasetLocation.PULL_REQUEST_OPEN.read_text())
 
 
-def recorded(location: DatasetLocation) -> dict[str, Any]:
+def read_payload(location: DatasetLocation) -> dict[str, Any]:
     """:param location: A recorded pull request.
     :return: It, decoded."""
     return json.loads(location.read_text())
@@ -77,14 +77,16 @@ def test_a_listed_pull_request_has_no_mergeable_state(record: dict[str, Any]) ->
 
 def test_a_pull_request_missing_a_required_field_is_refused_naming_it() -> None:
     with pytest.raises(MissingPullRequestFieldError) as raised:
-        RestPullRequest.from_json(recorded(DatasetLocation.PULL_REQUEST_WITHOUT_DRAFT))
+        RestPullRequest.from_json(
+            read_payload(DatasetLocation.PULL_REQUEST_WITHOUT_DRAFT)
+        )
 
     assert raised.value.field_name is RestJSONKey.DRAFT
 
 
 def test_a_head_whose_repository_was_deleted_has_none() -> None:
     pull_request = RestPullRequest.from_json(
-        recorded(DatasetLocation.PULL_REQUEST_HEAD_REPOSITORY_DELETED)
+        read_payload(DatasetLocation.PULL_REQUEST_HEAD_REPOSITORY_DELETED)
     )
 
     assert pull_request.head.repository is None
@@ -93,7 +95,7 @@ def test_a_head_whose_repository_was_deleted_has_none() -> None:
 def test_a_head_without_its_commit_is_refused() -> None:
     with pytest.raises(MissingPullRequestFieldError) as raised:
         RestPullRequest.from_json(
-            recorded(DatasetLocation.PULL_REQUEST_HEAD_WITHOUT_COMMIT)
+            read_payload(DatasetLocation.PULL_REQUEST_HEAD_WITHOUT_COMMIT)
         )
 
     assert raised.value.field_name is RestJSONKey.HEAD

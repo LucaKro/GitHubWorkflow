@@ -30,7 +30,7 @@ from .repositories_by_owner import RepositoriesByOwner
 # %% helpers
 
 
-def update_of(branch: str) -> ReferenceUpdate:
+def build_update(branch: str) -> ReferenceUpdate:
     """
     :param branch: The branch on the remote a push changes.
     :return: A push of a new commit to it.
@@ -41,7 +41,9 @@ def update_of(branch: str) -> ReferenceUpdate:
     )
 
 
-def hooked(repositories: RepositoriesByOwner, url: str) -> GitCommandRunner:
+def clone_with_push_hook(
+    repositories: RepositoriesByOwner, url: str
+) -> GitCommandRunner:
     """
     :param repositories: Where to clone.
     :param url: The repository to clone.
@@ -71,7 +73,7 @@ def test_a_push_to_a_foreign_repository_is_refused(
     check = PushCheck(Remote.from_push_url(git, "origin", foreign_url), settings)
 
     with pytest.raises(ForeignPushError):
-        check.raise_if_forbidden([update_of("work")])
+        check.raise_if_forbidden([build_update("work")])
 
 
 def test_a_push_to_the_default_branch_is_refused(
@@ -81,7 +83,7 @@ def test_a_push_to_the_default_branch_is_refused(
     check = PushCheck(Remote.from_push_url(git, "origin", owned_url), settings)
 
     with pytest.raises(DefaultBranchWriteError):
-        check.raise_if_forbidden([update_of(RepositoriesByOwner.default_branch)])
+        check.raise_if_forbidden([build_update(RepositoriesByOwner.default_branch)])
 
 
 def test_a_push_of_a_work_branch_to_the_owner_is_allowed(
@@ -90,7 +92,7 @@ def test_a_push_of_a_work_branch_to_the_owner_is_allowed(
     git = repositories.clone(owned_url, "owned").git
     check = PushCheck(Remote.from_push_url(git, "origin", owned_url), settings)
 
-    assert check.raise_if_forbidden([update_of("work")]) is None
+    assert check.raise_if_forbidden([build_update("work")]) is None
 
 
 def test_a_push_to_a_remote_whose_default_branch_cannot_be_read_is_refused(
@@ -104,7 +106,7 @@ def test_a_push_to_a_remote_whose_default_branch_cannot_be_read_is_refused(
     check = PushCheck(Remote.from_push_url(git, unreachable, unreachable), settings)
 
     with pytest.raises(UnknownDefaultBranchError):
-        check.raise_if_forbidden([update_of("work")])
+        check.raise_if_forbidden([build_update("work")])
 
 
 # %% the hook on a push
@@ -113,7 +115,7 @@ def test_a_push_to_a_remote_whose_default_branch_cannot_be_read_is_refused(
 def test_a_session_s_push_to_the_default_branch_is_refused_by_the_hook(
     repositories: RepositoriesByOwner, owned_url: str, in_claude_code: None
 ) -> None:
-    git = hooked(repositories, owned_url)
+    git = clone_with_push_hook(repositories, owned_url)
     before = repositories.branches(owned_url)
 
     pushed = git.attempt("push", "origin", "HEAD:refs/heads/main")
@@ -125,7 +127,7 @@ def test_a_session_s_push_to_the_default_branch_is_refused_by_the_hook(
 def test_a_session_s_push_to_a_foreign_repository_is_refused_by_the_hook(
     repositories: RepositoriesByOwner, foreign_url: str, in_claude_code: None
 ) -> None:
-    git = hooked(repositories, foreign_url)
+    git = clone_with_push_hook(repositories, foreign_url)
     before = repositories.branches(foreign_url)
 
     pushed = git.attempt("push", "origin", "HEAD:refs/heads/work")
@@ -137,7 +139,7 @@ def test_a_session_s_push_to_a_foreign_repository_is_refused_by_the_hook(
 def test_a_session_s_push_of_a_work_branch_passes_the_hook(
     repositories: RepositoriesByOwner, owned_url: str, in_claude_code: None
 ) -> None:
-    git = hooked(repositories, owned_url)
+    git = clone_with_push_hook(repositories, owned_url)
 
     git.run("push", "--quiet", "origin", "HEAD:refs/heads/work")
 
@@ -149,7 +151,7 @@ def test_a_session_s_push_of_a_work_branch_passes_the_hook(
 def test_a_person_s_own_push_passes_the_hook_unchecked(
     repositories: RepositoriesByOwner, owned_url: str
 ) -> None:
-    git = hooked(repositories, owned_url)
+    git = clone_with_push_hook(repositories, owned_url)
 
     git.run("push", "--quiet", "origin", "HEAD:refs/heads/main")
 

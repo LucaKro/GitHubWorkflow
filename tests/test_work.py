@@ -106,7 +106,9 @@ class DefaultBranchOfTheScratchRepositories(RepositoryDetails):
         return RepositoriesByOwner.default_branch
 
 
-def policy_in(checkout: ProjectCheckout, settings: WorkflowSettings) -> WritePolicy:
+def build_write_policy(
+    checkout: ProjectCheckout, settings: WorkflowSettings
+) -> WritePolicy:
     """
     :param checkout: A clone of the owner's repository.
     :param settings: The workflow's settings.
@@ -138,7 +140,7 @@ def work(
 ) -> WritePolicy:
     """:return: The rules of a fresh clone of the owner's repository, on a pushed work
     branch with one commit."""
-    policy = policy_in(repositories.clone(owned_url, "work"), settings)
+    policy = build_write_policy(repositories.clone(owned_url, "work"), settings)
     BranchStart(policy, BranchName("feature")).run()
     CommitWork(policy, "Add a file", [write(policy.checkout, "a.txt")]).run()
     PushWork(policy).run()
@@ -151,7 +153,7 @@ def work(
 def test_a_work_branch_starts_from_github_s_default_branch(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
-    policy = policy_in(repositories.clone(owned_url, "work"), settings)
+    policy = build_write_policy(repositories.clone(owned_url, "work"), settings)
 
     BranchStart(policy, BranchName("feature")).run()
 
@@ -183,12 +185,12 @@ def test_a_work_branch_starts_on_a_local_branch_github_does_not_have(
     assert git.run("rev-parse", "upper") == git.run("rev-parse", "unpushed")
 
 
-def github_s_default_branch_moved_on(
+def advance_github_s_default_branch(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> str:
     """:return: The commit GitHub's default branch moved on to, pushed from a second
     clone."""
-    mover = policy_in(repositories.clone(owned_url, "mover"), settings)
+    mover = build_write_policy(repositories.clone(owned_url, "mover"), settings)
     git = mover.checkout.git
     write(mover.checkout, "moved.txt")
     git.run("add", "moved.txt")
@@ -201,8 +203,8 @@ def github_s_default_branch_moved_on(
 def test_starting_from_the_default_branch_fast_forwards_the_local_one(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
-    policy = policy_in(repositories.clone(owned_url, "work"), settings)
-    moved = github_s_default_branch_moved_on(repositories, owned_url, settings)
+    policy = build_write_policy(repositories.clone(owned_url, "work"), settings)
+    moved = advance_github_s_default_branch(repositories, owned_url, settings)
 
     BranchStart(policy, BranchName("feature")).run()
 
@@ -212,13 +214,13 @@ def test_starting_from_the_default_branch_fast_forwards_the_local_one(
 def test_a_local_default_branch_with_commits_of_its_own_is_kept(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
-    policy = policy_in(repositories.clone(owned_url, "work"), settings)
+    policy = build_write_policy(repositories.clone(owned_url, "work"), settings)
     git = policy.checkout.git
     write(policy.checkout, "own.txt")
     git.run("add", "own.txt")
     git.run("commit", "--quiet", "--message", "Own")
     own = git.run("rev-parse", "HEAD")
-    github_s_default_branch_moved_on(repositories, owned_url, settings)
+    advance_github_s_default_branch(repositories, owned_url, settings)
 
     BranchStart(policy, BranchName("feature")).run()
 
@@ -233,7 +235,7 @@ def test_starting_from_another_branch_leaves_the_local_default_branch_alone(
 ) -> None:
     git = work.checkout.git
     before = git.run("rev-parse", work.default_branch)
-    github_s_default_branch_moved_on(repositories, owned_url, settings)
+    advance_github_s_default_branch(repositories, owned_url, settings)
 
     BranchStart(work, BranchName("upper"), BranchName("feature")).run()
 
@@ -252,8 +254,8 @@ def test_switching_checks_out_the_branch(work: WritePolicy) -> None:
 def test_switching_to_a_branch_only_github_has_checks_it_out(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
-    session = policy_in(repositories.clone(owned_url, "session"), settings)
-    elsewhere = policy_in(repositories.clone(owned_url, "elsewhere"), settings)
+    session = build_write_policy(repositories.clone(owned_url, "session"), settings)
+    elsewhere = build_write_policy(repositories.clone(owned_url, "elsewhere"), settings)
     BranchStart(elsewhere, BranchName("pushed-elsewhere")).run()
     CommitWork(elsewhere, "Add a file", [write(elsewhere.checkout, "a.txt")]).run()
     PushWork(elsewhere).run()
@@ -491,7 +493,7 @@ def test_a_draft_stacked_on_a_pull_request_targets_its_branch_and_joins_its_stac
     draft(work, github, 1).run()
 
     assert github.writes == [
-        f"open_draft feature {github.branch_of(1)}",
+        f"open_draft feature {github.name_branch(1)}",
         "create_stack [1, 2]",
     ]
 
@@ -501,7 +503,7 @@ def test_a_draft_onto_a_pull_request_others_build_on_opens_nothing(
 ) -> None:
     default = RepositoriesByOwner.default_branch
     github = DraftsAndStacksInMemory({1: default, 2: default})
-    github.existing_stacks.append(Stack(7, default, True, github.stacked((1, 2))))
+    github.existing_stacks.append(Stack(7, default, True, github.build_stack((1, 2))))
 
     with pytest.raises(StackContinuesAboveError):
         draft(work, github, 1).run()
@@ -666,7 +668,7 @@ def other_clone_pushing(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> WritePolicy:
     """:return: A second clone, on the work branch, with one more commit pushed."""
-    other = policy_in(repositories.clone(owned_url, "other"), settings)
+    other = build_write_policy(repositories.clone(owned_url, "other"), settings)
     BranchSwitch(other, BranchName("feature")).run()
     CommitWork(other, "Add c", [write(other.checkout, "c.txt")]).run()
     PushWork(other).run()
@@ -746,7 +748,7 @@ def test_a_branch_the_sandbox_tracks_but_never_pushed_is_not_reported_deleted(
     A cloud session's sandbox creates the remote-tracking reference of the session's
     branch at setup, without pushing the branch.
     """
-    policy = policy_in(repositories.clone(owned_url, "sandbox"), settings)
+    policy = build_write_policy(repositories.clone(owned_url, "sandbox"), settings)
     git = policy.checkout.git
     git.run("switch", "--quiet", "--create", "claude/session-branch")
     git.run("update-ref", "refs/remotes/origin/claude/session-branch", "HEAD")
@@ -764,7 +766,7 @@ def test_a_cloned_branch_deleted_after_its_pull_request_is_reported_deleted(
     A clone writes no reflog entry for the branches it tracks, so the pull request
     opened from the branch shows it was on GitHub.
     """
-    session = policy_in(repositories.clone(owned_url, "session"), settings)
+    session = build_write_policy(repositories.clone(owned_url, "session"), settings)
     session.checkout.git.run("switch", "--quiet", "feature")
     deleter = repositories.clone(owned_url, "deleter").git
     deleter.run("push", "--quiet", "origin", "--delete", "feature")
@@ -846,7 +848,7 @@ class BranchStacksInMemory(
     """
 
 
-def default_branch_moved_on(
+def advance_default_branch(
     repositories: RepositoriesByOwner, owned_url: str, name: str = "moved.txt"
 ) -> GitCommandRunner:
     """
@@ -877,7 +879,7 @@ def base_merge(
 def test_the_default_branch_s_new_commits_are_merged_into_the_work_branch(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
 ) -> None:
-    other = default_branch_moved_on(repositories, owned_url)
+    other = advance_default_branch(repositories, owned_url)
 
     base_merge(work).run()
 
@@ -891,7 +893,7 @@ def test_the_default_branch_s_new_commits_are_merged_into_the_work_branch(
 def test_a_conflicting_merge_is_left_in_progress_naming_its_files(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
 ) -> None:
-    default_branch_moved_on(repositories, owned_url, "a.txt")
+    advance_default_branch(repositories, owned_url, "a.txt")
     git = work.checkout.git
 
     with pytest.raises(MergeConflictError) as raised:
@@ -904,7 +906,7 @@ def test_a_conflicting_merge_is_left_in_progress_naming_its_files(
 # %% finishing or undoing a conflicting merge
 
 
-def conflicted(
+def leave_conflicting_merge(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
 ) -> GitCommandRunner:
     """
@@ -916,7 +918,7 @@ def conflicted(
     :param owned_url: The owner's repository.
     :return: The clone that moved the default branch on.
     """
-    other = default_branch_moved_on(repositories, owned_url, "a.txt")
+    other = advance_default_branch(repositories, owned_url, "a.txt")
     with pytest.raises(MergeConflictError):
         base_merge(work).run()
     return other
@@ -925,7 +927,7 @@ def conflicted(
 def test_a_resolved_merge_is_committed_as_the_person(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
 ) -> None:
-    other = conflicted(work, repositories, owned_url)
+    other = leave_conflicting_merge(work, repositories, owned_url)
     (work.checkout.root / "a.txt").write_text("both sides\n")
 
     MergeCompletion(work, [Path("a.txt")]).run()
@@ -946,7 +948,7 @@ def test_a_resolved_merge_is_committed_as_the_person(
 def test_a_file_still_marking_a_conflict_is_refused(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
 ) -> None:
-    conflicted(work, repositories, owned_url)
+    leave_conflicting_merge(work, repositories, owned_url)
 
     with pytest.raises(ConflictMarkersLeftError):
         MergeCompletion(work, [Path("a.txt")]).run()
@@ -957,7 +959,7 @@ def test_a_file_still_marking_a_conflict_is_refused(
 def test_a_conflicting_file_left_out_is_refused(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
 ) -> None:
-    conflicted(work, repositories, owned_url)
+    leave_conflicting_merge(work, repositories, owned_url)
     (work.checkout.root / "b.txt").write_text("unrelated\n")
 
     with pytest.raises(UnresolvedConflictError):
@@ -971,7 +973,7 @@ def test_an_undone_merge_leaves_the_branch_as_it_was(
 ) -> None:
     git = work.checkout.git
     before = git.run("rev-parse", "HEAD")
-    conflicted(work, repositories, owned_url)
+    leave_conflicting_merge(work, repositories, owned_url)
 
     MergeAbort(work).run()
 
@@ -994,7 +996,7 @@ def test_no_merge_in_progress_has_nothing_to_undo(work: WritePolicy) -> None:
 def test_a_branch_mid_merge_is_neither_committed_to_nor_pushed(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
 ) -> None:
-    conflicted(work, repositories, owned_url)
+    leave_conflicting_merge(work, repositories, owned_url)
     path = write(work.checkout, "c.txt")
 
     with pytest.raises(MergeInProgressError):
@@ -1009,10 +1011,12 @@ def test_a_branch_higher_in_a_stack_does_not_take_in_the_default_branch(
     """
     It targets the branch below it, not the default branch.
     """
-    default_branch_moved_on(repositories, owned_url)
-    above = pull_request(4, "feature", base=StackedPullRequestsInMemory.branch_of(3))
+    advance_default_branch(repositories, owned_url)
+    above = pull_request(4, "feature", base=StackedPullRequestsInMemory.name_branch(3))
     branches = BranchStacksInMemory({}, opened=[above])
-    branches.existing_stacks.append(Stack(1, "main", True, branches.stacked([3, 4])))
+    branches.existing_stacks.append(
+        Stack(1, "main", True, branches.build_stack([3, 4]))
+    )
     git = work.checkout.git
     before = git.run("rev-parse", "HEAD")
 
@@ -1025,9 +1029,11 @@ def test_a_branch_higher_in_a_stack_does_not_take_in_the_default_branch(
 def test_the_bottom_of_a_stack_takes_in_the_default_branch(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
 ) -> None:
-    other = default_branch_moved_on(repositories, owned_url)
+    other = advance_default_branch(repositories, owned_url)
     branches = BranchStacksInMemory({}, opened=[pull_request(3, "feature")])
-    branches.existing_stacks.append(Stack(1, "main", True, branches.stacked([3, 4])))
+    branches.existing_stacks.append(
+        Stack(1, "main", True, branches.build_stack([3, 4]))
+    )
 
     BaseMerge(work, branches).run()
 
@@ -1040,7 +1046,7 @@ def test_the_bottom_of_a_stack_takes_in_the_default_branch(
 def test_the_default_branch_takes_in_nothing(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
-    policy = policy_in(repositories.clone(owned_url, "on-default"), settings)
+    policy = build_write_policy(repositories.clone(owned_url, "on-default"), settings)
 
     with pytest.raises(DefaultBranchWriteError):
         base_merge(policy).run()
@@ -1146,7 +1152,7 @@ def test_a_pull_request_that_cannot_be_built_on_is_refused(
 def test_the_default_branch_builds_on_no_pull_request(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
-    policy = policy_in(repositories.clone(owned_url, "on-default"), settings)
+    policy = build_write_policy(repositories.clone(owned_url, "on-default"), settings)
     below = pull_request(56, "below", repository=policy.remote.repository.full_name)
 
     with pytest.raises(DefaultBranchWriteError):
@@ -1192,7 +1198,7 @@ def test_a_new_description_onto_the_default_branch_ends_as_a_draft_s_does() -> N
 
     replace(step, ending=ending).run()
 
-    described = ending.append_once("A new body", github.branch_of(1))
+    described = ending.append_once("A new body", github.name_branch(1))
     assert github.writes == [f"set_description 1 {described}"]
 
 

@@ -144,7 +144,9 @@ def github(
         whose branch is left to delete.
     """
     with ReplayedApi() as api:
-        api.answers[("GET", root_path(settings))] = setting(HTTPStatus.OK, True)
+        api.answers[("GET", root_path(settings))] = answer_branch_deletion_setting(
+            HTTPStatus.OK, True
+        )
         api.answers[("GET", actions_path(settings))] = RecordedAnswer(
             HTTPStatus.OK, json.dumps({RestJSONKey.ENABLED: True})
         )
@@ -189,7 +191,7 @@ def root_path(settings: WorkflowSettings) -> str:
     return f"/{RepositoryRoute(repository).root}"
 
 
-def setting(status: HTTPStatus, deletes: bool) -> RecordedAnswer:
+def answer_branch_deletion_setting(status: HTTPStatus, deletes: bool) -> RecordedAnswer:
     """:param status: The status to answer with.
     :param deletes: Whether merged branches are deleted.
     :return: An answer carrying the merged-branch deletion setting."""
@@ -504,7 +506,9 @@ def test_a_session_leaves_merged_branch_deletion_that_is_off_to_the_person(
     settings: WorkflowSettings,
     github: ReplayedApi,
 ) -> None:
-    github.answers[("GET", root_path(settings))] = setting(HTTPStatus.OK, False)
+    github.answers[("GET", root_path(settings))] = answer_branch_deletion_setting(
+        HTTPStatus.OK, False
+    )
 
     start_session(repositories.clone(owned_url, "session"))
 
@@ -517,7 +521,9 @@ def test_a_session_links_to_the_settings_of_a_feature_that_is_off(
     settings: WorkflowSettings,
     github: ReplayedApi,
 ) -> None:
-    github.answers[("GET", root_path(settings))] = setting(HTTPStatus.OK, False)
+    github.answers[("GET", root_path(settings))] = answer_branch_deletion_setting(
+        HTTPStatus.OK, False
+    )
     repository = Repository(settings.owner, RepositoriesByOwner.repository_name)
 
     finished = start_session(repositories.clone(owned_url, "session"))
@@ -627,7 +633,7 @@ def signed_in(github: ReplayedApi) -> str:
     return login
 
 
-def step_for(checkout: ProjectCheckout, *arguments: str) -> object:
+def build_step(checkout: ProjectCheckout, *arguments: str) -> object:
     """:param checkout: The checkout the command runs in.
     :param arguments: The command line.
     :return: The step it asks for."""
@@ -643,7 +649,7 @@ def owner_s_github(settings: WorkflowSettings) -> GitHubRepository:
     )
 
 
-def runner_in(checkout: ProjectCheckout) -> BranchProofRunner:
+def build_proof_runner(checkout: ProjectCheckout) -> BranchProofRunner:
     """:param checkout: The checkout.
     :return: Runs tests on its owner's default branch with an interpreter named
     ``project-python``."""
@@ -653,7 +659,7 @@ def runner_in(checkout: ProjectCheckout) -> BranchProofRunner:
     )
 
 
-def finding_test_in(checkout: ProjectCheckout) -> FindingTest:
+def read_finding_test(checkout: ProjectCheckout) -> FindingTest:
     """:param checkout: The checkout.
     :return: The finding test it holds."""
     return FindingTest.read(checkout, checkout.root / "tests" / "test_finding.py")
@@ -662,7 +668,7 @@ def finding_test_in(checkout: ProjectCheckout) -> FindingTest:
 def test_a_finding_filed_with_a_test_is_proven_on_the_default_branch(
     finding_checkout: ProjectCheckout, settings: WorkflowSettings
 ) -> None:
-    step = step_for(
+    step = build_step(
         finding_checkout,
         WorkflowCommand.FINDING,
         FindingSubcommand.FILE,
@@ -679,15 +685,15 @@ def test_a_finding_filed_with_a_test_is_proven_on_the_default_branch(
         "A title",
         "What was found.\n",
         Priority.HIGH,
-        finding_test_in(finding_checkout),
-        runner_in(finding_checkout),
+        read_finding_test(finding_checkout),
+        build_proof_runner(finding_checkout),
     )
 
 
 def test_a_finding_filed_without_a_test_runs_none(
     finding_checkout: ProjectCheckout, settings: WorkflowSettings
 ) -> None:
-    step = step_for(
+    step = build_step(
         finding_checkout,
         WorkflowCommand.FINDING,
         FindingSubcommand.FILE,
@@ -703,7 +709,7 @@ def test_a_finding_filed_without_a_test_runs_none(
 def test_proving_runs_the_test_on_the_default_branch(
     finding_checkout: ProjectCheckout, settings: WorkflowSettings
 ) -> None:
-    step = step_for(
+    step = build_step(
         finding_checkout,
         WorkflowCommand.FINDING,
         FindingSubcommand.PROVE,
@@ -714,7 +720,10 @@ def test_proving_runs_the_test_on_the_default_branch(
 
     github = owner_s_github(settings)
     assert step == FindingProving(
-        github, 3, finding_test_in(finding_checkout), runner_in(finding_checkout)
+        github,
+        3,
+        read_finding_test(finding_checkout),
+        build_proof_runner(finding_checkout),
     )
 
 
@@ -744,7 +753,7 @@ def test_proving_on_a_pull_request_runs_the_test_on_its_branch(
 ) -> None:
     answer_open_pull_request(github, settings)
 
-    step = step_for(
+    step = build_step(
         finding_checkout,
         WorkflowCommand.FINDING,
         FindingSubcommand.PROVE,
@@ -754,7 +763,7 @@ def test_proving_on_a_pull_request_runs_the_test_on_its_branch(
         "--python=project-python",
     )
 
-    runner = runner_in(finding_checkout)
+    runner = build_proof_runner(finding_checkout)
     assert step.runner == replace(
         runner, branch=runner.branch.remote.branch(BranchName("below"))
     )
@@ -763,7 +772,7 @@ def test_proving_on_a_pull_request_runs_the_test_on_its_branch(
 def test_proving_on_a_branch_runs_the_test_there(
     finding_checkout: ProjectCheckout, settings: WorkflowSettings
 ) -> None:
-    step = step_for(
+    step = build_step(
         finding_checkout,
         WorkflowCommand.FINDING,
         FindingSubcommand.PROVE,
@@ -773,7 +782,7 @@ def test_proving_on_a_branch_runs_the_test_there(
         "--python=project-python",
     )
 
-    runner = runner_in(finding_checkout)
+    runner = build_proof_runner(finding_checkout)
     assert step.runner == replace(
         runner, branch=runner.branch.remote.branch(BranchName("without-pull-request"))
     )
@@ -787,7 +796,7 @@ def test_rechecking_on_a_pull_request_runs_the_test_on_its_branch(
 ) -> None:
     answer_open_pull_request(github, settings)
 
-    step = step_for(
+    step = build_step(
         finding_checkout,
         WorkflowCommand.FINDING,
         FindingSubcommand.RECHECK,
@@ -796,7 +805,7 @@ def test_rechecking_on_a_pull_request_runs_the_test_on_its_branch(
         "--python=project-python",
     )
 
-    runner = runner_in(finding_checkout)
+    runner = build_proof_runner(finding_checkout)
     assert step.runner == replace(
         runner, branch=runner.branch.remote.branch(BranchName("below"))
     )
@@ -808,7 +817,7 @@ def test_proving_on_a_closed_pull_request_is_refused(
     answer_open_pull_request(github, settings, state=PullRequestState.CLOSED)
 
     with pytest.raises(UnbuildablePullRequestError):
-        step_for(
+        build_step(
             finding_checkout,
             WorkflowCommand.FINDING,
             FindingSubcommand.PROVE,
@@ -822,7 +831,7 @@ def test_proving_on_a_closed_pull_request_is_refused(
 def test_marking_unproven_keeps_the_reason(
     finding_checkout: ProjectCheckout, settings: WorkflowSettings
 ) -> None:
-    step = step_for(
+    step = build_step(
         finding_checkout,
         WorkflowCommand.FINDING,
         FindingSubcommand.MARK_UNPROVEN,
@@ -837,7 +846,7 @@ def test_marking_unproven_keeps_the_reason(
 def test_a_recheck_trusts_the_owner_and_the_signed_in_account(
     finding_checkout: ProjectCheckout, settings: WorkflowSettings, signed_in: str
 ) -> None:
-    step = step_for(
+    step = build_step(
         finding_checkout,
         WorkflowCommand.FINDING,
         FindingSubcommand.RECHECK,
@@ -847,7 +856,7 @@ def test_a_recheck_trusts_the_owner_and_the_signed_in_account(
 
     assert step == FindingRecheck(
         owner_s_github(settings),
-        runner_in(finding_checkout),
+        build_proof_runner(finding_checkout),
         {settings.owner, signed_in},
         3,
     )
@@ -856,7 +865,7 @@ def test_a_recheck_trusts_the_owner_and_the_signed_in_account(
 def test_a_fixed_finding_is_closed_through_the_command_line(
     finding_checkout: ProjectCheckout, settings: WorkflowSettings, signed_in: str
 ) -> None:
-    step = step_for(
+    step = build_step(
         finding_checkout,
         WorkflowCommand.FINDING,
         FindingSubcommand.CLOSE,
@@ -871,7 +880,7 @@ def test_a_fixed_finding_is_closed_through_the_command_line(
     assert step == FindingClosing(
         github,
         3,
-        runner_in(finding_checkout),
+        build_proof_runner(finding_checkout),
         {settings.owner, signed_in},
         RepositoriesByOwner.default_branch,
         157,
@@ -884,7 +893,7 @@ def test_a_fixed_finding_is_closed_through_the_command_line(
 def test_a_draft_naming_a_finding_rechecks_it_first(
     finding_checkout: ProjectCheckout, settings: WorkflowSettings, signed_in: str
 ) -> None:
-    step = step_for(
+    step = build_step(
         finding_checkout,
         WorkflowCommand.DRAFT,
         "--title=A title",
@@ -896,7 +905,7 @@ def test_a_draft_naming_a_finding_rechecks_it_first(
     assert isinstance(step, FindingDraftOpening)
     assert step.recheck == FindingRecheck(
         owner_s_github(settings),
-        runner_in(finding_checkout),
+        build_proof_runner(finding_checkout),
         {settings.owner, signed_in},
         3,
     )
@@ -919,7 +928,7 @@ def test_a_draft_building_on_a_pull_request_rechecks_on_its_branch(
         RecordedAnswer(HTTPStatus.OK, json.dumps(below))
     )
 
-    step = step_for(
+    step = build_step(
         finding_checkout,
         WorkflowCommand.DRAFT,
         "--title=A title",
@@ -930,7 +939,7 @@ def test_a_draft_building_on_a_pull_request_rechecks_on_its_branch(
     )
 
     assert isinstance(step, FindingDraftOpening)
-    runner = runner_in(finding_checkout)
+    runner = build_proof_runner(finding_checkout)
     assert step.recheck.runner == replace(
         runner, branch=runner.branch.remote.branch(BranchName("below"))
     )
@@ -983,7 +992,7 @@ def test_a_finding_on_another_of_the_owner_s_repositories_is_reached(
 ) -> None:
     workflow = Repository(WorkflowSettings().owner, "GitHubWorkflow")
 
-    step = step_for(
+    step = build_step(
         finding_checkout,
         WorkflowCommand.FINDING,
         subcommand,
@@ -1002,7 +1011,7 @@ def test_a_finding_on_somebody_else_s_repository_is_not_reached(
     finding_checkout: ProjectCheckout, subcommand: FindingSubcommand
 ) -> None:
     with pytest.raises(ForeignRepositoryError):
-        step_for(
+        build_step(
             finding_checkout,
             WorkflowCommand.FINDING,
             subcommand,
@@ -1194,7 +1203,7 @@ def test_a_draft_on_a_fork_ends_with_the_command_for_the_person(
     checkout.git.run("switch", "--quiet", "--create", "feature")
     (checkout.root / "body.md").write_text("What it does.\n")
 
-    step = step_for(
+    step = build_step(
         checkout,
         WorkflowCommand.DRAFT,
         "--title=Add the thing",
@@ -1292,7 +1301,7 @@ def test_describe_without_a_number_rewrites_the_work_branch_s_own_pull_request(
     checkout.git.run("switch", "--quiet", "--create", "feature")
     (checkout.root / "body.md").write_text("What it does.\n")
 
-    step = step_for(
+    step = build_step(
         checkout, WorkflowCommand.DESCRIBE, f"--body-file={checkout.root / 'body.md'}"
     )
 

@@ -24,7 +24,7 @@ from github_workflow.session_start import SessionStart
 from github_workflow.settings import WorkflowSettings
 
 from .repositories_by_owner import RepositoriesByOwner
-from .test_notes_saving import edit, notes_of
+from .test_notes_saving import edit, fetch_notes_branch
 
 # %% the plugin
 
@@ -75,7 +75,7 @@ def test_edited_notes_are_saved(
 
     UnsavedNotes(checkout, settings).save()
 
-    notes = notes_of(checkout, settings)
+    notes = fetch_notes_branch(checkout, settings)
     assert notes.read(NotesFile.STANDING_NOTES) == "a note\n"
 
 
@@ -199,4 +199,7 @@ def test_a_hook_runs_the_plugin_s_own_code_over_an_older_runtime(
         },
     )
 
-    assert notes_of(checkout, settings).read(NotesFile.STANDING_NOTES) == "a note\n"
+    assert (
+        fetch_notes_branch(checkout, settings).read(NotesFile.STANDING_NOTES)
+        == "a note\n"
+    )

@@ -129,7 +129,7 @@ class IssuesInMemory(ClosablePullRequests):
         self.writes.append(f"set_issue_description {number} {body}")
 
 
-def finding(number: int, stage: FindingStage, priority: Priority) -> Issue:
+def build_finding(number: int, stage: FindingStage, priority: Priority) -> Issue:
     """:param number: The issue's number.
     :param stage: Where the finding stands.
     :param priority: How urgent it is.

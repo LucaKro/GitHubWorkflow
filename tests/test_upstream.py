@@ -342,7 +342,7 @@ class ForkOfTheUpstream(ForkDetails):
         return self.forked_from
 
 
-def with_upstream(
+def give_fork_upstream(
     work: WritePolicy, repositories: RepositoriesByOwner, *, ahead: int, own: int
 ) -> None:
     """
@@ -411,7 +411,7 @@ def test_a_fork_s_main_behind_its_upstream_is_fast_forwarded(
     """
     Through git alone, as where the proxy refuses GitHub's compares and merge-upstream.
     """
-    with_upstream(work, repositories, ahead=2, own=0)
+    give_fork_upstream(work, repositories, ahead=2, own=0)
 
     ForkMainSync(work, ForkOfTheUpstream()).run()
 
@@ -428,7 +428,7 @@ def test_a_fork_s_main_is_fast_forwarded_past_the_checkout_s_push_hook(
     """
     The hook refuses every change to the default branch a session would push.
     """
-    with_upstream(work, repositories, ahead=1, own=0)
+    give_fork_upstream(work, repositories, ahead=1, own=0)
     PushHook(work.checkout, Path(sys.executable)).install()
 
     ForkMainSync(work, ForkOfTheUpstream()).run()
@@ -440,7 +440,7 @@ def test_a_fork_s_main_is_fast_forwarded_past_the_checkout_s_push_hook(
 def test_a_fork_s_main_up_to_date_is_left_alone(
     work: WritePolicy, repositories: RepositoriesByOwner
 ) -> None:
-    with_upstream(work, repositories, ahead=0, own=0)
+    give_fork_upstream(work, repositories, ahead=0, own=0)
     before, _ = default_branch_tips(work, repositories)
 
     ForkMainSync(work, ForkOfTheUpstream()).run()
@@ -454,7 +454,7 @@ def test_a_fork_s_main_with_commits_of_its_own_is_refused(
     """
     It is only ever fast-forwarded: never merged, never forced.
     """
-    with_upstream(work, repositories, ahead=2, own=1)
+    give_fork_upstream(work, repositories, ahead=2, own=1)
     before, _ = default_branch_tips(work, repositories)
 
     with pytest.raises(ForkBranchDivergedError):
@@ -480,7 +480,7 @@ def tracked_tip(work: WritePolicy, remote: str) -> str | None:
 def test_the_upstream_configured_under_another_name_is_fetched_under_it(
     work: WritePolicy, repositories: RepositoriesByOwner
 ) -> None:
-    with_upstream(work, repositories, ahead=1, own=0)
+    give_fork_upstream(work, repositories, ahead=1, own=0)
     url = ScratchGitHub.upstream.rooted_clone_url()
     work.checkout.git.run("remote", "add", "parent", url)
 
@@ -496,7 +496,7 @@ def test_the_upstream_configured_under_another_name_is_fetched_under_it(
 def test_the_remote_named_upstream_is_preferred_among_those_reaching_it(
     work: WritePolicy, repositories: RepositoriesByOwner
 ) -> None:
-    with_upstream(work, repositories, ahead=1, own=0)
+    give_fork_upstream(work, repositories, ahead=1, own=0)
     url = ScratchGitHub.upstream.rooted_clone_url()
     work.checkout.git.run("remote", "add", "parent", url)
     work.checkout.git.run("remote", "add", RemoteName.UPSTREAM, url)
@@ -513,7 +513,7 @@ def test_the_remote_named_upstream_is_preferred_among_those_reaching_it(
 def test_a_remote_named_upstream_reaching_another_repository_is_refused(
     work: WritePolicy, repositories: RepositoriesByOwner
 ) -> None:
-    with_upstream(work, repositories, ahead=1, own=0)
+    give_fork_upstream(work, repositories, ahead=1, own=0)
     other = Repository(RepositoriesByOwner.foreign_owner, "elsewhere")
     work.checkout.git.run(
         "remote", "add", RemoteName.UPSTREAM, other.rooted_clone_url()
@@ -593,7 +593,7 @@ class OpenedUpstreamPullRequests(StackedPullRequestsInMemory, FollowedFork):
         return BranchName("main")
 
 
-def following(
+def build_following(
     found: dict[str, list[SearchedPullRequest]],
     merged: frozenset[int] = frozenset(),
     opened_upstream: frozenset[int] = frozenset({1}),
@@ -606,11 +606,11 @@ def following(
         requests; and what was closed.
     """
     fork = OpenedUpstreamPullRequests(
-        {1: "main", 2: StackedPullRequestsInMemory.branch_of(1)},
+        {1: "main", 2: StackedPullRequestsInMemory.name_branch(1)},
         opened_upstream=opened_upstream,
         merged=merged,
     )
-    fork.existing_stacks.append(Stack(7, "main", True, fork.stacked([1, 2])))
+    fork.existing_stacks.append(Stack(7, "main", True, fork.build_stack([1, 2])))
     retired = RetiredInMemory()
     section = UpstreamMergeFollowing(
         ScratchGitHub.owned.owner,
@@ -626,7 +626,7 @@ def test_a_pull_request_merged_upstream_is_closed_and_its_stack_moved_on() -> No
     merged = SearchedPullRequest(
         9, ScratchGitHub.upstream.pull_request_url(9), "2026-11-07T10:00:00Z"
     )
-    section, fork, retired = following({"branch-1": [merged]})
+    section, fork, retired = build_following({"branch-1": [merged]})
 
     [line] = section.lines()
 
@@ -641,7 +641,7 @@ def test_a_pull_request_still_open_upstream_is_left_alone() -> None:
     open_upstream = SearchedPullRequest(
         9, ScratchGitHub.upstream.pull_request_url(9), None
     )
-    section, fork, retired = following({"branch-1": [open_upstream]})
+    section, fork, retired = build_following({"branch-1": [open_upstream]})
 
     assert (section.lines(), retired.retired, fork.writes) == ([], [], [])
 
@@ -652,7 +652,9 @@ def test_what_is_stacked_on_a_pull_request_the_fork_merged_already_is_moved_on()
     merged = SearchedPullRequest(
         9, ScratchGitHub.upstream.pull_request_url(9), "2026-11-07T10:00:00Z"
     )
-    section, fork, retired = following({"branch-1": [merged]}, merged=frozenset({1}))
+    section, fork, retired = build_following(
+        {"branch-1": [merged]}, merged=frozenset({1})
+    )
 
     [line] = section.lines()
 
@@ -666,7 +668,7 @@ def test_what_is_stacked_on_a_pull_request_the_fork_merged_already_is_moved_on()
 def test_what_is_stacked_on_a_merged_pull_request_never_opened_upstream_is_left_alone() -> (
     None
 ):
-    section, fork, retired = following(
+    section, fork, retired = build_following(
         {}, merged=frozenset({1}), opened_upstream=frozenset()
     )
 

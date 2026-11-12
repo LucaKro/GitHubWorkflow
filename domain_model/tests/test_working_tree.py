@@ -13,7 +13,7 @@ from domain_model.git.commands import GitCommandRunner
 from domain_model.git.revisions import BranchName, LocalBranch
 from domain_model.git.working_tree import Merge, WorkingTree
 
-from .git_checkouts import checkout, commit_on, head  # noqa: F401
+from .git_checkouts import checkout, create_branch_with_commit, head  # noqa: F401
 
 # %% committing
 
@@ -91,7 +91,7 @@ def test_a_detached_head_has_no_checked_out_branch(
 def test_a_branch_behind_fast_forwards(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
-    commit_on(checkout, "ahead", "main", "ahead.txt")
+    create_branch_with_commit(checkout, "ahead", "main", "ahead.txt")
     LocalBranch(checkout, BranchName("main")).switch()
     ahead = LocalBranch(checkout, BranchName("ahead"))
 
@@ -106,8 +106,8 @@ def test_a_branch_behind_fast_forwards(
 def test_a_diverged_branch_does_not_fast_forward(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
-    commit_on(checkout, "other", "main", "other.txt")
-    commit_on(checkout, "mine", "main", "mine.txt")
+    create_branch_with_commit(checkout, "other", "main", "other.txt")
+    create_branch_with_commit(checkout, "mine", "main", "mine.txt")
     before = head(checkout)
 
     moved = WorkingTree(checkout).fast_forward(
@@ -120,8 +120,8 @@ def test_a_diverged_branch_does_not_fast_forward(
 def test_a_kept_reset_keeps_uncommitted_changes(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
-    commit_on(checkout, "rewritten", "main", "rewritten.txt")
-    commit_on(checkout, "mine", "main", "mine.txt")
+    create_branch_with_commit(checkout, "rewritten", "main", "rewritten.txt")
+    create_branch_with_commit(checkout, "mine", "main", "mine.txt")
     (checkout.working_directory / "README.md").write_text("edited\n")
     rewritten = LocalBranch(checkout, BranchName("rewritten"))
 
@@ -146,8 +146,8 @@ def diverged_on_readme(git: GitCommandRunner) -> None:
 def test_a_branch_merges_another_s_commits_with_the_message_given(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
-    commit_on(checkout, "other", "main", "other.txt")
-    commit_on(checkout, "mine", "main", "mine.txt")
+    create_branch_with_commit(checkout, "other", "main", "other.txt")
+    create_branch_with_commit(checkout, "mine", "main", "mine.txt")
     other = LocalBranch(checkout, BranchName("other"))
 
     merged = Merge(WorkingTree(checkout)).start(other, "Merge other into mine")

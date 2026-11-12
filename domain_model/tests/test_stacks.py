@@ -26,7 +26,7 @@ The repository every call in these tests is made against.
 # %% helpers
 
 
-def recorded(location: DatasetLocation) -> object:
+def read_payload(location: DatasetLocation) -> object:
     """:param location: A recorded answer.
     :return: Its decoded body."""
     return json.loads(location.read_text())
@@ -35,7 +35,7 @@ def recorded(location: DatasetLocation) -> object:
 def recorded_stack(location: DatasetLocation) -> Stack:
     """:param location: A recorded answer holding one stack, alone or in a list.
     :return: That stack."""
-    body = recorded(location)
+    body = read_payload(location)
     return Stack.from_json(body[0] if isinstance(body, list) else body)
 
 
@@ -55,7 +55,7 @@ def stacks_path(suffix: str = "") -> str:
 
 
 def test_a_stack_reads_its_pull_requests_bottom_first():
-    body = recorded(DatasetLocation.STACK_GROWN)
+    body = read_payload(DatasetLocation.STACK_GROWN)
 
     stack = Stack.from_json(body)
 
@@ -69,7 +69,9 @@ def test_a_stack_names_the_branch_the_one_above_targets():
 
     assert [entry.branch for entry in stack.pull_requests][:-1] == [
         entry[RestJSONKey.BASE][RestJSONKey.REFERENCE]
-        for entry in recorded(DatasetLocation.STACK_GROWN)[RestJSONKey.PULL_REQUESTS]
+        for entry in read_payload(DatasetLocation.STACK_GROWN)[
+            RestJSONKey.PULL_REQUESTS
+        ]
     ][1:]
 
 
@@ -122,7 +124,7 @@ def test_every_stack_is_listed():
         listed = client(api).stacks()
 
     assert listed == [
-        Stack.from_json(entry) for entry in recorded(DatasetLocation.STACKS_LISTED)
+        Stack.from_json(entry) for entry in read_payload(DatasetLocation.STACKS_LISTED)
     ]
 
 

@@ -52,7 +52,7 @@ def test_a_runtime_built_from_a_plugin_whose_content_changed_since_is_not_curren
     plugin = tmp_path / "plugin"
     plugin.mkdir()
     (plugin / "module.py").write_text("before\n")
-    runtime = built_from(tmp_path / "environments" / "runtime", plugin)
+    runtime = stamp_runtime(tmp_path / "environments" / "runtime", plugin)
     (plugin / "module.py").write_text("after\n")
 
     assert not RuntimeInstallation(plugin, runtime).current
@@ -64,13 +64,13 @@ def test_a_change_outside_what_the_runtime_is_built_from_keeps_it_current(
 ) -> None:
     plugin = tmp_path / "plugin"
     (plugin / directory).mkdir(parents=True)
-    runtime = built_from(tmp_path / "environments" / "runtime", plugin)
+    runtime = stamp_runtime(tmp_path / "environments" / "runtime", plugin)
     (plugin / directory / "written").write_text("since\n")
 
     assert RuntimeInstallation(plugin, runtime).current
 
 
-def built_from(location: Path, plugin: Path) -> Path:
+def stamp_runtime(location: Path, plugin: Path) -> Path:
     """:param location: Where the runtime is.
     :param plugin: The plugin it was built from.
     :return: The runtime, a directory that says so."""
@@ -83,13 +83,13 @@ def built_from(location: Path, plugin: Path) -> Path:
 
 def test_a_runtime_built_from_this_plugin_is_current(tmp_path: Path) -> None:
     plugin = tmp_path / "plugin"
-    runtime = built_from(tmp_path / "runtime", plugin)
+    runtime = stamp_runtime(tmp_path / "runtime", plugin)
 
     assert RuntimeInstallation(plugin, runtime).current
 
 
 def test_a_runtime_built_from_another_plugin_is_not(tmp_path: Path) -> None:
-    runtime = built_from(tmp_path / "runtime", tmp_path / "old-plugin")
+    runtime = stamp_runtime(tmp_path / "runtime", tmp_path / "old-plugin")
 
     assert not RuntimeInstallation(tmp_path / "new-plugin", runtime).current
 
@@ -100,7 +100,7 @@ def test_no_runtime_is_not_current(tmp_path: Path) -> None:
 
 def test_a_current_runtime_is_not_built_again(tmp_path: Path) -> None:
     plugin = tmp_path / "plugin"
-    runtime = built_from(tmp_path / "environments" / "runtime", plugin)
+    runtime = stamp_runtime(tmp_path / "environments" / "runtime", plugin)
 
     assert RuntimeInstallation(plugin, runtime).install() is None
     assert [path.name for path in runtime.parent.iterdir()] == [runtime.name]
@@ -115,7 +115,7 @@ def test_a_failing_build_leaves_the_runtime_in_use_alone(
     """
     An interpreter that does not exist fails the very first step, before any download.
     """
-    runtime = built_from(tmp_path / "environments" / "runtime", tmp_path / "old")
+    runtime = stamp_runtime(tmp_path / "environments" / "runtime", tmp_path / "old")
     monkeypatch.setattr(sys, "executable", str(tmp_path / "no-interpreter"))
 
     with pytest.raises(RuntimeInstallError):
@@ -356,7 +356,7 @@ def test_an_install_waits_for_the_one_running_and_takes_its_runtime(
         waiting.start()
         waiting.join(timeout=0.5)
         assert waiting.is_alive()
-        built_from(runtime, plugin)
+        stamp_runtime(runtime, plugin)
     waiting.join()
 
     assert installed == [None]
@@ -364,7 +364,7 @@ def test_an_install_waits_for_the_one_running_and_takes_its_runtime(
 
 def test_a_current_runtime_is_not_started_again(tmp_path: Path) -> None:
     plugin = tmp_path / "plugin"
-    runtime = built_from(tmp_path / "environments" / "runtime", plugin)
+    runtime = stamp_runtime(tmp_path / "environments" / "runtime", plugin)
 
     assert RuntimeInstallation(plugin, runtime).start() is None
 
@@ -384,7 +384,7 @@ def test_a_started_install_runs_the_installer_from_the_plugin_s_own_source(
             subprocess, "Popen", lambda command, **options: started.append(command)
         )
         RuntimeInstallation(plugin, runtime).start()
-    built_from(runtime, plugin)
+    stamp_runtime(runtime, plugin)
 
     [command] = started
     finished = subprocess.run(command, capture_output=True, text=True)

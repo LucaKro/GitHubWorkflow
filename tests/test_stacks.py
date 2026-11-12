@@ -43,7 +43,7 @@ def existing_stack(repository: StackedPullRequestsInMemory, *numbers: int) -> St
     :param numbers: The stack's pull requests, bottom first.
     :return: The stack, added to *repository*.
     """
-    stack = Stack(7, "main", True, repository.stacked(numbers))
+    stack = Stack(7, "main", True, repository.build_stack(numbers))
     repository.existing_stacks.append(stack)
     return stack
 
@@ -56,12 +56,12 @@ def test_a_pull_request_is_retargeted_at_the_branch_below() -> None:
 
     placement(repository).place(1, 2)
 
-    assert repository.bases[2] == repository.branch_of(1)
+    assert repository.bases[2] == repository.name_branch(1)
 
 
 def test_a_pull_request_already_targeting_the_branch_below_is_left_alone() -> None:
     repository = StackedPullRequestsInMemory(
-        {1: "main", 2: StackedPullRequestsInMemory.branch_of(1)}
+        {1: "main", 2: StackedPullRequestsInMemory.name_branch(1)}
     )
 
     placement(repository).place(1, 2)
@@ -91,7 +91,7 @@ def test_a_pull_request_goes_on_top_of_the_stack_whose_top_it_builds_on() -> Non
 
 def test_placing_a_pull_request_where_it_already_is_writes_nothing() -> None:
     repository = StackedPullRequestsInMemory(
-        {1: "main", 2: StackedPullRequestsInMemory.branch_of(1)}
+        {1: "main", 2: StackedPullRequestsInMemory.name_branch(1)}
     )
     existing = existing_stack(repository, 1, 2)
 
@@ -151,7 +151,7 @@ def test_the_top_of_a_stack_is_placeable() -> None:
 
 def test_the_pull_request_above_a_done_one_moves_onto_the_default_branch() -> None:
     repository = StackedPullRequestsInMemory(
-        {1: "main", 2: StackedPullRequestsInMemory.branch_of(1), 3: "branch-2"}
+        {1: "main", 2: StackedPullRequestsInMemory.name_branch(1), 3: "branch-2"}
     )
     existing = existing_stack(repository, 1, 2, 3)
 
@@ -165,7 +165,7 @@ def test_the_pull_request_above_a_done_one_moves_onto_the_default_branch() -> No
 
 def test_a_single_pull_request_left_above_forms_no_stack() -> None:
     repository = StackedPullRequestsInMemory(
-        {1: "main", 2: StackedPullRequestsInMemory.branch_of(1)}
+        {1: "main", 2: StackedPullRequestsInMemory.name_branch(1)}
     )
     existing = existing_stack(repository, 1, 2)
 

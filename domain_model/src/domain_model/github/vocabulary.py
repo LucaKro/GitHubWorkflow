@@ -267,7 +267,7 @@ class RollupState(GitHubVocabulary):
     """
 
     @classmethod
-    def over(cls, outcomes: list[CheckOutcome]) -> RollupState:
+    def from_outcomes(cls, outcomes: list[CheckOutcome]) -> RollupState:
         """
         Compute the verdict GitHub would over a set of checks, for a source that does
         not report one: the worst any single check would give.

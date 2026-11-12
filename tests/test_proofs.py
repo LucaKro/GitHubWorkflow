@@ -415,7 +415,7 @@ def test_a_test_file_outside_the_checkout_is_refused(
 # %% the comment
 
 
-def proof_of(source: str, commit: str = "0123456789abcdef") -> Proof:
+def build_proof(source: str, commit: str = "0123456789abcdef") -> Proof:
     """:param source: The test's text.
     :param commit: The commit it failed on.
     :return: A proof by that test."""
@@ -427,7 +427,7 @@ def proof_of(source: str, commit: str = "0123456789abcdef") -> Proof:
 
 
 def test_a_posted_proof_reads_back_as_it_was(settings: WorkflowSettings) -> None:
-    proof = proof_of(ProofDataset.DOUBLING_SHOWN_WRONG.read_text())
+    proof = build_proof(ProofDataset.DOUBLING_SHOWN_WRONG.read_text())
 
     posted = [IssueComment(settings.owner, proof.comment())]
 
@@ -437,7 +437,7 @@ def test_a_posted_proof_reads_back_as_it_was(settings: WorkflowSettings) -> None
 def test_a_test_holding_comment_ends_and_fences_reads_back_as_it_was(
     settings: WorkflowSettings,
 ) -> None:
-    proof = proof_of(ProofDataset.COMMENT_ENDS_AND_FENCES.read_text())
+    proof = build_proof(ProofDataset.COMMENT_ENDS_AND_FENCES.read_text())
 
     posted = [IssueComment(settings.owner, proof.comment())]
 
@@ -445,8 +445,8 @@ def test_a_test_holding_comment_ends_and_fences_reads_back_as_it_was(
 
 
 def test_the_latest_proof_counts(settings: WorkflowSettings) -> None:
-    earlier = proof_of(ProofDataset.DOUBLING_SHOWN_WRONG.read_text(), "1111111")
-    later = proof_of(ProofDataset.MISSPELT_IMPORT.read_text(), "2222222")
+    earlier = build_proof(ProofDataset.DOUBLING_SHOWN_WRONG.read_text(), "1111111")
+    later = build_proof(ProofDataset.MISSPELT_IMPORT.read_text(), "2222222")
 
     posted = [
         IssueComment(settings.owner, earlier.comment()),
@@ -458,8 +458,8 @@ def test_the_latest_proof_counts(settings: WorkflowSettings) -> None:
 
 
 def test_a_proof_by_an_untrusted_author_is_ignored(settings: WorkflowSettings) -> None:
-    trusted = proof_of(ProofDataset.DOUBLING_SHOWN_WRONG.read_text(), "1111111")
-    forged = proof_of(ProofDataset.MISSPELT_IMPORT.read_text(), "2222222")
+    trusted = build_proof(ProofDataset.DOUBLING_SHOWN_WRONG.read_text(), "1111111")
+    forged = build_proof(ProofDataset.MISSPELT_IMPORT.read_text(), "2222222")
 
     posted = [
         IssueComment(settings.owner.upper(), trusted.comment()),

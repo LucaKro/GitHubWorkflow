@@ -112,9 +112,9 @@ def test_each_outcome_rolls_up_to_its_verdict(
 def test_the_rollup_is_the_worst_verdict_any_check_gives() -> None:
     outcomes = [CheckOutcome.SUCCESS, CheckOutcome.PENDING, CheckOutcome.ERROR]
 
-    assert RollupState.over(outcomes) is RollupState.ERROR
+    assert RollupState.from_outcomes(outcomes) is RollupState.ERROR
 
 
 def test_a_rollup_over_no_outcomes_is_refused() -> None:
     with pytest.raises(NoCheckOutcomesError):
-        RollupState.over([])
+        RollupState.from_outcomes([])

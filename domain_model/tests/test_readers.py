@@ -26,7 +26,7 @@ def source(fork_owner: str = "an-owner") -> PullRequestSource:
     )
 
 
-def found(
+def build_branch_pull_request(
     number: int, state: PullRequestState, owner: str = "an-owner"
 ) -> BranchPullRequest:
     """
@@ -39,29 +39,32 @@ def found(
 
 
 def test_the_fork_owner_is_matched_whatever_its_case() -> None:
-    pull_request = found(7, PullRequestState.OPEN, "AnOwner")
+    pull_request = build_branch_pull_request(7, PullRequestState.OPEN, "AnOwner")
 
     assert source("anowner").choose(BranchName("a-branch"), [pull_request]) == 7
 
 
 def test_the_fork_s_open_pull_request_is_chosen_over_its_closed_ones() -> None:
     matches = [
-        found(12, PullRequestState.CLOSED),
-        found(10, PullRequestState.OPEN),
-        found(8, PullRequestState.MERGED),
+        build_branch_pull_request(12, PullRequestState.CLOSED),
+        build_branch_pull_request(10, PullRequestState.OPEN),
+        build_branch_pull_request(8, PullRequestState.MERGED),
     ]
 
     assert source().choose(BranchName("a-branch"), matches) == 10
 
 
 def test_without_an_open_one_the_fork_s_newest_pull_request_is_chosen() -> None:
-    matches = [found(12, PullRequestState.MERGED), found(8, PullRequestState.CLOSED)]
+    matches = [
+        build_branch_pull_request(12, PullRequestState.MERGED),
+        build_branch_pull_request(8, PullRequestState.CLOSED),
+    ]
 
     assert source().choose(BranchName("a-branch"), matches) == 12
 
 
 def test_another_owner_s_pull_request_is_never_chosen() -> None:
-    matches = [found(10, PullRequestState.OPEN, "someone-else")]
+    matches = [build_branch_pull_request(10, PullRequestState.OPEN, "someone-else")]
 
     with pytest.raises(UpstreamPullRequestNotFound):
         source().choose(BranchName("a-branch"), matches)

@@ -755,7 +755,7 @@ class CommandArgument:
         """:return: Whether it is an option rather than a positional argument."""
         return self.name.startswith("-")
 
-    def shown(self, value: str | None = None) -> str:
+    def format_usage(self, value: str | None = None) -> str:
         """
         :param value: The value shown, ``None`` for the placeholder.
         :return: The argument as a line naming the command shows it.
@@ -848,9 +848,10 @@ class CommandSpecification:
         :raises KeyError: If the command takes no argument of a name.
         """
         given = values or {}
-        named = [self.argument(name).shown(given.get(name)) for name in shown]
+        named = [self.argument(name).format_usage(given.get(name)) for name in shown]
         named += [
-            f"[{self.argument(name).shown(given.get(name))}]" for name in optional
+            f"[{self.argument(name).format_usage(given.get(name))}]"
+            for name in optional
         ]
         return [*self.words, *named]
 

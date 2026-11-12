@@ -31,7 +31,7 @@ def test_every_command_is_parsed_under_its_words(command: RunnableCommand) -> No
         word
         for argument in command.arguments
         if argument.required or not argument.is_option
-        for word in argument.shown((*argument.choices, "1")[0]).split()
+        for word in argument.format_usage((*argument.choices, "1")[0]).split()
     ]
 
     parsed = RunnableCommand.parser().parse_args([*command.words, *required])

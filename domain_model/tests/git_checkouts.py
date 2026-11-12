@@ -30,7 +30,9 @@ def checkout(tmp_path: Path) -> GitCommandRunner:
     return git
 
 
-def commit_on(git: GitCommandRunner, branch: str, start: str, name: str) -> None:
+def create_branch_with_commit(
+    git: GitCommandRunner, branch: str, start: str, name: str
+) -> None:
     """
     :param git: The checkout.
     :param branch: The branch to create and commit on.

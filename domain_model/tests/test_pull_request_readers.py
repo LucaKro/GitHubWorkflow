@@ -67,7 +67,7 @@ The upstream's REST paths.
 # %% answers kept in memory
 
 
-def recorded(location: DatasetLocation) -> Any:
+def read_payload(location: DatasetLocation) -> Any:
     """:param location: A recorded payload.
     :return: It, decoded."""
     return json.loads(location.read_text())
@@ -148,7 +148,7 @@ def graphql_threads(*answers: DatasetLocation) -> GraphQLReviewThreadSource:
     """:param answers: The recorded ``data`` of each page, in order.
     :return: A GraphQL source of threads answered with them."""
     return GraphQLReviewThreadSource(
-        GraphQLAnswersInOrder([recorded(answer) for answer in answers]), UPSTREAM
+        GraphQLAnswersInOrder([read_payload(answer) for answer in answers]), UPSTREAM
     )
 
 
@@ -160,7 +160,7 @@ def test_every_page_of_review_threads_is_gathered() -> None:
     expected = [
         node[PullRequestJSONKey.IDENTIFIER]
         for page in pages
-        for node in recorded(page)[PullRequestJSONKey.REPOSITORY][
+        for node in read_payload(page)[PullRequestJSONKey.REPOSITORY][
             PullRequestJSONKey.PULL_REQUEST
         ][PullRequestJSONKey.REVIEW_THREADS][PullRequestJSONKey.NODES]
     ]
@@ -171,9 +171,9 @@ def test_every_page_of_review_threads_is_gathered() -> None:
 
 
 def test_the_next_page_of_threads_is_read_after_the_last_one_s_cursor() -> None:
-    first_page = recorded(DatasetLocation.GRAPHQL_THREADS_PAGE_ONE)
+    first_page = read_payload(DatasetLocation.GRAPHQL_THREADS_PAGE_ONE)
     client = GraphQLAnswersInOrder(
-        [first_page, recorded(DatasetLocation.GRAPHQL_THREADS_PAGE_TWO)]
+        [first_page, read_payload(DatasetLocation.GRAPHQL_THREADS_PAGE_TWO)]
     )
 
     GraphQLReviewThreadSource(client, UPSTREAM).threads(10)
@@ -200,12 +200,12 @@ def rest_reader(pages: dict[str, list[Any]]) -> GitHubPullRequestSource:
 
 
 def test_an_open_pull_request_on_a_later_page_is_chosen() -> None:
-    open_pull_request = recorded(DatasetLocation.REST_PULLS_PAGE_TWO)[0]
+    open_pull_request = read_payload(DatasetLocation.REST_PULLS_PAGE_TWO)[0]
     reader = rest_reader(
         {
             ROUTE.pull_requests_for_head(FORK_OWNER, BranchName("a-branch")): [
-                recorded(DatasetLocation.REST_PULLS_PAGE_ONE),
-                recorded(DatasetLocation.REST_PULLS_PAGE_TWO),
+                read_payload(DatasetLocation.REST_PULLS_PAGE_ONE),
+                read_payload(DatasetLocation.REST_PULLS_PAGE_TWO),
             ]
         }
     )
@@ -222,7 +222,7 @@ def test_an_open_pull_request_on_a_later_page_is_chosen() -> None:
 @pytest.fixture
 def rest_pull_request() -> dict[str, Any]:
     """:return: The pull request the REST reader reads."""
-    return recorded(DatasetLocation.REST_PULL_REQUEST)
+    return read_payload(DatasetLocation.REST_PULL_REQUEST)
 
 
 @pytest.fixture
@@ -232,18 +232,22 @@ def rest_pages(rest_pull_request: dict[str, Any]) -> dict[str, list[Any]]:
     sha = rest_pull_request[RestJSONKey.HEAD][RestJSONKey.SHA]
     return {
         ROUTE.pull_request(number): [rest_pull_request],
-        ROUTE.reviews(number): [recorded(DatasetLocation.REST_REVIEWS)],
-        ROUTE.review_comments(number): [recorded(DatasetLocation.REST_REVIEW_COMMENTS)],
-        ROUTE.review_threads(number): [recorded(DatasetLocation.REST_REVIEW_THREADS)],
-        ROUTE.check_runs(sha): [recorded(DatasetLocation.REST_CHECK_RUNS)],
-        ROUTE.commit_status(sha): [recorded(DatasetLocation.REST_COMMIT_STATUS)],
+        ROUTE.reviews(number): [read_payload(DatasetLocation.REST_REVIEWS)],
+        ROUTE.review_comments(number): [
+            read_payload(DatasetLocation.REST_REVIEW_COMMENTS)
+        ],
+        ROUTE.review_threads(number): [
+            read_payload(DatasetLocation.REST_REVIEW_THREADS)
+        ],
+        ROUTE.check_runs(sha): [read_payload(DatasetLocation.REST_CHECK_RUNS)],
+        ROUTE.commit_status(sha): [read_payload(DatasetLocation.REST_COMMIT_STATUS)],
     }
 
 
 def test_a_rest_read_carries_the_submitted_reviews(
     rest_pull_request: dict[str, Any], rest_pages: dict[str, list[Any]]
 ) -> None:
-    [review] = recorded(DatasetLocation.REST_REVIEWS)
+    [review] = read_payload(DatasetLocation.REST_REVIEWS)
 
     snapshot = rest_reader(rest_pages).read_current_state(
         rest_pull_request[RestJSONKey.NUMBER]
@@ -263,7 +267,7 @@ def test_a_pending_review_is_left_out_of_the_read(
     rest_pull_request: dict[str, Any], rest_pages: dict[str, list[Any]]
 ) -> None:
     number = rest_pull_request[RestJSONKey.NUMBER]
-    listed = recorded(DatasetLocation.REST_REVIEWS_WITH_PENDING)
+    listed = read_payload(DatasetLocation.REST_REVIEWS_WITH_PENDING)
     rest_pages[ROUTE.reviews(number)] = [listed]
 
     snapshot = rest_reader(rest_pages).read_current_state(number)
@@ -278,7 +282,7 @@ def test_a_pending_review_is_left_out_of_the_read(
 def test_a_rest_thread_is_filled_in_with_its_comments(
     rest_pull_request: dict[str, Any], rest_pages: dict[str, list[Any]]
 ) -> None:
-    [thread] = recorded(DatasetLocation.REST_REVIEW_THREADS)
+    [thread] = read_payload(DatasetLocation.REST_REVIEW_THREADS)
 
     snapshot = rest_reader(rest_pages).read_current_state(
         rest_pull_request[RestJSONKey.NUMBER]
@@ -292,7 +296,7 @@ def test_a_rest_thread_is_filled_in_with_its_comments(
 def test_a_rest_thread_without_comments_is_refused() -> None:
     with pytest.raises(ReviewThreadWithoutCommentsError):
         RestReviewThread.from_json(
-            recorded(DatasetLocation.REST_REVIEW_THREAD_WITHOUT_COMMENTS)
+            read_payload(DatasetLocation.REST_REVIEW_THREAD_WITHOUT_COMMENTS)
         )
 
 
@@ -319,8 +323,8 @@ def check_reader(runs: DatasetLocation, statuses: DatasetLocation) -> CommitChec
     return CommitCheckReader(
         RestPagesByPath(
             {
-                ROUTE.check_runs("a1b2c3"): [recorded(runs)],
-                ROUTE.commit_status("a1b2c3"): [recorded(statuses)],
+                ROUTE.check_runs("a1b2c3"): [read_payload(runs)],
+                ROUTE.commit_status("a1b2c3"): [read_payload(statuses)],
             }
         ),
         ROUTE,
@@ -328,8 +332,8 @@ def check_reader(runs: DatasetLocation, statuses: DatasetLocation) -> CommitChec
 
 
 def test_check_runs_and_commit_statuses_are_combined_in_that_order() -> None:
-    runs = recorded(DatasetLocation.REST_CHECK_RUNS)[RestJSONKey.CHECK_RUNS]
-    statuses = recorded(DatasetLocation.REST_COMMIT_STATUS)[RestJSONKey.STATUSES]
+    runs = read_payload(DatasetLocation.REST_CHECK_RUNS)[RestJSONKey.CHECK_RUNS]
+    statuses = read_payload(DatasetLocation.REST_COMMIT_STATUS)[RestJSONKey.STATUSES]
     reader = check_reader(
         DatasetLocation.REST_CHECK_RUNS, DatasetLocation.REST_COMMIT_STATUS
     )
@@ -402,7 +406,7 @@ def test_a_check_run_s_conclusion_decides_the_verdict_beside_a_passing_one(
             {
                 ROUTE.check_runs("a1b2c3"): [runs],
                 ROUTE.commit_status("a1b2c3"): [
-                    recorded(DatasetLocation.REST_COMMIT_STATUS_NONE)
+                    read_payload(DatasetLocation.REST_COMMIT_STATUS_NONE)
                 ],
             }
         ),
@@ -425,8 +429,8 @@ def both_transports(rest_pages: dict[str, list[Any]]) -> AnswersByTransport:
         RestPagesByPath(rest_pages),
         GraphQLAnswersInOrder(
             [
-                recorded(DatasetLocation.GRAPHQL_THREADS_PAGE_ONE),
-                recorded(DatasetLocation.GRAPHQL_THREADS_PAGE_TWO),
+                read_payload(DatasetLocation.GRAPHQL_THREADS_PAGE_ONE),
+                read_payload(DatasetLocation.GRAPHQL_THREADS_PAGE_TWO),
             ]
         ),
     )
@@ -466,7 +470,7 @@ def test_a_recording_reads_back_as_written(
     assert AnswerRecording.from_json(written) == recording.recording
 
 
-def with_unread_fields(answer: Any) -> Any:
+def add_unread_fields(answer: Any) -> Any:
     """
     :param answer: A recorded answer.
     :return: It with a field no model reads added to every object in it.
@@ -474,22 +478,22 @@ def with_unread_fields(answer: Any) -> Any:
     if isinstance(answer, dict):
         return {
             "an_unread_field": {"nested": [1, 2]},
-            **{key: with_unread_fields(value) for key, value in answer.items()},
+            **{key: add_unread_fields(value) for key, value in answer.items()},
         }
     if isinstance(answer, list):
-        return [with_unread_fields(value) for value in answer]
+        return [add_unread_fields(value) for value in answer]
     return answer
 
 
-def keys_in(answer: Any) -> set[str]:
+def collect_keys(answer: Any) -> set[str]:
     """:param answer: A recorded answer.
     :return: Every key of every object in it."""
     if isinstance(answer, dict):
         return set(answer) | {
-            key for value in answer.values() for key in keys_in(value)
+            key for value in answer.values() for key in collect_keys(value)
         }
     if isinstance(answer, list):
-        return {key for value in answer for key in keys_in(value)}
+        return {key for value in answer for key in collect_keys(value)}
     return set()
 
 
@@ -499,12 +503,16 @@ def padded(rest_pages: dict[str, list[Any]]) -> AnswersByTransport:
     carrying a field no model reads."""
     return AnswersByTransport(
         RestPagesByPath(
-            {path: with_unread_fields(pages) for path, pages in rest_pages.items()}
+            {path: add_unread_fields(pages) for path, pages in rest_pages.items()}
         ),
         GraphQLAnswersInOrder(
             [
-                with_unread_fields(recorded(DatasetLocation.GRAPHQL_THREADS_PAGE_ONE)),
-                with_unread_fields(recorded(DatasetLocation.GRAPHQL_THREADS_PAGE_TWO)),
+                add_unread_fields(
+                    read_payload(DatasetLocation.GRAPHQL_THREADS_PAGE_ONE)
+                ),
+                add_unread_fields(
+                    read_payload(DatasetLocation.GRAPHQL_THREADS_PAGE_TWO)
+                ),
             ]
         ),
     )
@@ -519,7 +527,7 @@ def test_a_recording_keeps_only_the_keys_the_models_read(
     kept = {
         key
         for answered in recording.recording.answers.values()
-        for key in keys_in(answered.answer)
+        for key in collect_keys(answered.answer)
     }
 
     assert kept - RecordingClient.read_keys == set()

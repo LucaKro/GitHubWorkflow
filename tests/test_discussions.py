@@ -56,10 +56,10 @@ from github_workflow.workflow_templates import (
 from .repositories_by_owner import RepositoriesByOwner
 from .test_commands import (  # noqa: F401
     UpstreamDataset,
+    answer_branch_deletion_setting,
     github,
     root_path,
     run,
-    setting,
 )
 
 # %% the dataset
@@ -112,7 +112,7 @@ class DiscussionsSetTo(RepositoryDiscussions):
 # %% helpers
 
 
-def notes_in(
+def clone_notes_branch(
     repositories: RepositoriesByOwner, url: str, settings: WorkflowSettings
 ) -> NotesBranch:
     """
@@ -140,7 +140,7 @@ def queued_posts(notes: NotesBranch) -> list[dict[str, str]]:
     return [json.loads(notes.read(Path(path))) for path in sorted(listed)]
 
 
-def calls_of(record: str) -> list[list[str]]:
+def parse_calls(record: str) -> list[list[str]]:
     """
     :param record: The stand-in ``gh``'s record of its calls.
     :return: Each call's arguments, in order.
@@ -223,7 +223,9 @@ def test_an_idea_is_queued_for_the_repository_s_ideas_discussions(
     settings: WorkflowSettings,
     tmp_path: Path,
 ) -> None:
-    github.answers[("GET", root_path(settings))] = setting(HTTPStatus.OK, True)
+    github.answers[("GET", root_path(settings))] = answer_branch_deletion_setting(
+        HTTPStatus.OK, True
+    )
     checkout = repositories.clone(owned_url, "session")
     body = tmp_path / "idea.md"
     body.write_text("Ideas could live in Discussions.")
@@ -276,7 +278,7 @@ def test_an_idea_goes_into_the_category_named(
 def test_an_idea_is_not_queued_where_discussions_are_off(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
-    notes = notes_in(repositories, owned_url, settings)
+    notes = clone_notes_branch(repositories, owned_url, settings)
     filing = IdeaFiling(
         DiscussionsSetTo(False),
         DiscussionPosting(notes),
@@ -293,7 +295,7 @@ def test_an_idea_is_not_queued_where_discussions_are_off(
 def test_the_queued_workflow_has_every_placeholder_filled(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
-    notes = notes_in(repositories, owned_url, settings)
+    notes = clone_notes_branch(repositories, owned_url, settings)
 
     DiscussionPosting(notes).queue(idea("An idea", DefaultDiscussionCategory.IDEAS))
 
@@ -310,7 +312,7 @@ def test_the_queued_workflow_has_every_placeholder_filled(
 def test_ideas_are_queued_in_the_order_they_were_filed(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
-    notes = notes_in(repositories, owned_url, settings)
+    notes = clone_notes_branch(repositories, owned_url, settings)
     first = idea("First", DefaultDiscussionCategory.IDEAS)
     second = idea("Second", DefaultDiscussionCategory.IDEAS)
 
@@ -332,13 +334,13 @@ def test_the_workflow_posts_an_idea_in_its_category(
     settings: WorkflowSettings,
     tmp_path: Path,
 ) -> None:
-    notes = notes_in(repositories, owned_url, settings)
+    notes = clone_notes_branch(repositories, owned_url, settings)
     posted = idea("An idea", DefaultDiscussionCategory.IDEAS)
     DiscussionPosting(notes).queue(posted)
 
     _, record = run_posting_workflow(repositories, owned_url, settings, tmp_path)
 
-    [_, create] = calls_of(record)
+    [_, create] = parse_calls(record)
     assert {
         argument
         for argument in create
@@ -352,7 +354,7 @@ def test_the_workflow_removes_what_it_posted(
     settings: WorkflowSettings,
     tmp_path: Path,
 ) -> None:
-    notes = notes_in(repositories, owned_url, settings)
+    notes = clone_notes_branch(repositories, owned_url, settings)
     DiscussionPosting(notes).queue(idea("An idea", DefaultDiscussionCategory.IDEAS))
 
     run_posting_workflow(repositories, owned_url, settings, tmp_path)
@@ -366,7 +368,7 @@ def test_a_post_in_a_category_the_repository_lacks_is_kept(
     settings: WorkflowSettings,
     tmp_path: Path,
 ) -> None:
-    notes = notes_in(repositories, owned_url, settings)
+    notes = clone_notes_branch(repositories, owned_url, settings)
     kept = idea("An idea", DiscussionCategory("Brainstorming notes"))
     DiscussionPosting(notes).queue(kept)
 
@@ -384,7 +386,7 @@ def test_a_post_github_refuses_is_kept_and_the_others_are_removed(
     settings: WorkflowSettings,
     tmp_path: Path,
 ) -> None:
-    notes = notes_in(repositories, owned_url, settings)
+    notes = clone_notes_branch(repositories, owned_url, settings)
     refused = idea("Refused", DefaultDiscussionCategory.IDEAS)
     DiscussionPosting(notes).queue(refused)
     DiscussionPosting(notes).queue(idea("Posted", DefaultDiscussionCategory.IDEAS))
@@ -416,7 +418,7 @@ def session_log(notes: NotesBranch, enabled: bool = True) -> DiscussionSessionLo
 def test_an_entry_is_queued_as_a_comment_on_the_session_log(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
-    notes = notes_in(repositories, owned_url, settings)
+    notes = clone_notes_branch(repositories, owned_url, settings)
     log = session_log(notes)
 
     log.enter("closed pull request #3")
@@ -440,7 +442,7 @@ def test_an_entry_is_queued_as_a_comment_on_the_session_log(
 def test_nothing_is_entered_where_discussions_are_off(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
-    notes = notes_in(repositories, owned_url, settings)
+    notes = clone_notes_branch(repositories, owned_url, settings)
 
     session_log(notes, enabled=False).enter("closed pull request #3")
 
@@ -484,7 +486,7 @@ def test_the_workflow_comments_on_the_oldest_session_log(
     settings: WorkflowSettings,
     tmp_path: Path,
 ) -> None:
-    notes = notes_in(repositories, owned_url, settings)
+    notes = clone_notes_branch(repositories, owned_url, settings)
     session_log(notes).enter("closed pull request #3")
 
     _, record = run_posting_workflow(
@@ -497,7 +499,7 @@ def test_the_workflow_comments_on_the_oldest_session_log(
 
     commented = [
         argument
-        for call in calls_of(record)
+        for call in parse_calls(record)
         for argument in call
         if argument.startswith("discussionId=")
     ]
@@ -510,13 +512,13 @@ def test_the_workflow_starts_the_session_log_when_there_is_none(
     settings: WorkflowSettings,
     tmp_path: Path,
 ) -> None:
-    notes = notes_in(repositories, owned_url, settings)
+    notes = clone_notes_branch(repositories, owned_url, settings)
     log = session_log(notes)
     log.enter("closed pull request #3")
 
     _, record = run_posting_workflow(repositories, owned_url, settings, tmp_path)
 
-    calls = calls_of(record)
+    calls = parse_calls(record)
     [created] = [call for call in calls if f"title={log.title}" in call]
     commented = [
         argument

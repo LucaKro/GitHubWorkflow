@@ -45,4 +45,4 @@ class CommitCheckReader:
             for page in self.client.get_pages(self.route.commit_status(sha))
             for status in RestCombinedStatusPage.from_json(page).statuses
         ]
-        return CheckStatus.over(runs + statuses)
+        return CheckStatus.from_results(runs + statuses)

@@ -26,19 +26,19 @@ from github_workflow.report_lines import ReportLine, Tone
 from github_workflow.report_section import ReportSection
 from github_workflow.workflow_templates import ActionPlaceholder, ActionRequirement
 
-from .issues_in_memory import IssuesInMemory, finding, labelled_board
+from .issues_in_memory import IssuesInMemory, build_finding, labelled_board
 
 # %% helpers
 
 
-def labelled(issue: Issue, label: str) -> Issue:
+def add_label(issue: Issue, label: str) -> Issue:
     """:param issue: An issue.
     :param label: A label just added to it.
     :return: The issue carrying it too."""
     return Issue(issue.number, issue.title, (*issue.labels, label), issue.state)
 
 
-def board_with(issue: Issue) -> IssuesInMemory:
+def build_board(issue: Issue) -> IssuesInMemory:
     """:param issue: The one issue on the board.
     :return: A board carrying every finding label already."""
     return IssuesInMemory({issue.number: issue}, set(FindingLabel.every_label))
@@ -48,10 +48,10 @@ def board_with(issue: Issue) -> IssuesInMemory:
 
 
 def test_a_picked_stage_replaces_the_previous_stage() -> None:
-    issue = labelled(
-        finding(1, FindingStage.UNREVIEWED, Priority.LOW), FindingStage.SHELVED
+    issue = add_label(
+        build_finding(1, FindingStage.UNREVIEWED, Priority.LOW), FindingStage.SHELVED
     )
-    board = board_with(issue)
+    board = build_board(issue)
 
     FindingLabelCompletion(board, 1, FindingStage.SHELVED).run()
 
@@ -59,10 +59,10 @@ def test_a_picked_stage_replaces_the_previous_stage() -> None:
 
 
 def test_a_picked_incorrect_stage_closes_the_finding_as_not_planned() -> None:
-    issue = labelled(
-        finding(1, FindingStage.ACCEPTED, Priority.LOW), FindingStage.INCORRECT
+    issue = add_label(
+        build_finding(1, FindingStage.ACCEPTED, Priority.LOW), FindingStage.INCORRECT
     )
-    board = board_with(issue)
+    board = build_board(issue)
 
     FindingLabelCompletion(board, 1, FindingStage.INCORRECT).run()
 
@@ -73,8 +73,10 @@ def test_a_picked_incorrect_stage_closes_the_finding_as_not_planned() -> None:
 
 
 def test_a_picked_priority_replaces_the_previous_priority() -> None:
-    issue = labelled(finding(1, FindingStage.ACCEPTED, Priority.LOW), Priority.HIGH)
-    board = board_with(issue)
+    issue = add_label(
+        build_finding(1, FindingStage.ACCEPTED, Priority.LOW), Priority.HIGH
+    )
+    board = build_board(issue)
 
     FindingLabelCompletion(board, 1, Priority.HIGH).run()
 
@@ -83,7 +85,7 @@ def test_a_picked_priority_replaces_the_previous_priority() -> None:
 
 def test_a_priority_picked_on_a_plain_issue_makes_it_an_unreviewed_finding() -> None:
     issue = Issue(1, "An issue", ("bug", Priority.MEDIUM), IssueState.OPEN)
-    board = board_with(issue)
+    board = build_board(issue)
 
     FindingLabelCompletion(board, 1, Priority.MEDIUM).run()
 
@@ -91,10 +93,10 @@ def test_a_priority_picked_on_a_plain_issue_makes_it_an_unreviewed_finding() -> 
 
 
 def test_picked_evidence_replaces_the_previous_evidence() -> None:
-    unproven = labelled(
-        finding(1, FindingStage.ACCEPTED, Priority.LOW), Evidence.UNPROVEN
+    unproven = add_label(
+        build_finding(1, FindingStage.ACCEPTED, Priority.LOW), Evidence.UNPROVEN
     )
-    board = board_with(labelled(unproven, Evidence.PROVEN))
+    board = build_board(add_label(unproven, Evidence.PROVEN))
 
     FindingLabelCompletion(board, 1, Evidence.PROVEN).run()
 
@@ -102,7 +104,7 @@ def test_picked_evidence_replaces_the_previous_evidence() -> None:
 
 
 def test_a_label_removed_again_since_changes_nothing() -> None:
-    board = board_with(finding(1, FindingStage.UNREVIEWED, Priority.LOW))
+    board = build_board(build_finding(1, FindingStage.UNREVIEWED, Priority.LOW))
 
     FindingLabelCompletion(board, 1, FindingStage.SHELVED).run()
 
@@ -110,8 +112,8 @@ def test_a_label_removed_again_since_changes_nothing() -> None:
 
 
 def test_a_label_outside_the_findings_changes_nothing() -> None:
-    issue = labelled(finding(1, FindingStage.UNREVIEWED, Priority.LOW), "bug")
-    board = board_with(issue)
+    issue = add_label(build_finding(1, FindingStage.UNREVIEWED, Priority.LOW), "bug")
+    board = build_board(issue)
 
     FindingLabelCompletion(board, 1, "bug").run()
 
@@ -181,7 +183,7 @@ def completion(
     )
 
 
-def with_labels(*labels: str) -> Issue:
+def build_labelled_issue(*labels: str) -> Issue:
     """
     :param labels: The labels it carries.
     :return: Open issue 1, carrying them.
@@ -191,7 +193,9 @@ def with_labels(*labels: str) -> Issue:
 
 def test_the_stage_added_last_replaces_the_one_before_it() -> None:
     board = labelled_board(
-        with_labels(FindingStage.UNREVIEWED, Priority.MEDIUM, FindingStage.ACCEPTED)
+        build_labelled_issue(
+            FindingStage.UNREVIEWED, Priority.MEDIUM, FindingStage.ACCEPTED
+        )
     )
 
     completion(
@@ -203,7 +207,7 @@ def test_the_stage_added_last_replaces_the_one_before_it() -> None:
 
 def test_the_priority_added_last_replaces_the_one_before_it() -> None:
     board = labelled_board(
-        with_labels(FindingStage.ACCEPTED, Priority.HIGH, Priority.LOW)
+        build_labelled_issue(FindingStage.ACCEPTED, Priority.HIGH, Priority.LOW)
     )
 
     completion(
@@ -214,7 +218,7 @@ def test_the_priority_added_last_replaces_the_one_before_it() -> None:
 
 
 def test_an_open_incorrect_finding_is_closed() -> None:
-    board = labelled_board(with_labels(FindingStage.INCORRECT, Priority.LOW))
+    board = labelled_board(build_labelled_issue(FindingStage.INCORRECT, Priority.LOW))
 
     completion(board, {}).complete()
 
@@ -222,14 +226,14 @@ def test_an_open_incorrect_finding_is_closed() -> None:
 
 
 def test_a_finding_with_one_label_of_each_kind_is_left_as_it_is() -> None:
-    board = labelled_board(finding(1, FindingStage.ACCEPTED, Priority.LOW))
+    board = labelled_board(build_finding(1, FindingStage.ACCEPTED, Priority.LOW))
 
     assert completion(board, {}).complete() == []
     assert board.writes == []
 
 
 def test_the_session_start_says_what_was_completed_first() -> None:
-    board = labelled_board(with_labels(FindingStage.INCORRECT, Priority.LOW))
+    board = labelled_board(build_labelled_issue(FindingStage.INCORRECT, Priority.LOW))
 
     [line] = LabelsCompletedReport(completion(board, {}), NothingToSay()).lines()
 

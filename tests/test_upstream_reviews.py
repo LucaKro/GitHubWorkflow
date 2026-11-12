@@ -51,7 +51,7 @@ from github_workflow.workflow_templates import (
 
 from .repositories_by_owner import RepositoriesByOwner
 from .scratch_github import ScratchGitHub
-from .test_discussions import notes_in
+from .test_discussions import clone_notes_branch
 
 # %% GitHub's answers
 
@@ -86,7 +86,7 @@ class UpstreamReviewDataset(PathEnumeration):
     The ``data`` of the one page of its review threads.
     """
 
-    def decoded(self) -> Any:
+    def decode_answer(self) -> Any:
         """:return: The answer, decoded."""
         return json.loads(self.value.read_text())
 
@@ -105,14 +105,14 @@ class UpstreamAnswers(GitHubReader):
         return self.rest_answers()[path]
 
     def execute(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
-        return UpstreamReviewDataset.THREADS_PAGE.decoded()
+        return UpstreamReviewDataset.THREADS_PAGE.decode_answer()
 
     @staticmethod
     def rest_answers() -> dict[str, Any]:
         """:return: The answer to each REST path, pages listed for a paged one."""
         asked = request()
         route = RepositoryRoute(asked.upstream)
-        pull_request = UpstreamReviewDataset.PULL_REQUEST.decoded()
+        pull_request = UpstreamReviewDataset.PULL_REQUEST.decode_answer()
         number = pull_request[RestJSONKey.NUMBER]
         commit = pull_request[RestJSONKey.HEAD][RestJSONKey.SHA]
         return {
@@ -120,9 +120,13 @@ class UpstreamAnswers(GitHubReader):
                 [pull_request]
             ],
             route.pull_request(number): pull_request,
-            route.reviews(number): [UpstreamReviewDataset.REVIEWS.decoded()],
-            route.check_runs(commit): [UpstreamReviewDataset.CHECK_RUNS.decoded()],
-            route.commit_status(commit): [UpstreamReviewDataset.STATUSES.decoded()],
+            route.reviews(number): [UpstreamReviewDataset.REVIEWS.decode_answer()],
+            route.check_runs(commit): [
+                UpstreamReviewDataset.CHECK_RUNS.decode_answer()
+            ],
+            route.commit_status(commit): [
+                UpstreamReviewDataset.STATUSES.decode_answer()
+            ],
         }
 
 
@@ -261,7 +265,7 @@ class RunsOfTheQueuedRequest(RepositoryWorkflows):
         ]
 
 
-def forwarded(
+def build_forwarded_reviews(
     notes: NotesBranch, runs: RunsOfTheQueuedRequest | None = None
 ) -> ForwardedUpstreamReviews:
     """
@@ -278,7 +282,7 @@ def forwarded(
     )
 
 
-def answered(notes: NotesBranch, name: str) -> None:
+def save_answers(notes: NotesBranch, name: str) -> None:
     """
     Save GitHub's answers on the notes branch as the runner does.
 
@@ -300,10 +304,10 @@ def answered(notes: NotesBranch, name: str) -> None:
 def test_a_forwarded_request_is_queued_with_its_workflow(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
-    notes = notes_in(repositories, owned_url, settings)
-    answered(notes, request().name)
+    notes = clone_notes_branch(repositories, owned_url, settings)
+    save_answers(notes, request().name)
 
-    forwarded(notes).snapshot(request())
+    build_forwarded_reviews(notes).snapshot(request())
 
     notes.fetch()
     queued = notes.read(NotesFile.UPSTREAM_REVIEW_REQUESTS.value / request().name)
@@ -329,10 +333,10 @@ def test_a_forwarded_request_is_queued_with_its_workflow(
 def test_a_forwarded_request_reads_the_saved_answer(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
-    notes = notes_in(repositories, owned_url, settings)
-    answered(notes, request().name)
+    notes = clone_notes_branch(repositories, owned_url, settings)
+    save_answers(notes, request().name)
 
-    snapshot = forwarded(notes).snapshot(request())
+    snapshot = build_forwarded_reviews(notes).snapshot(request())
 
     assert snapshot == request().snapshot(UpstreamAnswers())
 
@@ -352,9 +356,9 @@ def queued_requests(notes: NotesBranch) -> list[str]:
 def test_a_request_no_run_started_for_is_asked_again_then_given_up_on(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
-    notes = notes_in(repositories, owned_url, settings)
+    notes = clone_notes_branch(repositories, owned_url, settings)
 
-    unavailable = forwarded(notes).snapshot(request())
+    unavailable = build_forwarded_reviews(notes).snapshot(request())
 
     assert (unavailable, len(queued_requests(notes))) == (
         UpstreamReadNotStarted(ScratchGitHub.owned, 0),
@@ -365,12 +369,12 @@ def test_a_request_no_run_started_for_is_asked_again_then_given_up_on(
 def test_a_request_whose_run_failed_is_given_up_on(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
-    notes = notes_in(repositories, owned_url, settings)
+    notes = clone_notes_branch(repositories, owned_url, settings)
     failed = RunsOfTheQueuedRequest(
         notes, WorkflowRunStatus.COMPLETED, WorkflowRunConclusion.FAILURE
     )
 
-    unavailable = forwarded(notes, failed).snapshot(request())
+    unavailable = build_forwarded_reviews(notes, failed).snapshot(request())
 
     assert unavailable == UpstreamReadFailed(
         ScratchGitHub.owned.workflow_run_url(1), WorkflowRunConclusion.FAILURE
@@ -380,9 +384,9 @@ def test_a_request_whose_run_failed_is_given_up_on(
 def test_a_request_whose_run_is_still_going_is_left_unanswered_in_time(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
-    notes = notes_in(repositories, owned_url, settings)
+    notes = clone_notes_branch(repositories, owned_url, settings)
     going = RunsOfTheQueuedRequest(notes, WorkflowRunStatus.IN_PROGRESS)
 
-    unavailable = forwarded(notes, going).snapshot(request())
+    unavailable = build_forwarded_reviews(notes, going).snapshot(request())
 
     assert unavailable == UpstreamReadUnanswered(request().upstream, 0)

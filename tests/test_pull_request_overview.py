@@ -157,7 +157,7 @@ class PullRequestsWithSignals(PullRequestTracker, PullRequestSource):
 
 def failing_checks() -> CheckStatus:
     """:return: Checks one of which failed."""
-    return CheckStatus.over(
+    return CheckStatus.from_results(
         [CheckResult("build", CheckOutcome.FAILURE, "https://example.com/build")]
     )
 

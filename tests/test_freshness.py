@@ -26,7 +26,7 @@ from .test_commands import github, run  # noqa: F401
 from .test_upstream import (
     ForkInMemory,
     default_branch_tips,
-    with_upstream,
+    give_fork_upstream,
 )
 from .test_work import work  # noqa: F401  (a fixture)
 
@@ -54,7 +54,7 @@ def change_on_github(
     return other.run("rev-parse", "HEAD")
 
 
-def freshening(work: WritePolicy, base: str | None = None) -> BranchFreshening:
+def build_freshening(work: WritePolicy, base: str | None = None) -> BranchFreshening:
     """
     :param work: The rules of the session's clone.
     :param base: The branch the work branch's open pull request targets; ``None`` for
@@ -85,7 +85,7 @@ def test_a_work_branch_behind_its_base_is_merged_with_it(
         work, repositories, RepositoriesByOwner.default_branch, "b.txt"
     )
 
-    [line] = freshening(work).lines()
+    [line] = build_freshening(work).lines()
 
     assert RepositoriesByOwner.is_ancestor(work.checkout.git, changed, "HEAD")
     assert line.tone is Tone.NEWS
@@ -97,7 +97,7 @@ def test_a_conflicting_merge_is_left_for_the_session(
     head = work.checkout.git.run("rev-parse", "HEAD")
     change_on_github(work, repositories, RepositoriesByOwner.default_branch, "a.txt")
 
-    [line] = freshening(work).lines()
+    [line] = build_freshening(work).lines()
 
     assert work.checkout.git.run("rev-parse", "HEAD") == head
     assert line.tone is Tone.ACTION
@@ -110,7 +110,7 @@ def test_changes_in_the_working_tree_keep_the_merge_off(
     change_on_github(work, repositories, RepositoriesByOwner.default_branch, "b.txt")
     (work.checkout.root / "a.txt").write_text("changed, not committed\n")
 
-    [line] = freshening(work).lines()
+    [line] = build_freshening(work).lines()
 
     assert work.checkout.git.run("rev-parse", "HEAD") == head
     assert line.tone is Tone.ACTION
@@ -126,14 +126,14 @@ def test_a_stacked_branch_is_merged_with_the_branch_below(
         work, repositories, RepositoriesByOwner.default_branch, "c.txt"
     )
 
-    freshening(work, base="below").lines()
+    build_freshening(work, base="below").lines()
 
     assert RepositoriesByOwner.is_ancestor(git, below, "HEAD")
     assert not RepositoriesByOwner.is_ancestor(git, elsewhere, "HEAD")
 
 
 def test_an_up_to_date_work_branch_says_nothing(work: WritePolicy) -> None:
-    assert freshening(work).lines() == []
+    assert build_freshening(work).lines() == []
 
 
 def test_the_default_branch_checked_out_is_left_alone(
@@ -143,7 +143,7 @@ def test_the_default_branch_checked_out_is_left_alone(
     head = work.checkout.git.run("rev-parse", "HEAD")
     change_on_github(work, repositories, RepositoriesByOwner.default_branch, "b.txt")
 
-    assert freshening(work).lines() == []
+    assert build_freshening(work).lines() == []
     assert work.checkout.git.run("rev-parse", "HEAD") == head
 
 
@@ -153,7 +153,7 @@ def test_the_default_branch_checked_out_is_left_alone(
 def test_a_fork_s_main_behind_its_upstream_is_fast_forwarded(
     work: WritePolicy, repositories: RepositoriesByOwner
 ) -> None:
-    with_upstream(work, repositories, ahead=2, own=0)
+    give_fork_upstream(work, repositories, ahead=2, own=0)
 
     BranchFreshening(work, ForkInMemory()).fork_lines()
 
@@ -164,7 +164,7 @@ def test_a_fork_s_main_behind_its_upstream_is_fast_forwarded(
 def test_a_fork_s_main_with_commits_of_its_own_is_left_for_the_person(
     work: WritePolicy, repositories: RepositoriesByOwner
 ) -> None:
-    with_upstream(work, repositories, ahead=1, own=1)
+    give_fork_upstream(work, repositories, ahead=1, own=1)
     before = default_branch_tips(work, repositories)
 
     [line] = BranchFreshening(work, ForkInMemory()).fork_lines()
@@ -180,7 +180,7 @@ def test_a_command_says_what_was_brought_up_to_date_first(
     work: WritePolicy, repositories: RepositoriesByOwner
 ) -> None:
     change_on_github(work, repositories, RepositoriesByOwner.default_branch, "b.txt")
-    step = FreshenedStep(freshening(work), Done())
+    step = FreshenedStep(build_freshening(work), Done())
 
     done = step.run()
 
