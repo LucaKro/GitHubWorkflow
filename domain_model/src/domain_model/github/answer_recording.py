@@ -11,12 +11,14 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
+from domain_model.class_property import classproperty
 from domain_model.code_version import CodeVersion
 from domain_model.github.clients import GitHubReader
 from domain_model.github.exceptions import (
     RecordedReadMissingError,
     UnreadableRecordingError,
 )
+from domain_model.github.vocabulary import PullRequestJSONKey, RestJSONKey
 
 # %% one read
 
@@ -158,14 +160,12 @@ class AnswerRecording:
         """:return: An empty recording, made by the code running now."""
         return cls(CodeVersion.running())
 
-    def keep(self, read: GitHubRead, answer: Any) -> Any:
+    def keep(self, read: GitHubRead, answer: Any) -> None:
         """
         :param read: A read just made.
         :param answer: What GitHub answered it.
-        :return: The answer.
         """
         self.answers[read.key] = AnsweredRead(read, answer)
-        return answer
 
     def to_json(self) -> str:
         """:return: The recording, as :meth:`from_json` reads it."""
@@ -213,7 +213,8 @@ class AnswerRecording:
 class RecordingClient(GitHubReader):
     """
     Sends each read through another client, keeping every answer for a
-    :class:`ReplayingClient` to give again elsewhere.
+    :class:`ReplayingClient` to give again elsewhere: only the keys the models read
+    with, since no other can be read.
     """
 
     client: GitHubReader
@@ -226,17 +227,51 @@ class RecordingClient(GitHubReader):
     Every answer so far.
     """
 
+    @classproperty
+    def read_keys(cls) -> frozenset[str]:
+        """
+        Every key the models read an answer with.
+        """
+        return frozenset({*RestJSONKey, *PullRequestJSONKey})
+
     def get(self, path: str) -> Any:
         read = GitHubRead(ReadTransport.REST, path)
-        return self.recording.keep(read, self.client.get(path))
+        return self.kept(read, self.client.get(path))
 
     def get_pages(self, path: str) -> list[Any]:
         read = GitHubRead(ReadTransport.REST_PAGES, path)
-        return self.recording.keep(read, self.client.get_pages(path))
+        return self.kept(read, self.client.get_pages(path))
 
     def execute(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
         read = GitHubRead(ReadTransport.GRAPHQL, query, variables)
-        return self.recording.keep(read, self.client.execute(query, variables))
+        return self.kept(read, self.client.execute(query, variables))
+
+    def kept(self, read: GitHubRead, answer: Any) -> Any:
+        """
+        Keep a read's answer, trimmed to :attr:`read_keys`.
+
+        :param read: A read just made.
+        :param answer: What GitHub answered it.
+        :return: The answer, whole.
+        """
+        self.recording.keep(read, self.trimmed(answer))
+        return answer
+
+    def trimmed(self, answer: Any) -> Any:
+        """
+        :param answer: A parsed answer.
+        :return: It with every object, nested ones included, holding only the keys of
+            :attr:`read_keys`.
+        """
+        if isinstance(answer, dict):
+            return {
+                key: self.trimmed(value)
+                for key, value in answer.items()
+                if key in self.read_keys
+            }
+        if isinstance(answer, list):
+            return [self.trimmed(value) for value in answer]
+        return answer
 
 
 @dataclass(frozen=True)

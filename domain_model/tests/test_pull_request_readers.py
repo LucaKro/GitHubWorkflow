@@ -347,6 +347,57 @@ def test_a_commit_nothing_reported_on_has_no_checks() -> None:
     assert reader.checks("a1b2c3") is None
 
 
+@pytest.mark.parametrize(
+    ("conclusion", "verdict"),
+    [
+        ("success", RollupState.SUCCESS),
+        ("neutral", RollupState.SUCCESS),
+        ("skipped", RollupState.SUCCESS),
+        ("failure", RollupState.FAILURE),
+        ("cancelled", RollupState.FAILURE),
+        ("timed_out", RollupState.FAILURE),
+        ("action_required", RollupState.FAILURE),
+        ("stale", RollupState.FAILURE),
+        ("startup_failure", RollupState.FAILURE),
+        (None, RollupState.PENDING),
+    ],
+    ids=str,
+)
+def test_a_check_run_s_conclusion_decides_the_verdict_beside_a_passing_one(
+    conclusion: str | None, verdict: RollupState
+) -> None:
+    runs = {
+        RestJSONKey.CHECK_RUNS: [
+            {
+                RestJSONKey.NAME: "build",
+                RestJSONKey.CONCLUSION: "success",
+                RestJSONKey.DETAILS_URL: None,
+            },
+            {
+                RestJSONKey.NAME: "tests",
+                RestJSONKey.CONCLUSION: conclusion,
+                RestJSONKey.DETAILS_URL: None,
+            },
+        ]
+    }
+    reader = CommitCheckReader(
+        RestPagesByPath(
+            {
+                ROUTE.check_runs("a1b2c3"): [runs],
+                ROUTE.commit_status("a1b2c3"): [
+                    recorded(DatasetLocation.REST_COMMIT_STATUS_NONE)
+                ],
+            }
+        ),
+        ROUTE,
+    )
+
+    checks = reader.checks("a1b2c3")
+
+    assert checks is not None
+    assert checks.state is verdict
+
+
 # %% recorded and replayed answers
 
 
@@ -396,6 +447,79 @@ def test_a_recording_reads_back_as_written(
     written = recording.recording.to_json()
 
     assert AnswerRecording.from_json(written) == recording.recording
+
+
+def with_unread_fields(answer: Any) -> Any:
+    """
+    :param answer: A recorded answer.
+    :return: It with a field no model reads added to every object in it.
+    """
+    if isinstance(answer, dict):
+        return {
+            "an_unread_field": {"nested": [1, 2]},
+            **{key: with_unread_fields(value) for key, value in answer.items()},
+        }
+    if isinstance(answer, list):
+        return [with_unread_fields(value) for value in answer]
+    return answer
+
+
+def keys_in(answer: Any) -> set[str]:
+    """:param answer: A recorded answer.
+    :return: Every key of every object in it."""
+    if isinstance(answer, dict):
+        return set(answer) | {
+            key for value in answer.values() for key in keys_in(value)
+        }
+    if isinstance(answer, list):
+        return {key for value in answer for key in keys_in(value)}
+    return set()
+
+
+@pytest.fixture
+def padded(rest_pages: dict[str, list[Any]]) -> AnswersByTransport:
+    """:return: The pull request's answers over both transports, every object in them
+    carrying a field no model reads."""
+    return AnswersByTransport(
+        RestPagesByPath(
+            {path: with_unread_fields(pages) for path, pages in rest_pages.items()}
+        ),
+        GraphQLAnswersInOrder(
+            [
+                with_unread_fields(recorded(DatasetLocation.GRAPHQL_THREADS_PAGE_ONE)),
+                with_unread_fields(recorded(DatasetLocation.GRAPHQL_THREADS_PAGE_TWO)),
+            ]
+        ),
+    )
+
+
+def test_a_recording_keeps_only_the_keys_the_models_read(
+    rest_pull_request: dict[str, Any], padded: AnswersByTransport
+) -> None:
+    recording = RecordingClient(padded)
+    graphql_source(recording).read_current_state(rest_pull_request[RestJSONKey.NUMBER])
+
+    kept = {
+        key
+        for answered in recording.recording.answers.values()
+        for key in keys_in(answered.answer)
+    }
+
+    assert kept - {*RestJSONKey, *PullRequestJSONKey} == set()
+
+
+def test_a_trimmed_recording_replays_the_read_it_was_recorded_from(
+    rest_pull_request: dict[str, Any], padded: AnswersByTransport
+) -> None:
+    number = rest_pull_request[RestJSONKey.NUMBER]
+    recording = RecordingClient(padded)
+    read = graphql_source(recording).read_current_state(number)
+
+    again = graphql_source(ReplayingClient(recording.recording)).read_current_state(
+        number
+    )
+
+    assert again == read
 
 
 def test_a_recording_names_the_code_that_made_it() -> None:
