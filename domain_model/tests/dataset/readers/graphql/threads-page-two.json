@@ -1,42 +1,6 @@
 {
   "repository": {
     "pullRequest": {
-      "number": 10,
-      "title": "A pull request",
-      "url": "https://github.com/upstream-owner/a-repository/pull/10",
-      "commits": {
-        "nodes": [
-          {
-            "commit": {
-              "statusCheckRollup": {
-                "state": "SUCCESS",
-                "contexts": {
-                  "nodes": [
-                    {
-                      "__typename": "CheckRun",
-                      "name": "build",
-                      "conclusion": "SUCCESS",
-                      "detailsUrl": "https://example.com/build"
-                    }
-                  ]
-                }
-              }
-            }
-          }
-        ]
-      },
-      "reviews": {
-        "nodes": [
-          {
-            "author": {
-              "login": "a-reviewer"
-            },
-            "state": "APPROVED",
-            "body": "Looks good",
-            "submittedAt": "2026-01-02T00:00:00Z"
-          }
-        ]
-      },
       "reviewThreads": {
         "pageInfo": {
           "hasNextPage": false,

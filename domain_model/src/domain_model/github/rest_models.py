@@ -227,7 +227,7 @@ class RestPullRequest(JSONModel, HasNumberLink):
     @property
     def branch_pull_request(self) -> BranchPullRequest:
         """
-        :return: The summary a branch search compares, in the lifecycle GraphQL names.
+        :return: The summary a branch search compares, merged told apart from closed.
         """
         return BranchPullRequest(
             number=self.number,

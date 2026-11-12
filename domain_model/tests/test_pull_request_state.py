@@ -1,6 +1,6 @@
 """
-Tests for :class:`domain_model.github.vocabulary.PullRequestState`: one state, whichever
-API reported it.
+Tests for :class:`domain_model.github.vocabulary.PullRequestState`: merged told apart
+from closed, as REST reports a pull request.
 """
 
 from __future__ import annotations
@@ -10,21 +10,9 @@ import json
 import pytest
 
 from domain_model.github.rest_models import RestPullRequest
-from domain_model.github.review_models import BranchPullRequest
 from domain_model.github.vocabulary import PullRequestState
 
 from .dataset.locations import DatasetLocation
-
-# %% GraphQL
-
-
-def test_graphql_spells_a_state_as_the_member_name():
-    pull_request = BranchPullRequest.from_json(
-        json.loads(DatasetLocation.GRAPHQL_BRANCH_PULL_REQUEST_MERGED.read_text())
-    )
-
-    assert pull_request.state is PullRequestState.MERGED
-
 
 # %% REST
 

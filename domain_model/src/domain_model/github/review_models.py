@@ -226,21 +226,6 @@ class Review(JSONModel):
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> Review:
         """
-        Build a review from one ``reviews`` node.
-
-        :param data: The node to read.
-        :return: The parsed review.
-        """
-        return cls(
-            author=Author.from_json(data[PullRequestJSONKey.AUTHOR]),
-            state=ReviewState.from_name(data[PullRequestJSONKey.STATE]),
-            body=data[PullRequestJSONKey.BODY],
-            submitted_at=data[PullRequestJSONKey.SUBMITTED_AT],
-        )
-
-    @classmethod
-    def from_rest_json(cls, data: dict[str, Any]) -> Review:
-        """
         Read a review as REST lists it, whose body and submission time are null until
         submitted.
 
@@ -256,9 +241,10 @@ class Review(JSONModel):
 
 
 @dataclass(frozen=True)
-class BranchPullRequest(JSONModel):
+class BranchPullRequest:
     """
-    One pull request found by searching the upstream for a head branch.
+    One pull request found by searching the upstream for a head branch, in what choosing
+    among them compares.
     """
 
     number: int
@@ -275,20 +261,6 @@ class BranchPullRequest(JSONModel):
     """
     The owner of the repository the head branch lives in.
     """
-
-    @classmethod
-    def from_json(cls, data: dict[str, Any]) -> BranchPullRequest:
-        """
-        Build a summary from one ``pullRequests`` node.
-
-        :param data: The node to read.
-        :return: The parsed summary.
-        """
-        return cls(
-            number=data[PullRequestJSONKey.NUMBER],
-            state=PullRequestState.from_name(data[PullRequestJSONKey.STATE]),
-            head_owner=Author.from_json(data[PullRequestJSONKey.HEAD_REPOSITORY_OWNER]),
-        )
 
 
 @dataclass(frozen=True)

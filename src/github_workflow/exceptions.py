@@ -14,6 +14,7 @@ from domain_model.git.revisions import BranchName
 from github_workflow.command_line import CommandOption, RunnableCommand
 
 if TYPE_CHECKING:
+    from domain_model.code_version import CodeVersion
     from domain_model.git.remotes import Remote
     from domain_model.git.revisions import BranchTip
     from domain_model.github.vocabulary import WorkflowRunConclusion
@@ -1238,6 +1239,45 @@ class UpstreamReadNotStarted(UpstreamReviewsUnavailable):
             f"Ask the person to check that Actions and the fork's workflows are on at "
             f"{self.fork.url}/actions, then list the reviews again"
         )
+
+
+@dataclass
+class UpstreamAnswerUnreadable(UpstreamReviewsUnavailable):
+    """
+    The fork's Actions answered the request, but this session's code cannot read the
+    answer back.
+    """
+
+    problem: str
+    """
+    What is wrong with the answer.
+    """
+
+    recorder: CodeVersion | None
+    """
+    The code that recorded it, ``None`` when the answer does not say.
+    """
+
+    replayer: CodeVersion
+    """
+    The code this session runs.
+    """
+
+    def error_message(self) -> str:
+        return f"the fork's Actions answered, but {self.problem}"
+
+    def suggest_correction(self) -> str:
+        if self.recorder is None:
+            return (
+                "Ask again: the answer was saved by an older version of the workflow."
+            )
+        if self.recorder != self.replayer:
+            return (
+                f"Update the plugin: the answer was recorded by "
+                f"{self.recorder.described}, this session runs "
+                f"{self.replayer.described}."
+            )
+        return "Ask for the upstream reviews again."
 
 
 @dataclass

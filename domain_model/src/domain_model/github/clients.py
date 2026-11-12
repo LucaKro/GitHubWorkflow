@@ -12,7 +12,6 @@ import urllib.request
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from enum import StrEnum
 from http import HTTPMethod, HTTPStatus
 from pathlib import Path
 from typing import Any
@@ -21,10 +20,7 @@ from domain_model.class_property import classproperty
 from domain_model.commands import CommandRunner
 from domain_model.environment import GitHubActionsVariable
 from domain_model.github.credential import GitHubToken
-from domain_model.github.exceptions import (
-    GitHubRequestFailed,
-    RecordedAnswersExhaustedError,
-)
+from domain_model.github.exceptions import GitHubRequestFailed
 from domain_model.github.pull_request_models import GraphQLResponse
 from domain_model.github.vocabulary import PullRequestJSONKey
 from domain_model.repository import GitHubAddress, Repository
@@ -64,91 +60,6 @@ class GraphQLClient(ABC):
         """
 
 
-class RecordedAnswersKey(StrEnum):
-    """
-    The keys of :class:`RecordedAnswers` as JSON.
-    """
-
-    DATA = "answers"
-    """
-    The ``data`` of every answer, in order.
-    """
-
-
-@dataclass(frozen=True)
-class RecordedAnswers:
-    """
-    GitHub's answers to a run of GraphQL queries, in the order they came.
-    """
-
-    data: list[dict[str, Any]] = field(default_factory=list)
-    """
-    The ``data`` member of every answer, in order.
-    """
-
-    def to_json(self) -> str:
-        """:return: The answers, as :meth:`from_json` reads them."""
-        return json.dumps({RecordedAnswersKey.DATA: self.data})
-
-    @classmethod
-    def from_json(cls, text: str) -> RecordedAnswers:
-        """
-        :param text: Answers, as :meth:`to_json` writes them.
-        :return: The answers.
-        """
-        return cls(json.loads(text)[RecordedAnswersKey.DATA])
-
-
-@dataclass(frozen=True)
-class RecordingGraphQLClient(GraphQLClient):
-    """
-    Sends each query through another client, keeping every answer, in order, for a
-    :class:`ReplayingGraphQLClient` to give again elsewhere.
-    """
-
-    client: GraphQLClient
-    """
-    The client the queries go through.
-    """
-
-    answers: RecordedAnswers = field(default_factory=RecordedAnswers)
-    """
-    Every answer, in the order they came.
-    """
-
-    def execute(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
-        answer = self.client.execute(query, variables)
-        self.answers.data.append(answer)
-        return answer
-
-
-@dataclass
-class ReplayingGraphQLClient(GraphQLClient):
-    """
-    Answers each query with the next answer a :class:`RecordingGraphQLClient` kept, so
-    the same reads, made in the same order, see what GitHub answered then.
-    """
-
-    answers: RecordedAnswers
-    """
-    The recorded answers.
-    """
-
-    given: int = 0
-    """
-    How many answers were given so far.
-    """
-
-    def execute(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
-        """
-        :raises RecordedAnswersExhaustedError: If every answer was given already.
-        """
-        if self.given == len(self.answers.data):
-            raise RecordedAnswersExhaustedError(self.given)
-        self.given += 1
-        return self.answers.data[self.given - 1]
-
-
 class RestClient(ABC):
     """
     Reads REST responses from GitHub.
@@ -171,6 +82,12 @@ class RestClient(ABC):
         :param path: The REST path of the first page, query included.
         :return: Each page's parsed response, in order.
         """
+
+
+class GitHubReader(RestClient, GraphQLClient, ABC):
+    """
+    Reads GitHub over REST and GraphQL alike.
+    """
 
 
 class RestWriter(ABC):
@@ -336,7 +253,7 @@ class NoAutomaticRedirect(urllib.request.HTTPRedirectHandler):
 
 
 @dataclass(frozen=True)
-class GitHubApi(GraphQLClient, RestApi, JobLogReader):
+class GitHubApi(GitHubReader, RestApi, JobLogReader):
     """
     GitHub's REST and GraphQL APIs, called over HTTP with a token.
     """

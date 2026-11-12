@@ -11,7 +11,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from domain_model.github.clients import RecordedAnswers, ReplayingGraphQLClient
+from domain_model.github.answer_recording import AnswerRecording, ReplayingClient
 
 from github_workflow.probe.library_check import PullRequestReviewStateCall
 from github_workflow.upstream_reviews import UpstreamReviewRequest
@@ -26,8 +26,8 @@ def main() -> None:
     """
     request_file, answer_file = sys.argv[1:]
     request = UpstreamReviewRequest.from_file(Path(request_file))
-    answers = RecordedAnswers.from_json(Path(answer_file).read_text())
-    snapshot = request.snapshot(ReplayingGraphQLClient(answers))
+    recording = AnswerRecording.from_json(Path(answer_file).read_text())
+    snapshot = request.snapshot(ReplayingClient(recording))
     print(PullRequestReviewStateCall().snapshot_text(snapshot))
 
 

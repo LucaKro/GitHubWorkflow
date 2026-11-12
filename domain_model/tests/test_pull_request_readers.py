@@ -1,7 +1,9 @@
 """
-Tests for :mod:`domain_model.github.readers` and
-:class:`domain_model.github.commit_checks.CommitCheckReader`: finding a branch's pull
-request and reading its checks and review state, through GraphQL or REST.
+Tests for :mod:`domain_model.github.readers`,
+:mod:`domain_model.github.answer_recording` and
+:class:`domain_model.github.commit_checks.CommitCheckReader`: reading a pull request's
+checks and review state over REST, its threads through REST or GraphQL, and replaying
+the answers.
 """
 
 from __future__ import annotations
@@ -12,22 +14,25 @@ from typing import Any
 
 import pytest
 
-from domain_model.github.clients import (
-    GraphQLClient,
-    RecordedAnswers,
-    RecordingGraphQLClient,
-    ReplayingGraphQLClient,
-    RestClient,
+from domain_model.code_version import CodeVersion
+from domain_model.git.revisions import BranchName
+from domain_model.github.answer_recording import (
+    AnswerRecording,
+    GitHubRead,
+    ReadTransport,
+    RecordingClient,
+    ReplayingClient,
 )
+from domain_model.github.clients import GitHubReader, GraphQLClient, RestClient
 from domain_model.github.commit_checks import CommitCheckReader
 from domain_model.github.exceptions import (
-    RecordedAnswersExhaustedError,
+    RecordedReadMissingError,
     ReviewThreadWithoutCommentsError,
-    UpstreamPullRequestNotFound,
 )
 from domain_model.github.readers import (
-    RestPullRequestReader,
-    UpstreamPullRequestReader,
+    GitHubPullRequestSource,
+    GraphQLReviewThreadSource,
+    RestReviewThreadSource,
 )
 from domain_model.github.rest_models import RestReviewThread
 from domain_model.github.routes import RepositoryRoute
@@ -108,46 +113,42 @@ class RestPagesByPath(RestClient):
         return self.pages[path]
 
 
-# %% choosing a branch's pull request through GraphQL
+@dataclass
+class AnswersByTransport(GitHubReader):
+    """
+    Answers REST paths with their recorded pages and GraphQL queries with the next
+    recorded ``data``.
+    """
+
+    rest: RestPagesByPath
+    """
+    The REST answers.
+    """
+
+    graphql: GraphQLAnswersInOrder
+    """
+    The GraphQL answers.
+    """
+
+    def get(self, path: str) -> Any:
+        return self.rest.get(path)
+
+    def get_pages(self, path: str) -> list[Any]:
+        return self.rest.get_pages(path)
+
+    def execute(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        return self.graphql.execute(query, variables)
 
 
-def graphql_reader(*answers: DatasetLocation) -> UpstreamPullRequestReader:
-    """:param answers: The recorded ``data`` of each query, in order.
-    :return: A GraphQL reader answered with them."""
-    return UpstreamPullRequestReader(
-        GraphQLAnswersInOrder([recorded(answer) for answer in answers]),
-        UPSTREAM,
-        FORK_OWNER,
+# %% review threads through GraphQL
+
+
+def graphql_threads(*answers: DatasetLocation) -> GraphQLReviewThreadSource:
+    """:param answers: The recorded ``data`` of each page, in order.
+    :return: A GraphQL source of threads answered with them."""
+    return GraphQLReviewThreadSource(
+        GraphQLAnswersInOrder([recorded(answer) for answer in answers]), UPSTREAM
     )
-
-
-def test_the_fork_s_open_pull_request_is_chosen_over_its_closed_ones() -> None:
-    reader = graphql_reader(DatasetLocation.GRAPHQL_BRANCH_SEARCH)
-
-    assert reader.resolve_pull_request_number("a-branch") == 10
-
-
-def test_without_an_open_one_the_fork_s_newest_pull_request_is_chosen() -> None:
-    search = recorded(DatasetLocation.GRAPHQL_BRANCH_SEARCH_CLOSED)
-    newest = search[PullRequestJSONKey.REPOSITORY][PullRequestJSONKey.PULL_REQUESTS][
-        PullRequestJSONKey.NODES
-    ][0]
-    reader = graphql_reader(DatasetLocation.GRAPHQL_BRANCH_SEARCH_CLOSED)
-
-    assert (
-        reader.resolve_pull_request_number("a-branch")
-        == newest[PullRequestJSONKey.NUMBER]
-    )
-
-
-def test_another_owner_s_pull_request_is_never_chosen() -> None:
-    reader = graphql_reader(DatasetLocation.GRAPHQL_BRANCH_SEARCH_FOREIGN)
-
-    with pytest.raises(UpstreamPullRequestNotFound):
-        reader.resolve_pull_request_number("a-branch")
-
-
-# %% reading a pull request through GraphQL
 
 
 def test_every_page_of_review_threads_is_gathered() -> None:
@@ -163,9 +164,9 @@ def test_every_page_of_review_threads_is_gathered() -> None:
         ][PullRequestJSONKey.REVIEW_THREADS][PullRequestJSONKey.NODES]
     ]
 
-    snapshot = graphql_reader(*pages).read_current_state(10)
+    threads = graphql_threads(*pages).threads(10)
 
-    assert [thread.identifier for thread in snapshot.threads] == expected
+    assert [thread.identifier for thread in threads] == expected
 
 
 def test_the_next_page_of_threads_is_read_after_the_last_one_s_cursor() -> None:
@@ -174,33 +175,34 @@ def test_the_next_page_of_threads_is_read_after_the_last_one_s_cursor() -> None:
         [first_page, recorded(DatasetLocation.GRAPHQL_THREADS_PAGE_TWO)]
     )
 
-    UpstreamPullRequestReader(client, UPSTREAM, FORK_OWNER).read_current_state(10)
+    GraphQLReviewThreadSource(client, UPSTREAM).threads(10)
 
     cursor = first_page[PullRequestJSONKey.REPOSITORY][PullRequestJSONKey.PULL_REQUEST][
         PullRequestJSONKey.REVIEW_THREADS
     ][PullRequestJSONKey.PAGE_INFO][PullRequestJSONKey.END_CURSOR]
     assert [
         variables[QueryVariable.THREAD_CURSOR] for variables in client.variables_sent
-    ] == [
-        None,
-        cursor,
-    ]
+    ] == [None, cursor]
 
 
 # %% choosing a branch's pull request through REST
 
 
-def rest_reader(pages: dict[str, list[Any]]) -> RestPullRequestReader:
+def rest_reader(pages: dict[str, list[Any]]) -> GitHubPullRequestSource:
     """:param pages: The pages of each path.
-    :return: A REST reader answered with them."""
-    return RestPullRequestReader(RestPagesByPath(pages), UPSTREAM, FORK_OWNER)
+    :return: A source reading the pull request, its threads too, over REST answered
+        with them."""
+    client = RestPagesByPath(pages)
+    return GitHubPullRequestSource(
+        client, RestReviewThreadSource(client, ROUTE), UPSTREAM, FORK_OWNER
+    )
 
 
 def test_an_open_pull_request_on_a_later_page_is_chosen() -> None:
     open_pull_request = recorded(DatasetLocation.REST_PULLS_PAGE_TWO)[0]
     reader = rest_reader(
         {
-            ROUTE.pull_requests_for_head(FORK_OWNER, "a-branch"): [
+            ROUTE.pull_requests_for_head(FORK_OWNER, BranchName("a-branch")): [
                 recorded(DatasetLocation.REST_PULLS_PAGE_ONE),
                 recorded(DatasetLocation.REST_PULLS_PAGE_TWO),
             ]
@@ -208,12 +210,12 @@ def test_an_open_pull_request_on_a_later_page_is_chosen() -> None:
     )
 
     assert (
-        reader.resolve_pull_request_number("a-branch")
+        reader.resolve_pull_request_number(BranchName("a-branch"))
         == open_pull_request[RestJSONKey.NUMBER]
     )
 
 
-# %% reading a pull request through REST
+# %% reading a pull request, its threads over REST
 
 
 @pytest.fixture
@@ -348,40 +350,77 @@ def test_a_commit_nothing_reported_on_has_no_checks() -> None:
 # %% recorded and replayed answers
 
 
-def test_recorded_answers_read_back_as_written() -> None:
-    answers = RecordedAnswers([recorded(DatasetLocation.GRAPHQL_BRANCH_SEARCH)])
-
-    assert RecordedAnswers.from_json(answers.to_json()) == answers
-
-
-def test_a_read_replayed_from_its_recorded_answers_sees_the_same_pull_request():
-    recording = RecordingGraphQLClient(
+@pytest.fixture
+def both_transports(rest_pages: dict[str, list[Any]]) -> AnswersByTransport:
+    """:return: The pull request's REST answers, and its threads through GraphQL."""
+    return AnswersByTransport(
+        RestPagesByPath(rest_pages),
         GraphQLAnswersInOrder(
             [
-                recorded(DatasetLocation.GRAPHQL_BRANCH_SEARCH),
                 recorded(DatasetLocation.GRAPHQL_THREADS_PAGE_ONE),
                 recorded(DatasetLocation.GRAPHQL_THREADS_PAGE_TWO),
             ]
-        )
+        ),
     )
-    original = UpstreamPullRequestReader(recording, UPSTREAM, FORK_OWNER)
-    read = original.read_current_state(original.resolve_pull_request_number("a-branch"))
 
-    replayed = UpstreamPullRequestReader(
-        ReplayingGraphQLClient(recording.answers), UPSTREAM, FORK_OWNER
+
+def graphql_source(client: GitHubReader) -> GitHubPullRequestSource:
+    """:param client: Answers every read.
+    :return: A source reading the pull request over REST, its threads through
+        GraphQL."""
+    return GitHubPullRequestSource(
+        client, GraphQLReviewThreadSource(client, UPSTREAM), UPSTREAM, FORK_OWNER
     )
-    again = replayed.read_current_state(
-        replayed.resolve_pull_request_number("a-branch")
+
+
+def test_a_read_replayed_from_its_recording_sees_the_same_pull_request(
+    rest_pull_request: dict[str, Any], both_transports: AnswersByTransport
+) -> None:
+    number = rest_pull_request[RestJSONKey.NUMBER]
+    recording = RecordingClient(both_transports)
+    read = graphql_source(recording).read_current_state(number)
+
+    again = graphql_source(ReplayingClient(recording.recording)).read_current_state(
+        number
     )
 
     assert again == read
 
 
-def test_a_query_past_the_recorded_answers_is_refused():
-    client = ReplayingGraphQLClient(
-        RecordedAnswers([recorded(DatasetLocation.GRAPHQL_BRANCH_SEARCH)])
-    )
-    client.execute("query", {})
+def test_a_recording_reads_back_as_written(
+    rest_pull_request: dict[str, Any], both_transports: AnswersByTransport
+) -> None:
+    recording = RecordingClient(both_transports)
+    graphql_source(recording).read_current_state(rest_pull_request[RestJSONKey.NUMBER])
 
-    with pytest.raises(RecordedAnswersExhaustedError):
-        client.execute("query", {})
+    written = recording.recording.to_json()
+
+    assert AnswerRecording.from_json(written) == recording.recording
+
+
+def test_a_recording_names_the_code_that_made_it() -> None:
+    assert AnswerRecording.started().recorder == CodeVersion.running()
+
+
+def test_a_read_the_recording_lacks_is_refused_naming_both_versions() -> None:
+    recorder = CodeVersion("0.1.0", None)
+    client = ReplayingClient(AnswerRecording(recorder))
+
+    with pytest.raises(RecordedReadMissingError) as raised:
+        client.get(ROUTE.pull_request(10))
+
+    assert (raised.value.read, raised.value.recorder, raised.value.replayer) == (
+        GitHubRead(ReadTransport.REST, ROUTE.pull_request(10)).described,
+        recorder,
+        CodeVersion.running(),
+    )
+
+
+def test_a_read_is_answered_whatever_order_the_reads_come_in() -> None:
+    recording = AnswerRecording(CodeVersion.running())
+    first, second = ROUTE.pull_request(1), ROUTE.pull_request(2)
+    recording.keep(GitHubRead(ReadTransport.REST, first), "first")
+    recording.keep(GitHubRead(ReadTransport.REST, second), "second")
+    client = ReplayingClient(recording)
+
+    assert (client.get(second), client.get(first)) == ("second", "first")

@@ -17,23 +17,28 @@ from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 
+from domain_model.code_version import CodeVersion
 from domain_model.git.revisions import BranchName, TextFiles
-from domain_model.github.clients import (
-    GitHubApi,
-    GraphQLClient,
-    RecordedAnswers,
-    RecordingGraphQLClient,
-    ReplayingGraphQLClient,
+from domain_model.github.answer_recording import (
+    AnswerRecording,
+    RecordingClient,
+    ReplayingClient,
+)
+from domain_model.github.clients import GitHubApi, GitHubReader
+from domain_model.github.exceptions import (
+    RecordedReadMissingError,
+    UnreadableRecordingError,
 )
 from domain_model.github.pull_request_models import (
     UpstreamPullRequestSnapshot,
 )
-from domain_model.github.readers import UpstreamPullRequestReader
+from domain_model.github.readers import ReadSource
 from domain_model.github.repository_client import RepositoryWorkflows
 from domain_model.github.vocabulary import WorkflowRunConclusion
 from domain_model.repository import Repository
 
 from github_workflow.exceptions import (
+    UpstreamAnswerUnreadable,
     UpstreamReadFailed,
     UpstreamReadNotStarted,
     UpstreamReadUnanswered,
@@ -122,13 +127,13 @@ class UpstreamReviewRequest:
             path.name,
         )
 
-    def snapshot(self, client: GraphQLClient) -> UpstreamPullRequestSnapshot:
+    def snapshot(self, client: GitHubReader) -> UpstreamPullRequestSnapshot:
         """
         :param client: How the reads reach GitHub, or the answers they got before.
         :return: The upstream pull request's reviews, threads and checks.
         :raises UpstreamPullRequestNotFound: If the branch has none upstream.
         """
-        reader = UpstreamPullRequestReader(client, self.upstream, self.fork_owner)
+        reader = ReadSource.GRAPHQL.reader(client, self.upstream, self.fork_owner)
         return reader.read_current_state(
             reader.resolve_pull_request_number(self.branch)
         )
@@ -155,10 +160,11 @@ class UpstreamReviews(ABC):
 @dataclass(frozen=True)
 class DirectUpstreamReviews(UpstreamReviews):
     """
-    Reads it through GitHub's GraphQL API, which the person's own login reaches.
+    Reads it directly, its threads through GitHub's GraphQL API, which the person's own
+    login reaches.
     """
 
-    client: GraphQLClient
+    client: GitHubReader
     """
     How the reads reach GitHub.
     """
@@ -242,8 +248,7 @@ class ForwardedUpstreamReviews(UpstreamReviews):
             self.notes.fetch()
             saved = self.notes.read(answer)
             if saved is not None:
-                answers = RecordedAnswers.from_json(saved)
-                return request.snapshot(ReplayingGraphQLClient(answers))
+                return self.replay(request, saved)
             stopped = self.stopped_run(queued, waited)
             if stopped is not None:
                 return stopped
@@ -251,6 +256,28 @@ class ForwardedUpstreamReviews(UpstreamReviews):
                 return UpstreamReadUnanswered(request.upstream, self.timeout_seconds)
             time.sleep(self.interval_seconds)
             waited += self.interval_seconds
+
+    @staticmethod
+    def replay(
+        request: UpstreamReviewRequest, saved: str
+    ) -> UpstreamPullRequestSnapshot | UpstreamReviewsUnavailable:
+        """
+        :param request: The request answered.
+        :param saved: The answer the fork's Actions saved.
+        :return: The upstream pull request, read again from the answer, or why this
+            session's code cannot read it.
+        """
+        try:
+            recording = AnswerRecording.from_json(saved)
+            return request.snapshot(ReplayingClient(recording))
+        except RecordedReadMissingError as missing:
+            return UpstreamAnswerUnreadable(
+                missing.error_message(), missing.recorder, missing.replayer
+            )
+        except UnreadableRecordingError as unreadable:
+            return UpstreamAnswerUnreadable(
+                unreadable.error_message(), None, CodeVersion.running()
+            )
 
     def stopped_run(
         self, queued: str, waited: float
@@ -328,7 +355,7 @@ class UpstreamReviewAnswering:
     The directory the answers are saved in; answers of earlier runs are removed.
     """
 
-    client: GraphQLClient
+    client: GitHubReader
     """
     How the reads reach GitHub.
     """
@@ -345,9 +372,9 @@ class UpstreamReviewAnswering:
         answered = []
         for path in sorted(self.requests.glob("*.json")):
             request = UpstreamReviewRequest.from_file(path)
-            recording = RecordingGraphQLClient(self.client)
+            recording = RecordingClient(self.client)
             request.snapshot(recording)
-            (self.answers / request.name).write_text(recording.answers.to_json())
+            (self.answers / request.name).write_text(recording.recording.to_json())
             path.unlink()
             answered.append(request.name)
         return answered

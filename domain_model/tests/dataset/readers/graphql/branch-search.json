@@ -1,6 +1,0 @@
-{"repository": {"pullRequests": {"nodes": [
-  {"number": 12, "state": "CLOSED", "headRepositoryOwner": {"login": "a-fork-owner"}},
-  {"number": 11, "state": "OPEN", "headRepositoryOwner": {"login": "someone-else"}},
-  {"number": 10, "state": "OPEN", "headRepositoryOwner": {"login": "a-fork-owner"}},
-  {"number": 9, "state": "MERGED", "headRepositoryOwner": {"login": "a-fork-owner"}}
-]}}}

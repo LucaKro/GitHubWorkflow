@@ -7,10 +7,14 @@ from __future__ import annotations
 from abc import ABC
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from domain_model.exceptions import DataclassException, ExternalCallFailed
 from domain_model.git.revisions import BranchName
 from domain_model.repository import Repository
+
+if TYPE_CHECKING:
+    from domain_model.code_version import CodeVersion
 
 # %% reading one pull request's review state
 
@@ -284,23 +288,60 @@ class ContradictoryLabelWriteError(DataclassException, ValueError):
 
 
 @dataclass
-class RecordedAnswersExhaustedError(DataclassException, LookupError):
+class RecordedReadMissingError(DataclassException, LookupError):
     """
-    Raised when a query is sent to recorded GraphQL answers that have all been given.
+    Raised when a replay asks for a read its recording holds no answer to.
     """
 
-    given: int
+    read: str
     """
-    How many answers were recorded, and given.
+    The read asked for, as a message names it.
+    """
+
+    recorder: CodeVersion
+    """
+    The code that made the recording.
+    """
+
+    replayer: CodeVersion
+    """
+    The code replaying it.
+    """
+
+    @property
+    def versions_differ(self) -> bool:
+        """:return: Whether different code recorded and replays."""
+        return self.recorder != self.replayer
+
+    def error_message(self) -> str:
+        return (
+            f"the recording holds no answer to {self.read}; recorded by "
+            f"{self.recorder.described}, replayed by {self.replayer.described}"
+        )
+
+    def suggest_correction(self) -> str:
+        if self.versions_differ:
+            return "Replay it with the code that recorded it, or record it again."
+        return "Record the answers again with the reads that replay them."
+
+
+@dataclass
+class UnreadableRecordingError(DataclassException, ValueError):
+    """
+    Raised when a recording of answers is not in the form this code writes, as one
+    written by an older version.
+    """
+
+    missing_key: str
+    """
+    The key the recording lacks.
     """
 
     def error_message(self) -> str:
-        return f"all {self.given} recorded GraphQL answers were given already"
+        return f"the recording of answers holds no {self.missing_key!r}"
 
     def suggest_correction(self) -> str:
-        return (
-            "Replay the answers to the same queries, in the order they were recorded."
-        )
+        return "Record the answers again with this version."
 
 
 # %% stacks

@@ -66,7 +66,6 @@ class PullRequestJSONKey(StrEnum):
     MESSAGE = "message"
     REPOSITORY = "repository"
     PULL_REQUEST = "pullRequest"
-    PULL_REQUESTS = "pullRequests"
     NODES = "nodes"
     PAGE_INFO = "pageInfo"
     HAS_NEXT_PAGE = "hasNextPage"
@@ -83,23 +82,7 @@ class PullRequestJSONKey(StrEnum):
     BODY = "body"
     CREATED_AT = "createdAt"
     URL = "url"
-    REVIEWS = "reviews"
     REVIEW_THREADS = "reviewThreads"
-    STATE = "state"
-    SUBMITTED_AT = "submittedAt"
-    NUMBER = "number"
-    TITLE = "title"
-    HEAD_REPOSITORY_OWNER = "headRepositoryOwner"
-    COMMITS = "commits"
-    COMMIT = "commit"
-    STATUS_CHECK_ROLLUP = "statusCheckRollup"
-    CONTEXTS = "contexts"
-    TYPE_NAME = "__typename"
-    NAME = "name"
-    CONCLUSION = "conclusion"
-    DETAILS_URL = "detailsUrl"
-    CONTEXT = "context"
-    TARGET_URL = "targetUrl"
     QUERY = "query"
     VARIABLES = "variables"
 
@@ -128,7 +111,6 @@ class QueryVariable(StrEnum):
 
     OWNER = "owner"
     NAME = "name"
-    HEAD_REF_NAME = "headRefName"
     NUMBER = "number"
     THREAD_CURSOR = "threadCursor"
     THREAD_ID = "threadId"
@@ -139,7 +121,6 @@ class GraphQLDocument(StrEnum):
     The query documents, stored as ``.graphql`` files in :attr:`PackageLocation.QUERIES`.
     """
 
-    PULL_REQUEST_FOR_BRANCH = "pull_request_for_branch"
     REVIEW_THREADS_PAGE = "review_threads_page"
     RESOLVE_REVIEW_THREAD = "resolve_review_thread"
 
@@ -235,29 +216,9 @@ class PullRequestState(GitHubVocabulary):
     """
 
 
-class CheckContextType(GitHubVocabulary):
-    """
-    The two shapes GitHub returns inside a status check rollup.
-
-    A pull request can carry both at once: Actions jobs arrive as check runs, while
-    anything reporting through the older commit-status API arrives as a status
-    context, and each spells its outcome with its own field.
-    """
-
-    CHECK_RUN = "CheckRun"
-    """
-    A check run, such as a GitHub Actions job, whose outcome is its conclusion.
-    """
-
-    STATUS_CONTEXT = "StatusContext"
-    """
-    A commit status posted through the commit-status API, whose outcome is its state.
-    """
-
-
 class CheckOutcome(GitHubVocabulary):
     """
-    Where one check stands, over both shapes a rollup can hold.
+    Where one check stands, a check run and a commit status alike.
 
     Members are named as GitHub spells them, so a payload's value is looked up by
     name, and each member's value is how the outcome reads in the report. A check run

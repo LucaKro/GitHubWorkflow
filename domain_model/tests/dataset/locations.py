@@ -19,13 +19,6 @@ class DatasetLocation(PathEnumeration):
     The directory holding every payload.
     """
 
-    GRAPHQL_BRANCH_PULL_REQUEST_MERGED = (
-        DIRECTORY / "graphql-branch-pull-request-merged.json"
-    )
-    """
-    A pull request a GraphQL head-branch search found, merged.
-    """
-
     REST_PULL_REQUEST_MERGED = DIRECTORY / "rest-pull-request-merged.json"
     """
     A pull request as REST describes it once merged: closed, with a merge time.
@@ -142,27 +135,6 @@ class DatasetLocation(PathEnumeration):
     GH_STUB = DIRECTORY / "stubs" / "gh.sh"
     """
     A ``gh`` that only answers ``gh auth token``, with ``STUB_TOKEN``.
-    """
-
-    GRAPHQL_BRANCH_SEARCH = DIRECTORY / "readers" / "graphql" / "branch-search.json"
-    """
-    A head-branch search matching the fork's closed, open and merged pull requests, and
-    another owner's.
-    """
-
-    GRAPHQL_BRANCH_SEARCH_CLOSED = (
-        DIRECTORY / "readers" / "graphql" / "branch-search-closed.json"
-    )
-    """
-    A head-branch search matching only the fork's closed and merged pull requests,
-    newest first.
-    """
-
-    GRAPHQL_BRANCH_SEARCH_FOREIGN = (
-        DIRECTORY / "readers" / "graphql" / "branch-search-foreign.json"
-    )
-    """
-    A head-branch search matching only another owner's pull request.
     """
 
     GRAPHQL_THREADS_PAGE_ONE = (

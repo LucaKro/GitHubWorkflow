@@ -1,28 +1,30 @@
 """
-Reading one upstream pull request's checks and review state, through GraphQL or REST.
+Reading one upstream pull request's checks and review state: over REST, the review
+threads through REST or GraphQL, whichever the place it runs in reaches.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
 
 from domain_model.environment import (
     ClaudeCodeVariable,
 )
 from domain_model.git.revisions import BranchName
-from domain_model.github.clients import GitHubApi, GraphQLClient, RestClient
+from domain_model.github.clients import (
+    GitHubApi,
+    GitHubReader,
+    GraphQLClient,
+    RestClient,
+)
 from domain_model.github.commit_checks import CommitCheckReader
 from domain_model.github.exceptions import (
     UpstreamPullRequestNotFound,
 )
-from domain_model.github.pull_request_models import (
-    PullRequestForBranchResult,
-    ReviewThreadsPageResult,
-    UpstreamPullRequestSnapshot,
-)
+from domain_model.github.pull_request_models import UpstreamPullRequestSnapshot
 from domain_model.github.rest_models import (
     RestPullRequest,
     RestReviewThread,
@@ -31,6 +33,7 @@ from domain_model.github.review_models import (
     BranchPullRequest,
     Review,
     ReviewThread,
+    ReviewThreadPage,
     ThreadComment,
 )
 from domain_model.github.review_writers import (
@@ -41,6 +44,7 @@ from domain_model.github.review_writers import (
 from domain_model.github.routes import RepositoryRoute
 from domain_model.github.vocabulary import (
     GraphQLDocument,
+    PullRequestJSONKey,
     PullRequestState,
     QueryVariable,
 )
@@ -117,156 +121,40 @@ class PullRequestSource(ABC):
         return (open_candidates or candidates)[0].number
 
 
-@dataclass
-class UpstreamPullRequestReader(PullRequestSource):
+# %% the review threads, by transport
+
+
+class ReviewThreadSource(ABC):
     """
-    Reads one upstream pull request's checks and review state through GraphQL, which a
-    runner reaches and a Claude Code session does not.
+    Reads one pull request's review threads, by one transport.
     """
 
-    client: GraphQLClient
-    """
-    How GraphQL queries reach GitHub.
-    """
-
-    upstream_repository: Repository
-    """
-    The repository the fork's pull requests are opened against.
-    """
-
-    fork_owner: str
-    """
-    The owner whose branches this reader will claim as its own.
-    """
-
-    @property
-    def _repository_variables(self) -> dict[str, Any]:
-        """:return: The owner and name every query in this script takes."""
-        return {
-            QueryVariable.OWNER: self.upstream_repository.owner,
-            QueryVariable.NAME: self.upstream_repository.name,
-        }
-
-    def resolve_pull_request_number(self, branch: BranchName) -> int:
+    @abstractmethod
+    def threads(self, pull_request_number: int) -> list[ReviewThread]:
         """
-        See :meth:`PullRequestSource.resolve_pull_request_number`.
+        :param pull_request_number: The pull request's number.
+        :return: Every review thread, in the order GitHub returned them.
         """
-        data = self.client.execute(
-            GraphQLDocument.PULL_REQUEST_FOR_BRANCH.read(),
-            {**self._repository_variables, QueryVariable.HEAD_REF_NAME: branch},
-        )
-        return self.choose(
-            branch, PullRequestForBranchResult.from_json(data).pull_requests
-        )
-
-    def read_current_state(
-        self, pull_request_number: int
-    ) -> UpstreamPullRequestSnapshot:
-        """
-        See :meth:`PullRequestSource.read_current_state`.
-        """
-        threads: list[ReviewThread] = []
-        cursor: str | None = None
-        while True:
-            pull_request = ReviewThreadsPageResult.from_json(
-                self.client.execute(
-                    GraphQLDocument.REVIEW_THREADS_PAGE.read(),
-                    {
-                        **self._repository_variables,
-                        QueryVariable.NUMBER: pull_request_number,
-                        QueryVariable.THREAD_CURSOR: cursor,
-                    },
-                )
-            ).pull_request
-            page = pull_request.review_threads
-            threads.extend(page.threads)
-            if not page.page_info.has_next_page:
-                break
-            cursor = page.page_info.end_cursor
-        return UpstreamPullRequestSnapshot.assemble(pull_request, threads)
 
 
-@dataclass
-class RestPullRequestReader(PullRequestSource):
+@dataclass(frozen=True)
+class RestReviewThreadSource(ReviewThreadSource):
     """
-    Reads one upstream pull request's checks and review state over REST, which is what a
-    Claude Code session's proxy answers once the upstream is attached to it.
+    Reads review threads over the REST routes a Claude Code session's proxy adds, which
+    GitHub itself does not have.
     """
 
     client: RestClient
     """
-    How REST requests reach GitHub.
+    How REST requests reach the proxy.
     """
 
-    upstream_repository: Repository
+    route: RepositoryRoute
     """
-    The repository the fork's pull requests are opened against.
-    """
-
-    fork_owner: str
-    """
-    The owner whose branches this reader will claim as its own.
+    The paths under the repository.
     """
 
-    @property
-    def route(self) -> RepositoryRoute:
-        """:return: The paths under the upstream."""
-        return RepositoryRoute(self.upstream_repository)
-
-    def resolve_pull_request_number(self, branch: BranchName) -> int:
-        """
-        See :meth:`PullRequestSource.resolve_pull_request_number`.
-        """
-        pages = self.client.get_pages(
-            self.route.pull_requests_for_head(self.fork_owner, branch)
-        )
-        return self.choose(
-            branch,
-            [
-                RestPullRequest.from_json(entry).branch_pull_request
-                for page in pages
-                for entry in page
-            ],
-        )
-
-    def read_current_state(
-        self, pull_request_number: int
-    ) -> UpstreamPullRequestSnapshot:
-        """
-        See :meth:`PullRequestSource.read_current_state`.
-        """
-        pull_request = RestPullRequest.from_json(
-            self.client.get(self.route.pull_request(pull_request_number))
-        )
-        return UpstreamPullRequestSnapshot(
-            number=pull_request.number,
-            title=pull_request.title,
-            url=pull_request.url,
-            reviews=self._reviews(pull_request_number),
-            threads=self._threads(pull_request_number),
-            checks=CommitCheckReader(self.client, self.route).checks(
-                pull_request.head.commit
-            ),
-        )
-
-    def _reviews(self, pull_request_number: int) -> list[Review]:
-        """
-        :param pull_request_number: The pull request's number.
-        :return: Every submitted review, oldest first.
-        """
-        return [
-            Review.from_rest_json(entry)
-            for page in self.client.get_pages(self.route.reviews(pull_request_number))
-            for entry in page
-        ]
-
-    def _threads(self, pull_request_number: int) -> list[ReviewThread]:
-        """
-        Read the threads, then fill each in from the comments listed separately.
-
-        :param pull_request_number: The pull request's number.
-        :return: Every review thread, in the order the route returned them.
-        """
+    def threads(self, pull_request_number: int) -> list[ReviewThread]:
         comments = {
             comment.database_identifier: comment
             for comment in (
@@ -283,9 +171,126 @@ class RestPullRequestReader(PullRequestSource):
         ]
 
 
+@dataclass(frozen=True)
+class GraphQLReviewThreadSource(ReviewThreadSource):
+    """
+    Reads review threads through GraphQL, which a runner or a developer's machine
+    reaches and a Claude Code session does not.
+    """
+
+    client: GraphQLClient
+    """
+    How GraphQL queries reach GitHub.
+    """
+
+    repository: Repository
+    """
+    The repository the pull request is on.
+    """
+
+    def threads(self, pull_request_number: int) -> list[ReviewThread]:
+        threads: list[ReviewThread] = []
+        cursor: str | None = None
+        while True:
+            data = self.client.execute(
+                GraphQLDocument.REVIEW_THREADS_PAGE.read(),
+                {
+                    QueryVariable.OWNER: self.repository.owner,
+                    QueryVariable.NAME: self.repository.name,
+                    QueryVariable.NUMBER: pull_request_number,
+                    QueryVariable.THREAD_CURSOR: cursor,
+                },
+            )
+            page = ReviewThreadPage.from_json(
+                data[PullRequestJSONKey.REPOSITORY][PullRequestJSONKey.PULL_REQUEST][
+                    PullRequestJSONKey.REVIEW_THREADS
+                ]
+            )
+            threads.extend(page.threads)
+            if not page.page_info.has_next_page:
+                return threads
+            cursor = page.page_info.end_cursor
+
+
+# %% the whole pull request
+
+
+@dataclass(frozen=True)
+class GitHubPullRequestSource(PullRequestSource):
+    """
+    Reads one upstream pull request over REST, its review threads by the transport the
+    place it runs in reaches, every read of it at once.
+    """
+
+    client: RestClient
+    """
+    How REST requests reach GitHub.
+    """
+
+    thread_source: ReviewThreadSource
+    """
+    Reads the review threads.
+    """
+
+    upstream_repository: Repository
+    """
+    The repository the fork's pull requests are opened against.
+    """
+
+    fork_owner: str
+    """
+    The owner whose branches this source claims as its own.
+    """
+
+    @property
+    def route(self) -> RepositoryRoute:
+        """:return: The paths under the upstream."""
+        return RepositoryRoute(self.upstream_repository)
+
+    def resolve_pull_request_number(self, branch: BranchName) -> int:
+        pages = self.client.get_pages(
+            self.route.pull_requests_for_head(self.fork_owner, branch)
+        )
+        return self.choose(
+            branch,
+            [
+                RestPullRequest.from_json(entry).branch_pull_request
+                for page in pages
+                for entry in page
+            ],
+        )
+
+    def read_current_state(
+        self, pull_request_number: int
+    ) -> UpstreamPullRequestSnapshot:
+        route = self.route
+        with ThreadPoolExecutor() as pool:
+            read = pool.submit(self.client.get, route.pull_request(pull_request_number))
+            reviews = pool.submit(
+                self.client.get_pages, route.reviews(pull_request_number)
+            )
+            threads = pool.submit(self.thread_source.threads, pull_request_number)
+            pull_request = RestPullRequest.from_json(read.result())
+            checks = CommitCheckReader(self.client, route).checks(
+                pull_request.head.commit
+            )
+            return UpstreamPullRequestSnapshot(
+                number=pull_request.number,
+                title=pull_request.title,
+                url=pull_request.url,
+                reviews=[
+                    Review.from_json(entry)
+                    for page in reviews.result()
+                    for entry in page
+                ],
+                threads=threads.result(),
+                checks=checks,
+            )
+
+
 class ReadSource(StrEnum):
     """
-    The two APIs a pull request can be read through.
+    The two APIs a pull request's review threads can be read and written through.
     """
 
     REST = "rest"
@@ -309,19 +314,23 @@ class ReadSource(StrEnum):
 
     def reader(
         self,
-        client: GitHubApi,
+        client: GitHubReader,
         upstream_repository: Repository,
         fork_owner: str,
     ) -> PullRequestSource:
         """
-        :param client: The client both readers go through.
+        :param client: The client every read goes through.
         :param upstream_repository: The repository to read.
         :param fork_owner: Whose branches to claim.
-        :return: The reader for this API.
+        :return: A source reading the pull request over REST, its threads through this
+            API.
         """
-        if self is ReadSource.REST:
-            return RestPullRequestReader(client, upstream_repository, fork_owner)
-        return UpstreamPullRequestReader(client, upstream_repository, fork_owner)
+        threads = (
+            RestReviewThreadSource(client, RepositoryRoute(upstream_repository))
+            if self is ReadSource.REST
+            else GraphQLReviewThreadSource(client, upstream_repository)
+        )
+        return GitHubPullRequestSource(client, threads, upstream_repository, fork_owner)
 
     def writer(self, client: GitHubApi, repository: Repository) -> ReviewThreadWriter:
         """

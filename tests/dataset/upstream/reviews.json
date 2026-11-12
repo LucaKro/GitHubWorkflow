@@ -1,0 +1,8 @@
+[
+  {
+    "user": {"login": "upstream-reviewer"},
+    "state": "CHANGES_REQUESTED",
+    "body": "Please rename it.",
+    "submitted_at": "2026-11-06T10:00:00Z"
+  }
+]

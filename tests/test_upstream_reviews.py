@@ -11,15 +11,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from domain_model.git.revisions import BranchName, TextFiles
-from domain_model.github.clients import (
-    GraphQLClient,
-    RecordedAnswers,
-    ReplayingGraphQLClient,
+from domain_model.code_version import CodeVersion
+from domain_model.git.revisions import BranchName, CommitHash, TextFiles
+from domain_model.github.answer_recording import (
+    AnswerRecording,
+    RecordingClient,
+    ReplayingClient,
 )
+from domain_model.github.clients import GitHubReader
 from domain_model.github.repository_client import RepositoryWorkflows
 from domain_model.github.rest_models import Workflow, WorkflowRun
+from domain_model.github.routes import RepositoryRoute
 from domain_model.github.vocabulary import (
+    RestJSONKey,
     WorkflowRunConclusion,
     WorkflowRunStatus,
 )
@@ -32,6 +36,7 @@ from github_workflow.settings import WorkflowSettings
 from github_workflow.upstream_reviews import (
     DirectUpstreamReviews,
     ForwardedUpstreamReviews,
+    UpstreamAnswerUnreadable,
     UpstreamReadFailed,
     UpstreamReadNotStarted,
     UpstreamReadUnanswered,
@@ -56,44 +61,86 @@ class UpstreamReviewDataset(PathEnumeration):
     GitHub's answers to reading a pull request opened upstream.
     """
 
-    ANSWERS = (
-        Path(__file__).parent / "dataset" / "upstream" / "upstream_review_answers.json"
-    )
+    PULL_REQUEST = Path(__file__).parent / "dataset" / "upstream" / "pull-request.json"
     """
-    The ``data`` of the branch search, then of the one page of threads, in order.
+    The pull request, as REST reads it on its own and lists it for its head branch.
     """
 
-    def answers(self) -> list[dict[str, Any]]:
-        """:return: The answers, decoded."""
+    REVIEWS = Path(__file__).parent / "dataset" / "upstream" / "reviews.json"
+    """
+    The one page of its reviews.
+    """
+
+    CHECK_RUNS = Path(__file__).parent / "dataset" / "upstream" / "check-runs.json"
+    """
+    The one page of the check runs on its head commit, which has none.
+    """
+
+    STATUSES = Path(__file__).parent / "dataset" / "upstream" / "statuses.json"
+    """
+    The one page of the commit statuses on its head commit, which has none.
+    """
+
+    THREADS_PAGE = Path(__file__).parent / "dataset" / "upstream" / "threads-page.json"
+    """
+    The ``data`` of the one page of its review threads.
+    """
+
+    def decoded(self) -> Any:
+        """:return: The answer, decoded."""
         return json.loads(self.value.read_text())
 
 
-@dataclass
-class AnswersInOrder(GraphQLClient):
+@dataclass(frozen=True)
+class UpstreamAnswers(GitHubReader):
     """
-    Answers each query with the next of the answers given.
-    """
-
-    answers: list[dict[str, Any]]
-    """
-    The ``data`` of each answer, in order.
+    Answers each REST path the reads of the upstream pull request take with its recorded
+    answer, and every GraphQL query with its one page of threads.
     """
 
-    queries: int = 0
-    """
-    How many queries were answered.
-    """
+    def get(self, path: str) -> Any:
+        return self.rest_answers()[path]
+
+    def get_pages(self, path: str) -> list[Any]:
+        return self.rest_answers()[path]
 
     def execute(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
-        self.queries += 1
-        return self.answers[self.queries - 1]
+        return UpstreamReviewDataset.THREADS_PAGE.decoded()
+
+    @staticmethod
+    def rest_answers() -> dict[str, Any]:
+        """:return: The answer to each REST path, pages listed for a paged one."""
+        asked = request()
+        route = RepositoryRoute(asked.upstream)
+        pull_request = UpstreamReviewDataset.PULL_REQUEST.decoded()
+        number = pull_request[RestJSONKey.NUMBER]
+        commit = pull_request[RestJSONKey.HEAD][RestJSONKey.SHA]
+        return {
+            route.pull_requests_for_head(asked.fork_owner, asked.branch): [
+                [pull_request]
+            ],
+            route.pull_request(number): pull_request,
+            route.reviews(number): [UpstreamReviewDataset.REVIEWS.decoded()],
+            route.check_runs(commit): [UpstreamReviewDataset.CHECK_RUNS.decoded()],
+            route.commit_status(commit): [UpstreamReviewDataset.STATUSES.decoded()],
+        }
+
+
+def recorded_answers() -> AnswerRecording:
+    """:return: GitHub's answers to the reads of :func:`request`, recorded."""
+    recording = RecordingClient(UpstreamAnswers())
+    request().snapshot(recording)
+    return recording.recording
 
 
 def request(name: str = "1.json") -> UpstreamReviewRequest:
     """:param name: The request's file name.
     :return: A request for the reviews upstream of the owner's branch ``feature``."""
     return UpstreamReviewRequest(
-        Repository.parse("an-upstream-owner/project"), "LucaKro", "feature", name
+        Repository.parse("an-upstream-owner/project"),
+        "LucaKro",
+        BranchName("feature"),
+        name,
     )
 
 
@@ -101,9 +148,7 @@ def request(name: str = "1.json") -> UpstreamReviewRequest:
 
 
 def test_a_direct_read_finds_the_branch_s_pull_request_upstream() -> None:
-    snapshot = DirectUpstreamReviews(
-        AnswersInOrder(UpstreamReviewDataset.ANSWERS.answers())
-    ).snapshot(request())
+    snapshot = DirectUpstreamReviews(UpstreamAnswers()).snapshot(request())
 
     assert (snapshot.number, [thread.identifier for thread in snapshot.threads]) == (
         9,
@@ -120,16 +165,13 @@ def test_a_request_is_answered_with_github_s_answers_and_removed(
     requests, answers = tmp_path / "requests", tmp_path / "answers"
     requests.mkdir()
     (requests / "1.json").write_text(request().to_json())
-    recorded = UpstreamReviewDataset.ANSWERS.answers()
 
-    answered = UpstreamReviewAnswering(
-        requests, answers, AnswersInOrder(recorded)
-    ).run()
+    answered = UpstreamReviewAnswering(requests, answers, UpstreamAnswers()).run()
 
-    saved = RecordedAnswers.from_json((answers / "1.json").read_text())
+    saved = AnswerRecording.from_json((answers / "1.json").read_text())
     assert (answered, saved, list(requests.iterdir())) == (
         ["1.json"],
-        RecordedAnswers(recorded),
+        recorded_answers(),
         [],
     )
 
@@ -140,17 +182,37 @@ def test_the_answers_of_an_earlier_run_are_removed(tmp_path: Path) -> None:
     answers.mkdir()
     (answers / "0.json").write_text("{}")
 
-    UpstreamReviewAnswering(requests, answers, AnswersInOrder([])).run()
+    UpstreamReviewAnswering(requests, answers, UpstreamAnswers()).run()
 
     assert list(answers.iterdir()) == []
 
 
 def test_an_answer_read_again_gives_what_github_answered() -> None:
-    recorded = UpstreamReviewDataset.ANSWERS.answers()
+    replayed = request().snapshot(ReplayingClient(recorded_answers()))
 
-    replayed = request().snapshot(ReplayingGraphQLClient(RecordedAnswers(recorded)))
+    assert replayed == request().snapshot(UpstreamAnswers())
 
-    assert replayed == request().snapshot(AnswersInOrder(recorded))
+
+def test_an_answer_lacking_a_read_is_unavailable_with_both_versions() -> None:
+    recorder = CodeVersion("0.2.0", CommitHash("1" * 40))
+    lacking = AnswerRecording(recorder).to_json()
+
+    unavailable = ForwardedUpstreamReviews.replay(request(), lacking)
+
+    assert isinstance(unavailable, UpstreamAnswerUnreadable)
+    assert (unavailable.recorder, unavailable.replayer) == (
+        recorder,
+        CodeVersion.running(),
+    )
+
+
+def test_an_answer_saved_in_the_old_form_is_unavailable() -> None:
+    unavailable = ForwardedUpstreamReviews.replay(
+        request(), json.dumps({"answers": []})
+    )
+
+    assert isinstance(unavailable, UpstreamAnswerUnreadable)
+    assert unavailable.recorder is None
 
 
 # %% asking through the notes branch
@@ -228,9 +290,7 @@ def answered(notes: NotesBranch, name: str) -> None:
         TextFiles(
             {
                 NotesFile.UPSTREAM_REVIEW_ANSWERS.value
-                / name: RecordedAnswers(
-                    UpstreamReviewDataset.ANSWERS.answers()
-                ).to_json()
+                / name: recorded_answers().to_json()
             }
         ),
         "Answer",
@@ -274,9 +334,7 @@ def test_a_forwarded_request_reads_the_saved_answer(
 
     snapshot = forwarded(notes).snapshot(request())
 
-    assert snapshot == request().snapshot(
-        AnswersInOrder(UpstreamReviewDataset.ANSWERS.answers())
-    )
+    assert snapshot == request().snapshot(UpstreamAnswers())
 
 
 def queued_requests(notes: NotesBranch) -> list[str]:

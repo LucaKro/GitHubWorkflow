@@ -5,8 +5,12 @@ pull request out of those a search matched.
 
 from __future__ import annotations
 
+import pytest
+
+from domain_model.git.revisions import BranchName
 from domain_model.github.clients import GitHubApi
-from domain_model.github.readers import RestPullRequestReader
+from domain_model.github.exceptions import UpstreamPullRequestNotFound
+from domain_model.github.readers import PullRequestSource, ReadSource
 from domain_model.github.review_models import Author, BranchPullRequest
 from domain_model.github.vocabulary import PullRequestState
 from domain_model.repository import Repository
@@ -14,10 +18,50 @@ from domain_model.repository import Repository
 # %% choosing the fork's pull request
 
 
-def test_the_fork_owner_is_matched_whatever_its_case() -> None:
-    reader = RestPullRequestReader(
-        GitHubApi("a-token"), Repository("upstream-owner", "a-repository"), "anowner"
+def source(fork_owner: str = "an-owner") -> PullRequestSource:
+    """:param fork_owner: Whose branches to claim.
+    :return: A source of the upstream's pull requests, claiming that owner's."""
+    return ReadSource.REST.reader(
+        GitHubApi("a-token"), Repository("upstream-owner", "a-repository"), fork_owner
     )
-    pull_request = BranchPullRequest(7, PullRequestState.OPEN, Author("AnOwner"))
 
-    assert reader.choose("a-branch", [pull_request]) == pull_request.number
+
+def found(
+    number: int, state: PullRequestState, owner: str = "an-owner"
+) -> BranchPullRequest:
+    """
+    :param number: The pull request's number.
+    :param state: Where it stands.
+    :param owner: The owner of its head branch.
+    :return: The pull request as a branch search finds it.
+    """
+    return BranchPullRequest(number, state, Author(owner))
+
+
+def test_the_fork_owner_is_matched_whatever_its_case() -> None:
+    pull_request = found(7, PullRequestState.OPEN, "AnOwner")
+
+    assert source("anowner").choose(BranchName("a-branch"), [pull_request]) == 7
+
+
+def test_the_fork_s_open_pull_request_is_chosen_over_its_closed_ones() -> None:
+    matches = [
+        found(12, PullRequestState.CLOSED),
+        found(10, PullRequestState.OPEN),
+        found(8, PullRequestState.MERGED),
+    ]
+
+    assert source().choose(BranchName("a-branch"), matches) == 10
+
+
+def test_without_an_open_one_the_fork_s_newest_pull_request_is_chosen() -> None:
+    matches = [found(12, PullRequestState.MERGED), found(8, PullRequestState.CLOSED)]
+
+    assert source().choose(BranchName("a-branch"), matches) == 12
+
+
+def test_another_owner_s_pull_request_is_never_chosen() -> None:
+    matches = [found(10, PullRequestState.OPEN, "someone-else")]
+
+    with pytest.raises(UpstreamPullRequestNotFound):
+        source().choose(BranchName("a-branch"), matches)

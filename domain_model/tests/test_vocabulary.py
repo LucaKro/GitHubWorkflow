@@ -17,8 +17,8 @@ from domain_model.github.pull_request_models import CheckResult
 from domain_model.github.vocabulary import (
     CheckOutcome,
     MergeableState,
-    PullRequestJSONKey,
     PullRequestState,
+    RestJSONKey,
     RollupState,
 )
 
@@ -31,11 +31,11 @@ def test_an_unrecognised_check_conclusion_is_refused_naming_it() -> None:
     node = json.loads(DatasetLocation.CHECK_RUN_UNRECOGNISED_CONCLUSION.read_text())
 
     with pytest.raises(UnrecognisedGitHubValueError) as raised:
-        CheckResult.from_json(node)
+        CheckResult.from_check_run_json(node)
 
     assert (raised.value.vocabulary, raised.value.value) == (
         CheckOutcome,
-        node[PullRequestJSONKey.CONCLUSION],
+        node[RestJSONKey.CONCLUSION].upper(),
     )
 
 
