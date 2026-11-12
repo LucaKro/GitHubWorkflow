@@ -8,6 +8,7 @@ Usage: ``python -m github_workflow.probe.library_check <check> <owner/name>
 
 from __future__ import annotations
 
+import json
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ from enum import StrEnum
 
 from domain_model.class_property import classproperty
 from domain_model.github.clients import GitHubApi
+from domain_model.github.pull_request_models import UpstreamPullRequestSnapshot
 from domain_model.github.readers import ReadSource
 from domain_model.github.repository_client import GitHubRepository
 from domain_model.repository import Repository
@@ -156,15 +158,51 @@ class PullRequestReviewStateCall(LibraryCall):
         return LibraryCheck.PULL_REQUEST_REVIEW_STATE
 
     def read(self, repository: Repository, argument: str) -> str:
+        """
+        :meth:`LibraryCall.read`, preceded by every line of :meth:`snapshot_text`.
+        """
         source = ReadSource.detect()
         snapshot = source.reader(
             GitHubApi.from_environment(), repository, repository.owner
         ).read_current_state(int(argument))
-        checks = snapshot.checks.state if snapshot.checks else "not reported"
         return (
+            f"{self.snapshot_text(snapshot)}\n"
             f"read through {source}: {len(snapshot.threads)} review threads, "
-            f"checks {checks}"
+            f"checks {self.verdict(snapshot)}"
         )
+
+    @staticmethod
+    def verdict(snapshot: UpstreamPullRequestSnapshot) -> str:
+        """
+        :param snapshot: A pull request's reviews, threads and checks.
+        :return: Where its checks stand, as one word.
+        """
+        return str(snapshot.checks.state) if snapshot.checks else "not reported"
+
+    def snapshot_text(self, snapshot: UpstreamPullRequestSnapshot) -> str:
+        """
+        :param snapshot: A pull request's reviews, threads and checks.
+        :return: Each review, each thread with its state and comments, and the checks'
+            verdict, one per line, texts written as JSON strings; the same for the
+            same pull request however it was read.
+        """
+        lines = [f"checks {self.verdict(snapshot)}"]
+        lines += [
+            f"review {review.author.login} {review.state} {review.submitted_at} "
+            f"{json.dumps(review.body)}"
+            for review in snapshot.reviews
+        ]
+        for thread in snapshot.threads:
+            lines.append(
+                f"thread {thread.path}:{thread.line} resolved {thread.is_resolved} "
+                f"outdated {thread.is_outdated}"
+            )
+            lines += [
+                f"  comment {comment.author.login} {comment.created_at} "
+                f"{json.dumps(comment.body)}"
+                for comment in thread.comments
+            ]
+        return "\n".join(lines)
 
 
 # %% entry point
