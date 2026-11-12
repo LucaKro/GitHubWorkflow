@@ -1,0 +1,7 @@
+{
+  "category": "General",
+  "title": "Session log",
+  "body": "2026-11-12 21:33 UTC on `claude/beautiful-cori-bo4dqb`: branches whose pull requests are closed or which were discarded: handed to the deletion workflow `another-pull-request-is-merged-into-the-work-branch`, `building-on-another-pull-request`, `cloud-check/20261112T212042Z`, `conflicts-resolved-by-the-session`, `merge-another-pull-request-into-the-work-branch`, `workspace-members-are-imported-from-the-default-branch`, `workspace-packages-from-the-default-branch`",
+  "kind": "comment",
+  "introduction": "What sessions did on their own, without asking: the findings and pull requests they closed and the branches they deleted. Each entry is one comment, the newest last, posted by the repository's Actions.\n\nPin this discussion to keep it at the top of the repository's Discussions.\n"
+}
