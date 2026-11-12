@@ -36,35 +36,6 @@ from domain_model.repository import Repository
 
 
 @dataclass(frozen=True)
-class BranchComparison(JSONModel):
-    """
-    How far one branch is ahead of and behind another, as REST compares them.
-    """
-
-    ahead_by: int
-    """
-    The commits the compared branch has that the one it is compared against lacks.
-    """
-
-    behind_by: int
-    """
-    The commits the compared branch lacks that the one it is compared against has.
-    """
-
-    @classmethod
-    def from_json(cls, data: dict[str, Any]) -> BranchComparison:
-        """
-        Read a comparison.
-
-        :param data: The object to read.
-        :return: The parsed comparison.
-        """
-        return cls(
-            ahead_by=data[RestJSONKey.AHEAD_BY], behind_by=data[RestJSONKey.BEHIND_BY]
-        )
-
-
-@dataclass(frozen=True)
 class PullRequestHead(JSONModel):
     """
     The branch a pull request would merge, where it lives, and the commit it is at.

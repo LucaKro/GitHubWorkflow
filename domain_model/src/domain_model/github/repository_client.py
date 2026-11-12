@@ -20,7 +20,6 @@ from domain_model.github.exceptions import NotAnIssueError
 from domain_model.github.issue_models import Issue, IssueComment, LabelEvent
 from domain_model.github.labels import GitHubLabel
 from domain_model.github.rest_models import (
-    BranchComparison,
     RestPullRequest,
     RestRepository,
     SearchedPullRequest,
@@ -288,17 +287,8 @@ class RepositoryWorkflows(ABC):
 @dataclass(frozen=True)
 class ForkSync(ABC):
     """
-    Comparing a fork's branch with its upstream's, and bringing it up to theirs.
+    Bringing a fork's branch up to its upstream's.
     """
-
-    @abstractmethod
-    def compare(self, base: BranchName, head: str) -> BranchComparison:
-        """
-        :param base: A branch of this repository.
-        :param head: The branch compared with it, as ``owner:name:branch`` for another
-            repository's.
-        :return: How far *head* is ahead of and behind *base*.
-        """
 
     @abstractmethod
     def sync_with_upstream(self, branch: BranchName) -> None:
@@ -955,11 +945,6 @@ class GitHubRepository(
         return [
             WorkflowRun.from_json(entry) for entry in listed[RestJSONKey.WORKFLOW_RUNS]
         ]
-
-    def compare(self, base: BranchName, head: str) -> BranchComparison:
-        return BranchComparison.from_json(
-            self.api.get(self.route.comparison(base, head))
-        )
 
     def sync_with_upstream(self, branch: BranchName) -> None:
         self.api.request(

@@ -20,7 +20,6 @@ from domain_model.github.issue_models import Issue, IssueComment, LabelEvent
 from domain_model.github.labels import GitHubLabel
 from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
 from domain_model.github.repository_client import GitHubRepository
-from domain_model.github.rest_models import BranchComparison
 from domain_model.github.routes import RepositoryRoute
 from domain_model.github.vocabulary import (
     ClosingKeyword,
@@ -219,25 +218,6 @@ def test_only_the_open_pull_requests_from_a_fork_s_branch_are_kept_open():
     assert [pull_request.number for pull_request in found] == [
         opened[RestJSONKey.NUMBER]
     ]
-
-
-def test_a_branch_is_compared_with_another_repository_s_branch():
-    compared = ROUTE.comparison("trunk", "an-upstream:a-repository:main")
-    answers = {
-        ("GET", f"/{compared}"): answer(
-            HTTPStatus.OK,
-            {
-                RestJSONKey.STATUS: "ahead",
-                RestJSONKey.AHEAD_BY: 2,
-                RestJSONKey.BEHIND_BY: 0,
-            },
-        )
-    }
-
-    with ReplayedApi(answers) as api:
-        comparison = client(api).compare("trunk", "an-upstream:a-repository:main")
-
-    assert comparison == BranchComparison(ahead_by=2, behind_by=0)
 
 
 def test_a_fork_s_branch_is_synced_with_its_upstream():
