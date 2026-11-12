@@ -9,246 +9,28 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from domain_model.git.commands import (
-    GitCommandResult,
-    GitCommandRunner,
+from domain_model.git.commands import GitCommandResult, GitCommandRunner
+from domain_model.git.options import (
+    BranchOption,
+    CommitOption,
+    DiffOption,
+    GitOption,
+    MergeOption,
+    ResetOption,
     RevParseOption,
+    RmOption,
+    StatusOption,
 )
+from domain_model.git.references import SpecialReference
 from domain_model.git.revisions import (
     BranchName,
     Commit,
     CommitHash,
     LocalBranch,
     Revision,
-    SpecialReference,
 )
-from domain_model.git.subcommands import GitOption, GitSubcommand
+from domain_model.git.subcommands import GitSubcommand
 from domain_model.locations import GitStateFile
-
-# %% the options of the subcommands run here
-
-
-class BranchOption(GitOption):
-    """
-    The options of ``git branch``.
-    """
-
-    LIST = "--list", True
-    """
-    List the branches, those matching the patterns given when any is.
-    """
-
-    LIST_SHORT = "-l", True
-    """
-    List the branches, short form.
-    """
-
-    ALL = "--all", True
-    """
-    List the remote-tracking branches with the local ones.
-    """
-
-    ALL_SHORT = "-a", True
-    """
-    List the remote-tracking branches with the local ones, short form.
-    """
-
-    REMOTES = "--remotes", True
-    """
-    List the remote-tracking branches alone.
-    """
-
-    REMOTES_SHORT = "-r", True
-    """
-    List the remote-tracking branches alone, short form.
-    """
-
-    VERBOSE = "--verbose", True
-    """
-    List each branch with its commit.
-    """
-
-    VERBOSE_SHORT = "-v", True
-    """
-    List each branch with its commit, short form.
-    """
-
-    VERY_VERBOSE = "-vv", True
-    """
-    List each branch with its commit and the branch it tracks.
-    """
-
-    SHOW_CURRENT = "--show-current", True
-    """
-    Print the checked-out branch, nothing on a detached ``HEAD``.
-    """
-
-    COLOR = "--color", True
-    """
-    Colour the list.
-    """
-
-    NO_COLOR = "--no-color", True
-    """
-    Leave the list uncoloured.
-    """
-
-    CONTAINS = "--contains", True
-    """
-    List only the branches whose history holds the given commit.
-    """
-
-    NO_CONTAINS = "--no-contains", True
-    """
-    List only the branches whose history lacks the given commit.
-    """
-
-    MERGED = "--merged", True
-    """
-    List only the branches the given commit's history holds.
-    """
-
-    NO_MERGED = "--no-merged", True
-    """
-    List only the branches the given commit's history lacks.
-    """
-
-    POINTS_AT = "--points-at", True
-    """
-    List only the branches at the given commit.
-    """
-
-    SORT = "--sort", True
-    """
-    Order the list by the given key.
-    """
-
-    FORMAT = "--format", True
-    """
-    Print each branch as the given format says.
-    """
-
-
-class RmOption(GitOption):
-    """
-    The options of ``git rm``.
-    """
-
-    RECURSIVE = "-r", True
-    """
-    Remove a directory's files.
-    """
-
-    QUIET = "--quiet", True
-    """
-    Print nothing.
-    """
-
-    CACHED = "--cached", True
-    """
-    Remove from the index only, keeping the working files.
-    """
-
-    IGNORE_UNMATCH = "--ignore-unmatch", True
-    """
-    Succeed even when a path matches no file.
-    """
-
-
-class CommitOption(GitOption):
-    """
-    The options of ``git commit``.
-    """
-
-    QUIET = "--quiet", True
-    """
-    Print nothing.
-    """
-
-    MESSAGE = "--message", True
-    """
-    Give the commit message.
-    """
-
-
-class StatusOption(GitOption):
-    """
-    The options of ``git status``.
-    """
-
-    PORCELAIN = "--porcelain", True
-    """
-    Print each changed file on a line, in a form meant for programs.
-    """
-
-    TRACKED_ONLY = "--untracked-files=no", True
-    """
-    Leave untracked files out.
-    """
-
-
-class MergeOption(GitOption):
-    """
-    The options of ``git merge``.
-    """
-
-    QUIET = "--quiet", True
-    """
-    Print nothing.
-    """
-
-    FAST_FORWARD_ONLY = "--ff-only", True
-    """
-    Only move the branch forward, failing when it has commits of its own.
-    """
-
-    NO_EDIT = "--no-edit", True
-    """
-    Commit with the message given, without opening an editor.
-    """
-
-    MESSAGE = "--message", True
-    """
-    Give the merge commit's message.
-    """
-
-    ABORT = "--abort", False
-    """
-    Undo the merge in progress.
-    """
-
-
-class ResetOption(GitOption):
-    """
-    The options of ``git reset``.
-    """
-
-    QUIET = "--quiet", True
-    """
-    Print nothing.
-    """
-
-    KEEP = "--keep", True
-    """
-    Keep uncommitted changes, failing when one would be lost.
-    """
-
-
-class DiffOption(GitOption):
-    """
-    The options of ``git diff``.
-    """
-
-    NAME_ONLY = "--name-only", True
-    """
-    Print only the changed files' names.
-    """
-
-    CONFLICTED_ONLY = "--diff-filter=U", True
-    """
-    Show only the files left conflicting.
-    """
-
 
 # %% the working tree
 
@@ -387,8 +169,8 @@ class Merge:
 
         :param merged: What to merge.
         :param message: The merge commit's message.
-        :return: The finished merge, whose failure is a conflict only when it left
-            files conflicting; :meth:`conflicted_files` names them then.
+        :return: The finished merge, whose failure is a conflict only when it left files
+            conflicting; :meth:`conflicted_files` names them then.
         """
         return self.tree.git.attempt(
             GitSubcommand.MERGE,

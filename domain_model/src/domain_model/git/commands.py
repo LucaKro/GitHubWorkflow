@@ -13,7 +13,8 @@ from domain_model.class_property import classproperty
 from domain_model.commands import CommandResult, CommandRunner
 from domain_model.environment import GitVariable
 from domain_model.git.exceptions import GitCommandFailed
-from domain_model.git.subcommands import GitGlobalOption, GitOption, GitSubcommand
+from domain_model.git.options import CloneOption, GitGlobalOption, RevParseOption
+from domain_model.git.subcommands import GitSubcommand
 from domain_model.programs import Program
 
 # %% who a commit records
@@ -32,56 +33,6 @@ class GitIdentity(StrEnum):
     COMMITTER = "GIT_COMMITTER_IDENT"
     """
     Who recorded the commit.
-    """
-
-
-# %% the options of the subcommands run here
-
-
-class CloneOption(GitOption):
-    """
-    The options of ``git clone``.
-    """
-
-    QUIET = "--quiet", True
-    """
-    Print no progress.
-    """
-
-
-class RevParseOption(GitOption):
-    """
-    The options of ``git rev-parse``.
-    """
-
-    VERIFY = "--verify", True
-    """
-    Resolve exactly one revision, failing when it names none.
-    """
-
-    QUIET = "--quiet", True
-    """
-    Fail without a message when the revision names none.
-    """
-
-    SHOW_TOPLEVEL = "--show-toplevel", True
-    """
-    Print the root of the checkout.
-    """
-
-    COMMON_DIRECTORY = "--git-common-dir", True
-    """
-    Print the git directory every worktree of the repository shares.
-    """
-
-    ABSOLUTE_PATHS = "--path-format=absolute", True
-    """
-    Print the paths after it absolute.
-    """
-
-    GIT_PATH = "--git-path", True
-    """
-    Print where a file inside the git directory is for this worktree.
     """
 
 

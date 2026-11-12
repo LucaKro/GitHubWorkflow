@@ -17,10 +17,11 @@ from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
 from domain_model.github.repository_client import GitHubRepository
 from domain_model.github.rest_models import PullRequestHead, RestPullRequest
 from domain_model.github.review_models import Author
-from domain_model.github.routes import QueryParameter, RepositoryRoute
+from domain_model.github.routes import RepositoryRoute
 from domain_model.github.vocabulary import (
     MergeableState,
     PullRequestState,
+    QueryParameter,
     RestJSONKey,
 )
 from domain_model.repository import Repository

@@ -6,72 +6,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from enum import StrEnum
 from urllib.parse import quote, urlencode
 
 from domain_model.class_property import classproperty
 from domain_model.git.revisions import BranchName
+from domain_model.github.vocabulary import QueryParameter, StackAction
 from domain_model.repository import Repository
-
-# %% query parameters
-
-
-class QueryParameter(StrEnum):
-    """
-    The query parameters the REST paths take.
-    """
-
-    STATE = "state"
-    """
-    Which entries to list, by state.
-    """
-
-    PAGE_SIZE = "per_page"
-    """
-    How many entries one page holds.
-    """
-
-    HEAD = "head"
-    """
-    The branch pull requests are listed for, as ``owner:branch``.
-    """
-
-    PULL_REQUEST = "pull_request"
-    """
-    The pull request a listed stack must hold.
-    """
-
-    BRANCH = "branch"
-    """
-    The branch listed workflow runs were triggered on.
-    """
-
-    LABELS = "labels"
-    """
-    The labels a listed issue must all carry, comma-separated.
-    """
-
-    SEARCH = "q"
-    """
-    The search query.
-    """
-
-
-class StackAction(StrEnum):
-    """
-    What is done to a stack, each at a path segment of that name below it.
-    """
-
-    ADD = "add"
-    """
-    Put pull requests on top.
-    """
-
-    UNSTACK = "unstack"
-    """
-    Take the pull requests out again.
-    """
-
 
 # %% the paths
 

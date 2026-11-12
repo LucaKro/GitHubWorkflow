@@ -21,13 +21,14 @@ from domain_model.github.labels import GitHubLabel
 from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
 from domain_model.github.repository_client import GitHubRepository
 from domain_model.github.rest_models import BranchComparison
-from domain_model.github.routes import QueryParameter, RepositoryRoute
+from domain_model.github.routes import RepositoryRoute
 from domain_model.github.vocabulary import (
     ClosingKeyword,
     IssueEventType,
     IssueState,
     IssueStateReason,
     PullRequestState,
+    QueryParameter,
     RestJSONKey,
     WorkflowRunConclusion,
     WorkflowRunStatus,

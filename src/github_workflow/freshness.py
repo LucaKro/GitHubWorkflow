@@ -10,9 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from domain_model.git.revisions import BranchName
-from domain_model.github.repository_client import (
-    ForkedRepository,
-)
+from domain_model.github.repository_client import ForkedRepository
 
 from github_workflow.command_line import CommandOption, RunnableCommand
 from github_workflow.policy import WritePolicy

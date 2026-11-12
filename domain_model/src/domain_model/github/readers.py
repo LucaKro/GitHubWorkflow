@@ -10,9 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import StrEnum
 
-from domain_model.environment import (
-    ClaudeCodeVariable,
-)
+from domain_model.environment import ClaudeCodeVariable
 from domain_model.git.revisions import BranchName
 from domain_model.github.clients import (
     GitHubApi,
@@ -21,14 +19,9 @@ from domain_model.github.clients import (
     RestClient,
 )
 from domain_model.github.commit_checks import CommitCheckReader
-from domain_model.github.exceptions import (
-    UpstreamPullRequestNotFound,
-)
+from domain_model.github.exceptions import UpstreamPullRequestNotFound
 from domain_model.github.pull_request_models import UpstreamPullRequestSnapshot
-from domain_model.github.rest_models import (
-    RestPullRequest,
-    RestReviewThread,
-)
+from domain_model.github.rest_models import RestPullRequest, RestReviewThread
 from domain_model.github.review_models import (
     BranchPullRequest,
     Review,
@@ -48,9 +41,7 @@ from domain_model.github.vocabulary import (
     PullRequestState,
     QueryVariable,
 )
-from domain_model.repository import (
-    Repository,
-)
+from domain_model.repository import Repository
 
 # %% reading
 

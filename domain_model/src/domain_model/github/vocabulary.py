@@ -639,3 +639,211 @@ class MergeableState(GitHubVocabulary):
         if self in {MergeableState.UNKNOWN, MergeableState.DRAFT}:
             return None
         return self is MergeableState.DIRTY
+
+
+# %% the GitHub command line and hosts
+
+
+class GitHubCliReading(StrEnum):
+    """
+    The ``gh`` commands that only read, by their first two words.
+    """
+
+    PULL_REQUEST_VIEW = "pr view"
+    """
+    Shows a pull request.
+    """
+
+    PULL_REQUEST_LIST = "pr list"
+    """
+    Lists pull requests.
+    """
+
+    PULL_REQUEST_DIFF = "pr diff"
+    """
+    Shows a pull request's changes.
+    """
+
+    PULL_REQUEST_CHECKS = "pr checks"
+    """
+    Shows a pull request's checks.
+    """
+
+    PULL_REQUEST_STATUS = "pr status"
+    """
+    Shows the pull requests relevant to the signed-in account.
+    """
+
+    ISSUE_VIEW = "issue view"
+    """
+    Shows an issue.
+    """
+
+    ISSUE_LIST = "issue list"
+    """
+    Lists issues.
+    """
+
+    ISSUE_STATUS = "issue status"
+    """
+    Shows the issues relevant to the signed-in account.
+    """
+
+    RUN_VIEW = "run view"
+    """
+    Shows an Actions run.
+    """
+
+    RUN_LIST = "run list"
+    """
+    Lists Actions runs.
+    """
+
+    RUN_WATCH = "run watch"
+    """
+    Follows an Actions run until it ends.
+    """
+
+    REPOSITORY_VIEW = "repo view"
+    """
+    Shows a repository.
+    """
+
+    RELEASE_VIEW = "release view"
+    """
+    Shows a release.
+    """
+
+    RELEASE_LIST = "release list"
+    """
+    Lists releases.
+    """
+
+    WORKFLOW_VIEW = "workflow view"
+    """
+    Shows an Actions workflow.
+    """
+
+    WORKFLOW_LIST = "workflow list"
+    """
+    Lists Actions workflows.
+    """
+
+    AUTHENTICATION_STATUS = "auth status"
+    """
+    Shows which account gh is signed in as.
+    """
+
+
+class GitHubCliSubcommand(StrEnum):
+    """
+    The ``gh`` subcommands judged by their arguments rather than their name.
+    """
+
+    API = "api"
+    """
+    A raw API call, which reads unless given a method, a field or an input, or, to
+    GraphQL, a document holding anything but queries.
+    """
+
+    SEARCH = "search"
+    """
+    A search, which only reads.
+    """
+
+
+class GraphQLOperation(StrEnum):
+    """
+    The kinds of operation a GraphQL document holds.
+    """
+
+    QUERY = "query"
+    """
+    Reads.
+    """
+
+    MUTATION = "mutation"
+    """
+    Writes.
+    """
+
+    SUBSCRIPTION = "subscription"
+    """
+    Waits for changes, so it never finishes as a read does.
+    """
+
+
+class GitHubHost(StrEnum):
+    """
+    The hosts whose addresses mark a ``curl`` or ``wget`` call as one to GitHub.
+    """
+
+    WEB = "github.com"
+    """
+    GitHub and its API, ``api.github.com``.
+    """
+
+    CONTENT = "githubusercontent.com"
+    """
+    GitHub's raw file host.
+    """
+
+
+# %% REST queries
+
+
+class QueryParameter(StrEnum):
+    """
+    The query parameters the REST paths take.
+    """
+
+    STATE = "state"
+    """
+    Which entries to list, by state.
+    """
+
+    PAGE_SIZE = "per_page"
+    """
+    How many entries one page holds.
+    """
+
+    HEAD = "head"
+    """
+    The branch pull requests are listed for, as ``owner:branch``.
+    """
+
+    PULL_REQUEST = "pull_request"
+    """
+    The pull request a listed stack must hold.
+    """
+
+    BRANCH = "branch"
+    """
+    The branch listed workflow runs were triggered on.
+    """
+
+    LABELS = "labels"
+    """
+    The labels a listed issue must all carry, comma-separated.
+    """
+
+    SEARCH = "q"
+    """
+    The search query.
+    """
+
+
+class StackAction(StrEnum):
+    """
+    What is done to a stack, each at a path segment of that name below it.
+    """
+
+    ADD = "add"
+    """
+    Put pull requests on top.
+    """
+
+    UNSTACK = "unstack"
+    """
+    Take the pull requests out again.
+    """

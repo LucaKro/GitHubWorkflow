@@ -8,9 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from domain_model.class_property import (
-    classproperty,
-)
+from domain_model.class_property import classproperty
 from domain_model.github.vocabulary import (
     JSONModel,
     PullRequestJSONKey,

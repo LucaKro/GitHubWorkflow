@@ -11,11 +11,7 @@ from http import HTTPStatus
 from domain_model.github.clients import GitHubApi
 from domain_model.github.readers import ReadSource
 from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
-from domain_model.github.review_models import (
-    Author,
-    ReviewThread,
-    ThreadComment,
-)
+from domain_model.github.review_models import Author, ReviewThread, ThreadComment
 from domain_model.github.review_writers import (
     GraphQLReviewThreadWriter,
     RestReviewThreadWriter,

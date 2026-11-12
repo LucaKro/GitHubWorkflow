@@ -8,11 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from domain_model.locations import PythonProjectFile
-from domain_model.python_project import (
-    DevelopmentExtra,
-    PackageDirectories,
-    UvTool,
-)
+from domain_model.python_project import DevelopmentExtra, PackageDirectories, UvTool
 
 from .dataset.locations import DatasetLocation
 

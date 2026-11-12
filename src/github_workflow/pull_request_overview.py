@@ -14,14 +14,9 @@ from enum import StrEnum
 
 from domain_model.git.revisions import BranchName
 from domain_model.github.number_links import HasNumberLink
-from domain_model.github.pull_request_models import (
-    UpstreamPullRequestSnapshot,
-)
+from domain_model.github.pull_request_models import UpstreamPullRequestSnapshot
 from domain_model.github.readers import PullRequestSource
-from domain_model.github.repository_client import (
-    PullRequestReader,
-    PullRequestTracker,
-)
+from domain_model.github.repository_client import PullRequestReader, PullRequestTracker
 from domain_model.github.rest_models import RestPullRequest
 from domain_model.github.vocabulary import MergeableState
 

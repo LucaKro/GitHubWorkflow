@@ -10,9 +10,7 @@ from dataclasses import dataclass, field
 
 import pytest
 from domain_model.git.revisions import BranchName
-from domain_model.github.repository_client import (
-    RepositoryFeatures,
-)
+from domain_model.github.repository_client import RepositoryFeatures
 from domain_model.github.rest_models import Workflow, WorkflowRun
 from domain_model.github.vocabulary import WorkflowState
 

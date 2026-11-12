@@ -11,12 +11,12 @@ import pytest
 
 from domain_model.git.commands import GitCommandRunner
 from domain_model.git.exceptions import GitCommandFailed, UnresolvableReferenceError
+from domain_model.git.references import ReferenceNamespace
 from domain_model.git.revisions import (
     BranchName,
     Commit,
     CommitHash,
     LocalBranch,
-    ReferenceNamespace,
     TextFiles,
 )
 from domain_model.git.working_tree import WorkingTree

@@ -8,11 +8,7 @@ from __future__ import annotations
 import pytest
 
 from domain_model.git.reading import GitCall, GitCallEffect
-from domain_model.github.reading_calls import (
-    GitHubCliCall,
-    GitHubCliEffect,
-    HttpClient,
-)
+from domain_model.github.reading_calls import GitHubCliCall, GitHubCliEffect, HttpClient
 
 # %% git
 

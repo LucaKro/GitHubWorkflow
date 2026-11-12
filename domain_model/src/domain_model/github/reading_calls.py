@@ -12,6 +12,12 @@ from enum import Enum, StrEnum, auto
 from http import HTTPMethod
 
 from domain_model.class_property import classproperty
+from domain_model.github.vocabulary import (
+    GitHubCliReading,
+    GitHubCliSubcommand,
+    GitHubHost,
+    GraphQLOperation,
+)
 
 # %% sending options
 
@@ -88,135 +94,6 @@ class SendingOptions:
 
 
 # %% gh
-
-
-class GitHubCliReading(StrEnum):
-    """
-    The ``gh`` commands that only read, by their first two words.
-    """
-
-    PULL_REQUEST_VIEW = "pr view"
-    """
-    Shows a pull request.
-    """
-
-    PULL_REQUEST_LIST = "pr list"
-    """
-    Lists pull requests.
-    """
-
-    PULL_REQUEST_DIFF = "pr diff"
-    """
-    Shows a pull request's changes.
-    """
-
-    PULL_REQUEST_CHECKS = "pr checks"
-    """
-    Shows a pull request's checks.
-    """
-
-    PULL_REQUEST_STATUS = "pr status"
-    """
-    Shows the pull requests relevant to the signed-in account.
-    """
-
-    ISSUE_VIEW = "issue view"
-    """
-    Shows an issue.
-    """
-
-    ISSUE_LIST = "issue list"
-    """
-    Lists issues.
-    """
-
-    ISSUE_STATUS = "issue status"
-    """
-    Shows the issues relevant to the signed-in account.
-    """
-
-    RUN_VIEW = "run view"
-    """
-    Shows an Actions run.
-    """
-
-    RUN_LIST = "run list"
-    """
-    Lists Actions runs.
-    """
-
-    RUN_WATCH = "run watch"
-    """
-    Follows an Actions run until it ends.
-    """
-
-    REPOSITORY_VIEW = "repo view"
-    """
-    Shows a repository.
-    """
-
-    RELEASE_VIEW = "release view"
-    """
-    Shows a release.
-    """
-
-    RELEASE_LIST = "release list"
-    """
-    Lists releases.
-    """
-
-    WORKFLOW_VIEW = "workflow view"
-    """
-    Shows an Actions workflow.
-    """
-
-    WORKFLOW_LIST = "workflow list"
-    """
-    Lists Actions workflows.
-    """
-
-    AUTHENTICATION_STATUS = "auth status"
-    """
-    Shows which account gh is signed in as.
-    """
-
-
-class GitHubCliSubcommand(StrEnum):
-    """
-    The ``gh`` subcommands judged by their arguments rather than their name.
-    """
-
-    API = "api"
-    """
-    A raw API call, which reads unless given a method, a field or an input, or, to
-    GraphQL, a document holding anything but queries.
-    """
-
-    SEARCH = "search"
-    """
-    A search, which only reads.
-    """
-
-
-class GraphQLOperation(StrEnum):
-    """
-    The kinds of operation a GraphQL document holds.
-    """
-
-    QUERY = "query"
-    """
-    Reads.
-    """
-
-    MUTATION = "mutation"
-    """
-    Writes.
-    """
-
-    SUBSCRIPTION = "subscription"
-    """
-    Waits for changes, so it never finishes as a read does.
-    """
 
 
 @dataclass(frozen=True)
@@ -393,22 +270,6 @@ class GitHubCliCall:
 
 
 # %% HTTP clients
-
-
-class GitHubHost(StrEnum):
-    """
-    The hosts whose addresses mark a ``curl`` or ``wget`` call as one to GitHub.
-    """
-
-    WEB = "github.com"
-    """
-    GitHub and its API, ``api.github.com``.
-    """
-
-    CONTENT = "githubusercontent.com"
-    """
-    GitHub's raw file host.
-    """
 
 
 class HttpClient(Enum):

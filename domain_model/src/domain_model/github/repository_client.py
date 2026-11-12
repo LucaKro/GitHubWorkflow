@@ -27,18 +27,16 @@ from domain_model.github.rest_models import (
     Workflow,
     WorkflowRun,
 )
-from domain_model.github.routes import (
-    QueryParameter,
-    RepositoryRoute,
-    StackAction,
-)
+from domain_model.github.routes import RepositoryRoute
 from domain_model.github.stack_models import Stack
 from domain_model.github.vocabulary import (
     IssueState,
     IssueStateReason,
     PullRequestState,
+    QueryParameter,
     RestJSONKey,
     RollupState,
+    StackAction,
 )
 from domain_model.repository import Repository
 

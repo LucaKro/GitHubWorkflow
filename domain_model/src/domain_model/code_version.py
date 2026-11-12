@@ -15,8 +15,10 @@ from urllib.parse import urlsplit
 from urllib.request import url2pathname
 
 from domain_model.class_property import classproperty
-from domain_model.git.commands import GitCommandRunner, RevParseOption
-from domain_model.git.revisions import CommitHash, SpecialReference
+from domain_model.git.commands import GitCommandRunner
+from domain_model.git.options import RevParseOption
+from domain_model.git.references import SpecialReference
+from domain_model.git.revisions import CommitHash
 from domain_model.git.subcommands import GitSubcommand
 
 # %% where the installation came from

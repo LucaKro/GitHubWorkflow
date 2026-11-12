@@ -12,27 +12,25 @@ from dataclasses import dataclass
 from enum import StrEnum, auto
 from http import HTTPMethod
 
-from domain_model.programs import Program
 from domain_model.class_property import classproperty
 from domain_model.commands import CommandResult, CommandRunner
-from domain_model.environment import (
-    ClaudeCodeVariable,
-    GitHubCredentialVariable,
-)
+from domain_model.environment import ClaudeCodeVariable, GitHubCredentialVariable
 from domain_model.git.commands import GitCommandRunner, GitIdentity
 from domain_model.git.remotes import ProposedPush, RemoteBranch
 from domain_model.git.revisions import BranchName, Commit, CommitHash, TextFiles
 from domain_model.git.working_tree import WorkingTree
 from domain_model.github.clients import GitHubApi, RestAnswer
 from domain_model.github.rest_models import RestPullRequest
-from domain_model.github.routes import RepositoryRoute, StackAction
+from domain_model.github.routes import RepositoryRoute
 from domain_model.github.stack_models import Stack
 from domain_model.github.vocabulary import (
     IssueState,
     IssueStateReason,
     RestJSONKey,
+    StackAction,
     WorkflowRunStatus,
 )
+from domain_model.programs import Program
 from domain_model.templates import Placeholder
 
 import github_workflow

@@ -4,10 +4,7 @@ Git's subcommands, how far each only reads, and the options each is given.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from enum import Enum, StrEnum, auto
-
-from domain_model.class_property import classproperty
 
 # %% how far a subcommand reads
 
@@ -312,87 +309,3 @@ class GitSubcommand(StrEnum):
     """
     Writes an index's files out.
     """
-
-
-# %% options
-
-
-class GitGlobalOption(StrEnum):
-    """
-    The options before a git subcommand that change nothing it writes.
-    """
-
-    DIRECTORY = "-C"
-    """
-    Run as if started in another directory; takes the directory.
-    """
-
-    NO_PAGER = "--no-pager"
-    """
-    Print without a pager.
-    """
-
-    NO_PAGER_SHORT = "-P"
-    """
-    Print without a pager, short form.
-    """
-
-    VERSION = "--version"
-    """
-    Print git's version.
-    """
-
-    HELP = "--help"
-    """
-    Print git's help.
-    """
-
-
-class GitOption(StrEnum):
-    """
-    The options one git subcommand is given, each saying whether it only reads.
-
-    A subcommand's options are an enumeration of their own deriving from this one.
-    """
-
-    reads: bool
-    """
-    Whether the option itself is harmless: it neither writes nor runs a program. Whether
-    a whole call reads still depends on its form.
-    """
-
-    def __new__(cls, value: str, reads: bool) -> GitOption:
-        member = str.__new__(cls, value)
-        member._value_ = value
-        member.reads = reads
-        return member
-
-    @classproperty
-    def end_of_options(cls) -> str:
-        """
-        The argument after which every argument is a path, even one starting with ``-``.
-        """
-        return "--"
-
-    @classmethod
-    def look_up(cls, option: str) -> GitOption | None:
-        """
-        :param option: An option as written on a command line, maybe with ``=`` and a
-            value.
-        :return: The member it is, compared whole and then without its value; ``None``
-            when it is none.
-        """
-        name = option.partition("=")[0]
-        return next(
-            (cls(spelling) for spelling in (option, name) if spelling in cls), None
-        )
-
-    @classmethod
-    def only_reading(cls, options: Iterable[str]) -> bool:
-        """
-        :param options: Options as written on a command line.
-        :return: Whether each is a member marked as reading; one missing counts as
-            writing.
-        """
-        members = [cls.look_up(option) for option in options]
-        return all(member is not None and member.reads for member in members)

@@ -23,11 +23,7 @@ from domain_model.github.repository_client import (
     IssueBoard,
     IssueTracker,
 )
-from domain_model.github.vocabulary import (
-    ClosingKeyword,
-    IssueState,
-    IssueStateReason,
-)
+from domain_model.github.vocabulary import ClosingKeyword, IssueState, IssueStateReason
 from domain_model.repository import Repository
 
 from github_workflow.command_line import PriorityLevel

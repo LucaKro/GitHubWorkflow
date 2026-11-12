@@ -12,8 +12,9 @@ from pathlib import Path
 import pytest
 from domain_model.environment import ClaudeCodeVariable
 from domain_model.git.commands import GitCommandRunner
+from domain_model.git.references import ReferenceNamespace
 from domain_model.git.remotes import ReferenceUpdate, Remote
-from domain_model.git.revisions import CommitHash, ReferenceNamespace
+from domain_model.git.revisions import CommitHash
 
 from github_workflow.exceptions import (
     DefaultBranchWriteError,

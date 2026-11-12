@@ -29,9 +29,7 @@ from domain_model.github.exceptions import (
     RecordedReadMissingError,
     UnreadableRecordingError,
 )
-from domain_model.github.pull_request_models import (
-    UpstreamPullRequestSnapshot,
-)
+from domain_model.github.pull_request_models import UpstreamPullRequestSnapshot
 from domain_model.github.readers import ReadSource
 from domain_model.github.repository_client import RepositoryWorkflows
 from domain_model.github.vocabulary import WorkflowRunConclusion

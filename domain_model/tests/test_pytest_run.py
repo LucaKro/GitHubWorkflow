@@ -9,11 +9,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from domain_model.pytest_run import (
-    BrokenTestException,
-    JUnitReport,
-    PytestRun,
-)
+from domain_model.pytest_run import BrokenTestException, JUnitReport, PytestRun
 
 from .dataset.locations import DatasetLocation
 

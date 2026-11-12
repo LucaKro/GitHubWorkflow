@@ -22,8 +22,8 @@ from domain_model.github.repository_client import (
     PullRequestListState,
     RepositoryDiscussions,
 )
-from domain_model.github.routes import QueryParameter, RepositoryRoute
-from domain_model.github.vocabulary import RestJSONKey
+from domain_model.github.routes import RepositoryRoute
+from domain_model.github.vocabulary import QueryParameter, RestJSONKey
 from domain_model.locations import PathEnumeration
 from domain_model.repository import Repository
 

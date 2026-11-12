@@ -12,16 +12,20 @@ from enum import StrEnum
 
 from domain_model.git.commands import GitCommandResult, GitCommandRunner
 from domain_model.git.exceptions import MalformedReferenceUpdateError
-from domain_model.git.revisions import (
-    BranchName,
-    BranchTip,
-    CommitHash,
+from domain_model.git.options import (
     FetchOption,
-    ReferenceNamespace,
-    Revision,
-    SpecialReference,
+    LsRemoteOption,
+    PushOption,
+    ReflogOption,
+    ReflogReadingCommand,
+    RemoteOption,
+    RemoteReadingCommand,
+    SymbolicRefOption,
+    UpdateRefOption,
 )
-from domain_model.git.subcommands import GitOption, GitSubcommand
+from domain_model.git.references import ReferenceNamespace, SpecialReference
+from domain_model.git.revisions import BranchName, BranchTip, CommitHash, Revision
+from domain_model.git.subcommands import GitSubcommand
 from domain_model.repository import Repository
 
 # %% remotes
@@ -41,80 +45,6 @@ class RemoteName(StrEnum):
     """
     The remote reaching the repository a fork was forked from, as ``gh repo fork``
     names it.
-    """
-
-
-class RemoteOption(GitOption):
-    """
-    The options of ``git remote``.
-    """
-
-    VERBOSE = "--verbose", True
-    """
-    Print each remote's URLs with its name.
-    """
-
-    VERBOSE_SHORT = "-v", True
-    """
-    Print each remote's URLs with its name, short form.
-    """
-
-    PUSH = "--push", True
-    """
-    Print the URL pushes go to rather than the one fetches come from.
-    """
-
-    ALL = "--all", True
-    """
-    Print every URL of the remote.
-    """
-
-    NO_QUERY = "-n", True
-    """
-    Show a remote without asking it for its branches.
-    """
-
-
-class RemoteReadingCommand(StrEnum):
-    """
-    The commands of ``git remote`` that only read, named by its first other argument.
-    """
-
-    SHOW = "show"
-    """
-    Show a remote and its branches.
-    """
-
-    GET_URL = "get-url"
-    """
-    Print a remote's URL.
-    """
-
-
-class LsRemoteOption(GitOption):
-    """
-    The options of ``git ls-remote``.
-    """
-
-    HEADS = "--heads", True
-    """
-    List branches only.
-    """
-
-    SYMBOLIC_REFERENCES = "--symref", True
-    """
-    Name the reference each symbolic reference points at.
-    """
-
-
-class SymbolicRefOption(GitOption):
-    """
-    The options of ``git symbolic-ref``.
-    """
-
-    QUIET = "--quiet", True
-    """
-    Fail without a message when the reference is not symbolic.
     """
 
 
@@ -293,54 +223,6 @@ class UnconfiguredRemote(Remote):
 # %% a branch on a remote
 
 
-class UpdateRefOption(GitOption):
-    """
-    The options of ``git update-ref``.
-    """
-
-    DELETE = "-d", False
-    """
-    Delete the reference.
-    """
-
-
-class ReflogOption(GitOption):
-    """
-    The options of ``git reflog``.
-    """
-
-    FORMAT = "--format", True
-    """
-    Print each entry as the given format says.
-    """
-
-    SUBJECTS = "--format=%gs", True
-    """
-    Print each entry's subject alone: what wrote the reference.
-    """
-
-    DATE = "--date", True
-    """
-    Print the entries' dates as the given format says.
-    """
-
-    MAX_COUNT = "--max-count", True
-    """
-    Print at most the given number of entries.
-    """
-
-
-class ReflogReadingCommand(StrEnum):
-    """
-    The commands of ``git reflog`` that only read, named by its first other argument.
-    """
-
-    SHOW = "show"
-    """
-    Show where a reference has been.
-    """
-
-
 class TrackingReferenceWrite(StrEnum):
     """
     How the reflog names a write of a remote-tracking branch from its remote, compared
@@ -490,38 +372,6 @@ class PushFlag(StrEnum):
     DELETED = "-"
     """
     The reference was deleted.
-    """
-
-
-class PushOption(GitOption):
-    """
-    The options of ``git push``.
-    """
-
-    QUIET = "--quiet", True
-    """
-    Print nothing but errors.
-    """
-
-    PORCELAIN = "--porcelain", True
-    """
-    Print what happened to each reference in a form meant for programs.
-    """
-
-    FORCE_WITH_LEASE = "--force-with-lease", False
-    """
-    Overwrite the remote's history, but only where it is still where the checkout last
-    saw it.
-    """
-
-    SET_UPSTREAM = "--set-upstream", False
-    """
-    Make the local branch pushed track the branch it was pushed to.
-    """
-
-    NO_VERIFY = "--no-verify", False
-    """
-    Skip the ``pre-push`` hook.
     """
 
 

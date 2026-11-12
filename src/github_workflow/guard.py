@@ -20,17 +20,9 @@ from pathlib import PurePath
 from typing import Any
 
 from domain_model.class_property import classproperty
-from domain_model.claude_code.hooks import (
-    HookInput,
-    ToolCallDenial,
-    ToolKind,
-)
+from domain_model.claude_code.hooks import HookInput, ToolCallDenial, ToolKind
 from domain_model.environment import ClaudeCodeVariable, GitVariable
-from domain_model.git.reading import (
-    GitCall,
-    GitCallEffect,
-    GitConfigurationLocation,
-)
+from domain_model.git.reading import GitCall, GitCallEffect, GitConfigurationLocation
 from domain_model.git.subcommands import GitSubcommand
 from domain_model.github.reading_calls import (
     GitHubCliCall,

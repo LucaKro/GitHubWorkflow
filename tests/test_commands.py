@@ -25,16 +25,14 @@ from domain_model.environment import (
 )
 from domain_model.git.revisions import BranchName, TextFiles
 from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
-from domain_model.github.repository_client import (
-    GitHubRepository,
-    PullRequestListState,
-)
-from domain_model.github.routes import QueryParameter, RepositoryRoute
+from domain_model.github.repository_client import GitHubRepository, PullRequestListState
+from domain_model.github.routes import RepositoryRoute
 from domain_model.github.vocabulary import (
     ClosingKeyword,
     IssueEventType,
     IssueState,
     PullRequestState,
+    QueryParameter,
     RestJSONKey,
 )
 from domain_model.locations import GitStateFile, PathEnumeration

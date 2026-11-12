@@ -8,9 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from domain_model.github.repository_client import (
-    RepositoryFeatures,
-)
+from domain_model.github.repository_client import RepositoryFeatures
 from domain_model.github.vocabulary import WorkflowState
 from domain_model.repository import Repository
 

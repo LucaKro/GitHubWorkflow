@@ -12,10 +12,7 @@ from pathlib import Path
 
 from domain_model.git.revisions import BranchName
 from domain_model.github.readers import PullRequestSource, ReadSource
-from domain_model.github.repository_client import (
-    GitHubRepository,
-    RepositoryDetails,
-)
+from domain_model.github.repository_client import GitHubRepository, RepositoryDetails
 from domain_model.github.review_writers import ReviewThreadWriter
 from domain_model.github.stack_placement import StackPlacement
 from domain_model.repository import Repository

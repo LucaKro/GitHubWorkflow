@@ -11,8 +11,9 @@ import pytest
 
 from domain_model.git.commands import GitCommandResult, GitCommandRunner
 from domain_model.git.exceptions import UnjudgedSubcommandError
+from domain_model.git.options import PushOption
 from domain_model.git.reading import GitCall, ReadingForms
-from domain_model.git.remotes import PushOption, Remote, RemoteBranch
+from domain_model.git.remotes import Remote, RemoteBranch
 from domain_model.git.revisions import BranchName, LocalBranch
 from domain_model.git.subcommands import GitSubcommand, SubcommandReading
 from domain_model.git.working_tree import WorkingTree

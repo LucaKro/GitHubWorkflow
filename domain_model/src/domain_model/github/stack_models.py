@@ -8,11 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from domain_model.git.revisions import BranchName
-from domain_model.github.vocabulary import (
-    JSONModel,
-    PullRequestState,
-    RestJSONKey,
-)
+from domain_model.github.vocabulary import JSONModel, PullRequestState, RestJSONKey
 
 # %% models mirroring the Stacks REST API
 

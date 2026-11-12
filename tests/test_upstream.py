@@ -20,10 +20,7 @@ from domain_model.github.repository_client import (
     ProposingFork,
     PullRequestSearch,
 )
-from domain_model.github.rest_models import (
-    RestPullRequest,
-    SearchedPullRequest,
-)
+from domain_model.github.rest_models import RestPullRequest, SearchedPullRequest
 from domain_model.github.stack_models import Stack
 from domain_model.github.stack_placement import StackPlacement
 from domain_model.github.vocabulary import PullRequestState

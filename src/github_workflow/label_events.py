@@ -16,10 +16,7 @@ from pathlib import Path
 
 from domain_model.github.issue_events import IssueLabelled
 from domain_model.github.issue_models import Issue, LabelEvent
-from domain_model.github.repository_client import (
-    GitHubRepository,
-    IssueLabelTracker,
-)
+from domain_model.github.repository_client import GitHubRepository, IssueLabelTracker
 from domain_model.github.vocabulary import IssueState, IssueStateReason
 from domain_model.templates import Placeholder
 

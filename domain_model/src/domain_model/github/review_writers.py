@@ -11,11 +11,7 @@ from dataclasses import dataclass
 from domain_model.github.clients import GraphQLClient, RestWriter
 from domain_model.github.review_models import ReviewThread
 from domain_model.github.routes import RepositoryRoute
-from domain_model.github.vocabulary import (
-    GraphQLDocument,
-    QueryVariable,
-    RestJSONKey,
-)
+from domain_model.github.vocabulary import GraphQLDocument, QueryVariable, RestJSONKey
 from domain_model.repository import Repository
 
 # %% writing

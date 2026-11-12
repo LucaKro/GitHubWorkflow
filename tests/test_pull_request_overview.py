@@ -17,11 +17,7 @@ from domain_model.github.pull_request_models import (
 from domain_model.github.readers import PullRequestSource
 from domain_model.github.repository_client import PullRequestTracker
 from domain_model.github.rest_models import RestPullRequest
-from domain_model.github.review_models import (
-    Author,
-    ReviewThread,
-    ThreadComment,
-)
+from domain_model.github.review_models import Author, ReviewThread, ThreadComment
 from domain_model.github.vocabulary import CheckOutcome, MergeableState
 
 from github_workflow.pull_request_overview import (

@@ -1,6 +1,6 @@
 """
-What git resolves to a commit in one checkout: a commit, a local branch, a
-remote-tracking branch; and the hash a record keeps of a commit.
+What git resolves to a commit in one checkout: a commit, a local branch, a remote-
+tracking branch; and the hash a record keeps of a commit.
 """
 
 from __future__ import annotations
@@ -9,18 +9,26 @@ import tempfile
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from dataclasses import dataclass
-from enum import StrEnum
 from pathlib import Path
 
 from domain_model.class_property import classproperty
 from domain_model.environment import GitVariable
-from domain_model.git.commands import (
-    GitCommandResult,
-    GitCommandRunner,
-    RevParseOption,
-)
+from domain_model.git.commands import GitCommandResult, GitCommandRunner
 from domain_model.git.exceptions import UnresolvableReferenceError
-from domain_model.git.subcommands import GitOption, GitSubcommand
+from domain_model.git.options import (
+    CheckoutIndexOption,
+    CommitTreeOption,
+    FetchOption,
+    HashObjectOption,
+    MergeBaseOption,
+    MergeTreeOption,
+    RevListOption,
+    RevParseOption,
+    SwitchOption,
+    UpdateIndexOption,
+)
+from domain_model.git.references import ReferenceNamespace, TreeEntryMode
+from domain_model.git.subcommands import GitSubcommand
 
 # %% a commit's name
 
@@ -42,22 +50,6 @@ class CommitHash(str):
     def abbreviated(self) -> str:
         """:return: The hash, as a report names it."""
         return self[: self.abbreviation_length]
-
-
-class ReferenceNamespace(StrEnum):
-    """
-    The prefixes git files references under, by what they name.
-    """
-
-    BRANCHES = "refs/heads/"
-    """
-    A repository's own branches.
-    """
-
-    REMOTE_TRACKING_BRANCHES = "refs/remotes/"
-    """
-    The branches of each remote, as last fetched, under the remote's name.
-    """
 
 
 # %% a branch's name, and where it was
@@ -94,229 +86,6 @@ class BranchTip:
     def __str__(self) -> str:
         """:return: The branch and its commit, abbreviated."""
         return f"{self.branch} at {self.commit.abbreviated}"
-
-
-# %% references outside the namespaces
-
-
-class SpecialReference(StrEnum):
-    """
-    The references git keeps outside any namespace, for the checkout's own state.
-    """
-
-    CHECKED_OUT = "HEAD"
-    """
-    The commit checked out, through the branch checked out unless it is detached.
-    """
-
-    MERGED = "MERGE_HEAD"
-    """
-    The commit being merged in, set from the start of a merge until it is committed or
-    undone.
-    """
-
-
-class TreeEntryMode(StrEnum):
-    """
-    The modes a tree records its entries with.
-    """
-
-    REGULAR_FILE = "100644"
-    """
-    A file that is not executable.
-    """
-
-
-# %% the options of the subcommands run here
-
-
-class FetchOption(GitOption):
-    """
-    The options of ``git fetch``.
-    """
-
-    QUIET = "--quiet", True
-    """
-    Print no progress.
-    """
-
-    VERBOSE = "--verbose", True
-    """
-    Print every reference fetched.
-    """
-
-    NO_WRITE_FETCH_HEAD = "--no-write-fetch-head", True
-    """
-    Leave ``FETCH_HEAD`` alone.
-    """
-
-    PRUNE = "--prune", True
-    """
-    Forget the remote-tracking branches the remote no longer has.
-    """
-
-    ALL = "--all", True
-    """
-    Fetch from every remote.
-    """
-
-    TAGS = "--tags", True
-    """
-    Fetch every tag too.
-    """
-
-    NO_TAGS = "--no-tags", True
-    """
-    Fetch no tag.
-    """
-
-    DEPTH = "--depth", True
-    """
-    Fetch only the given number of commits of each history.
-    """
-
-    UNSHALLOW = "--unshallow", True
-    """
-    Fetch the whole history of a shallow clone.
-    """
-
-    DRY_RUN = "--dry-run", True
-    """
-    Show what would be fetched, storing nothing.
-    """
-
-    FORCE = "--force", True
-    """
-    Let a fetched reference move to a commit that does not descend from its own.
-    """
-
-    SET_UPSTREAM = "--set-upstream", False
-    """
-    Configure the checked-out branch to track what is fetched.
-    """
-
-    REFERENCE_MAP = "--refmap", False
-    """
-    Store what is fetched where the given refspec says, a local branch among them.
-    """
-
-    UPDATE_HEAD_OK = "--update-head-ok", False
-    """
-    Let the fetch move the checked-out branch.
-    """
-
-
-class MergeBaseOption(GitOption):
-    """
-    The options of ``git merge-base``.
-    """
-
-    IS_ANCESTOR = "--is-ancestor", True
-    """
-    Succeed only when the first commit is in the second's history.
-    """
-
-
-class RevListOption(GitOption):
-    """
-    The options of ``git rev-list``.
-    """
-
-    COUNT = "--count", True
-    """
-    Print how many commits it lists instead of listing them.
-    """
-
-
-class MergeTreeOption(GitOption):
-    """
-    The options of ``git merge-tree``.
-    """
-
-    WRITE_TREE = "--write-tree", True
-    """
-    Merge in full, storing the merged tree as an object nothing refers to.
-    """
-
-
-class HashObjectOption(GitOption):
-    """
-    The options of ``git hash-object``.
-    """
-
-    WRITE = "-w", False
-    """
-    Store the content as an object.
-    """
-
-
-class UpdateIndexOption(GitOption):
-    """
-    The options of ``git update-index``.
-    """
-
-    ADD = "--add", False
-    """
-    Let a file not yet in the index be added.
-    """
-
-    CACHE_INFORMATION = "--cacheinfo", False
-    """
-    Set one entry from a mode, an object and a path.
-    """
-
-
-class CommitTreeOption(GitOption):
-    """
-    The options of ``git commit-tree``.
-    """
-
-    PARENT = "-p", True
-    """
-    Name a parent of the commit.
-    """
-
-    MESSAGE = "-m", True
-    """
-    Give the commit message.
-    """
-
-
-class CheckoutIndexOption(GitOption):
-    """
-    The options of ``git checkout-index``.
-    """
-
-    ALL = "--all", True
-    """
-    Write every file of the index.
-    """
-
-    PREFIX = "--prefix", True
-    """
-    Write the files under the given prefix.
-    """
-
-
-class SwitchOption(GitOption):
-    """
-    The options of ``git switch``.
-    """
-
-    QUIET = "--quiet", True
-    """
-    Print no feedback.
-    """
-
-    NO_TRACK = "--no-track", True
-    """
-    Make the new branch track no other.
-    """
-
-    CREATE = "--create", False
-    """
-    Create the branch switched to.
-    """
 
 
 # %% anything that resolves to a commit
@@ -604,8 +373,8 @@ class LocalBranch(Revision):
         Check the branch out, creating it to track the remote's when only a remote has
         it.
 
-        :raises GitCommandFailed: If no branch of that name exists, or uncommitted changes
-            would be overwritten.
+        :raises GitCommandFailed: If no branch of that name exists, or uncommitted
+            changes would be overwritten.
         """
         self.git.run(GitSubcommand.SWITCH, SwitchOption.QUIET, self.name)
 

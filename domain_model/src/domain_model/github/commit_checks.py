@@ -8,10 +8,7 @@ from dataclasses import dataclass
 
 from domain_model.github.clients import RestClient
 from domain_model.github.pull_request_models import CheckStatus
-from domain_model.github.rest_models import (
-    RestCheckRunPage,
-    RestCombinedStatusPage,
-)
+from domain_model.github.rest_models import RestCheckRunPage, RestCombinedStatusPage
 from domain_model.github.routes import RepositoryRoute
 
 # %% the reading
