@@ -20,7 +20,7 @@ from domain_model.environment import (
 )
 from domain_model.git.commands import GitCommandRunner, GitIdentity
 from domain_model.git.remotes import ProposedPush, RemoteBranch
-from domain_model.git.revisions import Commit, CommitHash, TextFiles
+from domain_model.git.revisions import BranchName, Commit, CommitHash, TextFiles
 from domain_model.git.working_tree import WorkingTree
 from domain_model.github.clients import GitHubApi, RestAnswer
 from domain_model.github.rest_models import RestPullRequest
@@ -132,7 +132,7 @@ class ProbeText(StrEnum):
     """
 
 
-class BranchName(StrEnum):
+class ProbeBranchShape(StrEnum):
     """
     The branch name shapes the probe pushes, each followed by the run's stamp.
     """
@@ -258,12 +258,12 @@ class Probe:
         """:return: Runs the library checks and the stacks command in the checkout."""
         return CommandRunner(self.git.working_directory)
 
-    def branch(self, shape: BranchName) -> RemoteBranch:
+    def branch(self, shape: ProbeBranchShape) -> RemoteBranch:
         """
         :param shape: The name shape.
         :return: This run's branch of that shape, on the repository's remote.
         """
-        return self.remote.branch(f"{shape}{self.stamp}")
+        return self.remote.branch(BranchName(f"{shape}{self.stamp}"))
 
     @classmethod
     def describe_environment(cls, git: GitCommandRunner) -> dict[str, str]:
@@ -388,7 +388,7 @@ class Probe:
         Push a branch of the workflow's own naming, read it back, and delete it, once
         for each name shape.
         """
-        for shape in (BranchName.PLAIN, BranchName.SESSION_STYLE):
+        for shape in (ProbeBranchShape.PLAIN, ProbeBranchShape.SESSION_STYLE):
             branch = self.branch(shape)
             pushed = ProposedPush(branch, self.tree.head()).publish()
             if not self.record_command(
@@ -528,17 +528,17 @@ class Probe:
 
     # %% a draft pull request
 
-    def check_pull_request(self, default_branch: str) -> None:
+    def check_pull_request(self, default_branch: BranchName) -> None:
         """
         Open a draft pull request from a probe branch, read what the signals need from
         it, then close it and delete the branch.
 
         :param default_branch: The branch the pull request targets.
         """
-        self.remote.fetch(default_branch)
+        self.remote.fetch(self.remote.branch(default_branch))
         base = self.remote.branch(default_branch).tracking_branch.commit()
         commit = Commit.create(self.git, TextFiles({}), ProbeText.COMMIT_MESSAGE, base)
-        branch = self.branch(BranchName.PULL_REQUEST)
+        branch = self.branch(ProbeBranchShape.PULL_REQUEST)
         pushed = ProposedPush(branch, commit).publish()
         if not self.record_command(
             CheckGroup.PULL_REQUEST, f"push {branch.name}", pushed, "pushed"
@@ -556,7 +556,7 @@ class Probe:
         self.delete(CheckGroup.PULL_REQUEST, branch)
 
     def open_draft(
-        self, group: CheckGroup, branch: str, base: str, title: str
+        self, group: CheckGroup, branch: BranchName, base: BranchName, title: str
     ) -> int | None:
         """
         :param group: What part of the workflow the pull request is opened for.
@@ -594,7 +594,9 @@ class Probe:
         )
         self.record_response(group, f"close #{number}", closed)
 
-    def read_pull_request(self, number: int, base: str, head: str, commit: str) -> None:
+    def read_pull_request(
+        self, number: int, base: BranchName, head: BranchName, commit: CommitHash
+    ) -> None:
         """
         :param number: The draft pull request.
         :param base: The branch it targets.
@@ -638,7 +640,7 @@ class Probe:
 
     # %% stacks
 
-    def check_stack(self, default_branch: str) -> None:
+    def check_stack(self, default_branch: BranchName) -> None:
         """
         Open two chained draft pull requests, the upper one deliberately targeting the
         default branch, and stack them with the stacks command, which has to retarget
@@ -646,7 +648,7 @@ class Probe:
 
         :param default_branch: The branch the lower pull request targets.
         """
-        self.remote.fetch(default_branch)
+        self.remote.fetch(self.remote.branch(default_branch))
         base = self.remote.branch(default_branch).tracking_branch.commit()
         lower_commit = Commit.create(
             self.git, TextFiles({}), ProbeText.STACK_LOWER_TITLE, base
@@ -654,8 +656,8 @@ class Probe:
         upper_commit = Commit.create(
             self.git, TextFiles({}), ProbeText.STACK_UPPER_TITLE, lower_commit
         )
-        lower = self.branch(BranchName.STACK_LOWER)
-        upper = self.branch(BranchName.STACK_UPPER)
+        lower = self.branch(ProbeBranchShape.STACK_LOWER)
+        upper = self.branch(ProbeBranchShape.STACK_UPPER)
         pushed = [
             ProposedPush(branch, commit).publish()
             for branch, commit in ((lower, lower_commit), (upper, upper_commit))
@@ -673,7 +675,7 @@ class Probe:
                 self.delete(CheckGroup.STACKS, branch)
 
     def stack_drafts(
-        self, lower: RemoteBranch, upper: RemoteBranch, default_branch: str
+        self, lower: RemoteBranch, upper: RemoteBranch, default_branch: BranchName
     ) -> None:
         """
         Open a draft pull request for each branch, both targeting the default branch,
@@ -696,7 +698,9 @@ class Probe:
             if number is not None:
                 self.close_pull_request(CheckGroup.STACKS, number)
 
-    def stack_with_command(self, lower: int, upper: int, lower_branch: str) -> None:
+    def stack_with_command(
+        self, lower: int, upper: int, lower_branch: BranchName
+    ) -> None:
         """
         :param lower: The lower pull request.
         :param upper: The upper pull request, targeting the default branch.
@@ -799,8 +803,8 @@ class Probe:
         Push a branch for a workflow to delete, then the workflow on a branch of its own,
         wait for its run, and see whether both branches are gone.
         """
-        deleted = self.branch(BranchName.DELETED_BY_WORKFLOW)
-        workflow = self.branch(BranchName.WORKFLOW)
+        deleted = self.branch(ProbeBranchShape.DELETED_BY_WORKFLOW)
+        workflow = self.branch(ProbeBranchShape.WORKFLOW)
         pushed = ProposedPush(deleted, self.tree.head()).publish()
         if not self.record_command(
             CheckGroup.ACTIONS, f"push {deleted.name}", pushed, "pushed"
@@ -857,7 +861,7 @@ class Probe:
 
     def wait_for_run(
         self,
-        branch: str,
+        branch: BranchName,
         timeout_seconds: float = 300.0,
         interval_seconds: float = 10.0,
     ) -> None:
@@ -925,11 +929,11 @@ class Probe:
 
     # %% default branch
 
-    def default_branch(self) -> str | None:
+    def default_branch(self) -> BranchName | None:
         """
         :return: The repository's default branch, ``None`` when the API does not say.
         """
         repository = self.call(HTTPMethod.GET, self.route.root)
         if not repository.succeeded:
             return None
-        return repository.body[RestJSONKey.DEFAULT_BRANCH]
+        return BranchName(repository.body[RestJSONKey.DEFAULT_BRANCH])

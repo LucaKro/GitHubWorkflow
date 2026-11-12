@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
 
+from domain_model.git.revisions import BranchName
 from domain_model.github.readers import PullRequestSource, ReadSource
 from domain_model.github.repository_client import (
     GitHubRepository,
@@ -93,12 +94,13 @@ class WorkflowSession(RepositoryDetails):
         """
         return NotesBranch.from_settings(self.remote, self.settings)
 
-    def default_branch(self) -> str:
+    def default_branch(self) -> BranchName:
         """
         :return: The branch pull requests target unless told otherwise, as git reads it
             from the owner's remote, and from GitHub's API only when git cannot tell.
         """
-        return self.remote.default_branch() or self.github.default_branch()
+        default = self.remote.default_branch()
+        return self.github.default_branch() if default is None else default.name
 
     @property
     def policy(self) -> WritePolicy:
@@ -187,7 +189,7 @@ class WorkflowSession(RepositoryDetails):
         around = ProjectCheckout.around(self.directory)
         return self.directory if around is None else around.root.parent
 
-    def named_branch(self, name: str | None) -> str:
+    def named_branch(self, name: str | None) -> BranchName:
         """
         :param name: An open pull request's number, or a branch, of the owner's
             repository; ``None`` for the default branch.
@@ -198,12 +200,12 @@ class WorkflowSession(RepositoryDetails):
         if name is None:
             return self.default_branch()
         if not name.isdigit():
-            return name
+            return BranchName(name)
         return OpenPullRequestBranch(self.github, self.remote.repository).branch(
             int(name)
         )
 
-    def proof_runner(self, python: str, branch: str) -> BranchProofRunner:
+    def proof_runner(self, python: str, branch: BranchName) -> BranchProofRunner:
         """
         :param python: The interpreter the project's tests run with.
         :param branch: The owner's branch to run it on.

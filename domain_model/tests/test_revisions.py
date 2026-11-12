@@ -11,7 +11,14 @@ import pytest
 
 from domain_model.git.commands import GitCommandRunner
 from domain_model.git.exceptions import GitCommandFailed, UnresolvableReferenceError
-from domain_model.git.revisions import Commit, CommitHash, LocalBranch, TextFiles
+from domain_model.git.revisions import (
+    BranchName,
+    Commit,
+    CommitHash,
+    LocalBranch,
+    ReferenceNamespace,
+    TextFiles,
+)
 from domain_model.git.working_tree import WorkingTree
 
 from .git_checkouts import checkout, commit_on, head  # noqa: F401
@@ -25,33 +32,41 @@ def test_a_commit_hash_is_abbreviated_to_its_leading_digits() -> None:
     assert commit.abbreviated == commit[: CommitHash.abbreviation_length]
 
 
+def test_a_branch_name_s_reference_is_filed_among_the_branches() -> None:
+    name = BranchName("feature/x")
+
+    assert name.reference == f"{ReferenceNamespace.BRANCHES}{name}"
+
+
 # %% resolving a revision
 
 
 def test_a_branch_resolves_to_the_commit_it_is_at(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
-    assert LocalBranch(checkout, "main").commit().hash == head(checkout)
+    assert LocalBranch(checkout, BranchName("main")).commit().hash == head(checkout)
 
 
 def test_a_branch_that_does_not_exist_resolves_to_no_commit(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
-    assert LocalBranch(checkout, "absent").commit_or_none() is None
+    assert LocalBranch(checkout, BranchName("absent")).commit_or_none() is None
 
 
 def test_a_branch_that_does_not_exist_is_refused_where_a_commit_is_needed(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
     with pytest.raises(UnresolvableReferenceError):
-        LocalBranch(checkout, "absent").commit()
+        LocalBranch(checkout, BranchName("absent")).commit()
 
 
 def test_a_revision_is_contained_in_a_descendant_and_not_the_other_way(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
     commit_on(checkout, "ahead", "main", "ahead.txt")
-    main, ahead = LocalBranch(checkout, "main"), LocalBranch(checkout, "ahead")
+    main, ahead = LocalBranch(checkout, BranchName("main")), LocalBranch(
+        checkout, BranchName("ahead")
+    )
 
     assert (main.is_contained_in(ahead), ahead.is_contained_in(main)) == (True, False)
 
@@ -61,7 +76,9 @@ def test_the_commits_one_revision_holds_beyond_another_are_counted(
 ) -> None:
     commit_on(checkout, "ahead", "main", "first.txt")
     commit_on(checkout, "further", "ahead", "second.txt")
-    main, further = LocalBranch(checkout, "main"), LocalBranch(checkout, "further")
+    main, further = LocalBranch(checkout, BranchName("main")), LocalBranch(
+        checkout, BranchName("further")
+    )
 
     assert (further.commits_ahead(main), main.commits_ahead(further)) == (2, 0)
 
@@ -76,7 +93,9 @@ def test_a_merge_conflicts_only_where_both_sides_change_a_file(
         checkout.run("switch", "--quiet", "--create", branch, "main")
         (checkout.working_directory / "README.md").write_text(text)
         checkout.run("commit", "--quiet", "--allow-empty", "--all", "--message", branch)
-    mine, other = LocalBranch(checkout, "mine"), LocalBranch(checkout, "other")
+    mine, other = LocalBranch(checkout, BranchName("mine")), LocalBranch(
+        checkout, BranchName("other")
+    )
 
     assert mine.conflicts_when_merged(other) == conflicts
 
@@ -85,7 +104,7 @@ def test_a_revision_s_file_is_read_as_it_records_it(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
     (checkout.working_directory / "README.md").write_text("changed\n")
-    main = LocalBranch(checkout, "main")
+    main = LocalBranch(checkout, BranchName("main"))
 
     assert (main.file_text(Path("README.md")), main.file_text(Path("absent"))) == (
         "start\n",
@@ -173,11 +192,13 @@ def test_a_created_branch_is_checked_out_at_its_start(
 ) -> None:
     start = head(checkout)
 
-    LocalBranch(checkout, "feature").create(LocalBranch(checkout, "main"))
+    LocalBranch(checkout, BranchName("feature")).create(
+        LocalBranch(checkout, BranchName("main"))
+    )
 
     tree = WorkingTree(checkout)
     assert (tree.checked_out_branch(), tree.head().hash) == (
-        LocalBranch(checkout, "feature"),
+        LocalBranch(checkout, BranchName("feature")),
         start,
     )
 
@@ -185,7 +206,7 @@ def test_a_created_branch_is_checked_out_at_its_start(
 def test_creating_a_branch_that_exists_is_refused(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
-    main = LocalBranch(checkout, "main")
+    main = LocalBranch(checkout, BranchName("main"))
 
     with pytest.raises(GitCommandFailed):
         main.create(main)
@@ -196,16 +217,20 @@ def test_switching_checks_the_branch_out(
 ) -> None:
     commit_on(checkout, "feature", "main", "feature.txt")
 
-    LocalBranch(checkout, "main").switch()
+    LocalBranch(checkout, BranchName("main")).switch()
 
-    assert WorkingTree(checkout).checked_out_branch() == LocalBranch(checkout, "main")
+    assert WorkingTree(checkout).checked_out_branch() == LocalBranch(
+        checkout, BranchName("main")
+    )
 
 
 def test_a_branch_not_checked_out_is_fast_forwarded(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
     commit_on(checkout, "ahead", "main", "ahead.txt")
-    main, ahead = LocalBranch(checkout, "main"), LocalBranch(checkout, "ahead")
+    main, ahead = LocalBranch(checkout, BranchName("main")), LocalBranch(
+        checkout, BranchName("ahead")
+    )
 
     moved = main.fast_forward(ahead)
 
@@ -217,11 +242,11 @@ def test_a_branch_with_commits_the_target_lacks_is_not_moved(
 ) -> None:
     commit_on(checkout, "ahead", "main", "ahead.txt")
     commit_on(checkout, "diverged", "main", "own.txt")
-    diverged = LocalBranch(checkout, "diverged")
+    diverged = LocalBranch(checkout, BranchName("diverged"))
     before = diverged.commit()
-    LocalBranch(checkout, "ahead").switch()
+    LocalBranch(checkout, BranchName("ahead")).switch()
 
-    moved = diverged.fast_forward(LocalBranch(checkout, "ahead"))
+    moved = diverged.fast_forward(LocalBranch(checkout, BranchName("ahead")))
 
     assert (moved.succeeded, diverged.commit()) == (False, before)
 
@@ -230,10 +255,10 @@ def test_the_checked_out_branch_is_not_moved(
     checkout: GitCommandRunner,  # noqa: F811
 ) -> None:
     commit_on(checkout, "ahead", "main", "ahead.txt")
-    main = LocalBranch(checkout, "main")
+    main = LocalBranch(checkout, BranchName("main"))
     main.switch()
     before = main.commit()
 
-    moved = main.fast_forward(LocalBranch(checkout, "ahead"))
+    moved = main.fast_forward(LocalBranch(checkout, BranchName("ahead")))
 
     assert (moved.succeeded, main.commit()) == (False, before)

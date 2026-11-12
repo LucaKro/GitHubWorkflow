@@ -7,6 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from domain_model.git.revisions import BranchName
 from domain_model.github.vocabulary import (
     JSONModel,
     PullRequestState,
@@ -37,7 +38,7 @@ class StackedPullRequest(JSONModel):
     Whether it is still a draft.
     """
 
-    branch: str
+    branch: BranchName
     """
     The branch it merges, which the pull request above it targets.
     """
@@ -58,7 +59,7 @@ class StackedPullRequest(JSONModel):
                 else PullRequestState.from_value(data[RestJSONKey.STATE])
             ),
             draft=data[RestJSONKey.DRAFT],
-            branch=data[RestJSONKey.HEAD][RestJSONKey.REFERENCE],
+            branch=BranchName(data[RestJSONKey.HEAD][RestJSONKey.REFERENCE]),
         )
 
 
@@ -74,7 +75,7 @@ class Stack(JSONModel):
     Its number in the repository, which addresses it.
     """
 
-    base: str
+    base: BranchName
     """
     The branch the bottom pull request targets.
     """
@@ -99,7 +100,7 @@ class Stack(JSONModel):
         """
         return cls(
             number=data[RestJSONKey.NUMBER],
-            base=data[RestJSONKey.BASE][RestJSONKey.REFERENCE],
+            base=BranchName(data[RestJSONKey.BASE][RestJSONKey.REFERENCE]),
             open=data[RestJSONKey.OPEN],
             pull_requests=[
                 StackedPullRequest.from_json(entry)

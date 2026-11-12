@@ -14,7 +14,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from domain_model.git.commands import GitCommandRunner
-from domain_model.git.revisions import TextFiles
+from domain_model.git.revisions import BranchName, TextFiles
 from domain_model.git.storage_branch import StorageBranch
 
 from github_workflow.plugin import Distribution
@@ -56,7 +56,7 @@ class ResultsPublication:
         """
         :return: Where the results were published, in one line.
         """
-        results = StorageBranch(self.remote.branch(ResultsBranch.NAME))
+        results = StorageBranch(self.remote.branch(BranchName(ResultsBranch.NAME)))
         results.fetch()
         results.write(
             TextFiles(

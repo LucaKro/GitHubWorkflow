@@ -90,9 +90,10 @@ class PushCheck:
         default_branch = self.destination.default_branch()
         if default_branch is None:
             raise UnknownDefaultBranchError(self.destination.name)
-        reference = self.destination.branch(default_branch).reference
-        if any(update.remote_reference == reference for update in updates):
-            raise DefaultBranchWriteError(default_branch)
+        if any(
+            update.remote_reference == default_branch.reference for update in updates
+        ):
+            raise DefaultBranchWriteError(default_branch.name)
 
 
 # %% the hook

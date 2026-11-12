@@ -16,6 +16,7 @@ import pytest
 from domain_model.environment import GitIdentityVariable
 from domain_model.git.commands import GitCommandRunner
 from domain_model.git.exceptions import GitCommandFailed
+from domain_model.git.revisions import BranchName
 from domain_model.git.working_tree import Merge, WorkingTree
 from domain_model.github.exceptions import StackContinuesAboveError
 from domain_model.github.repository_client import (
@@ -101,7 +102,7 @@ class DefaultBranchOfTheScratchRepositories(RepositoryDetails):
     Answers the default branch every scratch repository starts with.
     """
 
-    def default_branch(self) -> str:
+    def default_branch(self) -> BranchName:
         return RepositoriesByOwner.default_branch
 
 
@@ -138,7 +139,7 @@ def work(
     """:return: The rules of a fresh clone of the owner's repository, on a pushed work
     branch with one commit."""
     policy = policy_in(repositories.clone(owned_url, "work"), settings)
-    BranchStart(policy, "feature").run()
+    BranchStart(policy, BranchName("feature")).run()
     CommitWork(policy, "Add a file", [write(policy.checkout, "a.txt")]).run()
     PushWork(policy).run()
     return policy
@@ -152,7 +153,7 @@ def test_a_work_branch_starts_from_github_s_default_branch(
 ) -> None:
     policy = policy_in(repositories.clone(owned_url, "work"), settings)
 
-    BranchStart(policy, "feature").run()
+    BranchStart(policy, BranchName("feature")).run()
 
     git = policy.checkout.git
     assert git.run("branch", "--show-current") == "feature"
@@ -165,7 +166,7 @@ def test_a_work_branch_starts_from_github_s_default_branch(
 def test_a_work_branch_starts_on_another_branch_when_asked(work: WritePolicy) -> None:
     git = work.checkout.git
 
-    BranchStart(work, "upper", "feature").run()
+    BranchStart(work, BranchName("upper"), BranchName("feature")).run()
 
     assert git.run("rev-parse", "upper") == git.run("rev-parse", "feature")
 
@@ -174,10 +175,10 @@ def test_a_work_branch_starts_on_a_local_branch_github_does_not_have(
     work: WritePolicy,
 ) -> None:
     git = work.checkout.git
-    BranchStart(work, "unpushed").run()
+    BranchStart(work, BranchName("unpushed")).run()
     CommitWork(work, "Add b", [write(work.checkout, "b.txt")]).run()
 
-    BranchStart(work, "upper", "unpushed").run()
+    BranchStart(work, BranchName("upper"), BranchName("unpushed")).run()
 
     assert git.run("rev-parse", "upper") == git.run("rev-parse", "unpushed")
 
@@ -203,7 +204,7 @@ def test_starting_from_the_default_branch_fast_forwards_the_local_one(
     policy = policy_in(repositories.clone(owned_url, "work"), settings)
     moved = github_s_default_branch_moved_on(repositories, owned_url, settings)
 
-    BranchStart(policy, "feature").run()
+    BranchStart(policy, BranchName("feature")).run()
 
     assert policy.checkout.git.run("rev-parse", policy.default_branch) == moved
 
@@ -219,7 +220,7 @@ def test_a_local_default_branch_with_commits_of_its_own_is_kept(
     own = git.run("rev-parse", "HEAD")
     github_s_default_branch_moved_on(repositories, owned_url, settings)
 
-    BranchStart(policy, "feature").run()
+    BranchStart(policy, BranchName("feature")).run()
 
     assert git.run("rev-parse", policy.default_branch) == own
 
@@ -234,7 +235,7 @@ def test_starting_from_another_branch_leaves_the_local_default_branch_alone(
     before = git.run("rev-parse", work.default_branch)
     github_s_default_branch_moved_on(repositories, owned_url, settings)
 
-    BranchStart(work, "upper", "feature").run()
+    BranchStart(work, BranchName("upper"), BranchName("feature")).run()
 
     assert git.run("rev-parse", work.default_branch) == before
 
@@ -253,11 +254,11 @@ def test_switching_to_a_branch_only_github_has_checks_it_out(
 ) -> None:
     session = policy_in(repositories.clone(owned_url, "session"), settings)
     elsewhere = policy_in(repositories.clone(owned_url, "elsewhere"), settings)
-    BranchStart(elsewhere, "pushed-elsewhere").run()
+    BranchStart(elsewhere, BranchName("pushed-elsewhere")).run()
     CommitWork(elsewhere, "Add a file", [write(elsewhere.checkout, "a.txt")]).run()
     PushWork(elsewhere).run()
 
-    BranchSwitch(session, "pushed-elsewhere").run()
+    BranchSwitch(session, BranchName("pushed-elsewhere")).run()
 
     git = session.checkout.git
     assert (git.run("branch", "--show-current"), git.run("rev-parse", "HEAD")) == (
@@ -269,10 +270,10 @@ def test_switching_to_a_branch_only_github_has_checks_it_out(
 def test_switching_to_a_branch_github_lacks_checks_out_the_local_one(
     work: WritePolicy,
 ) -> None:
-    BranchStart(work, "unpushed").run()
+    BranchStart(work, BranchName("unpushed")).run()
     BranchSwitch(work, RepositoriesByOwner.default_branch).run()
 
-    BranchSwitch(work, "unpushed").run()
+    BranchSwitch(work, BranchName("unpushed")).run()
 
     assert work.checkout.git.run("branch", "--show-current") == "unpushed"
 
@@ -371,7 +372,7 @@ def test_a_commit_without_a_branch_is_refused(work: WritePolicy) -> None:
 
 
 def test_a_pushed_branch_is_on_the_owner_s_repository(work: WritePolicy) -> None:
-    branch = work.remote.branch("feature")
+    branch = work.remote.branch(BranchName("feature"))
 
     assert branch.exists()
 
@@ -630,7 +631,7 @@ def test_a_stacked_draft_keeps_its_description_as_given(work: WritePolicy) -> No
 
 
 def test_a_draft_for_a_branch_github_lacks_is_refused(work: WritePolicy) -> None:
-    BranchStart(work, "unpushed").run()
+    BranchStart(work, BranchName("unpushed")).run()
     github = DraftsAndStacksInMemory({})
 
     with pytest.raises(BranchNotPushedError):
@@ -666,7 +667,7 @@ def other_clone_pushing(
 ) -> WritePolicy:
     """:return: A second clone, on the work branch, with one more commit pushed."""
     other = policy_in(repositories.clone(owned_url, "other"), settings)
-    BranchSwitch(other, "feature").run()
+    BranchSwitch(other, BranchName("feature")).run()
     CommitWork(other, "Add c", [write(other.checkout, "c.txt")]).run()
     PushWork(other).run()
     return other
@@ -800,7 +801,7 @@ def test_a_pushed_branch_is_not_reported_deleted_when_github_cannot_be_reached(
 def test_a_branch_is_not_reported_unpushed_when_github_cannot_be_reached(
     work: WritePolicy, repositories: RepositoriesByOwner
 ) -> None:
-    BranchStart(work, "unpushed").run()
+    BranchStart(work, BranchName("unpushed")).run()
     cut_off_from_github(work, repositories)
 
     with pytest.raises(GitCommandFailed):
@@ -822,7 +823,7 @@ class PullRequestsFromBranchesInMemory(PullRequestsFromForks):
     """
 
     def fork_branch_pull_requests(
-        self, owner: str, branch: str
+        self, owner: str, branch: BranchName
     ) -> list[RestPullRequest]:
         return [
             pull_request
@@ -831,7 +832,7 @@ class PullRequestsFromBranchesInMemory(PullRequestsFromForks):
         ]
 
     def open_fork_pull_request(
-        self, owner: str, branch: str, base: str, title: str, body: str
+        self, owner: str, branch: BranchName, base: BranchName, title: str, body: str
     ) -> RestPullRequest:
         raise NotImplementedError
 

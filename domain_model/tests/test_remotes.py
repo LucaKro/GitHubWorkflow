@@ -18,7 +18,7 @@ from domain_model.git.remotes import (
     RemoteBranch,
     RemoteName,
 )
-from domain_model.git.revisions import CommitHash, LocalBranch
+from domain_model.git.revisions import BranchName, BranchTip, CommitHash, LocalBranch
 from domain_model.git.working_tree import WorkingTree
 from domain_model.repository import Repository
 
@@ -52,7 +52,9 @@ def test_a_remote_s_branch_is_the_branch_of_that_name_on_it(
 ) -> None:
     remote = Remote.from_push_url(checkout, "fork", "/a/plain/path")
 
-    assert remote.branch("feature") == RemoteBranch(remote, "feature")
+    assert remote.branch(BranchName("feature")) == RemoteBranch(
+        remote, BranchName("feature")
+    )
 
 
 @pytest.fixture
@@ -67,7 +69,7 @@ def cloned(checkout: GitCommandRunner, tmp_path: Path) -> Remote:  # noqa: F811
 
 
 def test_a_remote_s_default_branch_is_the_one_its_head_names(cloned: Remote) -> None:
-    assert cloned.default_branch() == "trunk"
+    assert cloned.default_branch() == cloned.branch(BranchName("trunk"))
 
 
 def test_an_unreachable_remote_s_default_branch_is_the_one_last_fetched(
@@ -75,7 +77,7 @@ def test_an_unreachable_remote_s_default_branch_is_the_one_last_fetched(
 ) -> None:
     cloned.git.run("remote", "set-url", cloned.name, str(tmp_path / "gone.git"))
 
-    assert cloned.default_branch() == "trunk"
+    assert cloned.default_branch() == cloned.branch(BranchName("trunk"))
 
 
 def test_an_unreachable_remote_never_fetched_has_no_known_default_branch(
@@ -94,16 +96,16 @@ def test_every_branch_of_a_remote_is_listed_with_its_tip(
     checkout.run("commit", "--quiet", "--allow-empty", "--message", "Move on")
     checkout.run("push", "--quiet", RemoteName.ORIGIN, "HEAD:refs/heads/a/nested")
 
-    assert published.remote.branch_tips() == {
-        "a/nested": head(checkout),
-        published.name: first,
-    }
+    assert published.remote.branch_tips() == [
+        BranchTip(BranchName("a/nested"), CommitHash(head(checkout))),
+        BranchTip(published.name, CommitHash(first)),
+    ]
 
 
 def test_branches_still_at_their_commits_are_deleted_in_one_push(
     checkout: GitCommandRunner, published: RemoteBranch  # noqa: F811
 ) -> None:
-    others = [published.remote.branch(name) for name in ("second", "third")]
+    others = [published.remote.branch(BranchName(name)) for name in ("second", "third")]
     checkout.run(
         "push",
         "--quiet",
@@ -113,7 +115,7 @@ def test_branches_still_at_their_commits_are_deleted_in_one_push(
     commit = CommitHash(head(checkout))
 
     refused = published.remote.delete_branches(
-        {branch.name: commit for branch in [published, *others]}
+        [BranchTip(branch.name, commit) for branch in [published, *others]]
     )
 
     assert (refused, [branch.exists() for branch in [published, *others]]) == (
@@ -129,7 +131,7 @@ def test_a_branch_that_moved_is_kept_and_named(
     checkout.run("commit", "--quiet", "--allow-empty", "--message", "Move on")
     checkout.run("push", "--quiet", RemoteName.ORIGIN, f"HEAD:{published.reference}")
 
-    refused = published.remote.delete_branches({published.name: before})
+    refused = published.remote.delete_branches([BranchTip(published.name, before)])
 
     assert (refused, published.exists()) == ([published.name], True)
 
@@ -146,7 +148,7 @@ def test_a_pushed_branch_is_on_its_remote(
 def test_a_branch_never_pushed_is_not_on_the_remote(
     published: RemoteBranch,  # noqa: F811
 ) -> None:
-    assert not published.remote.branch("elsewhere").exists()
+    assert not published.remote.branch(BranchName("elsewhere")).exists()
 
 
 def test_a_remote_branch_s_tip_is_the_commit_pushed(
@@ -158,7 +160,7 @@ def test_a_remote_branch_s_tip_is_the_commit_pushed(
 def test_a_branch_only_ending_in_another_s_reference_is_not_its_tip(
     published: RemoteBranch,  # noqa: F811
 ) -> None:
-    absent = published.remote.branch("absent")
+    absent = published.remote.branch(BranchName("absent"))
     published.remote.git.run(
         "push", "--quiet", RemoteName.ORIGIN, f"HEAD:refs/heads/a/{absent.reference}"
     )
@@ -196,7 +198,12 @@ def test_a_branch_is_fetched_from_a_url_into_its_remote_s_tracking_branch(
 def test_a_branch_never_fetched_resolves_to_no_commit(
     published: RemoteBranch,  # noqa: F811
 ) -> None:
-    assert published.remote.branch("elsewhere").tracking_branch.commit_or_none() is None
+    assert (
+        published.remote.branch(
+            BranchName("elsewhere")
+        ).tracking_branch.commit_or_none()
+        is None
+    )
 
 
 def test_a_pushed_branch_s_remote_tracking_branch_was_written_from_its_remote(
@@ -208,9 +215,9 @@ def test_a_pushed_branch_s_remote_tracking_branch_was_written_from_its_remote(
 def test_a_branch_never_fetched_or_pushed_was_not(
     published: RemoteBranch,  # noqa: F811
 ) -> None:
-    assert not published.remote.branch(
-        "elsewhere"
-    ).tracking_branch.was_fetched_or_pushed()
+    elsewhere = published.remote.branch(BranchName("elsewhere"))
+
+    assert not elsewhere.tracking_branch.was_fetched_or_pushed()
 
 
 def test_a_forgotten_remote_tracking_branch_resolves_to_no_commit(
@@ -237,9 +244,9 @@ def upstream(git: GitCommandRunner, branch: str) -> str | None:
 def test_a_push_that_sets_the_upstream_makes_the_branch_track_where_it_went(
     checkout: GitCommandRunner, published: RemoteBranch  # noqa: F811
 ) -> None:
-    local = LocalBranch(checkout, "feature")
-    local.create(LocalBranch(checkout, "main"))
-    pushed = published.remote.branch("feature")
+    local = LocalBranch(checkout, BranchName("feature"))
+    local.create(LocalBranch(checkout, BranchName("main")))
+    pushed = published.remote.branch(BranchName("feature"))
 
     ProposedPush(pushed, local, sets_upstream=True).publish()
 
@@ -249,10 +256,10 @@ def test_a_push_that_sets_the_upstream_makes_the_branch_track_where_it_went(
 def test_a_plain_push_leaves_the_branch_tracking_none(
     checkout: GitCommandRunner, published: RemoteBranch  # noqa: F811
 ) -> None:
-    local = LocalBranch(checkout, "feature")
-    local.create(LocalBranch(checkout, "main"))
+    local = LocalBranch(checkout, BranchName("feature"))
+    local.create(LocalBranch(checkout, BranchName("main")))
 
-    ProposedPush(published.remote.branch("feature"), local).publish()
+    ProposedPush(published.remote.branch(BranchName("feature")), local).publish()
 
     assert upstream(checkout, "feature") is None
 
@@ -274,7 +281,7 @@ def test_a_push_skipping_the_hook_is_not_refused_by_it(
     hook.parent.mkdir(parents=True, exist_ok=True)
     hook.write_text("#!/bin/sh\nexit 1\n")
     hook.chmod(0o755)
-    pushed = published.remote.branch("feature")
+    pushed = published.remote.branch(BranchName("feature"))
     source = WorkingTree(checkout).head()
 
     refused = ProposedPush(pushed, source).publish()

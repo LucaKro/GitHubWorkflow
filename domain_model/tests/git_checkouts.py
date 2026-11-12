@@ -11,6 +11,7 @@ import pytest
 
 from domain_model.git.commands import GitCommandRunner
 from domain_model.git.remotes import Remote, RemoteBranch, RemoteName
+from domain_model.git.revisions import BranchName
 
 # %% a checkout
 
@@ -57,6 +58,8 @@ def published(checkout: GitCommandRunner, tmp_path: Path) -> RemoteBranch:
     bare = tmp_path / "remote.git"
     checkout.run("init", "--quiet", "--bare", str(bare))
     checkout.run("remote", "add", RemoteName.ORIGIN, str(bare))
-    branch = Remote(checkout, RemoteName.ORIGIN, str(bare), None).branch("main")
+    branch = Remote(checkout, RemoteName.ORIGIN, str(bare), None).branch(
+        BranchName("main")
+    )
     checkout.run("push", "--quiet", RemoteName.ORIGIN, f"HEAD:{branch.reference}")
     return branch

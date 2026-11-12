@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from domain_model.git.revisions import TextFiles
+from domain_model.git.revisions import BranchName, TextFiles
 from domain_model.github.discussions import (
     DefaultDiscussionCategory,
     DiscussionCategory,
@@ -235,9 +235,9 @@ class DiscussionSessionLog(SessionLog):
     Queues the entries.
     """
 
-    branch: str
+    branch: BranchName | None
     """
-    The branch the session works on, empty when it works on none.
+    The branch the session works on, ``None`` when it works on none.
     """
 
     category: DiscussionCategory = DefaultDiscussionCategory.GENERAL
@@ -263,8 +263,11 @@ class DiscussionSessionLog(SessionLog):
         :param notes: The notes branch, which queues the entries.
         :return: The session log of a session working on the checked-out branch.
         """
+        checked_out = checkout.working_tree.checked_out_branch()
         return cls(
-            discussions, DiscussionPosting(notes), checkout.checked_out_branch_name
+            discussions,
+            DiscussionPosting(notes),
+            None if checked_out is None else checked_out.name,
         )
 
     def enter(self, action: str) -> None:

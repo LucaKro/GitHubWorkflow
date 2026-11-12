@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from domain_model.exceptions import DataclassException, ExternalCallFailed
+from domain_model.git.revisions import BranchName
 from domain_model.repository import Repository
 
 # %% reading one pull request's review state
@@ -85,7 +86,7 @@ class UpstreamPullRequestNotFound(PullRequestReadError):
     Raised when a branch has no pull request open on the upstream.
     """
 
-    branch: str
+    branch: BranchName
     """
     The fork branch that was looked up.
     """

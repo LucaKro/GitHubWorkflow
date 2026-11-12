@@ -13,7 +13,7 @@ from domain_model.git.commands import GitCommandResult, GitCommandRunner
 from domain_model.git.exceptions import UnjudgedSubcommandError
 from domain_model.git.reading import GitCall, PartlyReadingSubcommand
 from domain_model.git.remotes import PushOption, Remote, RemoteBranch
-from domain_model.git.revisions import LocalBranch
+from domain_model.git.revisions import BranchName, LocalBranch
 from domain_model.git.subcommands import GitSubcommand, SubcommandReading
 from domain_model.git.working_tree import WorkingTree
 
@@ -82,7 +82,7 @@ RunnerOperation = Callable[[RemoteBranch], object]
         lambda branch: Remote.configured(branch.remote.git),
         lambda branch: branch.remote.fetch(),
         lambda branch: branch.fetch(),
-        lambda branch: LocalBranch(branch.remote.git, "copy").fast_forward(
+        lambda branch: LocalBranch(branch.remote.git, BranchName("copy")).fast_forward(
             branch.tracking_branch
         ),
         lambda branch: branch.tracking_branch.was_fetched_or_pushed(),

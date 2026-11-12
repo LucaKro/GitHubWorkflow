@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from domain_model.git.commands import GitCommandRunner
 from domain_model.git.remotes import RemoteName
-from domain_model.git.revisions import CommitHash
+from domain_model.git.revisions import BranchName, BranchTip, CommitHash
 from domain_model.github.replayed_api import ReplayedApi
 from domain_model.github.rest_models import RestPullRequest
 from domain_model.github.vocabulary import PullRequestState
@@ -57,15 +57,29 @@ from .test_work import (
 # %% helpers
 
 
+def tip(branch: str, commit: str) -> BranchTip:
+    """
+    :param branch: A branch.
+    :param commit: The commit it is at.
+    :return: The branch at the commit.
+    """
+    return BranchTip(BranchName(branch), CommitHash(commit))
+
+
+def protected() -> frozenset[BranchName]:
+    """:return: ``main`` and the notes branch."""
+    return frozenset({BranchName("main"), BranchName("notes")})
+
+
 def kept(tips: dict[str, str], *pull_requests: RestPullRequest) -> KeptBranches:
     """:param tips: Each branch and its commit.
     :param pull_requests: The repository's pull requests.
     :return: Them, with ``main`` and the notes branch protected."""
     return KeptBranches(
-        tips,
+        [tip(branch, commit) for branch, commit in tips.items()],
         list(pull_requests),
         ScratchGitHub.owned.full_name,
-        frozenset({"main", "notes"}),
+        protected(),
     )
 
 
@@ -77,7 +91,7 @@ def test_a_closed_pull_request_s_branch_is_ready() -> None:
         {"done": "a1"}, pull_request(1, "done", "a1", PullRequestState.CLOSED)
     )
 
-    assert branches.ready() == ["done"]
+    assert branches.ready() == [tip("done", "a1")]
 
 
 def test_a_branch_with_new_commits_since_closing_is_kept() -> None:
@@ -137,32 +151,40 @@ def test_a_pull_request_from_another_repository_says_nothing_about_this_one() ->
 
 def test_a_discarded_branch_still_at_its_commit_is_ready() -> None:
     branches = KeptBranches(
-        {"tried": "g1"},
+        [tip("tried", "g1")],
         [],
         ScratchGitHub.owned.full_name,
-        frozenset({"main", "notes"}),
-        DiscardedBranches({"tried": "g1"}),
+        protected(),
+        DiscardedBranches((tip("tried", "g1"),)),
     )
 
-    assert branches.ready() == ["tried"]
+    assert branches.ready() == [tip("tried", "g1")]
 
 
 def test_a_discarded_branch_with_new_commits_is_kept() -> None:
     branches = KeptBranches(
-        {"tried": "g2"},
+        [tip("tried", "g2")],
         [],
         ScratchGitHub.owned.full_name,
-        frozenset({"main", "notes"}),
-        DiscardedBranches({"tried": "g1"}),
+        protected(),
+        DiscardedBranches((tip("tried", "g1"),)),
     )
 
     assert branches.ready() == []
 
 
 def test_the_discarded_list_reads_back_what_it_wrote() -> None:
-    discarded = DiscardedBranches({"one": "a1", "two": "b2"})
+    discarded = DiscardedBranches((tip("one", "a1"), tip("two", "b2")))
 
     assert DiscardedBranches.from_text(discarded.to_text()) == discarded
+
+
+def test_a_branch_listed_again_replaces_its_earlier_entry() -> None:
+    discarded = DiscardedBranches((tip("one", "a1"), tip("two", "b2")))
+
+    assert discarded.extended(tip("one", "c3")) == DiscardedBranches(
+        (tip("two", "b2"), tip("one", "c3"))
+    )
 
 
 def test_the_reminder_names_how_many_and_the_command() -> None:
@@ -193,11 +215,11 @@ def cleanup_in(
     checkout = repositories.clone(url, "cleaner")
     git = checkout.git
     remote = OwnedRemotes.read(git, settings).chosen
-    branch = remote.branch("closed-work")
+    branch = remote.branch(BranchName("closed-work"))
     git.run("push", "--quiet", remote.name, f"HEAD:{branch.reference}")
     commit = CommitHash(git.run("rev-parse", "HEAD"))
     branches = KeptBranches(
-        {branch.name: commit},
+        [BranchTip(branch.name, commit)],
         [
             pull_request(
                 1,
@@ -247,7 +269,7 @@ def test_a_branch_the_session_may_not_delete_is_listed_for_the_workflow(
     notes = cleanup.notes
     notes.fetch()
     listed = BranchTips.from_text(notes.read(NotesFile.READY_FOR_DELETION.value))
-    assert listed == BranchTips({"closed-work": cleanup.kept.tips["closed-work"]})
+    assert listed == BranchTips(tuple(cleanup.kept.tips))
     assert settings.notes_branch in notes.read(NotesFile.DELETION_WORKFLOW.value)
 
 
@@ -347,7 +369,7 @@ def pushed_work(
     :return: The rules of a clone on a pushed branch ``tried``, and its notes branch.
     """
     policy = policy_in(repositories.clone(url, "thrower"), settings)
-    BranchStart(policy, "tried").run()
+    BranchStart(policy, BranchName("tried")).run()
     CommitWork(policy, "Try", [write(policy.checkout, "tried.txt")]).run()
     PushWork(policy).run()
     return policy, NotesBranch.from_settings(policy.remote, settings)
@@ -402,7 +424,7 @@ def test_a_discarded_branch_is_listed_with_its_commit(
 
     listed = notes.read(NotesFile.DISCARDED_BRANCHES.value)
     assert DiscardedBranches.from_text(listed) == DiscardedBranches(
-        {"tried": policy.checkout.git.run("rev-parse", "tried")}
+        (tip("tried", policy.checkout.git.run("rev-parse", "tried")),)
     )
 
 
@@ -419,7 +441,7 @@ def test_discarding_a_branch_github_lacks_is_refused(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
 ) -> None:
     policy, notes = pushed_work(repositories, owned_url, settings)
-    BranchStart(policy, "never-pushed").run()
+    BranchStart(policy, BranchName("never-pushed")).run()
 
     with pytest.raises(NothingToDiscardError):
         discard(policy, notes).run()

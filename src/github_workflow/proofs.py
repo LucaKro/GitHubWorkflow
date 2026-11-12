@@ -16,9 +16,8 @@ from pathlib import Path
 from typing import Any
 
 from domain_model.class_property import classproperty
-from domain_model.git.branch_tips import BranchTip
 from domain_model.git.remotes import RemoteBranch
-from domain_model.git.revisions import CommitHash
+from domain_model.git.revisions import BranchName, BranchTip, CommitHash
 from domain_model.github.issue_models import IssueComment
 from domain_model.pytest_run import (
     BrokenTestException,
@@ -363,7 +362,9 @@ class Proof:
         """
         return cls(
             FindingTest(Path(data[ProofKey.PATH]), data[ProofKey.SOURCE]),
-            BranchTip(data[ProofKey.BRANCH], CommitHash(data[ProofKey.COMMIT])),
+            BranchTip(
+                BranchName(data[ProofKey.BRANCH]), CommitHash(data[ProofKey.COMMIT])
+            ),
             data[ProofKey.FAILURE],
         )
 

@@ -6,13 +6,15 @@ decided in one place.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Sequence
 from dataclasses import dataclass, fields
 from enum import StrEnum
 
 from domain_model.git.commands import GitCommandResult, GitCommandRunner
 from domain_model.git.exceptions import MalformedReferenceUpdateError
 from domain_model.git.revisions import (
+    BranchName,
+    BranchTip,
     CommitHash,
     FetchOption,
     ReferenceNamespace,
@@ -188,36 +190,42 @@ class Remote:
         """:return: How git is told to reach the remote: its URL, or its name."""
         return self.fetch_url or self.name
 
-    def branch(self, name: str) -> RemoteBranch:
+    def branch(self, name: BranchName) -> RemoteBranch:
         """
         :param name: A branch's name.
         :return: The branch of that name on this remote.
         """
         return RemoteBranch(self, name)
 
-    def fetch(self, *branches: str) -> None:
+    def fetch(self, *branches: RemoteBranch) -> None:
         """
         Refresh what the checkout knows about the remote.
 
-        :param branches: The branches to fetch, by name; all of them when none is named.
+        :param branches: Branches of this remote to fetch; all of them when none is
+            given.
         :raises GitCommandFailed: If the remote cannot be reached.
         """
-        self.git.run(GitSubcommand.FETCH, FetchOption.QUIET, self.location, *branches)
+        names = [branch.name for branch in branches]
+        self.git.run(GitSubcommand.FETCH, FetchOption.QUIET, self.location, *names)
 
-    def branch_tips(self) -> dict[str, CommitHash]:
+    def branch_tips(self) -> list[BranchTip]:
         """
-        :return: Each branch the remote has, by its name, and the commit it is at.
+        :return: Each branch the remote has, and the commit it is at, in the order the
+            remote lists them.
         :raises GitCommandFailed: If the remote cannot be reached.
         """
         listed = self.git.run(
             GitSubcommand.LS_REMOTE, LsRemoteOption.HEADS, self.location
         )
-        return {
-            reference.removeprefix(ReferenceNamespace.BRANCHES): CommitHash(commit)
+        return [
+            BranchTip(
+                BranchName(reference.removeprefix(ReferenceNamespace.BRANCHES)),
+                CommitHash(commit),
+            )
             for commit, reference in (line.split() for line in listed.splitlines())
-        }
+        ]
 
-    def default_branch(self) -> str | None:
+    def default_branch(self) -> RemoteBranch | None:
         """
         :return: The branch the remote's ``HEAD`` names, as the remote answers, or as
             last fetched when it cannot be reached; ``None`` when neither knows.
@@ -233,32 +241,31 @@ class Remote:
         for line in listed.output.splitlines() if listed.succeeded else []:
             target, _, name = line.partition("\t")
             if name == head and target.startswith(f"ref: {branches}"):
-                return target.removeprefix(f"ref: {branches}")
+                return self.branch(BranchName(target.removeprefix(f"ref: {branches}")))
         tracking = f"{ReferenceNamespace.REMOTE_TRACKING_BRANCHES}{self.name}/"
         fetched = self.git.attempt(
             GitSubcommand.SYMBOLIC_REF, SymbolicRefOption.QUIET, f"{tracking}{head}"
         )
         if not fetched.succeeded:
             return None
-        return fetched.output.removeprefix(tracking)
+        return self.branch(BranchName(fetched.output.removeprefix(tracking)))
 
-    def delete_branches(self, tips: Mapping[str, CommitHash]) -> list[str]:
+    def delete_branches(self, tips: Sequence[BranchTip]) -> list[BranchName]:
         """
         Delete branches from the remote in one push, each only while it is still at the
         commit given.
 
-        :param tips: Each branch to delete, by name, and the commit it must still be at.
+        :param tips: Each branch to delete, and the commit it must still be at.
         :return: The branches not deleted, in the order given: those that moved, and
             those the remote refused.
         """
         if not tips:
             return []
-        references = {name: self.branch(name).reference for name in tips}
         leases = [
-            f"{PushOption.FORCE_WITH_LEASE}={references[name]}:{commit}"
-            for name, commit in tips.items()
+            f"{PushOption.FORCE_WITH_LEASE}={tip.branch.reference}:{tip.commit}"
+            for tip in tips
         ]
-        deletions = [f":{reference}" for reference in references.values()]
+        deletions = [f":{tip.branch.reference}" for tip in tips]
         pushed = self.git.attempt(
             GitSubcommand.PUSH,
             PushOption.PORCELAIN,
@@ -273,7 +280,7 @@ class Remote:
             )
             if len(columns) > 1 and columns[0] == PushFlag.DELETED
         }
-        return [name for name in tips if references[name] not in deleted]
+        return [tip.branch for tip in tips if tip.branch.reference not in deleted]
 
 
 # %% a branch on a remote
@@ -360,7 +367,7 @@ class RemoteBranch:
     The remote it is on.
     """
 
-    name: str
+    name: BranchName
     """
     The branch's name on the remote.
     """
@@ -368,7 +375,7 @@ class RemoteBranch:
     @property
     def reference(self) -> str:
         """:return: The branch's full reference, as the remote has it."""
-        return f"{ReferenceNamespace.BRANCHES}{self.name}"
+        return self.name.reference
 
     @property
     def tracking_branch(self) -> RemoteTrackingBranch:

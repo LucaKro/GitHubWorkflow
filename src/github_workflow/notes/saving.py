@@ -7,7 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from domain_model.git.revisions import TextFiles
+from domain_model.git.revisions import BranchName, TextFiles
 
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.locations import NotesFile
@@ -35,15 +35,16 @@ class NotesSave:
     """
 
     @property
-    def progress_branch(self) -> str:
+    def progress_branch(self) -> BranchName | None:
         """
         The branch the block's progress belongs to: the one it was loaded for, or the
-        checked-out one for a block that does not record it; empty for none.
+        checked-out one for a block that does not record it; ``None`` for none.
         """
         recorded = BlockRecord.BRANCH.read(self.checkout.claude_local_text)
-        if recorded is None:
-            return self.checkout.checked_out_branch_name
-        return recorded
+        if recorded is not None:
+            return BranchName(recorded) if recorded else None
+        checked_out = self.checkout.working_tree.checked_out_branch()
+        return None if checked_out is None else checked_out.name
 
     def files(self) -> TextFiles:
         """
@@ -72,7 +73,7 @@ class NotesSave:
         :return: The files saved, empty when nothing changed.
         """
         files = self.files()
-        branch = self.checkout.checked_out_branch_name
+        checked_out = self.checkout.working_tree.checked_out_branch()
         self.notes.fetch()
         changed = TextFiles(
             {
@@ -82,7 +83,8 @@ class NotesSave:
             }
         )
         if changed.texts:
-            self.notes.write(changed, f"Save notes from {branch or 'a detached HEAD'}")
+            source = "a detached HEAD" if checked_out is None else checked_out.name
+            self.notes.write(changed, f"Save notes from {source}")
         self.checkout.claude_local.write_text(
             NotesBlock.marked_saved(self.checkout.claude_local_text)
         )

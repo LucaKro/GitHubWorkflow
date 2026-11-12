@@ -15,6 +15,7 @@ from domain_model.git.commands import (
     RevParseOption,
 )
 from domain_model.git.revisions import (
+    BranchName,
     Commit,
     CommitHash,
     LocalBranch,
@@ -267,7 +268,7 @@ class WorkingTree:
         """:return: The branch a commit or a push would move, ``None`` on a detached
         ``HEAD``."""
         name = self.git.run(GitSubcommand.BRANCH, BranchOption.SHOW_CURRENT)
-        return LocalBranch(self.git, name) if name else None
+        return LocalBranch(self.git, BranchName(name)) if name else None
 
     def head(self) -> Commit:
         """:return: The commit checked out."""

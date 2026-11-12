@@ -10,6 +10,7 @@ from enum import StrEnum
 from urllib.parse import quote, urlencode
 
 from domain_model.class_property import classproperty
+from domain_model.git.revisions import BranchName
 from domain_model.repository import Repository
 
 # %% query parameters
@@ -120,7 +121,7 @@ class RepositoryRoute:
         """:return: The bringing of a fork's branch up to its upstream's."""
         return f"{self.root}/merge-upstream"
 
-    def pull_requests_for_head(self, owner: str, branch: str) -> str:
+    def pull_requests_for_head(self, owner: str, branch: BranchName) -> str:
         """
         :param owner: Whose branch to search for.
         :param branch: The branch's name.
@@ -260,7 +261,7 @@ class RepositoryRoute:
         """:return: The repository's Actions workflows, on every branch."""
         return f"{self.root}/actions/workflows"
 
-    def workflow_runs(self, branch: str) -> str:
+    def workflow_runs(self, branch: BranchName) -> str:
         """:param branch: The branch the runs were triggered on.
         :return: Its workflow runs, newest first."""
         return f"{self.root}/actions/runs?{urlencode({QueryParameter.BRANCH: branch})}"
@@ -291,7 +292,7 @@ class RepositoryRoute:
         """:return: The account the token belongs to."""
         return "user"
 
-    def pull_request_search(self, author: str, branch: str) -> str:
+    def pull_request_search(self, author: str, branch: BranchName) -> str:
         """
         :param author: Who opened the pull requests.
         :param branch: The branch they were opened from, on any repository.

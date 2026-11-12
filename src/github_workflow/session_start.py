@@ -132,7 +132,8 @@ class SessionStart:
         remote = remotes.chosen
         notes = NotesBranch.from_settings(remote, self.settings)
         exists = notes.fetch()
-        branch = self.checkout.checked_out_branch_name
+        checked_out = self.checkout.working_tree.checked_out_branch()
+        branch = None if checked_out is None else checked_out.name
         sections = {
             NotesSection.STANDING_NOTES: (
                 notes.read(NotesFile.STANDING_NOTES) or ""

@@ -7,6 +7,7 @@ from __future__ import annotations
 from enum import StrEnum
 from pathlib import Path
 
+from domain_model.git.revisions import BranchName
 from domain_model.locations import GitHubRepositoryFile, PathEnumeration
 
 # %% the notes branch
@@ -115,7 +116,7 @@ class NotesFile(PathEnumeration):
     """
 
     @classmethod
-    def progress_file(cls, branch: str) -> Path:
+    def progress_file(cls, branch: BranchName) -> Path:
         """
         :param branch: A work branch.
         :return: Where its progress is kept.

@@ -65,12 +65,6 @@ class ProjectCheckout:
         return Merge(self.working_tree)
 
     @property
-    def checked_out_branch_name(self) -> str:
-        """:return: The checked-out branch's name, empty on a detached ``HEAD``."""
-        branch = self.working_tree.checked_out_branch()
-        return "" if branch is None else branch.name
-
-    @property
     def root(self) -> Path:
         """:return: The checkout's top directory."""
         return self.git.working_directory

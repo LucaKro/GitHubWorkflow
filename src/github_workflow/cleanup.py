@@ -9,16 +9,15 @@ from __future__ import annotations
 
 import shutil
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
 from typing import Self
 
-from domain_model.git.branch_tips import BranchTip
 from domain_model.git.commands import GitCommandRunner
-from domain_model.git.revisions import CommitHash, TextFiles
+from domain_model.git.revisions import BranchName, BranchTip, CommitHash, TextFiles
 from domain_model.github.repository_client import (
     GitHubRepository,
     PullRequestsFromForks,
@@ -51,7 +50,7 @@ class BranchTips:
     Branches, each with the commit it may be deleted at, as the notes branch lists them.
     """
 
-    commits: Mapping[str, CommitHash] = field(default_factory=dict)
+    tips: tuple[BranchTip, ...] = ()
     """
     Each branch, and the commit it may be deleted at.
     """
@@ -63,20 +62,26 @@ class BranchTips:
         :return: The branches it names.
         """
         pairs = (line.split() for line in (text or "").splitlines() if line.strip())
-        return cls({branch: CommitHash(commit) for branch, commit in pairs})
+        return cls(
+            tuple(
+                BranchTip(BranchName(branch), CommitHash(commit))
+                for branch, commit in pairs
+            )
+        )
 
     def to_text(self) -> str:
         """:return: The list as the notes branch keeps it."""
-        return "".join(
-            f"{branch} {commit}\n" for branch, commit in sorted(self.commits.items())
-        )
+        ordered = sorted(self.tips, key=lambda tip: tip.branch)
+        return "".join(f"{tip.branch} {tip.commit}\n" for tip in ordered)
 
     def extended(self, tip: BranchTip) -> Self:
         """
         :param tip: Another branch, and its commit.
-        :return: These branches and that one.
+        :return: These branches and that one, in place of an earlier entry of its
+            branch.
         """
-        return type(self)({**self.commits, tip.branch: tip.commit})
+        others = tuple(listed for listed in self.tips if listed.branch != tip.branch)
+        return type(self)((*others, tip))
 
 
 # %% discarded branches
@@ -118,14 +123,15 @@ class BranchDiscard(WorkflowStep):
     Closes them.
     """
 
-    name: str | None = None
+    name: BranchName | None = None
     """
     The branch to discard, the checked-out one when ``None``.
     """
 
     def run(self) -> str:
-        branch = self.name or self.policy.checkout.checked_out_branch_name
-        if not branch:
+        checked_out = self.policy.checkout.working_tree.checked_out_branch()
+        branch = self.name or (None if checked_out is None else checked_out.name)
+        if branch is None:
             raise DetachedHeadError()
         if branch in {self.policy.default_branch, self.notes.branch.name}:
             raise UndiscardableBranchError(branch)
@@ -168,7 +174,7 @@ class KeptBranches:
     branches ready for deletion follow.
     """
 
-    tips: Mapping[str, CommitHash]
+    tips: Sequence[BranchTip]
     """
     Each branch on the repository, and the commit it is at.
     """
@@ -184,7 +190,7 @@ class KeptBranches:
     repository.
     """
 
-    protected: frozenset[str]
+    protected: frozenset[BranchName]
     """
     The branches never deleted: the default branch and the notes branch.
     """
@@ -194,14 +200,14 @@ class KeptBranches:
     The branches discarded as thrown away.
     """
 
-    def ready(self) -> list[str]:
+    def ready(self) -> list[BranchTip]:
         """
         :return: Each branch whose pull request is closed, or that was discarded, and
             that is still at the commit it was closed or discarded at, with no open pull
-            request from or into it; never a protected one.
+            request from or into it; never a protected one. Ordered by branch.
         """
-        in_use = set()
-        closed_heads: dict[str, set[str]] = {}
+        in_use: set[BranchName] = set()
+        closed: set[BranchTip] = set()
         for pull_request in self.pull_requests:
             is_open = pull_request.state is PullRequestState.OPEN
             if is_open:
@@ -212,17 +218,15 @@ class KeptBranches:
             if is_open:
                 in_use.add(head.branch)
             else:
-                closed_heads.setdefault(head.branch, set()).add(head.commit)
-        return sorted(
-            branch
-            for branch, tip in self.tips.items()
-            if branch not in self.protected
-            and branch not in in_use
-            and (
-                tip in closed_heads.get(branch, set())
-                or tip == self.discarded.commits.get(branch)
-            )
-        )
+                closed.add(BranchTip(head.branch, head.commit))
+        ready = [
+            tip
+            for tip in self.tips
+            if tip.branch not in self.protected
+            and tip.branch not in in_use
+            and (tip in closed or tip in self.discarded.tips)
+        ]
+        return sorted(ready, key=lambda tip: tip.branch)
 
     @classmethod
     def read(
@@ -314,12 +318,10 @@ class BranchCleanup(WorkflowStep):
         ready = self.kept.ready()
         if not ready:
             return "no branch is ready for deletion"
-        refused = self.remote.delete_branches(
-            {branch: self.kept.tips[branch] for branch in ready}
-        )
+        refused = self.remote.delete_branches(ready)
         deleted = len(ready) - len(refused)
         removed = {
-            "deleted": [branch for branch in ready if branch not in refused],
+            "deleted": [tip.branch for tip in ready if tip.branch not in refused],
             "handed to the deletion workflow": refused,
         }
         self.log.enter(
@@ -332,7 +334,7 @@ class BranchCleanup(WorkflowStep):
         )
         if not refused:
             return f"deleted {CountedThing.BRANCH.counted(deleted)}"
-        listed = BranchTips({branch: self.kept.tips[branch] for branch in refused})
+        listed = BranchTips(tuple(tip for tip in ready if tip.branch in refused))
         workflow = NotesBranchWorkflow.DELETION.files(
             self.notes.branch.name,
             {DeletionPlaceholder.LIST_FILE: str(NotesFile.READY_FOR_DELETION)},

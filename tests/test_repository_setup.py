@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import pytest
+from domain_model.git.revisions import BranchName
 from domain_model.github.repository_client import (
     RepositoryFeatures,
 )
@@ -88,7 +89,7 @@ class SettingsInMemory(RepositoryFeatures):
     def workflows(self) -> list[Workflow]:
         return list(self.listed)
 
-    def branch_runs(self, branch: str) -> list[WorkflowRun]:
+    def branch_runs(self, branch: BranchName) -> list[WorkflowRun]:
         return []
 
 

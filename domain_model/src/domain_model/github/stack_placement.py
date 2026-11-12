@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from domain_model.git.revisions import BranchName
 from domain_model.github.exceptions import StackContinuesAboveError
 from domain_model.github.repository_client import StackHost
 from domain_model.github.stack_models import Stack
@@ -74,7 +75,7 @@ class StackPlacement:
         if any(self.is_open(number) for number in on_top):
             raise StackContinuesAboveError(below, tuple(on_top))
 
-    def move_off(self, done: int, base: str) -> int | None:
+    def move_off(self, done: int, base: BranchName) -> int | None:
         """
         Move what builds on a pull request whose work has landed onto the branch given.
 

@@ -8,9 +8,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from domain_model.git.branch_tips import BranchTip
 from domain_model.git.remotes import ProposedPush, Remote, RemoteBranch, RemoteName
-from domain_model.git.revisions import Commit
+from domain_model.git.revisions import BranchName, BranchTip, Commit
 from domain_model.github.labels import LabelWrite
 from domain_model.github.repository_client import (
     FollowedFork,
@@ -68,7 +67,7 @@ class UpstreamProposal(WorkflowStep):
     The owner's fork.
     """
 
-    branch: str
+    branch: BranchName
     """
     The fork's branch whose pull request is proposed.
     """
@@ -322,7 +321,7 @@ class UpstreamSuggestion(DescriptionEnding):
     The repository the pull request is opened on.
     """
 
-    def append_once(self, body: str, branch: str) -> str:
+    def append_once(self, body: str, branch: BranchName) -> str:
         upstream = self.fork_details.upstream()
         if upstream is None:
             return body
@@ -335,7 +334,7 @@ class UpstreamSuggestion(DescriptionEnding):
         return f"{body.replace(ending, '').rstrip()}\n\n{ending}\n"
 
     @staticmethod
-    def opening_command(repository: Repository, branch: str) -> str:
+    def opening_command(repository: Repository, branch: BranchName) -> str:
         """
         :param repository: The owner's fork.
         :param branch: Its branch.
@@ -426,7 +425,9 @@ class UpstreamMergeFollowing(ReportSection):
             )
         return lines
 
-    def pull_requests_to_follow(self, default_branch: str) -> list[RestPullRequest]:
+    def pull_requests_to_follow(
+        self, default_branch: BranchName
+    ) -> list[RestPullRequest]:
         """
         :param default_branch: The fork's default branch.
         :return: The fork's open pull requests, and each merged one an open pull
@@ -449,7 +450,10 @@ class UpstreamMergeFollowing(ReportSection):
         return open_ones + merged_below
 
     def follow_merge(
-        self, pull_request: RestPullRequest, upstream_url: str, default_branch: str
+        self,
+        pull_request: RestPullRequest,
+        upstream_url: str,
+        default_branch: BranchName,
     ) -> list[str]:
         """
         :param pull_request: The fork's pull request merged upstream.

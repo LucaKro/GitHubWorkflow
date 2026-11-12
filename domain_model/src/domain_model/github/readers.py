@@ -12,6 +12,7 @@ from typing import Any
 from domain_model.environment import (
     ClaudeCodeVariable,
 )
+from domain_model.git.revisions import BranchName
 from domain_model.github.clients import GitHubApi, GraphQLClient, RestClient
 from domain_model.github.commit_checks import CommitCheckReader
 from domain_model.github.exceptions import (
@@ -67,7 +68,7 @@ class PullRequestSource(ABC):
     """
 
     @abstractmethod
-    def resolve_pull_request_number(self, branch: str) -> int:
+    def resolve_pull_request_number(self, branch: BranchName) -> int:
         """
         Find the upstream pull request opened from *branch*.
 
@@ -87,7 +88,7 @@ class PullRequestSource(ABC):
         :return: The assembled snapshot.
         """
 
-    def choose(self, branch: str, pull_requests: list[BranchPullRequest]) -> int:
+    def choose(self, branch: BranchName, pull_requests: list[BranchPullRequest]) -> int:
         """
         Pick the fork's own pull request out of those a branch search matched.
 
@@ -146,7 +147,7 @@ class UpstreamPullRequestReader(PullRequestSource):
             QueryVariable.NAME: self.upstream_repository.name,
         }
 
-    def resolve_pull_request_number(self, branch: str) -> int:
+    def resolve_pull_request_number(self, branch: BranchName) -> int:
         """
         See :meth:`PullRequestSource.resolve_pull_request_number`.
         """
@@ -212,7 +213,7 @@ class RestPullRequestReader(PullRequestSource):
         """:return: The paths under the upstream."""
         return RepositoryRoute(self.upstream_repository)
 
-    def resolve_pull_request_number(self, branch: str) -> int:
+    def resolve_pull_request_number(self, branch: BranchName) -> int:
         """
         See :meth:`PullRequestSource.resolve_pull_request_number`.
         """

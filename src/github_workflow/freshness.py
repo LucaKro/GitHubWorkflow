@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from domain_model.git.revisions import BranchName
 from domain_model.github.repository_client import (
     ForkedRepository,
 )
@@ -81,9 +82,12 @@ class BranchFreshening:
         """
         checkout = self.policy.checkout
         tree = checkout.working_tree
-        branch = checkout.checked_out_branch_name
-        if branch in {"", self.policy.default_branch} or checkout.merge.in_progress():
+        checked_out = tree.checked_out_branch()
+        if checked_out is None or checked_out.name == self.policy.default_branch:
             return []
+        if checkout.merge.in_progress():
+            return []
+        branch = checked_out.name
         base = self.base_branch(branch)
         sync = (
             RunnableCommand.SYNC.usage(CommandOption.BASE)
@@ -121,7 +125,7 @@ class BranchFreshening:
         done = WorkBranchMerge(self.policy).merge(merged, base)
         return [ReportLine(f"{stale}: {done}", Tone.NEWS)]
 
-    def base_branch(self, branch: str) -> str:
+    def base_branch(self, branch: BranchName) -> BranchName:
         """
         :param branch: The work branch.
         :return: The branch its open pull request targets, the default branch when it

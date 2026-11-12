@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from domain_model.class_property import classproperty
-from domain_model.git.revisions import CommitHash
+from domain_model.git.revisions import BranchName, CommitHash
 from domain_model.github.exceptions import (
     MissingPullRequestFieldError,
     ReviewThreadWithoutCommentsError,
@@ -70,7 +70,7 @@ class PullRequestHead(JSONModel):
     The branch a pull request would merge, where it lives, and the commit it is at.
     """
 
-    branch: str
+    branch: BranchName
     """
     The head branch's name.
     """
@@ -101,7 +101,7 @@ class PullRequestHead(JSONModel):
         """
         repository = data[RestJSONKey.REPOSITORY]
         return cls(
-            branch=data[RestJSONKey.REFERENCE],
+            branch=BranchName(data[RestJSONKey.REFERENCE]),
             repository=(
                 None if repository is None else repository[RestJSONKey.FULL_NAME]
             ),
@@ -156,7 +156,7 @@ class RestPullRequest(JSONModel, HasNumberLink):
     The branch it would merge.
     """
 
-    base: str
+    base: BranchName
     """
     The branch it would merge into.
     """
@@ -215,7 +215,7 @@ class RestPullRequest(JSONModel, HasNumberLink):
             merged=data.get(RestJSONKey.MERGED_AT) is not None,
             draft=data[RestJSONKey.DRAFT],
             head=PullRequestHead.from_json(head),
-            base=data[RestJSONKey.BASE][RestJSONKey.REFERENCE],
+            base=BranchName(data[RestJSONKey.BASE][RestJSONKey.REFERENCE]),
             labels=tuple(label[RestJSONKey.NAME] for label in data[RestJSONKey.LABELS]),
             mergeable_state=(
                 None
@@ -245,7 +245,7 @@ class RestRepository(JSONModel):
     The repository itself, as REST describes it.
     """
 
-    default_branch: str
+    default_branch: BranchName
     """
     The branch pull requests target unless told otherwise.
     """
@@ -279,7 +279,7 @@ class RestRepository(JSONModel):
         :return: The parsed repository.
         """
         return cls(
-            default_branch=data[RestJSONKey.DEFAULT_BRANCH],
+            default_branch=BranchName(data[RestJSONKey.DEFAULT_BRANCH]),
             deletes_merged_branches=data[RestJSONKey.DELETE_BRANCH_ON_MERGE],
             issues_enabled=data[RestJSONKey.HAS_ISSUES],
             discussions_enabled=data[RestJSONKey.HAS_DISCUSSIONS],

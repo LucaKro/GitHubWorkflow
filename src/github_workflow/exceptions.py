@@ -9,11 +9,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from domain_model.exceptions import DataclassException
+from domain_model.git.revisions import BranchName
 
 from github_workflow.command_line import CommandOption, RunnableCommand
 
 if TYPE_CHECKING:
-    from domain_model.git.branch_tips import BranchTip
+    from domain_model.git.revisions import BranchTip
     from domain_model.github.vocabulary import WorkflowRunConclusion
     from domain_model.repository import Repository
 
@@ -137,7 +138,7 @@ class DefaultBranchWriteError(DataclassException, RuntimeError):
     requests may change.
     """
 
-    branch: str
+    branch: BranchName
     """
     The default branch.
     """
@@ -173,7 +174,7 @@ class PushRefusedError(DataclassException, RuntimeError):
     Raised when the remote refuses a push, which is never forced.
     """
 
-    branch: str
+    branch: BranchName
     """
     The branch that was pushed.
     """
@@ -196,7 +197,7 @@ class BranchNotPushedError(DataclassException, RuntimeError):
     Raised when a pull request is asked for a branch GitHub does not have.
     """
 
-    branch: str
+    branch: BranchName
     """
     The branch.
     """
@@ -215,7 +216,7 @@ class UnpushedCommitsError(DataclassException, RuntimeError):
     the local ones were never pushed.
     """
 
-    branch: str
+    branch: BranchName
     """
     The branch.
     """
@@ -236,12 +237,12 @@ class MergeConflictError(DataclassException, ValueError):
     progress.
     """
 
-    branch: str
+    branch: BranchName
     """
     The work branch.
     """
 
-    merged_branch: str
+    merged_branch: BranchName
     """
     The branch merged into it, as the report names it.
     """
@@ -277,7 +278,7 @@ class MergeInProgressError(DataclassException, RuntimeError):
     in progress on it.
     """
 
-    branch: str
+    branch: BranchName
     """
     The work branch.
     """
@@ -297,7 +298,7 @@ class NoMergeInProgressError(DataclassException, RuntimeError):
     Raised when a merge is to be finished or undone and none is in progress.
     """
 
-    branch: str
+    branch: BranchName
     """
     The work branch.
     """
@@ -433,7 +434,7 @@ class StackedBranchMergeError(DataclassException, ValueError):
     higher in a stack, targeting the branch below it.
     """
 
-    branch: str
+    branch: BranchName
     """
     The work branch.
     """
@@ -463,7 +464,7 @@ class BranchDeletedFromGitHubError(DataclassException, LookupError):
     request was merged.
     """
 
-    branch: str
+    branch: BranchName
     """
     The branch.
     """
@@ -526,7 +527,7 @@ class NoOpenPullRequestError(DataclassException, LookupError):
     Raised when the work branch has no open pull request to write to.
     """
 
-    branch: str
+    branch: BranchName
     """
     The work branch.
     """
@@ -544,7 +545,7 @@ class NothingToLabelError(DataclassException, ValueError):
     Raised when a pull request is to be labelled with no label to add or remove.
     """
 
-    branch: str
+    branch: BranchName
     """
     The work branch.
     """
@@ -625,7 +626,7 @@ class UnpushedWorkError(DataclassException, RuntimeError):
     GitHub's copy lacks.
     """
 
-    branch: str
+    branch: BranchName
     """
     The work branch.
     """
@@ -666,7 +667,7 @@ class UndiscardableBranchError(DataclassException, ValueError):
     are never deleted.
     """
 
-    branch: str
+    branch: BranchName
     """
     The branch.
     """
@@ -684,7 +685,7 @@ class NothingToDiscardError(DataclassException, LookupError):
     Raised when the branch to discard is not on GitHub, so there is nothing to delete.
     """
 
-    branch: str
+    branch: BranchName
     """
     The branch.
     """
@@ -765,7 +766,7 @@ class ForkBranchDivergedError(DataclassException, ValueError):
     Raised when a fork's branch to bring up to its upstream's has commits of its own.
     """
 
-    branch: str
+    branch: BranchName
     """
     The fork's branch.
     """
@@ -814,7 +815,7 @@ class PullRequestNotProposableError(DataclassException, ValueError):
     Raised when a fork's branch has no pull request that can be opened upstream.
     """
 
-    branch: str
+    branch: BranchName
     """
     The fork's branch.
     """
@@ -998,7 +999,7 @@ class FixNotMergedError(DataclassException, ValueError):
     The pull request named as the fix.
     """
 
-    default_branch: str
+    default_branch: BranchName
     """
     The branch it has to be merged into.
     """

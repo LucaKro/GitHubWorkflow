@@ -7,7 +7,7 @@ from __future__ import annotations
 from domain_model.templates import Placeholder
 
 from github_workflow.locations import ProbeTemplate
-from github_workflow.probe.scenarios import BranchName, ProbeWorkflowPlaceholder
+from github_workflow.probe.scenarios import ProbeBranchShape, ProbeWorkflowPlaceholder
 
 # %% filling in the template
 
@@ -29,7 +29,8 @@ def filled(workflow: str, deleted: str) -> str:
 
 def test_the_filled_workflow_leaves_no_placeholder() -> None:
     workflow = filled(
-        f"{BranchName.WORKFLOW}stamp", f"{BranchName.DELETED_BY_WORKFLOW}stamp"
+        f"{ProbeBranchShape.WORKFLOW}stamp",
+        f"{ProbeBranchShape.DELETED_BY_WORKFLOW}stamp",
     )
 
     assert [
@@ -40,8 +41,8 @@ def test_the_filled_workflow_leaves_no_placeholder() -> None:
 
 
 def test_the_filled_workflow_names_both_branches() -> None:
-    workflow = f"{BranchName.WORKFLOW}stamp"
-    deleted = f"{BranchName.DELETED_BY_WORKFLOW}stamp"
+    workflow = f"{ProbeBranchShape.WORKFLOW}stamp"
+    deleted = f"{ProbeBranchShape.DELETED_BY_WORKFLOW}stamp"
 
     text = filled(workflow, deleted)
 

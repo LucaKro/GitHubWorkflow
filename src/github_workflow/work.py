@@ -14,7 +14,7 @@ from pathlib import Path
 from domain_model.git.commands import GitCommandRunner
 from domain_model.git.conflict_markers import ConflictMarker
 from domain_model.git.remotes import ProposedPush, RemoteBranch
-from domain_model.git.revisions import LocalBranch
+from domain_model.git.revisions import BranchName, LocalBranch
 from domain_model.git.working_tree import WorkingTree
 from domain_model.github.closing_lines import ClosingLines
 from domain_model.github.repository_client import (
@@ -120,12 +120,12 @@ class BranchStart(WorkflowStep):
     Where the branch is started from.
     """
 
-    name: str
+    name: BranchName
     """
     The new branch.
     """
 
-    base: str | None = None
+    base: BranchName | None = None
     """
     The branch to start from, the default branch when ``None``.
     """
@@ -159,7 +159,7 @@ class BranchSwitch(WorkflowStep):
     The checkout switched in.
     """
 
-    name: str
+    name: BranchName
     """
     The branch to switch to.
     """
@@ -241,7 +241,7 @@ class DescriptionEnding(ABC):
     """
 
     @abstractmethod
-    def append_once(self, body: str, branch: str) -> str:
+    def append_once(self, body: str, branch: BranchName) -> str:
         """
         :param body: A pull request's description, which may end with it already.
         :param branch: The pull request's branch.
@@ -379,7 +379,9 @@ class DraftOpening(WorkflowStep):
         except Exception as raised:
             raise DraftUnfinishedError(number, str(raised)) from raised
 
-    def finish(self, number: int, branch: str, base: str, body: str) -> str:
+    def finish(
+        self, number: int, branch: BranchName, base: BranchName, body: str
+    ) -> str:
         """
         Close the pull request the opened draft replaces, label the issues the draft
         closes, and stack it, where asked to.
@@ -405,7 +407,7 @@ class DraftOpening(WorkflowStep):
         stack = self.placement.place(self.below, number)
         return f"{opened}, in stack {stack.number}"
 
-    def check_replaceable(self, number: int, branch: str) -> None:
+    def check_replaceable(self, number: int, branch: BranchName) -> None:
         """
         :param number: The pull request to replace.
         :param branch: The work branch the draft is opened from.
@@ -759,7 +761,7 @@ class OpenPullRequestBranch:
     The owner's repository, which the branch has to be on.
     """
 
-    def branch(self, number: int) -> str:
+    def branch(self, number: int) -> BranchName:
         """
         :param number: The pull request.
         :return: Its branch.
@@ -867,12 +869,20 @@ class NotesSaving(WorkflowStep):
                 f"nothing changed since the last save to {self.save.notes.branch.name}"
             )
         line = f"saved {', '.join(map(str, saved))} to {self.save.notes.branch.name}"
-        checked_out = self.save.checkout.checked_out_branch_name
-        if self.save.progress_branch in {"", checked_out}:
+        progress = self.save.progress_branch
+        checked_out = self.save.checkout.working_tree.checked_out_branch()
+        if progress is None or (
+            checked_out is not None and checked_out.name == progress
+        ):
             return line
+        elsewhere = (
+            "a detached HEAD"
+            if checked_out is None
+            else f"the checked-out {checked_out.name}'s"
+        )
         return (
-            f"{line}; the progress is {self.save.progress_branch}'s, loaded at session "
-            f"start, not the checked-out {checked_out}'s"
+            f"{line}; the progress is {progress}'s, loaded at session start, not "
+            f"{elsewhere}"
         )
 
 

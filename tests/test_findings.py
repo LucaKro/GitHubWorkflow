@@ -11,8 +11,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
-from domain_model.git.branch_tips import BranchTip
-from domain_model.git.revisions import CommitHash
+from domain_model.git.revisions import BranchName, BranchTip, CommitHash
 from domain_model.github.issue_models import Issue, IssueComment
 from domain_model.github.rest_models import RestPullRequest
 from domain_model.github.stack_placement import StackPlacement
@@ -829,7 +828,9 @@ class DescribedDraftsInMemory(DraftsAndStacksInMemory):
     Each draft's description, by number.
     """
 
-    def open_draft(self, head: str, base: str, title: str, body: str) -> int:
+    def open_draft(
+        self, head: BranchName, base: BranchName, title: str, body: str
+    ) -> int:
         number = super().open_draft(head, base, title, body)
         self.descriptions[number] = body
         return number

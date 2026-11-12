@@ -7,6 +7,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from domain_model.git.revisions import BranchName
+
 from github_workflow.plugin import Distribution, ToolRepository
 
 if TYPE_CHECKING:
@@ -27,7 +29,7 @@ class WorkflowSettings:
     workflow's own repository belongs to.
     """
 
-    notes_branch: str = f"{Distribution.WORKFLOW}/notes"
+    notes_branch: BranchName = BranchName(f"{Distribution.WORKFLOW}/notes")
     """
     The branch the notes and progress live on, in every repository.
     """

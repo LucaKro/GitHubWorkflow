@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from domain_model.git.revisions import TextFiles
+from domain_model.git.revisions import BranchName, TextFiles
 from domain_model.github.clients import (
     GraphQLClient,
     RecordedAnswers,
@@ -181,7 +181,7 @@ class RunsOfTheQueuedRequest(RepositoryWorkflows):
     def workflows(self) -> list[Workflow]:
         return []
 
-    def branch_runs(self, branch: str) -> list[WorkflowRun]:
+    def branch_runs(self, branch: BranchName) -> list[WorkflowRun]:
         if self.status is None:
             return []
         tip = self.notes.branch.remote.git.run(

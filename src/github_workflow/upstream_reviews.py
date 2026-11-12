@@ -17,7 +17,7 @@ from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 
-from domain_model.git.revisions import TextFiles
+from domain_model.git.revisions import BranchName, TextFiles
 from domain_model.github.clients import (
     GitHubApi,
     GraphQLClient,
@@ -87,7 +87,7 @@ class UpstreamReviewRequest:
     The owner of the fork, whose branch the pull request is opened from.
     """
 
-    branch: str
+    branch: BranchName
     """
     The fork's branch.
     """
@@ -118,7 +118,7 @@ class UpstreamReviewRequest:
         return cls(
             Repository.parse(data[UpstreamReviewKey.UPSTREAM]),
             data[UpstreamReviewKey.FORK_OWNER],
-            data[UpstreamReviewKey.BRANCH],
+            BranchName(data[UpstreamReviewKey.BRANCH]),
             path.name,
         )
 

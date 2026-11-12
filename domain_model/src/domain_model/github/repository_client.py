@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from domain_model.git.revisions import BranchName
 from domain_model.github.clients import GitHubApi, RestApi
 from domain_model.github.commit_checks import CommitCheckReader
 from domain_model.github.exceptions import NotAnIssueError
@@ -159,7 +160,7 @@ class PullRequestBaseWriter(ABC):
     """
 
     @abstractmethod
-    def set_base(self, number: int, branch: str) -> None:
+    def set_base(self, number: int, branch: BranchName) -> None:
         """:param number: The pull request to retarget.
         :param branch: The branch it is to merge into."""
 
@@ -223,7 +224,9 @@ class PullRequestOpener(ABC):
     """
 
     @abstractmethod
-    def open_draft(self, head: str, base: str, title: str, body: str) -> int:
+    def open_draft(
+        self, head: BranchName, base: BranchName, title: str, body: str
+    ) -> int:
         """
         :param head: The branch to merge, in this repository.
         :param base: The branch to merge it into.
@@ -255,7 +258,7 @@ class PullRequestSearch(ABC):
 
     @abstractmethod
     def search_branch_pull_requests(
-        self, author: str, branch: str
+        self, author: str, branch: BranchName
     ) -> list[SearchedPullRequest]:
         """
         :param author: Who opened them.
@@ -277,7 +280,7 @@ class RepositoryWorkflows(ABC):
         """
 
     @abstractmethod
-    def branch_runs(self, branch: str) -> list[WorkflowRun]:
+    def branch_runs(self, branch: BranchName) -> list[WorkflowRun]:
         """
         :param branch: A branch.
         :return: The latest runs its pushes and events started, newest first.
@@ -291,7 +294,7 @@ class ForkSync(ABC):
     """
 
     @abstractmethod
-    def compare(self, base: str, head: str) -> BranchComparison:
+    def compare(self, base: BranchName, head: str) -> BranchComparison:
         """
         :param base: A branch of this repository.
         :param head: The branch compared with it, as ``owner:name:branch`` for another
@@ -300,7 +303,7 @@ class ForkSync(ABC):
         """
 
     @abstractmethod
-    def sync_with_upstream(self, branch: str) -> None:
+    def sync_with_upstream(self, branch: BranchName) -> None:
         """
         Bring a branch of this fork up to the same branch of its upstream, as GitHub's
         *Sync fork* does.
@@ -317,7 +320,7 @@ class PullRequestsFromForks(ABC):
 
     @abstractmethod
     def fork_branch_pull_requests(
-        self, owner: str, branch: str
+        self, owner: str, branch: BranchName
     ) -> list[RestPullRequest]:
         """
         :param owner: The fork's owner.
@@ -326,7 +329,7 @@ class PullRequestsFromForks(ABC):
         """
 
     def open_fork_branch_pull_requests(
-        self, owner: str, branch: str
+        self, owner: str, branch: BranchName
     ) -> list[RestPullRequest]:
         """
         :param owner: The fork's owner.
@@ -341,7 +344,7 @@ class PullRequestsFromForks(ABC):
 
     @abstractmethod
     def open_fork_pull_request(
-        self, owner: str, branch: str, base: str, title: str, body: str
+        self, owner: str, branch: BranchName, base: BranchName, title: str, body: str
     ) -> RestPullRequest:
         """
         Open a pull request, ready for review, from a fork's branch.
@@ -362,7 +365,7 @@ class RepositoryDetails(ABC):
     """
 
     @abstractmethod
-    def default_branch(self) -> str:
+    def default_branch(self) -> BranchName:
         """:return: The branch pull requests target unless told otherwise."""
 
 
@@ -912,7 +915,9 @@ class GitHubRepository(
             "PATCH", self.route.pull_request(number), {RestJSONKey.BODY: body}
         )
 
-    def open_draft(self, head: str, base: str, title: str, body: str) -> int:
+    def open_draft(
+        self, head: BranchName, base: BranchName, title: str, body: str
+    ) -> int:
         created = self.api.request(
             "POST",
             self.route.pull_requests,
@@ -926,7 +931,7 @@ class GitHubRepository(
         )
         return int(created[RestJSONKey.NUMBER])
 
-    def default_branch(self) -> str:
+    def default_branch(self) -> BranchName:
         return RestRepository.from_json(self.api.get(self.route.root)).default_branch
 
     def upstream(self) -> Repository | None:
@@ -940,31 +945,31 @@ class GitHubRepository(
         ]
 
     def search_branch_pull_requests(
-        self, author: str, branch: str
+        self, author: str, branch: BranchName
     ) -> list[SearchedPullRequest]:
         found = self.api.get(self.route.pull_request_search(author, branch))
         return [
             SearchedPullRequest.from_json(item) for item in found[RestJSONKey.ITEMS]
         ]
 
-    def branch_runs(self, branch: str) -> list[WorkflowRun]:
+    def branch_runs(self, branch: BranchName) -> list[WorkflowRun]:
         listed = self.api.get(self.route.workflow_runs(branch))
         return [
             WorkflowRun.from_json(entry) for entry in listed[RestJSONKey.WORKFLOW_RUNS]
         ]
 
-    def compare(self, base: str, head: str) -> BranchComparison:
+    def compare(self, base: BranchName, head: str) -> BranchComparison:
         return BranchComparison.from_json(
             self.api.get(self.route.comparison(base, head))
         )
 
-    def sync_with_upstream(self, branch: str) -> None:
+    def sync_with_upstream(self, branch: BranchName) -> None:
         self.api.request(
             "POST", self.route.merge_upstream, {RestJSONKey.BRANCH: branch}
         )
 
     def fork_branch_pull_requests(
-        self, owner: str, branch: str
+        self, owner: str, branch: BranchName
     ) -> list[RestPullRequest]:
         return [
             RestPullRequest.from_json(entry)
@@ -974,7 +979,7 @@ class GitHubRepository(
         ]
 
     def open_fork_pull_request(
-        self, owner: str, branch: str, base: str, title: str, body: str
+        self, owner: str, branch: BranchName, base: BranchName, title: str, body: str
     ) -> RestPullRequest:
         created = self.api.request(
             "POST",
@@ -1079,7 +1084,7 @@ class GitHubRepository(
         found = self.api.get(self.route.review_requests())
         return int(found[RestJSONKey.TOTAL_COUNT])
 
-    def set_base(self, number: int, branch: str) -> None:
+    def set_base(self, number: int, branch: BranchName) -> None:
         self.api.request(
             "PATCH", self.route.pull_request(number), {RestJSONKey.BASE: branch}
         )

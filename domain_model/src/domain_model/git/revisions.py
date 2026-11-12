@@ -60,6 +60,45 @@ class ReferenceNamespace(StrEnum):
     """
 
 
+# %% a branch's name, and where it was
+
+
+class BranchName(str):
+    """
+    A branch's name, without the ``refs/heads/`` prefix, kept by a record that runs no
+    git.
+    """
+
+    @property
+    def reference(self) -> str:
+        """:return: The branch's full reference, as the repository holding it files it."""
+        return f"{ReferenceNamespace.BRANCHES}{self}"
+
+
+@dataclass(frozen=True)
+class BranchTip:
+    """
+    The commit a branch was at when it was read.
+    """
+
+    branch: BranchName
+    """
+    The branch.
+    """
+
+    commit: CommitHash
+    """
+    The commit it was at.
+    """
+
+    def __str__(self) -> str:
+        """:return: The branch and its commit, abbreviated."""
+        return f"{self.branch} at {self.commit.abbreviated}"
+
+
+# %% references outside the namespaces
+
+
 class SpecialReference(StrEnum):
     """
     The references git keeps outside any namespace, for the checkout's own state.
@@ -319,7 +358,7 @@ class Revision(ABC):
         """
         commit = self.commit_or_none()
         if commit is None:
-            raise UnresolvableReferenceError(self.revision_name)
+            raise UnresolvableReferenceError(self)
         return commit
 
     def is_contained_in(self, other: Revision) -> bool:
@@ -508,14 +547,14 @@ class LocalBranch(Revision):
     Runs git in the checkout the branch is in.
     """
 
-    name: str
+    name: BranchName
     """
     The branch's name.
     """
 
     @property
     def revision_name(self) -> str:
-        return f"{ReferenceNamespace.BRANCHES}{self.name}"
+        return self.name.reference
 
     def create(self, start: Revision) -> None:
         """

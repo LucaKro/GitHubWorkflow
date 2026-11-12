@@ -11,6 +11,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
+from domain_model.git.revisions import BranchName
 from domain_model.github.labels import GitHubLabel
 from domain_model.github.repository_client import (
     FollowedFork,
@@ -73,7 +74,7 @@ class ForkInMemory(ProposingFork):
     The repository it was forked from.
     """
 
-    trunk: str = "main"
+    trunk: BranchName = BranchName("main")
     """
     Its default branch.
     """
@@ -94,7 +95,7 @@ class ForkInMemory(ProposingFork):
     """
 
     def fork_branch_pull_requests(
-        self, owner: str, branch: str
+        self, owner: str, branch: BranchName
     ) -> list[RestPullRequest]:
         return [
             pull_request
@@ -104,7 +105,7 @@ class ForkInMemory(ProposingFork):
         ]
 
     def open_fork_pull_request(
-        self, owner: str, branch: str, base: str, title: str, body: str
+        self, owner: str, branch: BranchName, base: BranchName, title: str, body: str
     ) -> RestPullRequest:
         self.written.append(f"open {owner}:{branch} onto {base}: {title} | {body}")
         return pull_request(
@@ -114,7 +115,7 @@ class ForkInMemory(ProposingFork):
     def upstream(self) -> Repository | None:
         return self.forked_from
 
-    def default_branch(self) -> str:
+    def default_branch(self) -> BranchName:
         return self.trunk
 
     def add_comment(self, number: int, body: str) -> str:
@@ -163,7 +164,7 @@ def proposal(
 def test_the_fork_s_pull_request_is_opened_upstream_linking_back_to_it() -> None:
     local = pull_request(3, "feature", title="Add the thing")
     fork = ForkInMemory([local])
-    upstream = ForkInMemory(forked_from=None, trunk="develop")
+    upstream = ForkInMemory(forked_from=None, trunk=BranchName("develop"))
 
     proposal(fork, upstream).run()
 
@@ -483,7 +484,7 @@ class UpstreamSearchInMemory(PullRequestSearch):
     """
 
     def search_branch_pull_requests(
-        self, author: str, branch: str
+        self, author: str, branch: BranchName
     ) -> list[SearchedPullRequest]:
         return self.found.get(branch, [])
 
@@ -527,8 +528,8 @@ class OpenedUpstreamPullRequests(StackedPullRequestsInMemory, FollowedFork):
     def upstream(self) -> Repository | None:
         return ScratchGitHub.upstream
 
-    def default_branch(self) -> str:
-        return "main"
+    def default_branch(self) -> BranchName:
+        return BranchName("main")
 
 
 def following(

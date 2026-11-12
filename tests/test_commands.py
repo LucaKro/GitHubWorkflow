@@ -23,7 +23,7 @@ from domain_model.environment import (
     GitHubActionsVariable,
     GitHubCredentialVariable,
 )
-from domain_model.git.revisions import TextFiles
+from domain_model.git.revisions import BranchName, TextFiles
 from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
 from domain_model.github.repository_client import (
     GitHubRepository,
@@ -757,7 +757,9 @@ def test_proving_on_a_pull_request_runs_the_test_on_its_branch(
     )
 
     runner = runner_in(finding_checkout)
-    assert step.runner == replace(runner, branch=runner.branch.remote.branch("below"))
+    assert step.runner == replace(
+        runner, branch=runner.branch.remote.branch(BranchName("below"))
+    )
 
 
 def test_proving_on_a_branch_runs_the_test_there(
@@ -775,7 +777,7 @@ def test_proving_on_a_branch_runs_the_test_there(
 
     runner = runner_in(finding_checkout)
     assert step.runner == replace(
-        runner, branch=runner.branch.remote.branch("without-pull-request")
+        runner, branch=runner.branch.remote.branch(BranchName("without-pull-request"))
     )
 
 
@@ -797,7 +799,9 @@ def test_rechecking_on_a_pull_request_runs_the_test_on_its_branch(
     )
 
     runner = runner_in(finding_checkout)
-    assert step.runner == replace(runner, branch=runner.branch.remote.branch("below"))
+    assert step.runner == replace(
+        runner, branch=runner.branch.remote.branch(BranchName("below"))
+    )
 
 
 def test_proving_on_a_closed_pull_request_is_refused(
@@ -930,7 +934,7 @@ def test_a_draft_building_on_a_pull_request_rechecks_on_its_branch(
     assert isinstance(step, FindingDraftOpening)
     runner = runner_in(finding_checkout)
     assert step.recheck.runner == replace(
-        runner, branch=runner.branch.remote.branch("below")
+        runner, branch=runner.branch.remote.branch(BranchName("below"))
     )
 
 

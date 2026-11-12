@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 
+from domain_model.git.revisions import BranchName
 from domain_model.github.repository_client import (
     PullRequestOpener,
     RewritablePullRequests,
@@ -66,7 +67,7 @@ class StackedPullRequestsInMemory(StackHost):
     def pull_request(self, number: int) -> RestPullRequest:
         return pull_request(number, self.branch_of(number), base=self.bases[number])
 
-    def set_base(self, number: int, branch: str) -> None:
+    def set_base(self, number: int, branch: BranchName) -> None:
         self.writes.append(f"set_base {number} {branch}")
         self.bases[number] = branch
 
@@ -114,7 +115,9 @@ class DraftsAndStacksInMemory(StackedPullRequestsInMemory, PullRequestOpener):
     The description each draft was opened with, by its number.
     """
 
-    def open_draft(self, head: str, base: str, title: str, body: str) -> int:
+    def open_draft(
+        self, head: BranchName, base: BranchName, title: str, body: str
+    ) -> int:
         number = max(self.bases, default=0) + 1
         self.writes.append(f"open_draft {head} {base}")
         self.bases[number] = base
@@ -164,5 +167,5 @@ class DraftsInMemory(DraftsAndStacksInMemory, RewritablePullRequests):
     def set_issue_title(self, number: int, title: str) -> None:
         self.writes.append(f"set_issue_title {number} {title}")
 
-    def default_branch(self) -> str:
+    def default_branch(self) -> BranchName:
         return RepositoriesByOwner.default_branch

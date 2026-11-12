@@ -4,6 +4,7 @@ Pull requests as the repository client reads them, built for the stand-ins in te
 
 from __future__ import annotations
 
+from domain_model.git.revisions import BranchName, CommitHash
 from domain_model.github.rest_models import PullRequestHead, RestPullRequest
 from domain_model.github.review_models import Author
 from domain_model.github.vocabulary import MergeableState, PullRequestState
@@ -47,9 +48,12 @@ def pull_request(
         merged=False,
         draft=draft,
         head=PullRequestHead(
-            branch, repository, commit, Author(ScratchGitHub.owned.owner)
+            BranchName(branch),
+            repository,
+            CommitHash(commit),
+            Author(ScratchGitHub.owned.owner),
         ),
-        base=base,
+        base=BranchName(base),
         labels=(),
         mergeable_state=mergeable_state,
     )

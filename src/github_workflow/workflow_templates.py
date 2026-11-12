@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from enum import Enum, StrEnum, auto
 from pathlib import PurePath
 
-from domain_model.git.revisions import TextFiles
+from domain_model.git.revisions import BranchName, TextFiles
 from domain_model.repository import Repository
 from domain_model.templates import Placeholder
 
@@ -265,7 +265,9 @@ class NotesBranchWorkflow(Enum):
             ),
         )
 
-    def files(self, notes_branch: str, values: Mapping[Placeholder, str]) -> TextFiles:
+    def files(
+        self, notes_branch: BranchName, values: Mapping[Placeholder, str]
+    ) -> TextFiles:
         """
         :param notes_branch: The notes branch's name.
         :param values: The text of the workflow's other placeholders.

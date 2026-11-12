@@ -6,8 +6,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from domain_model.exceptions import DataclassException, ExternalCallFailed
+
+if TYPE_CHECKING:
+    from domain_model.git.remotes import RemoteBranch
+    from domain_model.git.revisions import Revision
 
 # %% errors
 
@@ -35,13 +40,16 @@ class UnresolvableReferenceError(DataclassException, LookupError):
     Raised when a git reference a decision depends on names no commit in the checkout.
     """
 
-    reference: str
+    revision: Revision
     """
-    The reference git could not resolve.
+    What git could not resolve.
     """
 
     def error_message(self) -> str:
-        return f"git cannot resolve '{self.reference}' to a commit in this checkout"
+        return (
+            f"git cannot resolve '{self.revision.revision_name}' to a commit in this "
+            f"checkout"
+        )
 
     def suggest_correction(self) -> str:
         return (
@@ -78,7 +86,7 @@ class StorageBranchPushRefused(DataclassException, RuntimeError):
     Raised when a storage branch refuses a push even after building on its newest tip.
     """
 
-    branch: str
+    branch: RemoteBranch
     """
     The storage branch.
     """
@@ -89,7 +97,7 @@ class StorageBranchPushRefused(DataclassException, RuntimeError):
     """
 
     def error_message(self) -> str:
-        return f"pushing {self.branch} was refused: {self.detail}"
+        return f"pushing {self.branch.name} was refused: {self.detail}"
 
     def suggest_correction(self) -> str:
         return "Run the write again; if it keeps failing, check access to the remote."
@@ -102,7 +110,7 @@ class StorageBranchWriteConflict(DataclassException, RuntimeError):
     the tip before, would overwrite.
     """
 
-    branch: str
+    branch: RemoteBranch
     """
     The storage branch.
     """
@@ -114,7 +122,7 @@ class StorageBranchWriteConflict(DataclassException, RuntimeError):
 
     def error_message(self) -> str:
         changed = ", ".join(str(path) for path in self.paths)
-        return f"{changed} on {self.branch} changed since this write was built"
+        return f"{changed} on {self.branch.name} changed since this write was built"
 
     def suggest_correction(self) -> str:
         return "Fetch the branch, read the files again and write them anew."

@@ -14,7 +14,7 @@ import pytest
 from domain_model.git.commands import GitCommandResult, GitCommandRunner
 from domain_model.git.exceptions import StorageBranchWriteConflict
 from domain_model.git.remotes import Remote, RemoteName
-from domain_model.git.revisions import TextFiles
+from domain_model.git.revisions import BranchName, TextFiles
 from domain_model.git.storage_branch import StorageBranch
 
 # %% fixtures
@@ -54,7 +54,7 @@ def storage(remote: Path, tmp_path: Path, name: str) -> StorageBranch:
     clone = GitCommandRunner(tmp_path / name)
     identify(clone)
     origin = Remote(clone, RemoteName.ORIGIN, str(remote), None)
-    return StorageBranch(origin.branch("storage"))
+    return StorageBranch(origin.branch(BranchName("storage")))
 
 
 # %% reading and writing

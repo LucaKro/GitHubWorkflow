@@ -76,7 +76,7 @@ class StorageBranch:
             self._refuse_overwriting(base, files)
             pushed = self._push(files, message)
         if not pushed.succeeded:
-            raise StorageBranchPushRefused(self.branch.name, pushed.error_output)
+            raise StorageBranchPushRefused(self.branch, pushed.error_output)
         self.fetch()
 
     def _refuse_overwriting(self, base: Commit | None, files: TextFiles) -> None:
@@ -94,7 +94,7 @@ class StorageBranch:
             if (base and base.file_blob(path)) != (tip and tip.file_blob(path))
         )
         if changed:
-            raise StorageBranchWriteConflict(self.branch.name, changed)
+            raise StorageBranchWriteConflict(self.branch, changed)
 
     def _push(self, files: TextFiles, message: str) -> GitCommandResult:
         """

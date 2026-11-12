@@ -10,6 +10,7 @@ from pathlib import Path
 
 from domain_model.class_property import classproperty
 from domain_model.git.commands import GitCommandRunner
+from domain_model.git.revisions import BranchName
 
 from github_workflow.checkout import ProjectCheckout
 
@@ -35,11 +36,11 @@ class RepositoriesByOwner:
         return "someone-else"
 
     @classproperty
-    def default_branch(cls) -> str:
+    def default_branch(cls) -> BranchName:
         """
         The branch every repository starts with.
         """
-        return "main"
+        return BranchName("main")
 
     @classproperty
     def repository_name(cls) -> str:

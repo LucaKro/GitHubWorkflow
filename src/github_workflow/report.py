@@ -130,10 +130,11 @@ class PullRequestsBuilder(SectionBuilder):
 
     def section(self) -> ReportSection:
         github = self.session.github
+        checked_out = self.session.checkout.working_tree.checked_out_branch()
         return PullRequestOverview(
             github,
             self.session.thread_source,
-            self.session.checkout.checked_out_branch_name,
+            None if checked_out is None else checked_out.name,
         )
 
 

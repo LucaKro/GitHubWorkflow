@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import StrEnum
 
+from domain_model.git.revisions import BranchName
 from domain_model.github.number_links import HasNumberLink
 from domain_model.github.pull_request_models import (
     UpstreamPullRequestSnapshot,
@@ -55,7 +56,7 @@ class PullRequestSignals(HasNumberLink):
     Its title.
     """
 
-    branch: str
+    branch: BranchName
     """
     The branch it merges.
     """
@@ -120,7 +121,7 @@ class PullRequestSignals(HasNumberLink):
             problems.append(str(CountedThing.UNRESOLVED_THREAD.counted(unresolved)))
         return problems
 
-    def line(self, checked_out: str) -> ReportLine:
+    def line(self, checked_out: BranchName | None) -> ReportLine:
         """
         :param checked_out: The branch the session works on.
         :return: The pull request in one line, without the workflow's prefix, yellow
@@ -219,9 +220,9 @@ class PullRequestOverview(ReportSection):
     Reads the pull requests' checks and review threads.
     """
 
-    checked_out: str
+    checked_out: BranchName | None
     """
-    The branch the session works on.
+    The branch the session works on, ``None`` on a detached ``HEAD``.
     """
 
     def lines(self) -> list[ReportLine]:

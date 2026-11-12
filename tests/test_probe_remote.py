@@ -9,6 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from domain_model.git.revisions import BranchName
 from domain_model.git.storage_branch import StorageBranch
 from domain_model.github.clients import GitHubApi
 
@@ -76,7 +77,7 @@ def test_results_go_to_the_owned_remote_when_origin_is_foreign(
 
     ResultsPublication(remote, directory).publish()
 
-    results = StorageBranch(remote.branch(ResultsBranch.NAME))
+    results = StorageBranch(remote.branch(BranchName(ResultsBranch.NAME)))
     results.fetch()
     published = results.read(Path("check-1/report.md"))
     assert published == (directory / "report.md").read_text()

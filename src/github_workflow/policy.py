@@ -11,6 +11,7 @@ from functools import cached_property
 
 from domain_model.git.commands import GitIdentity
 from domain_model.git.identity import PersonIdentity
+from domain_model.git.revisions import BranchName
 from domain_model.github.repository_client import RepositoryDetails
 
 from github_workflow.checkout import ProjectCheckout
@@ -95,13 +96,13 @@ class WritePolicy:
     """
 
     @cached_property
-    def default_branch(self) -> str:
+    def default_branch(self) -> BranchName:
         """
         The branch only pull requests change.
         """
         return self.details.default_branch()
 
-    def work_branch(self) -> str:
+    def work_branch(self) -> BranchName:
         """
         :return: The checked-out branch, which a commit or a push may change.
         :raises DetachedHeadError: If no branch is checked out.
@@ -114,7 +115,7 @@ class WritePolicy:
             raise DefaultBranchWriteError(branch.name)
         return branch.name
 
-    def refuse_while_merging(self, branch: str) -> None:
+    def refuse_while_merging(self, branch: BranchName) -> None:
         """
         :param branch: The checked-out branch.
         :raises MergeInProgressError: If a merge is in progress on it.
@@ -122,7 +123,7 @@ class WritePolicy:
         if self.checkout.merge.in_progress():
             raise MergeInProgressError(branch)
 
-    def branch_being_merged(self) -> str:
+    def branch_being_merged(self) -> BranchName:
         """
         :return: The work branch, which a merge is in progress on.
         :raises DetachedHeadError: If no branch is checked out.

@@ -14,6 +14,7 @@ from enum import StrEnum
 from typing import Self
 
 from domain_model.class_property import classproperty
+from domain_model.git.revisions import BranchName
 from domain_model.github.closing_lines import ClosingLines
 from domain_model.github.issue_models import Issue
 from domain_model.github.repository_client import (
@@ -581,7 +582,7 @@ class FindingClosing(FindingChange):
     The logins whose proofs count.
     """
 
-    default_branch: str
+    default_branch: BranchName
     """
     The branch the fix has to be merged into.
     """

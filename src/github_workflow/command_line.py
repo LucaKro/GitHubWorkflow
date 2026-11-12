@@ -17,6 +17,8 @@ from enum import Enum, StrEnum, auto
 from pathlib import Path
 from typing import Any
 
+from domain_model.git.revisions import BranchName
+
 import github_workflow
 from github_workflow.plugin import Launcher, LauncherInstallation, ToolRepository
 
@@ -853,8 +855,10 @@ class RunnableCommand(CommandSpecification, Enum):
         "start a work branch",
         CommandAuthority.SESSION,
         (
-            CommandArgument(ArgumentName.NAME, "name"),
-            CommandArgument(CommandOption.ON, "branch", "the branch to start from"),
+            CommandArgument(ArgumentName.NAME, "name", value_type=BranchName),
+            CommandArgument(
+                CommandOption.ON, "branch", "the branch to start from", BranchName
+            ),
         ),
     )
     """
@@ -865,7 +869,7 @@ class RunnableCommand(CommandSpecification, Enum):
         (WorkflowCommand.BRANCH, BranchSubcommand.SWITCH),
         "switch to a branch",
         CommandAuthority.SESSION,
-        (CommandArgument(ArgumentName.NAME, "branch"),),
+        (CommandArgument(ArgumentName.NAME, "branch", value_type=BranchName),),
     )
     """
     ``branch switch``.
@@ -880,6 +884,7 @@ class RunnableCommand(CommandSpecification, Enum):
                 ArgumentName.NAME,
                 "branch",
                 "the branch, the checked-out one when left out",
+                BranchName,
                 count=ArgumentCount.OPTIONAL,
             ),
         ),
@@ -1356,7 +1361,10 @@ class RunnableCommand(CommandSpecification, Enum):
                 ArgumentName.REPOSITORY, "owner/name", "the owner's fork, as owner/name"
             ),
             CommandArgument(
-                ArgumentName.BRANCH, "branch", "the fork's branch with the pull request"
+                ArgumentName.BRANCH,
+                "branch",
+                "the fork's branch with the pull request",
+                BranchName,
             ),
         ),
     )

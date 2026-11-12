@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from enum import Enum, StrEnum, auto
 
 from domain_model.class_property import classproperty
+from domain_model.git.revisions import BranchName
 from domain_model.github.discussions import DefaultDiscussionCategory
 from domain_model.templates import Placeholder
 
@@ -299,9 +300,10 @@ class NotesBlock:
     What each finding priority means, as the header gives it.
     """
 
-    branch: str
+    branch: BranchName | None
     """
-    The checked-out branch, empty on a detached ``HEAD``, which has no progress section.
+    The checked-out branch, ``None`` on a detached ``HEAD``, which has no progress
+    section.
     """
 
     sections: dict[NotesSection, str]
@@ -357,7 +359,7 @@ class NotesBlock:
         lines = [
             BlockMarker.START,
             self.header(),
-            BlockRecord.BRANCH.line(self.branch),
+            BlockRecord.BRANCH.line(self.branch or ""),
             BlockRecord.LOADED.line(self.digest(self.rendered_sections)),
         ]
         for section, text in self.rendered_sections.items():
