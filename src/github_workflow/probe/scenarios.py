@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from enum import StrEnum, auto
 from http import HTTPMethod
 
+from domain_model.programs import Program
 from domain_model.class_property import classproperty
 from domain_model.commands import CommandResult, CommandRunner
 from domain_model.environment import (
@@ -284,7 +285,7 @@ class Probe:
             ],
             EnvironmentFact.GIT: git.version(),
             EnvironmentFact.GITHUB_CLI: CommandRunner(git.working_directory)
-            .run("gh", "--version")
+            .run(Program.GITHUB_CLI, "--version")
             .first_line,
         }
 

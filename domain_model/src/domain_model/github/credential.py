@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from domain_model.commands import CommandRunner
 from domain_model.environment import GitHubCredentialVariable
 from domain_model.github.exceptions import GitHubCredentialUnavailableError
-from domain_model.github.vocabulary import GitHubClient
+from domain_model.programs import Program
 
 # %% the token
 
@@ -35,7 +35,7 @@ class GitHubToken:
         token = GitHubCredentialVariable.first_token()
         if token:
             return token
-        logged_in = self.runner.run(GitHubClient.COMMAND_LINE, "auth", "token")
+        logged_in = self.runner.run(Program.GITHUB_CLI, "auth", "token")
         if not logged_in.succeeded or not logged_in.output:
             raise GitHubCredentialUnavailableError(tuple(GitHubCredentialVariable))
         return logged_in.output

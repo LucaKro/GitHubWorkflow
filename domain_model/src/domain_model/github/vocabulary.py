@@ -639,23 +639,3 @@ class MergeableState(GitHubVocabulary):
         if self in {MergeableState.UNKNOWN, MergeableState.DRAFT}:
             return None
         return self is MergeableState.DIRTY
-
-
-# %% clients
-
-
-class GitHubClient(StrEnum):
-    """
-    The executables the tooling reaches the GitHub API through, each named as it is on
-    ``PATH``.
-    """
-
-    COMMAND_LINE = "gh"
-    """
-    GitHub's own command-line client, preferred where it is installed.
-    """
-
-    CURL = "curl"
-    """
-    The plain HTTP client used with a token where there is no ``gh``.
-    """

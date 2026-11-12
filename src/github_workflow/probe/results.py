@@ -8,6 +8,8 @@ import json
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 
+from domain_model.programs import Program
+
 # %% one finding
 
 
@@ -88,12 +90,12 @@ class EnvironmentFact(StrEnum):
     Who git records as a commit's author.
     """
 
-    GIT = "git"
+    GIT = Program.GIT
     """
     Git's version.
     """
 
-    GITHUB_CLI = "gh"
+    GITHUB_CLI = Program.GITHUB_CLI
     """
     The GitHub CLI's version.
     """
