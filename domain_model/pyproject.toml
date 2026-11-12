@@ -3,7 +3,7 @@ requires = ["hatchling>=1.24", "hatch-vcs>=0.4"]
 build-backend = "hatchling.build"
 
 [project]
-name = "domain-model"
+name = "github-workflow-domain-model"
 description = "A deterministic, Python-native domain model of GitHub pull requests, checks, reviews and labels."
 requires-python = ">=3.12"
 authors = [

@@ -27,6 +27,16 @@ class ProjectKey(StrEnum):
     The table itself.
     """
 
+    NAME = "name"
+    """
+    The name the project is installed under.
+    """
+
+    DEPENDENCIES = "dependencies"
+    """
+    The distributions the project needs, as requirements.
+    """
+
     OPTIONAL_DEPENDENCIES = "optional-dependencies"
     """
     The project's extras, each with its dependencies.

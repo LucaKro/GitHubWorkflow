@@ -7,11 +7,24 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import domain_model.code_version
 from domain_model.code_version import CodeVersion, DirectUrl, DirectUrlKey
 from domain_model.git.commands import GitCommandRunner
 from domain_model.git.revisions import CommitHash
+from domain_model.python_project import ProjectKey, Pyproject
 
 from .git_checkouts import checkout, head  # noqa: F401
+
+# %% the distribution's name
+
+
+def test_the_project_declares_the_name_the_version_is_looked_up_under() -> None:
+    project_root = Path(domain_model.code_version.__file__).parents[2]
+
+    project = Pyproject(project_root).settings()[ProjectKey.PROJECT]
+
+    assert project[ProjectKey.NAME] == CodeVersion.distribution_name
+
 
 # %% where the installation came from
 

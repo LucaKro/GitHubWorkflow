@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from enum import Enum, IntEnum, StrEnum
 from pathlib import Path
 
+from domain_model.code_version import CodeVersion
 from domain_model.environment import ShellVariable
 
 from github_workflow.locations import PluginDirectory, RuntimeLocation
@@ -28,7 +29,7 @@ class Distribution(StrEnum):
     The workflow itself.
     """
 
-    DOMAIN_MODEL = "domain-model"
+    DOMAIN_MODEL = CodeVersion.distribution_name
     """
     The model of git and GitHub the workflow is built on.
     """

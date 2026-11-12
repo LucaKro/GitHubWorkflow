@@ -1,4 +1,4 @@
-# domain-model
+# github-workflow-domain-model
 
 A deterministic, Python-native domain model of GitHub pull requests, checks, reviews and
 labels, and of the git operations built around them.

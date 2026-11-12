@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install the workflow
-        run: python -m pip install --quiet 'domain-model @ git+https://github.com/LucaKro/GitHubWorkflow@main#subdirectory=domain_model' 'github-workflow @ git+https://github.com/LucaKro/GitHubWorkflow@main'
+        run: python -m pip install --quiet 'github-workflow-domain-model @ git+https://github.com/LucaKro/GitHubWorkflow@main#subdirectory=domain_model' 'github-workflow @ git+https://github.com/LucaKro/GitHubWorkflow@main'
       - name: Complete the label
         env:
           GITHUB_TOKEN: ${{ github.token }}

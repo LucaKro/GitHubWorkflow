@@ -130,7 +130,7 @@ class CodeVersion:
         """
         The name the domain model is installed under.
         """
-        return "domain-model"
+        return "github-workflow-domain-model"
 
     @classproperty
     def module_path(cls) -> PurePath:

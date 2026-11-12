@@ -274,6 +274,27 @@ def test_a_runtime_built_from_the_plugin_runs_its_commands(tmp_path: Path) -> No
     assert finished.returncode == 0
 
 
+def test_a_runtime_holding_a_copy_under_a_former_name_is_replaced_whole(
+    tmp_path: Path,
+) -> None:
+    location = tmp_path / "runtime"
+    former = tmp_path / ".runtime-former"
+    (former / RuntimeLocation.SOURCES / "domain-model").mkdir(parents=True)
+    RuntimeSwitch(location).activate(former)
+
+    RuntimeInstallation(
+        Path(github_workflow.install.__file__).parents[2], location, tmp_path / "bin"
+    ).install()
+
+    copies = sorted(
+        copy.name for copy in (location / RuntimeLocation.SOURCES).iterdir()
+    )
+    assert (copies, former.exists()) == (
+        sorted(source.distribution for source in PluginSource),
+        False,
+    )
+
+
 # %% the launcher
 
 
