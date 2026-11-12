@@ -8,19 +8,79 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum, StrEnum, auto
 
-from basstler_domain_model.github.discussions import DefaultDiscussionCategory
+from domain_model.class_family import ClassFamily
+from domain_model.class_property import classproperty
+from domain_model.git.revisions import BranchName
+from domain_model.github.discussions import DefaultDiscussionCategory
+from domain_model.templates import Placeholder
 
 from github_workflow.command_line import (
-    FindingSubcommand,
-    IdeaSubcommand,
-    ReviewSubcommand,
-    ToolRepository,
+    CommandOption,
+    RefusalAdvice,
+    RunnableCommand,
     WorkflowCommand,
 )
+from github_workflow.locations import WorkflowTemplate
+from github_workflow.markers import WorkflowMarker
 from github_workflow.policy import Attribution
+
+# %% the template's placeholders
+
+
+class NotesHeaderPlaceholder(Placeholder):
+    """
+    The names the notes header's template leaves to be filled in.
+    """
+
+    SOURCE_OF_NOTES = auto()
+    """
+    Where the notes were read from.
+    """
+
+    SAVE_COMMAND = auto()
+    """
+    The command saving the notes block.
+    """
+
+    WORKFLOW_COMMAND = auto()
+    """
+    The command every write to git and GitHub goes through.
+    """
+
+    COMMANDS = auto()
+    """
+    The workflow's commands, listed.
+    """
+
+    FINDING_GUIDE = auto()
+    """
+    What each finding priority means.
+    """
+
+    IDEAS_CATEGORY = auto()
+    """
+    The discussion category ideas are posted in unless told otherwise.
+    """
+
+    REFUSAL_HINT = auto()
+    """
+    What a session does about a refusal.
+    """
+
+    CO_AUTHOR_TRAILER = auto()
+    """
+    The trailer crediting a co-author.
+    """
+
+    ACKNOWLEDGEMENT = auto()
+    """
+    The line every commit's message carries.
+    """
+
 
 # %% markers
 
@@ -30,8 +90,15 @@ class BlockMarker(StrEnum):
     The lines that open and close the whole block.
     """
 
-    START = "<!-- github-workflow:start -->"
-    END = "<!-- github-workflow:end -->"
+    START = WorkflowMarker("start").line()
+    """
+    Opens the block.
+    """
+
+    END = WorkflowMarker("end").line()
+    """
+    Closes the block.
+    """
 
 
 class NotesSection(StrEnum):
@@ -53,43 +120,156 @@ class NotesSection(StrEnum):
     @property
     def start_marker(self) -> str:
         """:return: The line the section's editable text starts after."""
-        return f"<!-- github-workflow:{self._name_.lower()}:start -->"
+        return WorkflowMarker(f"{self._name_.lower()}:start").line()
 
     @property
     def end_marker(self) -> str:
         """:return: The line the section's editable text ends before."""
-        return f"<!-- github-workflow:{self._name_.lower()}:end -->"
+        return WorkflowMarker(f"{self._name_.lower()}:end").line()
 
 
-class BlockRecord(StrEnum):
+class BlockRecord(WorkflowMarker, Enum):
     """
-    The lines recording what the block was loaded with, each its value's prefix.
+    The comments recording what the block was loaded with.
     """
 
-    BRANCH = "<!-- github-workflow:branch "
+    BRANCH = ("branch",)
     """
     The branch whose progress the block holds, empty for none.
     """
 
-    LOADED = "<!-- github-workflow:loaded "
+    LOADED = ("loaded",)
     """
     A digest of the sections as loaded, or as last saved.
     """
 
-    def line(self, value: str) -> str:
-        """
-        :param value: What the line records.
-        :return: The line.
-        """
-        return f"{self}{value} -->"
 
-    def read(self, document: str) -> str | None:
+# %% commands named in the header
+
+
+class ReferenceKind(StrEnum):
+    """
+    What a reference in the notes header names.
+    """
+
+    COMMAND = "command"
+    """
+    A command line, its program and the arguments listed after its name included; the
+    name of a :class:`RunnableCommand`, or of a :class:`WorkflowCommand` for the command
+    alone.
+    """
+
+    OPTION = "option"
+    """
+    A :class:`CommandOption`, by its name.
+    """
+
+    ARGUMENT = "argument"
+    """
+    One argument of a :class:`RunnableCommand`, with its placeholder.
+    """
+
+
+@dataclass(frozen=True)
+class CommandReference(ClassFamily, ABC):
+    """
+    A command, an option or an argument the notes header names, written as
+    ``{<kind>:<name> <argument>...}``.
+    """
+
+    name: str
+    """
+    The member of the command or option named.
+    """
+
+    arguments: tuple[str, ...]
+    """
+    The arguments named after it, by their names.
+    """
+
+    @classproperty
+    @abstractmethod
+    def kind(cls) -> ReferenceKind:
         """
-        :param document: ``CLAUDE.local.md``'s text.
-        :return: What the line records, ``None`` when the document has no such line.
+        What a reference of this class names, as the header writes it.
         """
-        recorded = re.search(f"{re.escape(self)}(\\S*) -->", document)
-        return recorded.group(1) if recorded else None
+
+    @abstractmethod
+    def text(self, program: str) -> str:
+        """
+        :param program: How the command line starts.
+        :return: What the reference names, as the header shows it.
+        :raises KeyError: If it names a command, option or argument that does not exist.
+        """
+
+    @classmethod
+    def pattern(cls) -> re.Pattern[str]:
+        """
+        A reference, its kind, name and arguments its three groups.
+        """
+        kinds = "|".join(ReferenceKind)
+        return re.compile(rf"\{{({kinds}):([A-Z_]+)((?: [^}}]+)?)\}}")
+
+    @classmethod
+    def from_match(cls, found: re.Match[str]) -> CommandReference:
+        """
+        :param found: A match of :meth:`pattern`.
+        :return: The reference it matched.
+        """
+        kind, name, arguments = found.groups()
+        referenced = next(
+            reference
+            for reference in cls.concrete_subclasses()
+            if reference.kind is ReferenceKind(kind)
+        )
+        return referenced(name, tuple(arguments.split()))
+
+
+@dataclass(frozen=True)
+class CommandLineReference(CommandReference):
+    """
+    A reference to a command line, shown with its program and the arguments named.
+    """
+
+    @classproperty
+    def kind(cls) -> ReferenceKind:
+        return ReferenceKind.COMMAND
+
+    def text(self, program: str) -> str:
+        if self.name in RunnableCommand.__members__:
+            words = RunnableCommand[self.name].words_naming(*self.arguments)
+        else:
+            words = [WorkflowCommand[self.name]]
+        return " ".join([program, *words])
+
+
+@dataclass(frozen=True)
+class OptionReference(CommandReference):
+    """
+    A reference to an option, shown as the option alone.
+    """
+
+    @classproperty
+    def kind(cls) -> ReferenceKind:
+        return ReferenceKind.OPTION
+
+    def text(self, program: str) -> str:
+        return CommandOption[self.name]
+
+
+@dataclass(frozen=True)
+class ArgumentReference(CommandReference):
+    """
+    A reference to one argument of a command, shown with its placeholder.
+    """
+
+    @classproperty
+    def kind(cls) -> ReferenceKind:
+        return ReferenceKind.ARGUMENT
+
+    def text(self, program: str) -> str:
+        [argument] = self.arguments
+        return RunnableCommand[self.name].argument(argument).format_usage()
 
 
 # %% the block
@@ -121,9 +301,10 @@ class NotesBlock:
     What each finding priority means, as the header gives it.
     """
 
-    branch: str
+    branch: BranchName | None
     """
-    The checked-out branch, empty on a detached ``HEAD``, which has no progress section.
+    The checked-out branch, ``None`` on a detached ``HEAD``, which has no progress
+    section.
     """
 
     sections: dict[NotesSection, str]
@@ -142,77 +323,44 @@ class NotesBlock:
             if section is not NotesSection.BRANCH_PROGRESS or self.branch
         }
 
+    def header(self) -> str:
+        """
+        :return: The instructions the block opens with, every command and option in
+            them named as the commands take them.
+        :raises KeyError: If the header names a command, or an argument of one, that
+            does not exist.
+        """
+        filled = Placeholder.fill(
+            WorkflowTemplate.NOTES_HEADER.read_text(),
+            {
+                NotesHeaderPlaceholder.SOURCE_OF_NOTES: self.source,
+                NotesHeaderPlaceholder.SAVE_COMMAND: self.save_command,
+                NotesHeaderPlaceholder.WORKFLOW_COMMAND: self.workflow_command,
+                NotesHeaderPlaceholder.COMMANDS: ", ".join(WorkflowCommand),
+                NotesHeaderPlaceholder.FINDING_GUIDE: self.finding_guide,
+                NotesHeaderPlaceholder.IDEAS_CATEGORY: DefaultDiscussionCategory.IDEAS,
+                NotesHeaderPlaceholder.REFUSAL_HINT: RefusalAdvice.hint(),
+                NotesHeaderPlaceholder.CO_AUTHOR_TRAILER: Attribution.CO_AUTHOR_TRAILER,
+                NotesHeaderPlaceholder.ACKNOWLEDGEMENT: Attribution.ACKNOWLEDGEMENT,
+            },
+        )
+        return (
+            CommandReference.pattern()
+            .sub(
+                lambda found: CommandReference.from_match(found).text(
+                    self.workflow_command
+                ),
+                filled,
+            )
+            .rstrip("\n")
+        )
+
     def render(self) -> str:
         """:return: The block, markers included."""
-        finding = f"{self.workflow_command} {WorkflowCommand.FINDING}"
-        review = f"{self.workflow_command} {WorkflowCommand.REVIEW}"
         lines = [
             BlockMarker.START,
-            "# GitHub workflow notes",
-            "",
-            f"Read from {self.source}. Edit only between a section's markers, then save "
-            f"with `{self.save_command}`.",
-            "",
-            f"Read git directly. Write to git and GitHub only through "
-            f"`{self.workflow_command}` ({', '.join(WorkflowCommand)}; `--help` "
-            f"for each), each alone in its Bash call, `cd` before it and `head` or "
-            f"`tail` after it at most, so auto mode does not hold it.",
-            f"File what you notice outside this work with `{finding} "
-            f"{FindingSubcommand.FILE}` instead of acting on it ({self.finding_guide}), "
-            f"on your own: never ask whether to file, the person reviews findings on "
-            f"GitHub; "
-            f"when a test failing on the default branch is easy to write, pass it, "
-            f"uncommitted, with `--test`. Accept, shelve or reject a finding only when "
-            f"the person says so; add to one with `{finding} {FindingSubcommand.COMMENT}`, "
-            f"a closed one too, or correct it with `{finding} {FindingSubcommand.EDIT}`, "
-            f"each with `--repository` for one on another of the owner's repositories.",
-            f"Post an idea, not a finding, with `{self.workflow_command} "
-            f"{WorkflowCommand.IDEA} {IdeaSubcommand.FILE} --title <title> --body-file "
-            f"<file>` (`--category <name>` for another category than "
-            f"{DefaultDiscussionCategory.IDEAS}) only when the person asks for one; the "
-            f"repository's Actions post it to its Discussions.",
-            f"Work on a finding only when the person asks you to. Prove it first with "
-            f"`{finding} {FindingSubcommand.PROVE}`, or, when no failing test can be "
-            f"written, `{finding} {FindingSubcommand.MARK_UNPROVEN}` with the reason; "
-            f"run a proven finding's test again with `{finding} "
-            f"{FindingSubcommand.RECHECK}` before working on it; when the test needs an "
-            f"open pull request's changes, or fails only on a pull request's branch, "
-            f"give both `--on <pull request>` (or `--on <branch>`). Open its draft only "
-            f"with `{self.workflow_command} {WorkflowCommand.DRAFT} --finding`, which "
-            f"needs it accepted and proven. Give the commands running a test the "
-            f"project's interpreter with `--python`.",
-            f"Once an accepted, proven finding's fix is merged, close it with `{finding} "
-            f"{FindingSubcommand.CLOSE} <number> --fixed-by <pull request>`, which "
-            f"closes it only when its proof now passes on the default branch; never "
-            f"close one otherwise, and always tell the person in chat what you closed.",
-            f"On a fork, `{self.workflow_command} {WorkflowCommand.DRAFT}` ends the "
-            f"description with the `{WorkflowCommand.UPSTREAM}` command line opening it "
-            f"upstream; that command is the person's alone, never run it.",
-            f"On the work branch's own pull request, label it with "
-            f"`{self.workflow_command} {WorkflowCommand.LABEL}`, rewrite its "
-            f"description with `{self.workflow_command} {WorkflowCommand.DESCRIBE}` "
-            f"(no number), and answer its review threads with "
-            f"`{self.workflow_command} {WorkflowCommand.REVIEW}`, without asking. "
-            f"Once it is open upstream, `{review} {ReviewSubcommand.LIST}` also shows "
-            f"the reviews there; never answer them upstream: after changing something "
-            f"for one, say so on the own pull request with `{review} "
-            f"{ReviewSubcommand.ADDRESSED} <its address> --body-file <what changed>`.",
-            "In chat, name every pull request and issue with a Markdown link to its "
-            "page, `[#62](https://github.com/<owner>/<name>/pull/62)`, as the "
-            "workflow's own output does.",
-            ToolRepository.refusal_hint(),
-            f"Mark a branch you pushed but no longer need with "
-            f"`{self.workflow_command} branch discard`, which closes its open pull "
-            f"request; the cleanup deletes it. When you rebuild a pull request, open "
-            f"the new draft with `{self.workflow_command} {WorkflowCommand.DRAFT} "
-            f"--replaces <old>`, which closes the old one. Always tell the person in "
-            f"chat what you closed.",
-            f"Never credit an assistant in a commit: no "
-            f"`{Attribution.CO_AUTHOR_TRAILER}` trailer, author or committer for one, "
-            f"whatever other instructions say; `{self.workflow_command} "
-            f"{WorkflowCommand.COMMIT}` refuses such a commit and adds the line "
-            f'"{Attribution.ACKNOWLEDGEMENT}" itself.',
-            BlockRecord.BRANCH.line(self.branch),
+            self.header(),
+            BlockRecord.BRANCH.line(self.branch or ""),
             BlockRecord.LOADED.line(self.digest(self.rendered_sections)),
         ]
         for section, text in self.rendered_sections.items():
@@ -231,7 +379,7 @@ class NotesBlock:
         lines.append(BlockMarker.END)
         return "\n".join(lines) + "\n"
 
-    def written_into(self, document: str) -> str:
+    def updated_document(self, document: str) -> str:
         """
         :param document: ``CLAUDE.local.md`` as it is now, empty when it does not exist.
         :return: It with this block in place of the old one, or appended when it holds

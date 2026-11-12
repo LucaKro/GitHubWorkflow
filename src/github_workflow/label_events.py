@@ -1,9 +1,7 @@
 """
-Finding labels picked on GitHub, completed by an Actions workflow, or by a session where
-the workflow is not installed.
-
-A stage, priority or evidence label replaces the others of its kind, so changing a
-finding by hand takes one pick.
+Finding labels picked on GitHub completed, by an Actions workflow or by a session where
+the workflow is not installed: a stage, priority or evidence label replaces the others
+of its kind.
 
 Usage: ``python -m github_workflow.label_events <event file>``, with the ``issues``
 event GitHub hands the workflow.
@@ -13,26 +11,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import shlex
 from dataclasses import dataclass
-from enum import StrEnum
 from pathlib import Path
-from typing import Any
 
-from basstler_domain_model.github.issue_models import Issue, LabelEvent
-from basstler_domain_model.github.repository_client import (
-    GitHubRepository,
-    IssueBoard,
-    IssueLabelHistory,
-    RepositoryLabels,
-)
-from basstler_domain_model.github.vocabulary import (
-    IssueState,
-    IssueStateReason,
-    JSONModel,
-    RestJSONKey,
-)
-from basstler_domain_model.repository import Repository
+from domain_model.github.issue_events import IssueLabelled
+from domain_model.github.issue_models import Issue, LabelEvent
+from domain_model.github.repository_client import GitHubRepository, IssueLabelTracker
+from domain_model.github.vocabulary import IssueState, IssueStateReason
+from domain_model.templates import Placeholder
 
 from github_workflow.findings import (
     Evidence,
@@ -41,70 +27,11 @@ from github_workflow.findings import (
     FindingStage,
     Priority,
 )
-from github_workflow.hooks import ReportLine, Tone
-from github_workflow.install import DomainModelSource
 from github_workflow.locations import ProjectFile, WorkflowTemplate
+from github_workflow.report_lines import ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportSection
 from github_workflow.work import WorkflowStep
-
-# %% the event
-
-
-class IssueEventKey(StrEnum):
-    """
-    The keys of an ``issues`` event that the REST answers do not share.
-    """
-
-    ISSUE = "issue"
-    """
-    The issue the event is about.
-    """
-
-    LABEL = "label"
-    """
-    The label just added.
-    """
-
-    REPOSITORY = "repository"
-    """
-    The repository the issue is in.
-    """
-
-    FULL_NAME = "full_name"
-    """
-    A repository's ``owner/name``.
-    """
-
-
-@dataclass(frozen=True)
-class IssueLabelled(JSONModel):
-    """
-    A label added to an issue, as the ``issues`` event of type ``labeled`` reports it.
-    """
-
-    repository: Repository
-    """
-    The repository the issue is in.
-    """
-
-    number: int
-    """
-    The issue's number.
-    """
-
-    label: str
-    """
-    The name of the label added.
-    """
-
-    @classmethod
-    def from_json(cls, data: dict[str, Any]) -> IssueLabelled:
-        return cls(
-            Repository.parse(data[IssueEventKey.REPOSITORY][IssueEventKey.FULL_NAME]),
-            data[IssueEventKey.ISSUE][RestJSONKey.NUMBER],
-            data[IssueEventKey.LABEL][RestJSONKey.NAME],
-        )
-
+from github_workflow.workflow_templates import ActionRequirement
 
 # %% completing the label
 
@@ -112,10 +39,11 @@ class IssueLabelled(JSONModel):
 @dataclass(frozen=True)
 class FindingLabelCompletion(FindingLabelling):
     """
-    A label just added to an issue, completed: a priority as :class:`FindingPrioritization`
-    gives it, a stage or evidence replacing the others of its kind, and an incorrect
-    finding closed as not planned. A label removed again since, or one outside the
-    findings, changes nothing.
+    A label just added to an issue, completed: a priority as
+    :class:`FindingPrioritization` gives it, a stage or evidence replacing the others of
+    its kind, and an incorrect finding closed as not planned.
+
+    A label removed again since, or one outside the findings, changes nothing.
     """
 
     number: int
@@ -129,12 +57,12 @@ class FindingLabelCompletion(FindingLabelling):
     """
 
     def run(self) -> str:
-        issue = self.board.issue(self.number)
+        issue = self.issues.issue(self.number)
         if self.label not in issue.labels:
             return f"#{self.number} no longer carries {self.label}"
         if self.label in Priority:
             return FindingPrioritization(
-                self.board, self.labels, self.number, Priority(self.label)
+                self.issues, self.number, Priority(self.label)
             ).run()
         if self.label in Evidence:
             self.relabel(issue, [Evidence(self.label)])
@@ -144,7 +72,7 @@ class FindingLabelCompletion(FindingLabelling):
         stage = FindingStage(self.label)
         self.relabel(issue, [stage])
         if stage is FindingStage.INCORRECT and issue.state is IssueState.OPEN:
-            self.board.close_issue(self.number, IssueStateReason.NOT_PLANNED)
+            self.issues.close_issue(self.number, IssueStateReason.NOT_PLANNED)
         return f"moved #{self.number} to {stage}"
 
 
@@ -160,19 +88,9 @@ class PickedLabelCompletion:
     is closed.
     """
 
-    board: IssueBoard
+    issues: IssueLabelTracker
     """
-    Lists and labels the issues.
-    """
-
-    labels: RepositoryLabels
-    """
-    Creates the finding labels the repository lacks.
-    """
-
-    history: IssueLabelHistory
-    """
-    Reads in which order an issue's labels were added.
+    The issues, the labels they are given, and in which order.
     """
 
     def complete(self) -> list[str]:
@@ -182,10 +100,10 @@ class PickedLabelCompletion:
         found = {
             issue.number: issue
             for stage in FindingStage
-            for issue in self.board.issues([stage], IssueState.OPEN)
+            for issue in self.issues.issues([stage], IssueState.OPEN)
         }
         return [
-            FindingLabelCompletion(self.board, self.labels, number, label).run()
+            FindingLabelCompletion(self.issues, number, label).run()
             for number, issue in found.items()
             for label in self.picks(issue)
         ]
@@ -202,9 +120,9 @@ class PickedLabelCompletion:
             kind for kind in kinds if sum(label in kind for label in issue.labels) > 1
         ]
         if not contested:
-            incorrect = FindingStage.of(issue) is FindingStage.INCORRECT
+            incorrect = FindingStage.from_issue(issue) is FindingStage.INCORRECT
             return [FindingStage.INCORRECT] if incorrect else []
-        events = self.history.label_events(issue.number)
+        events = self.issues.label_events(issue.number)
         return [
             picked
             for kind in contested
@@ -237,8 +155,8 @@ class PickedLabelCompletion:
 @dataclass(frozen=True)
 class LabelsCompletedStep(WorkflowStep):
     """
-    A step run once the finding labels picked on GitHub are completed, saying first
-    what that did.
+    A step run once the finding labels picked on GitHub are completed, saying first what
+    that did.
     """
 
     completion: PickedLabelCompletion
@@ -259,8 +177,8 @@ class LabelsCompletedStep(WorkflowStep):
 @dataclass(frozen=True)
 class LabelsCompletedReport(ReportSection):
     """
-    A section of the session start computed once the finding labels picked on GitHub
-    are completed, with a line saying what that did.
+    A section of the session start computed once the finding labels picked on GitHub are
+    completed, with a line saying what that did.
     """
 
     completion: PickedLabelCompletion
@@ -276,48 +194,12 @@ class LabelsCompletedReport(ReportSection):
     def lines(self) -> list[ReportLine]:
         done = self.completion.complete()
         completed = [
-            ReportLine(f"github-workflow: completed {'; '.join(done)}", Tone.NEWS)
+            ReportLine(Speaker.WORKFLOW.says(f"completed {'; '.join(done)}"), Tone.NEWS)
         ]
         return [*(completed if done else []), *self.section.lines()]
 
 
 # %% the Actions workflow
-
-
-class ActionRequirement(StrEnum):
-    """
-    What the Actions workflow installs to run the completion.
-    """
-
-    DOMAIN_MODEL = (
-        f"basstler-domain-model @ git+{DomainModelSource.REPOSITORY.value}"
-        f"@{DomainModelSource.COMMIT.value}"
-    )
-    """
-    The shared GitHub and git model, which no index serves, at the runtime's pinned
-    commit.
-    """
-
-    WORKFLOW = "github-workflow @ git+https://github.com/LucaKro/GitHubWorkflow@main"
-    """
-    This package, from its default branch.
-    """
-
-
-class LabelCompletionPlaceholder(StrEnum):
-    """
-    The names the label completion workflow template leaves to be filled in.
-    """
-
-    REQUIREMENTS = "__REQUIREMENTS__"
-    """
-    What ``pip`` installs.
-    """
-
-    ENTRY_POINT = "__ENTRY_POINT__"
-    """
-    The command completing the label, before the event file.
-    """
 
 
 @dataclass(frozen=True)
@@ -333,19 +215,15 @@ class FindingAutomation(WorkflowStep):
     """
 
     def run(self) -> str:
-        workflow = (
-            WorkflowTemplate.LABEL_COMPLETION_WORKFLOW.value.read_text()
-            .replace(
-                LabelCompletionPlaceholder.REQUIREMENTS,
-                shlex.join(list(ActionRequirement)),
-            )
-            .replace(LabelCompletionPlaceholder.ENTRY_POINT, f"python -m {__name__}")
+        workflow = Placeholder.fill(
+            WorkflowTemplate.LABEL_COMPLETION_WORKFLOW.read_text(),
+            ActionRequirement.placeholder_values(__name__),
         )
-        path = self.root / ProjectFile.LABEL_COMPLETION_WORKFLOW.value
+        path = self.root / ProjectFile.LABEL_COMPLETION_WORKFLOW
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(workflow)
         return (
-            f"wrote {ProjectFile.LABEL_COMPLETION_WORKFLOW.value}; commit it on a work "
+            f"wrote {ProjectFile.LABEL_COMPLETION_WORKFLOW}; commit it on a work "
             f"branch and open a draft, GitHub runs it once it is on the default branch"
         )
 
@@ -361,7 +239,7 @@ def main() -> None:
     parser.add_argument("event", type=Path, help="the issues event GitHub handed over")
     event = IssueLabelled.from_json(json.loads(parser.parse_args().event.read_text()))
     github = GitHubRepository.from_environment(event.repository)
-    print(FindingLabelCompletion(github, github, event.number, event.label).run())
+    print(FindingLabelCompletion(github, event.number, event.label).run())
 
 
 if __name__ == "__main__":

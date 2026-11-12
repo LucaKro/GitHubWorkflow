@@ -1,10 +1,8 @@
 """
-Findings: what a session notices outside the work it is doing, kept as GitHub issues
-rather than acted on.
-
-Filed or prioritized as unreviewed with a priority; only the person accepts, shelves or
-rejects them. A finding is proven by a test failing on the default branch, posted on its
-issue; only an accepted, proven finding is worked on in a draft pull request.
+Findings: what a session notices outside its work, filed as unreviewed GitHub issues
+with a priority rather than acted on. Only the person accepts, shelves or rejects them;
+a finding is proven by a test failing on the default branch, posted on its issue, and
+only an accepted, proven one is worked on in a draft pull request.
 """
 
 from __future__ import annotations
@@ -15,24 +13,22 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Self
 
-from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.github.issue_models import Issue
-from basstler_domain_model.github.repository_client import (
+from domain_model.class_property import classproperty
+from domain_model.git.revisions import BranchName
+from domain_model.github.closing_lines import ClosingLines
+from domain_model.github.issue_models import Issue
+from domain_model.github.repository_client import (
+    ClosablePullRequests,
+    IssueAndPullRequestTracker,
     IssueBoard,
-    PullRequestCloser,
-    PullRequestReader,
-    RepositoryLabels,
+    IssueTracker,
 )
-from basstler_domain_model.repository import Repository
-from basstler_domain_model.github.vocabulary import (
-    ClosingKeyword,
-    IssueState,
-    IssueStateReason,
-)
+from domain_model.github.vocabulary import ClosingKeyword, IssueState, IssueStateReason
+from domain_model.repository import Repository
 
+from github_workflow.command_line import PriorityLevel
 from github_workflow.exceptions import (
     AlreadyProvenError,
-    BrokenTestError,
     FindingNotAcceptedError,
     FindingStillFailsError,
     FixNotMergedError,
@@ -42,12 +38,16 @@ from github_workflow.exceptions import (
     ProofNoLongerHoldsError,
     UnprovenFindingCloseError,
 )
-from github_workflow.hooks import Emphasis, Highlight, NumberLink, ReportLine, Tone
 from github_workflow.labels import DescribedLabel
 from github_workflow.proofs import FindingTest, Proof, ProofOutcome, ProofRunner
+from github_workflow.report_lines import (
+    Emphasis,
+    Highlight,
+    ReportLine,
+    Tone,
+)
 from github_workflow.report_section import ReportGroup, ReportSection
 from github_workflow.work import (
-    ClosingLines,
     DraftOpening,
     PullRequestOpenedLabelling,
     PullRequestRetirement,
@@ -64,7 +64,7 @@ class FindingLabel(DescribedLabel):
     """
 
     @classmethod
-    def of(cls, issue: Issue) -> Self | None:
+    def from_issue(cls, issue: Issue) -> Self | None:
         """
         :param issue: An issue.
         :return: The first of these labels it carries, ``None`` when it carries none.
@@ -132,9 +132,9 @@ class FindingStage(FindingLabel):
         return [cls.INCORRECT, cls.SHELVED, cls.ACCEPTED, cls.UNREVIEWED]
 
     @classmethod
-    def of(cls, issue: Issue) -> FindingStage | None:
+    def from_issue(cls, issue: Issue) -> FindingStage | None:
         """
-        Unlike :meth:`FindingLabel.of`, of several stage labels the first in
+        Unlike :meth:`FindingLabel.from_issue`, of several stage labels the first in
         :attr:`by_caution` counts, so a stage picked on GitHub counts even while the
         label it replaces is still on.
         """
@@ -143,41 +143,50 @@ class FindingStage(FindingLabel):
 
 class Priority(FindingLabel):
     """
-    How urgent a finding is, as the session that files it judges.
+    How urgent a finding is, as the session that files it judges: the label of each
+    :class:`PriorityLevel`, which it means.
     """
 
     CRITICAL = (
-        "priority: critical",
-        "Breaks the default branch, security, or data",
+        f"priority: {PriorityLevel.CRITICAL}",
+        PriorityLevel.CRITICAL.meaning,
         "b60205",
     )
     """
-    Breaks the default branch, security, or data.
+    The label of :attr:`PriorityLevel.CRITICAL`.
     """
 
-    HIGH = ("priority: high", "Wrong behaviour in normal use", "d93f0b")
+    HIGH = (f"priority: {PriorityLevel.HIGH}", PriorityLevel.HIGH.meaning, "d93f0b")
     """
-    Wrong behaviour in normal use.
+    The label of :attr:`PriorityLevel.HIGH`.
     """
 
     MEDIUM = (
-        "priority: medium",
-        "Wrong in edge cases, or a maintainability risk",
+        f"priority: {PriorityLevel.MEDIUM}",
+        PriorityLevel.MEDIUM.meaning,
         "fbca04",
     )
     """
-    Wrong in edge cases, or a maintainability risk.
+    The label of :attr:`PriorityLevel.MEDIUM`.
     """
 
-    LOW = ("priority: low", "Cosmetic, or cleanup", "c5def5")
+    LOW = (f"priority: {PriorityLevel.LOW}", PriorityLevel.LOW.meaning, "c5def5")
     """
-    Cosmetic, or cleanup.
+    The label of :attr:`PriorityLevel.LOW`.
     """
 
     @property
-    def level(self) -> str:
+    def level(self) -> PriorityLevel:
         """:return: The priority's level alone, as the command line takes it."""
-        return self._name_.lower()
+        return PriorityLevel[self._name_]
+
+    @classmethod
+    def at_level(cls, level: PriorityLevel) -> Priority:
+        """
+        :param level: A priority level.
+        :return: Its label.
+        """
+        return cls[level._name_]
 
     @classmethod
     def most_urgent_first(cls, issues: Sequence[Issue]) -> list[Issue]:
@@ -186,40 +195,32 @@ class Priority(FindingLabel):
         :return: Them, most urgent first, those without a priority last.
         """
         return sorted(
-            issues, key=lambda issue: list(cls).index(cls.of(issue) or cls.LOW)
+            issues, key=lambda issue: list(cls).index(cls.from_issue(issue) or cls.LOW)
         )
 
     @classmethod
-    def named(cls, issue: Issue, repository: Repository) -> str:
+    def describe_finding(cls, issue: Issue, repository: Repository) -> str:
         """
         :param issue: A finding.
         :param repository: The repository it is filed on.
         :return: Its number linked to its page, priority level and title, as one line
             names it.
         """
-        priority = cls.of(issue)
+        priority = cls.from_issue(issue)
         level = priority.level if priority else "no priority"
-        link = NumberLink(issue.number, repository.issue_url(issue.number))
-        return f"{link.markdown()} [{level}] {issue.title}"
+        return f"{repository.issue_link(issue.number)} [{level}] {issue.title}"
 
     @classmethod
     def emphases(cls, issue: Issue) -> tuple[Emphasis, ...]:
         """
         :param issue: A finding.
-        :return: Its priority tag, as :meth:`named` writes it, in the priority's own
+        :return: Its priority tag, as :meth:`describe_finding` writes it, in the priority's own
             style; nothing for a finding without a priority.
         """
-        priority = cls.of(issue)
+        priority = cls.from_issue(issue)
         if priority is None:
             return ()
         return (Emphasis(f"[{priority.level}]", Highlight[priority._name_]),)
-
-    @classmethod
-    def guide(cls) -> str:
-        """:return: What each priority means, in one line."""
-        return "; ".join(
-            f"{priority.level}: {priority.description}" for priority in cls
-        )
 
 
 class ClosedBy(FindingLabel):
@@ -238,6 +239,13 @@ class ClosedBy(FindingLabel):
     Closed by a session.
     """
 
+    @classproperty
+    def closing_note(cls) -> str:
+        """
+        The sentence ending a session's comment on what it closed on its own.
+        """
+        return "Closed by a session on its own."
+
 
 class Evidence(FindingLabel):
     """
@@ -251,7 +259,8 @@ class Evidence(FindingLabel):
         "1d76db",
     )
     """
-    A test failing on the default branch is posted on the issue.
+    A session posted the proof; only one the owner or the workflow's account posted
+    counts.
     """
 
     UNPROVEN = (
@@ -274,24 +283,16 @@ class FindingLabelling(WorkflowStep, ABC):
     repository lacks.
     """
 
-    board: IssueBoard
+    issues: IssueTracker
     """
-    Writes the issue.
-    """
-
-    labels: RepositoryLabels
-    """
-    Lists and creates the repository's labels.
+    The issues, and the labels they are given.
     """
 
     def create_missing_labels(self) -> None:
         """
         Create every finding label the repository does not carry yet.
         """
-        present = self.labels.labels()
-        for label in FindingLabel.every_label:
-            if label not in present:
-                self.labels.create_label(label)
+        self.issues.create_missing_labels(FindingLabel.every_label)
 
     def relabel(self, issue: Issue, labels: Sequence[FindingLabel]) -> None:
         """
@@ -304,11 +305,11 @@ class FindingLabelling(WorkflowStep, ABC):
         self.create_missing_labels()
         added = [label for label in labels if label not in issue.labels]
         if added:
-            self.board.add_labels(issue.number, added)
+            self.issues.add_labels(issue.number, added)
         for label in labels:
             for replaced in type(label):
                 if replaced not in labels and replaced in issue.labels:
-                    self.board.remove_label(issue.number, replaced)
+                    self.issues.remove_label(issue.number, replaced)
 
 
 # %% filing and listing
@@ -345,7 +346,7 @@ class FindingFiling(FindingLabelling):
         :return: The number of the issue filed.
         """
         self.create_missing_labels()
-        return self.board.open_issue(
+        return self.issues.open_issue(
             self.title, self.body, [FindingStage.UNREVIEWED, self.priority, *evidence]
         )
 
@@ -374,7 +375,7 @@ class ProvenFindingFiling(FindingFiling):
         """
         proof = self.runner.attempt(self.test).proof()
         number = self.file([Evidence.PROVEN])
-        self.board.add_comment(number, proof.comment())
+        self.issues.add_comment(number, proof.comment())
         return f"filed finding #{number} ({self.priority.level}), proven on {proof.tip}"
 
 
@@ -403,7 +404,7 @@ class OpenFindings:
             stage: [] for stage in FindingStage.open_stages
         }
         for issue in found.values():
-            stage = FindingStage.of(issue)
+            stage = FindingStage.from_issue(issue)
             if stage in grouped:
                 grouped[stage].append(issue)
         return grouped
@@ -433,9 +434,11 @@ class FindingListing(WorkflowStep):
         lines = []
         for stage, issues in OpenFindings(self.board).by_stage().items():
             for issue in Priority.most_urgent_first(issues):
-                evidence = Evidence.of(issue)
+                evidence = Evidence.from_issue(issue)
                 labels = f"{stage}, {evidence}" if evidence else stage
-                lines.append(f"{Priority.named(issue, self.repository)} ({labels})")
+                lines.append(
+                    f"{Priority.describe_finding(issue, self.repository)} ({labels})"
+                )
         return "\n".join(lines) or "no open findings"
 
 
@@ -460,8 +463,8 @@ class FindingPrioritization(FindingLabelling):
     """
 
     def run(self) -> str:
-        issue = self.board.issue(self.number)
-        stage = [] if FindingStage.of(issue) else [FindingStage.UNREVIEWED]
+        issue = self.issues.issue(self.number)
+        stage = [] if FindingStage.from_issue(issue) else [FindingStage.UNREVIEWED]
         self.relabel(issue, [self.priority, *stage])
         return f"prioritized #{self.number} as {self.priority.level}"
 
@@ -486,8 +489,11 @@ class FindingChange(FindingLabelling, ABC):
         :return: The finding, open in one of them.
         :raises NotAFindingError: If it is no open finding in one of them.
         """
-        issue = self.board.issue(self.number)
-        if issue.state is not IssueState.OPEN or FindingStage.of(issue) not in stages:
+        issue = self.issues.issue(self.number)
+        if (
+            issue.state is not IssueState.OPEN
+            or FindingStage.from_issue(issue) not in stages
+        ):
             raise NotAFindingError(self.number)
         return issue
 
@@ -534,8 +540,8 @@ class FindingRejection(FindingChange):
     def run(self) -> str:
         issue = self.open_finding(FindingStage.open_stages)
         self.relabel(issue, [FindingStage.INCORRECT])
-        self.board.add_comment(self.number, f"Rejected: {self.reason}")
-        self.board.close_issue(self.number, IssueStateReason.NOT_PLANNED)
+        self.issues.add_comment(self.number, f"Rejected: {self.reason}")
+        self.issues.close_issue(self.number, IssueStateReason.NOT_PLANNED)
         return f"rejected finding #{self.number}"
 
 
@@ -558,9 +564,10 @@ class FindingClosing(FindingChange):
     :raises BrokenTestError: If its proof test did not run.
     """
 
-    pull_requests: PullRequestReader
+    issues: IssueAndPullRequestTracker
     """
-    Reads the pull request named as the fix.
+    Unlike :attr:`FindingLabelling.issues`, also reads the pull request named as the
+    fix.
     """
 
     runner: ProofRunner
@@ -573,7 +580,7 @@ class FindingClosing(FindingChange):
     The logins whose proofs count.
     """
 
-    default_branch: str
+    default_branch: BranchName
     """
     The branch the fix has to be merged into.
     """
@@ -589,29 +596,28 @@ class FindingClosing(FindingChange):
     """
 
     def run(self) -> str:
-        issue = self.board.issue(self.number)
-        accepted = FindingStage.of(issue) is FindingStage.ACCEPTED
+        issue = self.issues.issue(self.number)
+        accepted = FindingStage.from_issue(issue) is FindingStage.ACCEPTED
         if issue.state is not IssueState.OPEN or not accepted:
             raise FindingNotAcceptedError(self.number)
-        proof = Proof.posted_in(self.board.comments(self.number), self.authors)
-        if Evidence.of(issue) is not Evidence.PROVEN or proof is None:
+        proof = Proof.latest_posted(self.issues.comments(self.number), self.authors)
+        if Evidence.from_issue(issue) is not Evidence.PROVEN or proof is None:
             raise UnprovenFindingCloseError(self.number)
-        fix = self.pull_requests.pull_request(self.fixed_by)
+        fix = self.issues.pull_request(self.fixed_by)
         if not fix.merged or fix.base != self.default_branch:
             raise FixNotMergedError(self.fixed_by, self.default_branch)
         attempt = self.runner.attempt(proof.test)
-        if attempt.outcome is ProofOutcome.BROKEN:
-            raise BrokenTestError(str(proof.test.path), attempt.message)
+        attempt.raise_if_broken()
         if attempt.outcome is ProofOutcome.FAILS:
             raise FindingStillFailsError(self.number, attempt.tip, attempt.message)
         self.create_missing_labels()
-        self.board.add_labels(self.number, [ClosedBy.SESSION])
-        self.board.add_comment(
+        self.issues.add_labels(self.number, [ClosedBy.SESSION])
+        self.issues.add_comment(
             self.number,
             f"Fixed by #{self.fixed_by}: its proof test passes on {attempt.tip}. "
-            f"Closed by a session on its own.",
+            f"{ClosedBy.closing_note}",
         )
-        self.board.close_issue(self.number, IssueStateReason.COMPLETED)
+        self.issues.close_issue(self.number, IssueStateReason.COMPLETED)
         self.log.enter(
             f"closed finding #{self.number} as fixed by #{self.fixed_by}, its proof test "
             f"passing on {attempt.tip}"
@@ -633,19 +639,9 @@ class SessionPullRequestClosing(PullRequestRetirement):
     the issues it closes lose :attr:`IssueLabel.PULL_REQUEST_OPENED`.
     """
 
-    board: IssueBoard
+    pull_requests: ClosablePullRequests
     """
-    Labels and comments on it, a pull request being an issue to GitHub too.
-    """
-
-    labels: RepositoryLabels
-    """
-    Creates the label when the repository lacks it.
-    """
-
-    closer: PullRequestCloser
-    """
-    Closes it.
+    Reads and closes it, labels and comments on it, and on the issues it closes.
     """
 
     log: SessionLog
@@ -653,23 +649,13 @@ class SessionPullRequestClosing(PullRequestRetirement):
     Where the close is entered.
     """
 
-    pull_requests: PullRequestReader
-    """
-    Reads its description.
-    """
-
-    issue_labels: PullRequestOpenedLabelling
-    """
-    Takes the label saying a pull request is open off the issues it closes.
-    """
-
     def retire(self, number: int, reason: str) -> None:
-        if ClosedBy.SESSION not in self.labels.labels():
-            self.labels.create_label(ClosedBy.SESSION)
-        self.board.add_labels(number, [ClosedBy.SESSION])
-        self.board.add_comment(number, f"{reason} Closed by a session on its own.")
-        self.closer.close_pull_request(number)
-        self.issue_labels.unlabel(self.pull_requests.pull_request(number).body or "")
+        self.pull_requests.create_missing_labels([ClosedBy.SESSION])
+        self.pull_requests.add_labels(number, [ClosedBy.SESSION])
+        self.pull_requests.add_comment(number, f"{reason} {ClosedBy.closing_note}")
+        self.pull_requests.close_pull_request(number)
+        description = self.pull_requests.pull_request(number).body or ""
+        PullRequestOpenedLabelling(self.pull_requests).unlabel(description)
         self.log.enter(f"closed pull request #{number}: {reason}")
 
 
@@ -692,9 +678,9 @@ class FindingComment(FindingChange):
         """
         :raises NotAFindingError: If the issue is no finding.
         """
-        if FindingStage.of(self.board.issue(self.number)) is None:
+        if FindingStage.from_issue(self.issues.issue(self.number)) is None:
             raise NotAFindingError(self.number)
-        url = self.board.add_comment(self.number, self.body)
+        url = self.issues.add_comment(self.number, self.body)
         return f"commented on finding #{self.number}: {url}"
 
 
@@ -721,9 +707,9 @@ class FindingEdit(FindingChange):
             raise NothingToEditError(self.number)
         self.open_finding(FindingStage.open_stages)
         if self.title is not None:
-            self.board.set_issue_title(self.number, self.title)
+            self.issues.set_issue_title(self.number, self.title)
         if self.body is not None:
-            self.board.set_issue_description(self.number, self.body)
+            self.issues.set_issue_description(self.number, self.body)
         return f"edited finding #{self.number}"
 
 
@@ -757,7 +743,7 @@ class FindingProving(FindingChange):
         """
         issue = self.open_finding(FindingStage.open_stages)
         proof = self.runner.attempt(self.test).proof()
-        self.board.add_comment(self.number, proof.comment())
+        self.issues.add_comment(self.number, proof.comment())
         self.relabel(issue, [Evidence.PROVEN])
         return f"proved finding #{self.number} on {proof.tip}"
 
@@ -780,9 +766,9 @@ class FindingUnproving(FindingChange):
         :raises AlreadyProvenError: If it is proven.
         """
         issue = self.open_finding(FindingStage.open_stages)
-        if Evidence.of(issue) is Evidence.PROVEN:
+        if Evidence.from_issue(issue) is Evidence.PROVEN:
             raise AlreadyProvenError(self.number)
-        self.board.add_comment(self.number, f"Unproven: {self.reason}")
+        self.issues.add_comment(self.number, f"Unproven: {self.reason}")
         self.relabel(issue, [Evidence.UNPROVEN])
         return f"marked finding #{self.number} unproven"
 
@@ -824,12 +810,11 @@ class FindingRecheck(WorkflowStep):
             broken.
         """
         issue = self.board.issue(self.number)
-        proof = Proof.posted_in(self.board.comments(self.number), self.authors)
-        if Evidence.of(issue) is not Evidence.PROVEN or proof is None:
+        proof = Proof.latest_posted(self.board.comments(self.number), self.authors)
+        if Evidence.from_issue(issue) is not Evidence.PROVEN or proof is None:
             raise MissingProofError(self.number)
         attempt = self.runner.attempt(proof.test)
-        if attempt.outcome is ProofOutcome.BROKEN:
-            raise BrokenTestError(str(proof.test.path), attempt.message)
+        attempt.raise_if_broken()
         if attempt.outcome is ProofOutcome.PASSES:
             raise ProofNoLongerHoldsError(self.number, attempt.tip)
         return f"#{self.number} still fails on {attempt.tip}: {attempt.message}"
@@ -865,7 +850,7 @@ class FindingDraftOpening(WorkflowStep):
         issue = self.recheck.board.issue(number)
         if (
             issue.state is not IssueState.OPEN
-            or FindingStage.of(issue) is not FindingStage.ACCEPTED
+            or FindingStage.from_issue(issue) is not FindingStage.ACCEPTED
         ):
             raise FindingNotAcceptedError(number)
         self.recheck.run()
@@ -887,44 +872,69 @@ class FindingGroup(StrEnum):
     member's value its heading; a shelved finding is in none.
     """
 
-    UNREVIEWED = "findings waiting on your review"
+    stage: FindingStage
+    """
+    The stage of the findings it lists.
+    """
+
+    evidence: tuple[Evidence | None, ...]
+    """
+    The evidence the findings it lists carry, ``None`` for none yet.
+    """
+
+    def __new__(
+        cls, heading: str, stage: FindingStage, evidence: tuple[Evidence | None, ...]
+    ) -> FindingGroup:
+        member = str.__new__(cls, heading)
+        member._value_ = heading
+        member.stage = stage
+        member.evidence = evidence
+        return member
+
+    UNREVIEWED = (
+        "findings waiting on your review",
+        FindingStage.UNREVIEWED,
+        (*Evidence, None),
+    )
     """
     Filed, and not looked at by the person yet.
     """
 
-    PROVEN = "accepted findings, proven"
+    PROVEN = "accepted findings, proven", FindingStage.ACCEPTED, (Evidence.PROVEN,)
     """
     Accepted, with a test failing on the default branch: ready to work on.
     """
 
-    TO_PROVE = "accepted findings, not proven yet"
+    TO_PROVE = "accepted findings, not proven yet", FindingStage.ACCEPTED, (None,)
     """
     Accepted, with no attempt at a failing test yet.
     """
 
-    UNPROVABLE = "accepted findings, marked unproven"
+    UNPROVABLE = (
+        "accepted findings, marked unproven",
+        FindingStage.ACCEPTED,
+        (Evidence.UNPROVEN,),
+    )
     """
     Accepted, and no test failing on the default branch could be written.
     """
 
     @classmethod
-    def of(cls, stage: FindingStage, issue: Issue) -> FindingGroup | None:
+    def from_finding(cls, stage: FindingStage, issue: Issue) -> FindingGroup | None:
         """
         :param stage: The stage the finding counts as.
         :param issue: The finding.
         :return: The group it is listed in, ``None`` for a shelved one.
         """
-        if stage is FindingStage.UNREVIEWED:
-            return cls.UNREVIEWED
-        if stage is not FindingStage.ACCEPTED:
-            return None
-        match Evidence.of(issue):
-            case Evidence.PROVEN:
-                return cls.PROVEN
-            case Evidence.UNPROVEN:
-                return cls.UNPROVABLE
-            case None:
-                return cls.TO_PROVE
+        evidence = Evidence.from_issue(issue)
+        return next(
+            (
+                group
+                for group in cls
+                if group.stage is stage and evidence in group.evidence
+            ),
+            None,
+        )
 
 
 @dataclass(frozen=True)
@@ -948,7 +958,7 @@ class FindingsSummary(ReportSection):
         grouped: dict[FindingGroup, list[Issue]] = {group: [] for group in FindingGroup}
         for stage, issues in OpenFindings(self.board).by_stage().items():
             for issue in issues:
-                group = FindingGroup.of(stage, issue)
+                group = FindingGroup.from_finding(stage, issue)
                 if group is not None:
                     grouped[group].append(issue)
         lines = []
@@ -956,7 +966,7 @@ class FindingsSummary(ReportSection):
             tone = Tone.ACTION if group is FindingGroup.UNREVIEWED else Tone.NEWS
             items = [
                 ReportLine(
-                    Priority.named(issue, self.repository),
+                    Priority.describe_finding(issue, self.repository),
                     tone,
                     emphases=Priority.emphases(issue),
                 )

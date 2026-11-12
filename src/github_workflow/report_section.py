@@ -8,42 +8,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 
-from basstler_domain_model.github.repository_client import GitHubRepository
-
-from github_workflow.checkout import ProjectCheckout
-from github_workflow.hooks import Emphasis, Highlight, ReportLine, Tone
-from github_workflow.remotes import OwnedRemote
-from github_workflow.settings import WorkflowSettings
-
-# %% where a section looks
-
-
-@dataclass(frozen=True)
-class SectionContext:
-    """
-    The checkout a session starts in, and the owner's repository it works on.
-    """
-
-    checkout: ProjectCheckout
-    """
-    The checkout.
-    """
-
-    remote: OwnedRemote
-    """
-    The owner's remote, naming the repository.
-    """
-
-    github: GitHubRepository
-    """
-    The repository on GitHub.
-    """
-
-    settings: WorkflowSettings
-    """
-    Whose repositories are written to, and where the notes live.
-    """
-
+from github_workflow.report_lines import Emphasis, Highlight, ReportLine, Speaker, Tone
 
 # %% one section
 
@@ -87,7 +52,7 @@ class ReportGroup:
         if not self.items:
             return []
         pressing = any(item.tone is Tone.ACTION for item in self.items)
-        text = f"github-workflow: {self.heading}:"
+        text = Speaker.WORKFLOW.says(f"{self.heading}:")
         heading = ReportLine(
             text,
             Tone.ACTION if pressing else Tone.NEWS,

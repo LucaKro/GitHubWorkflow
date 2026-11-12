@@ -8,8 +8,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.git.commands import GitCommandRunner
+from domain_model.class_property import classproperty
+from domain_model.git.commands import GitCommandRunner
+from domain_model.git.revisions import BranchName
 
 from github_workflow.checkout import ProjectCheckout
 
@@ -35,11 +36,11 @@ class RepositoriesByOwner:
         return "someone-else"
 
     @classproperty
-    def default_branch(cls) -> str:
+    def default_branch(cls) -> BranchName:
         """
         The branch every repository starts with.
         """
-        return "main"
+        return BranchName("main")
 
     @classproperty
     def repository_name(cls) -> str:
@@ -80,7 +81,7 @@ class RepositoriesByOwner:
         """
         destination = self.root / "clones" / directory
         GitCommandRunner(self.root).run("clone", "--quiet", url, str(destination))
-        checkout = ProjectCheckout.containing(destination)
+        checkout = ProjectCheckout.from_directory(destination)
         self.identify(checkout.git)
         return checkout
 
@@ -98,3 +99,15 @@ class RepositoriesByOwner:
         :return: Every branch it holds, as ``git ls-remote`` lists them.
         """
         return GitCommandRunner(self.root).run("ls-remote", "--heads", url)
+
+    @staticmethod
+    def is_ancestor(git: GitCommandRunner, candidate: str, descendant: str) -> bool:
+        """
+        :param git: A checkout.
+        :param candidate: Anything git resolves to a commit.
+        :param descendant: Another.
+        :return: Whether *candidate* is in *descendant*'s history, as git answers.
+        """
+        return git.attempt(
+            "merge-base", "--is-ancestor", candidate, descendant
+        ).succeeded

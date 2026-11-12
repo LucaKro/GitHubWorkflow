@@ -11,15 +11,11 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
-
-from basstler_domain_model.github.issue_models import Issue, IssueComment
-from basstler_domain_model.github.repository_client import (
-    PullRequestCloser,
-    PullRequestReader,
-)
-from basstler_domain_model.github.rest_models import RestPullRequest
-from basstler_domain_model.repository import Repository
-from basstler_domain_model.github.vocabulary import (
+from domain_model.git.revisions import BranchName, BranchTip, CommitHash
+from domain_model.github.issue_models import Issue, IssueComment
+from domain_model.github.rest_models import RestPullRequest
+from domain_model.github.stack_placement import StackPlacement
+from domain_model.github.vocabulary import (
     ClosingKeyword,
     IssueState,
     IssueStateReason,
@@ -48,6 +44,7 @@ from github_workflow.findings import (
     FindingDraftOpening,
     FindingEdit,
     FindingFiling,
+    FindingGroup,
     FindingLabel,
     FindingListing,
     FindingPrioritization,
@@ -55,7 +52,6 @@ from github_workflow.findings import (
     FindingRecheck,
     FindingRejection,
     FindingShelving,
-    FindingGroup,
     FindingsSummary,
     FindingStage,
     FindingUnproving,
@@ -63,28 +59,30 @@ from github_workflow.findings import (
     ProvenFindingFiling,
     SessionPullRequestClosing,
 )
-from github_workflow.hooks import Emphasis, Highlight, NumberLink, ReportLine, Tone
 from github_workflow.policy import WritePolicy
+from github_workflow.proofs import FindingTest, ProofAttempt, ProofOutcome
+from github_workflow.report_lines import (
+    Emphasis,
+    Highlight,
+    ReportLine,
+    Tone,
+)
 from github_workflow.report_section import ReportGroup
-from github_workflow.proofs import BranchTip, FindingTest, ProofAttempt, ProofOutcome
 from github_workflow.settings import WorkflowSettings
-from github_workflow.stacks import StackPlacement
 from github_workflow.work import DraftOpening, IssueLabel, PullRequestOpenedLabelling
 
 from .issues_in_memory import (
     IssuesInMemory,
     PresetOutcomeRunner,
-    finding,
+    build_finding,
     labelled_board,
 )
 from .pull_requests import pull_request
+from .repositories_by_owner import RepositoriesByOwner
+from .scratch_github import ScratchGitHub
 from .stacked_pull_requests import DraftsAndStacksInMemory
+from .test_proofs import ProofDataset
 from .test_work import EntriesInMemory, work
-
-FINDINGS_REPOSITORY = Repository("LucaKro", "project")
-"""
-The repository the findings here are filed on.
-"""
 
 # %% proofs
 
@@ -92,7 +90,7 @@ The repository the findings here are filed on.
 def finding_test() -> FindingTest:
     """:return: A test showing a finding."""
     return FindingTest(
-        Path("tests/test_finding.py"), "def test_it():\n    assert False\n"
+        Path("tests/test_finding.py"), ProofDataset.DOUBLING_SHOWN_WRONG.read_text()
     )
 
 
@@ -102,12 +100,15 @@ def runner(outcome: ProofOutcome) -> PresetOutcomeRunner:
     message = "" if outcome is ProofOutcome.PASSES else "assert False"
     return PresetOutcomeRunner(
         ProofAttempt(
-            finding_test(), BranchTip("main", "0123456789abcdef"), outcome, message
+            finding_test(),
+            BranchTip("main", CommitHash("0123456789abcdef")),
+            outcome,
+            message,
         )
     )
 
 
-def proven(issue: Issue) -> Issue:
+def label_proven(issue: Issue) -> Issue:
     """:param issue: A finding.
     :return: It, labelled proven too."""
     return Issue(
@@ -115,7 +116,7 @@ def proven(issue: Issue) -> Issue:
     )
 
 
-def with_proof_posted(board: IssuesInMemory, number: int, author: str) -> None:
+def post_proof(board: IssuesInMemory, number: int, author: str) -> None:
     """
     Post the proof the failing runner makes on an issue.
 
@@ -130,10 +131,12 @@ def with_proof_posted(board: IssuesInMemory, number: int, author: str) -> None:
 # %% filing
 
 
-def test_a_finding_is_filed_unreviewed_with_its_priority_and_every_label_created():
+def test_a_finding_is_filed_unreviewed_with_its_priority_and_every_label_created() -> (
+    None
+):
     board = IssuesInMemory()
 
-    FindingFiling(board, board, "A title", "A body", Priority.HIGH).run()
+    FindingFiling(board, "A title", "A body", Priority.HIGH).run()
 
     created = [f"create_label {label}" for label in FindingLabel.every_label]
     assert board.writes == created + [
@@ -141,20 +144,22 @@ def test_a_finding_is_filed_unreviewed_with_its_priority_and_every_label_created
     ]
 
 
-def test_labels_the_repository_has_are_not_created_again():
+def test_labels_the_repository_has_are_not_created_again() -> None:
     board = IssuesInMemory(present_labels=set(FindingLabel.every_label))
 
-    FindingFiling(board, board, "A title", "A body", Priority.LOW).run()
+    FindingFiling(board, "A title", "A body", Priority.LOW).run()
 
     assert board.writes == [f"open_issue 1 {[FindingStage.UNREVIEWED, Priority.LOW]}"]
 
 
-def test_a_proven_finding_is_filed_unreviewed_and_proven_with_its_proof_posted():
+def test_a_proven_finding_is_filed_unreviewed_and_proven_with_its_proof_posted() -> (
+    None
+):
     board = labelled_board()
     failing = runner(ProofOutcome.FAILS)
 
     ProvenFindingFiling(
-        board, board, "A title", "A body", Priority.HIGH, finding_test(), failing
+        board, "A title", "A body", Priority.HIGH, finding_test(), failing
     ).run()
 
     assert board.writes == [
@@ -169,18 +174,12 @@ def test_a_proven_finding_is_filed_unreviewed_and_proven_with_its_proof_posted()
 )
 def test_a_finding_whose_test_does_not_fail_is_not_filed(
     outcome: ProofOutcome, error: type[Exception]
-):
+) -> None:
     board = labelled_board()
 
     with pytest.raises(error):
         ProvenFindingFiling(
-            board,
-            board,
-            "A title",
-            "A body",
-            Priority.HIGH,
-            finding_test(),
-            runner(outcome),
+            board, "A title", "A body", Priority.HIGH, finding_test(), runner(outcome)
         ).run()
 
     assert board.writes == []
@@ -189,24 +188,24 @@ def test_a_finding_whose_test_does_not_fail_is_not_filed(
 # %% prioritizing
 
 
-def test_an_issue_without_a_stage_is_prioritized_as_an_unreviewed_finding():
+def test_an_issue_without_a_stage_is_prioritized_as_an_unreviewed_finding() -> None:
     board = IssuesInMemory(
         {1: Issue(1, "An issue", ("bug",), IssueState.OPEN)},
         set(FindingLabel.every_label),
     )
 
-    FindingPrioritization(board, board, 1, Priority.HIGH).run()
+    FindingPrioritization(board, 1, Priority.HIGH).run()
 
     assert board.writes == [f"add_labels 1 {[Priority.HIGH, FindingStage.UNREVIEWED]}"]
 
 
-def test_a_new_priority_replaces_the_old_one_and_keeps_the_stage():
+def test_a_new_priority_replaces_the_old_one_and_keeps_the_stage() -> None:
     board = IssuesInMemory(
-        {1: finding(1, FindingStage.ACCEPTED, Priority.LOW)},
+        {1: build_finding(1, FindingStage.ACCEPTED, Priority.LOW)},
         set(FindingLabel.every_label),
     )
 
-    FindingPrioritization(board, board, 1, Priority.MEDIUM).run()
+    FindingPrioritization(board, 1, Priority.MEDIUM).run()
 
     assert board.writes == [
         f"add_labels 1 {[Priority.MEDIUM]}",
@@ -214,21 +213,21 @@ def test_a_new_priority_replaces_the_old_one_and_keeps_the_stage():
     ]
 
 
-def test_the_priority_a_finding_already_has_writes_nothing():
+def test_the_priority_a_finding_already_has_writes_nothing() -> None:
     board = IssuesInMemory(
-        {1: finding(1, FindingStage.UNREVIEWED, Priority.HIGH)},
+        {1: build_finding(1, FindingStage.UNREVIEWED, Priority.HIGH)},
         set(FindingLabel.every_label),
     )
 
-    FindingPrioritization(board, board, 1, Priority.HIGH).run()
+    FindingPrioritization(board, 1, Priority.HIGH).run()
 
     assert board.writes == []
 
 
-def test_prioritizing_creates_the_labels_the_repository_lacks():
+def test_prioritizing_creates_the_labels_the_repository_lacks() -> None:
     board = IssuesInMemory({1: Issue(1, "An issue", (), IssueState.OPEN)})
 
-    FindingPrioritization(board, board, 1, Priority.LOW).run()
+    FindingPrioritization(board, 1, Priority.LOW).run()
 
     created = [f"create_label {label}" for label in FindingLabel.every_label]
     assert board.writes == created + [
@@ -251,10 +250,10 @@ def accepted_on_github(issue: Issue) -> Issue:
     )
 
 
-def test_a_stage_the_person_picked_outranks_unreviewed():
-    issue = accepted_on_github(finding(1, FindingStage.UNREVIEWED, Priority.HIGH))
+def test_a_stage_the_person_picked_outranks_unreviewed() -> None:
+    issue = accepted_on_github(build_finding(1, FindingStage.UNREVIEWED, Priority.HIGH))
 
-    assert FindingStage.of(issue) is FindingStage.ACCEPTED
+    assert FindingStage.from_issue(issue) is FindingStage.ACCEPTED
 
 
 @pytest.mark.parametrize(
@@ -268,69 +267,71 @@ def test_a_stage_the_person_picked_outranks_unreviewed():
 )
 def test_of_two_stages_the_person_picked_the_more_cautious_counts(
     picked: tuple[FindingStage, FindingStage], counted: FindingStage
-):
+) -> None:
     issue = Issue(1, "Finding 1", (*picked, Priority.HIGH), IssueState.OPEN)
 
-    assert FindingStage.of(issue) is counted
+    assert FindingStage.from_issue(issue) is counted
 
 
-def test_a_finding_accepted_on_github_is_listed_once_as_accepted():
-    unreviewed = finding(1, FindingStage.UNREVIEWED, Priority.HIGH)
+def test_a_finding_accepted_on_github_is_listed_once_as_accepted() -> None:
+    unreviewed = build_finding(1, FindingStage.UNREVIEWED, Priority.HIGH)
     board = IssuesInMemory({1: accepted_on_github(unreviewed)})
 
-    listed = FindingListing(board, FINDINGS_REPOSITORY).run().splitlines()
+    listed = FindingListing(board, ScratchGitHub.owned).run().splitlines()
 
     assert listed == [
-        f"{Priority.named(unreviewed, FINDINGS_REPOSITORY)} ({FindingStage.ACCEPTED})"
+        f"{Priority.describe_finding(unreviewed, ScratchGitHub.owned)} ({FindingStage.ACCEPTED})"
     ]
 
 
-def test_a_finding_accepted_on_github_is_summed_up_once_as_accepted():
-    accepted = accepted_on_github(finding(1, FindingStage.UNREVIEWED, Priority.HIGH))
+def test_a_finding_accepted_on_github_is_summed_up_once_as_accepted() -> None:
+    accepted = accepted_on_github(
+        build_finding(1, FindingStage.UNREVIEWED, Priority.HIGH)
+    )
     board = IssuesInMemory({1: accepted})
 
-    lines = FindingsSummary(board, FINDINGS_REPOSITORY).lines()
+    lines = FindingsSummary(board, ScratchGitHub.owned).lines()
 
-    assert lines == grouped(FindingGroup.TO_PROVE, [accepted], Tone.NEWS)
+    assert lines == list_group_lines(FindingGroup.TO_PROVE, [accepted], Tone.NEWS)
 
 
-def test_findings_are_listed_unreviewed_first_and_most_urgent_first():
+def test_findings_are_listed_unreviewed_first_and_most_urgent_first() -> None:
     board = IssuesInMemory(
         {
-            1: finding(1, FindingStage.ACCEPTED, Priority.CRITICAL),
-            2: finding(2, FindingStage.UNREVIEWED, Priority.LOW),
-            3: finding(3, FindingStage.UNREVIEWED, Priority.CRITICAL),
+            1: build_finding(1, FindingStage.ACCEPTED, Priority.CRITICAL),
+            2: build_finding(2, FindingStage.UNREVIEWED, Priority.LOW),
+            3: build_finding(3, FindingStage.UNREVIEWED, Priority.CRITICAL),
         }
     )
 
-    listed = FindingListing(board, FINDINGS_REPOSITORY).run().splitlines()
+    listed = FindingListing(board, ScratchGitHub.owned).run().splitlines()
 
     assert [line.split()[0] for line in listed] == [
-        NumberLink(number, FINDINGS_REPOSITORY.issue_url(number)).markdown()
-        for number in (3, 2, 1)
+        ScratchGitHub.owned.issue_link(number) for number in (3, 2, 1)
     ]
 
 
-def test_shelved_findings_are_listed_after_the_accepted():
+def test_shelved_findings_are_listed_after_the_accepted() -> None:
     board = IssuesInMemory(
         {
-            1: finding(1, FindingStage.SHELVED, Priority.CRITICAL),
-            2: finding(2, FindingStage.ACCEPTED, Priority.LOW),
+            1: build_finding(1, FindingStage.SHELVED, Priority.CRITICAL),
+            2: build_finding(2, FindingStage.ACCEPTED, Priority.LOW),
         }
     )
 
-    listed = FindingListing(board, FINDINGS_REPOSITORY).run().splitlines()
+    listed = FindingListing(board, ScratchGitHub.owned).run().splitlines()
 
     assert [line.split()[0] for line in listed] == [
-        NumberLink(number, FINDINGS_REPOSITORY.issue_url(number)).markdown()
-        for number in (2, 1)
+        ScratchGitHub.owned.issue_link(number) for number in (2, 1)
     ]
 
 
-def test_a_listed_finding_shows_its_evidence():
-    board = IssuesInMemory({1: proven(finding(1, FindingStage.ACCEPTED, Priority.LOW))})
+def test_a_listed_finding_shows_its_evidence() -> None:
+    board = IssuesInMemory(
+        {1: label_proven(build_finding(1, FindingStage.ACCEPTED, Priority.LOW))}
+    )
 
-    listed = FindingListing(board, FINDINGS_REPOSITORY).run()
+    listed = FindingListing(board, ScratchGitHub.owned).run()
 
     assert listed.endswith(f"({FindingStage.ACCEPTED}, {Evidence.PROVEN})")
 
@@ -338,13 +339,13 @@ def test_a_listed_finding_shows_its_evidence():
 # %% the person's decisions
 
 
-def test_an_accepted_finding_keeps_its_priority():
+def test_an_accepted_finding_keeps_its_priority() -> None:
     board = IssuesInMemory(
-        {1: finding(1, FindingStage.UNREVIEWED, Priority.MEDIUM)},
+        {1: build_finding(1, FindingStage.UNREVIEWED, Priority.MEDIUM)},
         set(FindingLabel.every_label),
     )
 
-    FindingAcceptance(board, board, 1).run()
+    FindingAcceptance(board, 1).run()
 
     assert board.writes == [
         f"add_labels 1 {[FindingStage.ACCEPTED]}",
@@ -352,13 +353,13 @@ def test_an_accepted_finding_keeps_its_priority():
     ]
 
 
-def test_a_shelved_finding_can_be_accepted():
+def test_a_shelved_finding_can_be_accepted() -> None:
     board = IssuesInMemory(
-        {1: finding(1, FindingStage.SHELVED, Priority.MEDIUM)},
+        {1: build_finding(1, FindingStage.SHELVED, Priority.MEDIUM)},
         set(FindingLabel.every_label),
     )
 
-    FindingAcceptance(board, board, 1).run()
+    FindingAcceptance(board, 1).run()
 
     assert board.writes == [
         f"add_labels 1 {[FindingStage.ACCEPTED]}",
@@ -366,22 +367,24 @@ def test_a_shelved_finding_can_be_accepted():
     ]
 
 
-def test_accepting_what_is_no_unreviewed_finding_is_refused():
-    board = IssuesInMemory({1: finding(1, FindingStage.ACCEPTED, Priority.MEDIUM)})
+def test_accepting_what_is_no_unreviewed_finding_is_refused() -> None:
+    board = IssuesInMemory(
+        {1: build_finding(1, FindingStage.ACCEPTED, Priority.MEDIUM)}
+    )
 
     with pytest.raises(NotAFindingError):
-        FindingAcceptance(board, board, 1).run()
+        FindingAcceptance(board, 1).run()
 
     assert board.writes == []
 
 
-def test_a_shelved_finding_stays_open_with_its_priority():
+def test_a_shelved_finding_stays_open_with_its_priority() -> None:
     board = IssuesInMemory(
-        {1: finding(1, FindingStage.ACCEPTED, Priority.HIGH)},
+        {1: build_finding(1, FindingStage.ACCEPTED, Priority.HIGH)},
         set(FindingLabel.every_label),
     )
 
-    FindingShelving(board, board, 1).run()
+    FindingShelving(board, 1).run()
 
     assert board.writes == [
         f"add_labels 1 {[FindingStage.SHELVED]}",
@@ -389,22 +392,22 @@ def test_a_shelved_finding_stays_open_with_its_priority():
     ]
 
 
-def test_shelving_what_is_no_finding_is_refused():
+def test_shelving_what_is_no_finding_is_refused() -> None:
     board = IssuesInMemory({1: Issue(1, "An issue", ("bug",), IssueState.OPEN)})
 
     with pytest.raises(NotAFindingError):
-        FindingShelving(board, board, 1).run()
+        FindingShelving(board, 1).run()
 
     assert board.writes == []
 
 
-def test_a_rejected_finding_is_marked_incorrect_and_closed_with_its_reason():
+def test_a_rejected_finding_is_marked_incorrect_and_closed_with_its_reason() -> None:
     board = IssuesInMemory(
-        {1: finding(1, FindingStage.UNREVIEWED, Priority.LOW)},
+        {1: build_finding(1, FindingStage.UNREVIEWED, Priority.LOW)},
         set(FindingLabel.every_label),
     )
 
-    FindingRejection(board, board, 1, "Intended behaviour").run()
+    FindingRejection(board, 1, "Intended behaviour").run()
 
     assert board.writes == [
         f"add_labels 1 {[FindingStage.INCORRECT]}",
@@ -414,13 +417,13 @@ def test_a_rejected_finding_is_marked_incorrect_and_closed_with_its_reason():
     ]
 
 
-def test_rejecting_a_closed_finding_is_refused():
+def test_rejecting_a_closed_finding_is_refused() -> None:
     board = IssuesInMemory(
         {1: Issue(1, "Finding 1", (FindingStage.ACCEPTED,), IssueState.CLOSED)}
     )
 
     with pytest.raises(NotAFindingError):
-        FindingRejection(board, board, 1, "Done already").run()
+        FindingRejection(board, 1, "Done already").run()
 
     assert board.writes == []
 
@@ -428,53 +431,42 @@ def test_rejecting_a_closed_finding_is_refused():
 # %% closing a fixed finding
 
 
-@dataclass(frozen=True)
-class FixesInMemory(PullRequestReader):
+def fix(
+    merged: bool = True, base: str = RepositoriesByOwner.default_branch
+) -> RestPullRequest:
     """
-    Answers pull request 157, merged into the default branch or not.
+    :param merged: Whether it is merged.
+    :param base: The branch it targets.
+    :return: Pull request 157, named as a finding's fix.
     """
-
-    merged: bool = True
-    """
-    Whether it is merged.
-    """
-
-    base: str = "main"
-    """
-    The branch it targets.
-    """
-
-    def pull_request(self, number: int) -> RestPullRequest:
-        state = PullRequestState.CLOSED if self.merged else PullRequestState.OPEN
-        opened = pull_request(number, "fix", state=state, base=self.base)
-        return replace(opened, merged=self.merged)
-
-    def open_pull_requests(self) -> list[RestPullRequest]:
-        raise NotImplementedError
+    state = PullRequestState.CLOSED if merged else PullRequestState.OPEN
+    opened = pull_request(157, "fix", state=state, base=base)
+    return replace(opened, merged=merged)
 
 
-def closing(
+def build_closing(
     board: IssuesInMemory,
     settings: WorkflowSettings,
     outcome: ProofOutcome = ProofOutcome.PASSES,
-    fixes: FixesInMemory = FixesInMemory(),
+    fixed_by: RestPullRequest | None = None,
 ) -> FindingClosing:
     """
-    :param board: The findings.
+    :param board: The findings, given the pull request named as the fix.
     :param settings: The workflow's settings.
     :param outcome: How the proof test fares on the default branch now.
-    :param fixes: The pull request named as the fix.
-    :return: The closing of finding 1 as fixed by pull request 157.
+    :param fixed_by: The pull request named as the fix, merged into the default branch
+        when ``None``.
+    :return: The closing of finding 1 as fixed by that pull request.
     """
+    named = fix() if fixed_by is None else fixed_by
+    board.pull_requests[named.number] = named
     return FindingClosing(
         board,
-        board,
         1,
-        fixes,
         runner(outcome),
         [settings.owner],
-        "main",
-        157,
+        RepositoriesByOwner.default_branch,
+        named.number,
         EntriesInMemory(),
     )
 
@@ -484,17 +476,19 @@ def proven_accepted(settings: WorkflowSettings) -> IssuesInMemory:
     :param settings: The workflow's settings.
     :return: A board with finding 1 accepted, proven, and its proof posted.
     """
-    board = labelled_board(proven(finding(1, FindingStage.ACCEPTED, Priority.HIGH)))
-    with_proof_posted(board, 1, settings.owner)
+    board = labelled_board(
+        label_proven(build_finding(1, FindingStage.ACCEPTED, Priority.HIGH))
+    )
+    post_proof(board, 1, settings.owner)
     return board
 
 
 def test_a_fixed_finding_is_closed_as_completed_and_marked_as_a_session_s(
     settings: WorkflowSettings,
-):
+) -> None:
     board = proven_accepted(settings)
 
-    closing(board, settings).run()
+    build_closing(board, settings).run()
 
     assert [write.split()[0] for write in board.writes] == [
         "add_labels",
@@ -508,8 +502,8 @@ def test_a_fixed_finding_is_closed_as_completed_and_marked_as_a_session_s(
 
 def test_a_fixed_finding_s_close_is_entered_in_the_session_log(
     settings: WorkflowSettings,
-):
-    step = closing(proven_accepted(settings), settings)
+) -> None:
+    step = build_closing(proven_accepted(settings), settings)
 
     step.run()
 
@@ -519,17 +513,17 @@ def test_a_fixed_finding_s_close_is_entered_in_the_session_log(
 
 
 @pytest.mark.parametrize(
-    "fixes",
-    [FixesInMemory(merged=False), FixesInMemory(base="another-branch")],
+    "fixed_by",
+    [fix(merged=False), fix(base="another-branch")],
     ids=["not merged", "merged elsewhere"],
 )
 def test_a_fix_not_merged_into_the_default_branch_closes_nothing(
-    settings: WorkflowSettings, fixes: FixesInMemory
-):
+    settings: WorkflowSettings, fixed_by: RestPullRequest
+) -> None:
     board = proven_accepted(settings)
 
     with pytest.raises(FixNotMergedError):
-        closing(board, settings, fixes=fixes).run()
+        build_closing(board, settings, fixed_by=fixed_by).run()
 
     assert board.writes == []
 
@@ -544,20 +538,20 @@ def test_a_fix_not_merged_into_the_default_branch_closes_nothing(
 )
 def test_a_finding_whose_proof_does_not_pass_stays_open(
     settings: WorkflowSettings, outcome: ProofOutcome, error: type[Exception]
-):
+) -> None:
     board = proven_accepted(settings)
 
     with pytest.raises(error):
-        closing(board, settings, outcome).run()
+        build_closing(board, settings, outcome).run()
 
     assert board.writes == []
 
 
-def test_an_unproven_finding_is_left_to_the_person(settings: WorkflowSettings):
-    board = labelled_board(finding(1, FindingStage.ACCEPTED, Priority.HIGH))
+def test_an_unproven_finding_is_left_to_the_person(settings: WorkflowSettings) -> None:
+    board = labelled_board(build_finding(1, FindingStage.ACCEPTED, Priority.HIGH))
 
     with pytest.raises(UnprovenFindingCloseError):
-        closing(board, settings).run()
+        build_closing(board, settings).run()
 
     assert board.writes == []
 
@@ -565,12 +559,12 @@ def test_an_unproven_finding_is_left_to_the_person(settings: WorkflowSettings):
 @pytest.mark.parametrize("stage", [FindingStage.UNREVIEWED, FindingStage.SHELVED])
 def test_a_finding_the_person_has_not_accepted_is_not_closed(
     settings: WorkflowSettings, stage: FindingStage
-):
-    board = labelled_board(proven(finding(1, stage, Priority.HIGH)))
-    with_proof_posted(board, 1, settings.owner)
+) -> None:
+    board = labelled_board(label_proven(build_finding(1, stage, Priority.HIGH)))
+    post_proof(board, 1, settings.owner)
 
     with pytest.raises(FindingNotAcceptedError):
-        closing(board, settings).run()
+        build_closing(board, settings).run()
 
     assert board.writes == []
 
@@ -578,70 +572,25 @@ def test_a_finding_the_person_has_not_accepted_is_not_closed(
 # %% closing a session's own pull requests
 
 
-@dataclass(frozen=True)
-class ClosedInMemory(PullRequestCloser):
-    """
-    Records every pull request closed.
-    """
-
-    closed: list[int] = field(default_factory=list)
-    """
-    The pull requests closed, in order.
-    """
-
-    def close_pull_request(self, number: int) -> None:
-        self.closed.append(number)
-
-
-@dataclass(frozen=True)
-class DescribedPullRequests(PullRequestReader):
-    """
-    Pull requests, each with the description given.
-    """
-
-    descriptions: dict[int, str]
-    """
-    Each pull request's description, by number.
-    """
-
-    def open_pull_requests(self) -> list[RestPullRequest]:
-        return [self.pull_request(number) for number in self.descriptions]
-
-    def pull_request(self, number: int) -> RestPullRequest:
-        return replace(
-            pull_request(number, f"branch-{number}"), body=self.descriptions[number]
-        )
-
-
 def session_closing(
-    board: IssuesInMemory,
-    closer: ClosedInMemory,
-    log: EntriesInMemory,
-    description: str = "A body",
+    board: IssuesInMemory, log: EntriesInMemory, description: str = "A body"
 ) -> SessionPullRequestClosing:
     """
-    :param board: The issues and labels.
-    :param closer: Closes the pull request.
+    :param board: The issues and labels, given pull request #3.
     :param log: The session log.
     :param description: The description of pull request #3.
     :return: Closes pull request #3 as a session's.
     """
-    return SessionPullRequestClosing(
-        board,
-        board,
-        closer,
-        log,
-        DescribedPullRequests({3: description}),
-        PullRequestOpenedLabelling(board, board),
-    )
+    board.pull_requests[3] = replace(pull_request(3, "branch-3"), body=description)
+    return SessionPullRequestClosing(board, log)
 
 
 @pytest.mark.parametrize("labelled", [True, False], ids=["label there", "label made"])
-def test_a_session_s_pull_request_is_closed_marked_and_explained(labelled: bool):
+def test_a_session_s_pull_request_is_closed_marked_and_explained(
+    labelled: bool,
+) -> None:
     board = labelled_board() if labelled else IssuesInMemory({})
-    closer = ClosedInMemory()
-
-    session_closing(board, closer, EntriesInMemory()).retire(3, "Replaced by #5.")
+    session_closing(board, EntriesInMemory()).retire(3, "Replaced by #5.")
 
     made = [] if labelled else [f"create_label {ClosedBy.SESSION}"]
     assert board.writes == [
@@ -649,29 +598,30 @@ def test_a_session_s_pull_request_is_closed_marked_and_explained(labelled: bool)
         f"add_labels 3 {[ClosedBy.SESSION]}",
         "add_comment 3 Replaced by #5. Closed by a session on its own.",
     ]
-    assert closer.closed == [3]
+    assert board.closed_pull_requests == [3]
 
 
-def test_a_session_s_pull_request_close_is_entered_in_the_session_log():
+def test_a_session_s_pull_request_close_is_entered_in_the_session_log() -> None:
     board = labelled_board()
     log = EntriesInMemory()
 
-    session_closing(board, ClosedInMemory(), log).retire(3, "Replaced by #5.")
+    session_closing(board, log).retire(3, "Replaced by #5.")
 
     [entry] = log.entries
     assert "#3" in entry
     assert "Replaced by #5." in entry
 
 
-def test_the_issues_a_closed_pull_request_closes_lose_the_open_pull_request_label():
-    fixed = finding(7, FindingStage.ACCEPTED, Priority.HIGH)
+def test_the_issues_a_closed_pull_request_closes_lose_the_open_pull_request_label() -> (
+    None
+):
+    fixed = build_finding(7, FindingStage.ACCEPTED, Priority.HIGH)
     board = IssuesInMemory(
         {7: replace(fixed, labels=(*fixed.labels, IssueLabel.PULL_REQUEST_OPENED))}
     )
 
     session_closing(
         board,
-        ClosedInMemory(),
         EntriesInMemory(),
         f"A body\n\n{ClosingKeyword.FIXES.reference(7)}",
     ).retire(3, "Discarded.")
@@ -682,18 +632,18 @@ def test_the_issues_a_closed_pull_request_closes_lose_the_open_pull_request_labe
 # %% commenting and editing
 
 
-def test_a_finding_is_commented_on():
-    board = IssuesInMemory({1: finding(1, FindingStage.ACCEPTED, Priority.HIGH)})
+def test_a_finding_is_commented_on() -> None:
+    board = IssuesInMemory({1: build_finding(1, FindingStage.ACCEPTED, Priority.HIGH)})
 
-    FindingComment(board, board, 1, "Found a second instance.").run()
+    FindingComment(board, 1, "Found a second instance.").run()
 
     assert board.writes == ["add_comment 1 Found a second instance."]
 
 
-def test_a_finding_s_title_and_text_are_rewritten():
-    board = IssuesInMemory({1: finding(1, FindingStage.UNREVIEWED, Priority.LOW)})
+def test_a_finding_s_title_and_text_are_rewritten() -> None:
+    board = IssuesInMemory({1: build_finding(1, FindingStage.UNREVIEWED, Priority.LOW)})
 
-    FindingEdit(board, board, 1, "A sharper title", "What was found, corrected.").run()
+    FindingEdit(board, 1, "A sharper title", "What was found, corrected.").run()
 
     assert board.writes == [
         "set_issue_title 1 A sharper title",
@@ -701,49 +651,49 @@ def test_a_finding_s_title_and_text_are_rewritten():
     ]
 
 
-def test_only_what_is_given_is_rewritten():
-    board = IssuesInMemory({1: finding(1, FindingStage.UNREVIEWED, Priority.LOW)})
+def test_only_what_is_given_is_rewritten() -> None:
+    board = IssuesInMemory({1: build_finding(1, FindingStage.UNREVIEWED, Priority.LOW)})
 
-    FindingEdit(board, board, 1, None, "What was found, corrected.").run()
+    FindingEdit(board, 1, None, "What was found, corrected.").run()
 
     assert board.writes == ["set_issue_description 1 What was found, corrected."]
 
 
-def test_an_edit_changing_nothing_is_refused():
-    board = IssuesInMemory({1: finding(1, FindingStage.UNREVIEWED, Priority.LOW)})
+def test_an_edit_changing_nothing_is_refused() -> None:
+    board = IssuesInMemory({1: build_finding(1, FindingStage.UNREVIEWED, Priority.LOW)})
 
     with pytest.raises(NothingToEditError):
-        FindingEdit(board, board, 1, None, None).run()
+        FindingEdit(board, 1, None, None).run()
 
     assert board.writes == []
 
 
-def test_a_closed_finding_is_not_edited():
+def test_a_closed_finding_is_not_edited() -> None:
     board = IssuesInMemory(
         {1: Issue(1, "Finding 1", (FindingStage.INCORRECT,), IssueState.CLOSED)}
     )
 
     with pytest.raises(NotAFindingError):
-        FindingEdit(board, board, 1, "A title", None).run()
+        FindingEdit(board, 1, "A title", None).run()
 
     assert board.writes == []
 
 
-def test_a_closed_finding_takes_a_correction():
+def test_a_closed_finding_takes_a_correction() -> None:
     board = IssuesInMemory(
         {1: Issue(1, "Finding 1", (FindingStage.ACCEPTED,), IssueState.CLOSED)}
     )
 
-    FindingComment(board, board, 1, "A correction").run()
+    FindingComment(board, 1, "A correction").run()
 
     assert board.writes == ["add_comment 1 A correction"]
 
 
-def test_an_issue_that_is_no_finding_is_not_commented_on():
+def test_an_issue_that_is_no_finding_is_not_commented_on() -> None:
     board = IssuesInMemory({1: Issue(1, "An issue", ("bug",), IssueState.OPEN)})
 
     with pytest.raises(NotAFindingError):
-        FindingComment(board, board, 1, "More").run()
+        FindingComment(board, 1, "More").run()
 
     assert board.writes == []
 
@@ -751,11 +701,11 @@ def test_an_issue_that_is_no_finding_is_not_commented_on():
 # %% proving
 
 
-def test_proving_posts_the_proof_and_labels_the_finding_proven():
-    board = labelled_board(finding(1, FindingStage.ACCEPTED, Priority.HIGH))
+def test_proving_posts_the_proof_and_labels_the_finding_proven() -> None:
+    board = labelled_board(build_finding(1, FindingStage.ACCEPTED, Priority.HIGH))
     failing = runner(ProofOutcome.FAILS)
 
-    FindingProving(board, board, 1, finding_test(), failing).run()
+    FindingProving(board, 1, finding_test(), failing).run()
 
     assert board.writes == [
         f"add_comment 1 {failing.outcome.proof().comment()}",
@@ -763,14 +713,14 @@ def test_proving_posts_the_proof_and_labels_the_finding_proven():
     ]
 
 
-def test_proving_an_unproven_finding_replaces_the_label():
-    unproven = finding(1, FindingStage.UNREVIEWED, Priority.LOW)
+def test_proving_an_unproven_finding_replaces_the_label() -> None:
+    unproven = build_finding(1, FindingStage.UNREVIEWED, Priority.LOW)
     board = labelled_board(
         Issue(1, unproven.title, (*unproven.labels, Evidence.UNPROVEN), IssueState.OPEN)
     )
     failing = runner(ProofOutcome.FAILS)
 
-    FindingProving(board, board, 1, finding_test(), failing).run()
+    FindingProving(board, 1, finding_test(), failing).run()
 
     assert board.writes[1:] == [
         f"add_labels 1 {[Evidence.PROVEN]}",
@@ -778,32 +728,30 @@ def test_proving_an_unproven_finding_replaces_the_label():
     ]
 
 
-def test_proving_with_a_test_that_does_not_fail_writes_nothing():
-    board = labelled_board(finding(1, FindingStage.ACCEPTED, Priority.HIGH))
+def test_proving_with_a_test_that_does_not_fail_writes_nothing() -> None:
+    board = labelled_board(build_finding(1, FindingStage.ACCEPTED, Priority.HIGH))
 
     with pytest.raises(PassingTestError):
-        FindingProving(
-            board, board, 1, finding_test(), runner(ProofOutcome.PASSES)
-        ).run()
+        FindingProving(board, 1, finding_test(), runner(ProofOutcome.PASSES)).run()
 
     assert board.writes == []
 
 
-def test_proving_a_rejected_finding_is_refused_before_its_test_runs():
-    rejected = finding(1, FindingStage.INCORRECT, Priority.HIGH)
+def test_proving_a_rejected_finding_is_refused_before_its_test_runs() -> None:
+    rejected = build_finding(1, FindingStage.INCORRECT, Priority.HIGH)
     board = labelled_board(Issue(1, rejected.title, rejected.labels, IssueState.CLOSED))
     failing = runner(ProofOutcome.FAILS)
 
     with pytest.raises(NotAFindingError):
-        FindingProving(board, board, 1, finding_test(), failing).run()
+        FindingProving(board, 1, finding_test(), failing).run()
 
     assert failing.ran == []
 
 
-def test_an_unprovable_finding_is_labelled_unproven_with_the_reason():
-    board = labelled_board(finding(1, FindingStage.ACCEPTED, Priority.HIGH))
+def test_an_unprovable_finding_is_labelled_unproven_with_the_reason() -> None:
+    board = labelled_board(build_finding(1, FindingStage.ACCEPTED, Priority.HIGH))
 
-    FindingUnproving(board, board, 1, "Needs a live server").run()
+    FindingUnproving(board, 1, "Needs a live server").run()
 
     assert board.writes == [
         "add_comment 1 Unproven: Needs a live server",
@@ -811,11 +759,13 @@ def test_an_unprovable_finding_is_labelled_unproven_with_the_reason():
     ]
 
 
-def test_a_proven_finding_cannot_be_marked_unproven():
-    board = labelled_board(proven(finding(1, FindingStage.ACCEPTED, Priority.HIGH)))
+def test_a_proven_finding_cannot_be_marked_unproven() -> None:
+    board = labelled_board(
+        label_proven(build_finding(1, FindingStage.ACCEPTED, Priority.HIGH))
+    )
 
     with pytest.raises(AlreadyProvenError):
-        FindingUnproving(board, board, 1, "Needs a live server").run()
+        FindingUnproving(board, 1, "Needs a live server").run()
 
     assert board.writes == []
 
@@ -825,9 +775,11 @@ def test_a_proven_finding_cannot_be_marked_unproven():
 
 def test_a_recheck_runs_the_posted_test_again_and_writes_nothing(
     settings: WorkflowSettings,
-):
-    board = labelled_board(proven(finding(1, FindingStage.ACCEPTED, Priority.HIGH)))
-    with_proof_posted(board, 1, settings.owner)
+) -> None:
+    board = labelled_board(
+        label_proven(build_finding(1, FindingStage.ACCEPTED, Priority.HIGH))
+    )
+    post_proof(board, 1, settings.owner)
     failing = runner(ProofOutcome.FAILS)
 
     FindingRecheck(board, failing, [settings.owner], 1).run()
@@ -835,17 +787,25 @@ def test_a_recheck_runs_the_posted_test_again_and_writes_nothing(
     assert (failing.ran, board.writes) == ([finding_test()], [])
 
 
-def test_a_proof_whose_test_no_longer_fails_is_reported(settings: WorkflowSettings):
-    board = labelled_board(proven(finding(1, FindingStage.ACCEPTED, Priority.HIGH)))
-    with_proof_posted(board, 1, settings.owner)
+def test_a_proof_whose_test_no_longer_fails_is_reported(
+    settings: WorkflowSettings,
+) -> None:
+    board = labelled_board(
+        label_proven(build_finding(1, FindingStage.ACCEPTED, Priority.HIGH))
+    )
+    post_proof(board, 1, settings.owner)
 
     with pytest.raises(ProofNoLongerHoldsError):
         FindingRecheck(board, runner(ProofOutcome.PASSES), [settings.owner], 1).run()
 
 
-def test_a_recheck_whose_test_never_ran_reports_it_broken(settings: WorkflowSettings):
-    board = labelled_board(proven(finding(1, FindingStage.ACCEPTED, Priority.HIGH)))
-    with_proof_posted(board, 1, settings.owner)
+def test_a_recheck_whose_test_never_ran_reports_it_broken(
+    settings: WorkflowSettings,
+) -> None:
+    board = labelled_board(
+        label_proven(build_finding(1, FindingStage.ACCEPTED, Priority.HIGH))
+    )
+    post_proof(board, 1, settings.owner)
 
     with pytest.raises(BrokenTestError):
         FindingRecheck(board, runner(ProofOutcome.BROKEN), [settings.owner], 1).run()
@@ -853,8 +813,10 @@ def test_a_recheck_whose_test_never_ran_reports_it_broken(settings: WorkflowSett
 
 def test_a_finding_labelled_proven_without_a_posted_proof_cannot_be_rechecked(
     settings: WorkflowSettings,
-):
-    board = labelled_board(proven(finding(1, FindingStage.ACCEPTED, Priority.HIGH)))
+) -> None:
+    board = labelled_board(
+        label_proven(build_finding(1, FindingStage.ACCEPTED, Priority.HIGH))
+    )
 
     with pytest.raises(MissingProofError):
         FindingRecheck(board, runner(ProofOutcome.FAILS), [settings.owner], 1).run()
@@ -862,9 +824,9 @@ def test_a_finding_labelled_proven_without_a_posted_proof_cannot_be_rechecked(
 
 def test_a_posted_proof_on_a_finding_not_labelled_proven_is_not_rechecked(
     settings: WorkflowSettings,
-):
-    board = labelled_board(finding(1, FindingStage.ACCEPTED, Priority.HIGH))
-    with_proof_posted(board, 1, settings.owner)
+) -> None:
+    board = labelled_board(build_finding(1, FindingStage.ACCEPTED, Priority.HIGH))
+    post_proof(board, 1, settings.owner)
 
     with pytest.raises(MissingProofError):
         FindingRecheck(board, runner(ProofOutcome.FAILS), [settings.owner], 1).run()
@@ -884,7 +846,9 @@ class DescribedDraftsInMemory(DraftsAndStacksInMemory):
     Each draft's description, by number.
     """
 
-    def open_draft(self, head: str, base: str, title: str, body: str) -> int:
+    def open_draft(
+        self, head: BranchName, base: BranchName, title: str, body: str
+    ) -> int:
         number = super().open_draft(head, base, title, body)
         self.descriptions[number] = body
         return number
@@ -910,8 +874,8 @@ def draft_for_finding(
         DraftOpening(
             work,
             github,
-            StackPlacement(github, github, github, github),
-            PullRequestOpenedLabelling(board, board),
+            StackPlacement(github),
+            PullRequestOpenedLabelling(board),
             "A title",
             "A body",
         ),
@@ -920,9 +884,11 @@ def draft_for_finding(
 
 def test_a_draft_for_an_accepted_proven_finding_closes_it_when_merged(
     work: WritePolicy, settings: WorkflowSettings
-):
-    board = labelled_board(proven(finding(7, FindingStage.ACCEPTED, Priority.HIGH)))
-    with_proof_posted(board, 7, settings.owner)
+) -> None:
+    board = labelled_board(
+        label_proven(build_finding(7, FindingStage.ACCEPTED, Priority.HIGH))
+    )
+    post_proof(board, 7, settings.owner)
     github = DescribedDraftsInMemory({})
 
     draft_for_finding(work, github, board, ProofOutcome.FAILS, settings).run()
@@ -932,9 +898,11 @@ def test_a_draft_for_an_accepted_proven_finding_closes_it_when_merged(
 
 def test_a_description_closing_the_finding_already_keeps_one_closing_line(
     work: WritePolicy, settings: WorkflowSettings
-):
-    board = labelled_board(proven(finding(7, FindingStage.ACCEPTED, Priority.HIGH)))
-    with_proof_posted(board, 7, settings.owner)
+) -> None:
+    board = labelled_board(
+        label_proven(build_finding(7, FindingStage.ACCEPTED, Priority.HIGH))
+    )
+    post_proof(board, 7, settings.owner)
     github = DescribedDraftsInMemory({})
     body = f"A body\n\n{ClosingKeyword.FIXES.reference(7)}"
     opening = draft_for_finding(work, github, board, ProofOutcome.FAILS, settings)
@@ -946,9 +914,11 @@ def test_a_description_closing_the_finding_already_keeps_one_closing_line(
 
 def test_the_finding_a_draft_closes_is_labelled_as_having_a_pull_request(
     work: WritePolicy, settings: WorkflowSettings
-):
-    board = labelled_board(proven(finding(7, FindingStage.ACCEPTED, Priority.HIGH)))
-    with_proof_posted(board, 7, settings.owner)
+) -> None:
+    board = labelled_board(
+        label_proven(build_finding(7, FindingStage.ACCEPTED, Priority.HIGH))
+    )
+    post_proof(board, 7, settings.owner)
 
     draft_for_finding(
         work, DescribedDraftsInMemory({}), board, ProofOutcome.FAILS, settings
@@ -959,15 +929,17 @@ def test_the_finding_a_draft_closes_is_labelled_as_having_a_pull_request(
 
 def test_a_draft_for_a_finding_accepted_on_github_is_opened(
     work: WritePolicy, settings: WorkflowSettings
-):
+) -> None:
     """
     Picking the accepted label on GitHub leaves the unreviewed one on, without the label
     workflow to remove it.
     """
     board = labelled_board(
-        proven(accepted_on_github(finding(7, FindingStage.UNREVIEWED, Priority.HIGH)))
+        label_proven(
+            accepted_on_github(build_finding(7, FindingStage.UNREVIEWED, Priority.HIGH))
+        )
     )
-    with_proof_posted(board, 7, settings.owner)
+    post_proof(board, 7, settings.owner)
     github = DescribedDraftsInMemory({})
 
     draft_for_finding(work, github, board, ProofOutcome.FAILS, settings).run()
@@ -977,9 +949,11 @@ def test_a_draft_for_a_finding_accepted_on_github_is_opened(
 
 def test_a_draft_for_a_finding_the_person_has_not_accepted_is_refused(
     work: WritePolicy, settings: WorkflowSettings
-):
-    board = labelled_board(proven(finding(7, FindingStage.UNREVIEWED, Priority.HIGH)))
-    with_proof_posted(board, 7, settings.owner)
+) -> None:
+    board = labelled_board(
+        label_proven(build_finding(7, FindingStage.UNREVIEWED, Priority.HIGH))
+    )
+    post_proof(board, 7, settings.owner)
     github = DescribedDraftsInMemory({})
 
     with pytest.raises(FindingNotAcceptedError):
@@ -990,8 +964,8 @@ def test_a_draft_for_a_finding_the_person_has_not_accepted_is_refused(
 
 def test_a_draft_for_an_unproven_finding_is_refused(
     work: WritePolicy, settings: WorkflowSettings
-):
-    board = labelled_board(finding(7, FindingStage.ACCEPTED, Priority.HIGH))
+) -> None:
+    board = labelled_board(build_finding(7, FindingStage.ACCEPTED, Priority.HIGH))
     github = DescribedDraftsInMemory({})
 
     with pytest.raises(MissingProofError):
@@ -1002,9 +976,11 @@ def test_a_draft_for_an_unproven_finding_is_refused(
 
 def test_a_draft_for_a_finding_whose_test_now_passes_is_refused(
     work: WritePolicy, settings: WorkflowSettings
-):
-    board = labelled_board(proven(finding(7, FindingStage.ACCEPTED, Priority.HIGH)))
-    with_proof_posted(board, 7, settings.owner)
+) -> None:
+    board = labelled_board(
+        label_proven(build_finding(7, FindingStage.ACCEPTED, Priority.HIGH))
+    )
+    post_proof(board, 7, settings.owner)
     github = DescribedDraftsInMemory({})
 
     with pytest.raises(ProofNoLongerHoldsError):
@@ -1016,7 +992,7 @@ def test_a_draft_for_a_finding_whose_test_now_passes_is_refused(
 # %% the section
 
 
-def unproven(issue: Issue) -> Issue:
+def label_unproven(issue: Issue) -> Issue:
     """:param issue: A finding.
     :return: It, labelled as no failing test could be written for it."""
     return Issue(
@@ -1024,7 +1000,9 @@ def unproven(issue: Issue) -> Issue:
     )
 
 
-def grouped(group: FindingGroup, issues: list[Issue], tone: Tone) -> list[ReportLine]:
+def list_group_lines(
+    group: FindingGroup, issues: list[Issue], tone: Tone
+) -> list[ReportLine]:
     """
     :param group: A group of findings.
     :param issues: The findings in it, in the order listed.
@@ -1033,7 +1011,7 @@ def grouped(group: FindingGroup, issues: list[Issue], tone: Tone) -> list[Report
     """
     items = [
         ReportLine(
-            Priority.named(issue, FINDINGS_REPOSITORY),
+            Priority.describe_finding(issue, ScratchGitHub.owned),
             tone,
             emphases=Priority.emphases(issue),
         )
@@ -1042,41 +1020,41 @@ def grouped(group: FindingGroup, issues: list[Issue], tone: Tone) -> list[Report
     return ReportGroup(group, items).lines()
 
 
-def test_the_summary_names_each_finding_in_its_group_most_urgent_first():
+def test_the_summary_names_each_finding_in_its_group_most_urgent_first() -> None:
     issues = {
-        1: finding(1, FindingStage.UNREVIEWED, Priority.LOW),
-        2: finding(2, FindingStage.UNREVIEWED, Priority.CRITICAL),
-        3: proven(finding(3, FindingStage.ACCEPTED, Priority.HIGH)),
-        4: finding(4, FindingStage.ACCEPTED, Priority.MEDIUM),
-        5: unproven(finding(5, FindingStage.ACCEPTED, Priority.LOW)),
+        1: build_finding(1, FindingStage.UNREVIEWED, Priority.LOW),
+        2: build_finding(2, FindingStage.UNREVIEWED, Priority.CRITICAL),
+        3: label_proven(build_finding(3, FindingStage.ACCEPTED, Priority.HIGH)),
+        4: build_finding(4, FindingStage.ACCEPTED, Priority.MEDIUM),
+        5: label_unproven(build_finding(5, FindingStage.ACCEPTED, Priority.LOW)),
     }
 
-    lines = FindingsSummary(IssuesInMemory(issues), FINDINGS_REPOSITORY).lines()
+    lines = FindingsSummary(IssuesInMemory(issues), ScratchGitHub.owned).lines()
 
     assert lines == [
-        *grouped(FindingGroup.UNREVIEWED, [issues[2], issues[1]], Tone.ACTION),
-        *grouped(FindingGroup.PROVEN, [issues[3]], Tone.NEWS),
-        *grouped(FindingGroup.TO_PROVE, [issues[4]], Tone.NEWS),
-        *grouped(FindingGroup.UNPROVABLE, [issues[5]], Tone.NEWS),
+        *list_group_lines(FindingGroup.UNREVIEWED, [issues[2], issues[1]], Tone.ACTION),
+        *list_group_lines(FindingGroup.PROVEN, [issues[3]], Tone.NEWS),
+        *list_group_lines(FindingGroup.TO_PROVE, [issues[4]], Tone.NEWS),
+        *list_group_lines(FindingGroup.UNPROVABLE, [issues[5]], Tone.NEWS),
     ]
 
 
 @pytest.mark.parametrize("priority", list(Priority))
 def test_a_finding_s_priority_tag_is_shown_in_its_priority_s_style(
     priority: Priority,
-):
-    issue = finding(1, FindingStage.UNREVIEWED, priority)
+) -> None:
+    issue = build_finding(1, FindingStage.UNREVIEWED, priority)
 
     assert Priority.emphases(issue) == (
         Emphasis(f"[{priority.level}]", Highlight[priority._name_]),
     )
 
 
-def test_the_summary_leaves_shelved_findings_out():
-    board = IssuesInMemory({1: finding(1, FindingStage.SHELVED, Priority.HIGH)})
+def test_the_summary_leaves_shelved_findings_out() -> None:
+    board = IssuesInMemory({1: build_finding(1, FindingStage.SHELVED, Priority.HIGH)})
 
-    assert FindingsSummary(board, FINDINGS_REPOSITORY).lines() == []
+    assert FindingsSummary(board, ScratchGitHub.owned).lines() == []
 
 
-def test_a_repository_without_findings_says_nothing():
-    assert FindingsSummary(IssuesInMemory(), FINDINGS_REPOSITORY).lines() == []
+def test_a_repository_without_findings_says_nothing() -> None:
+    assert FindingsSummary(IssuesInMemory(), ScratchGitHub.owned).lines() == []

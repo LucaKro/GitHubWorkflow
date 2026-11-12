@@ -1,0 +1,12 @@
+[
+  {
+    "resolved": false,
+    "outdated": false,
+    "path": "a.py",
+    "line": 1,
+    "comment_ids": [
+      101,
+      102
+    ]
+  }
+]

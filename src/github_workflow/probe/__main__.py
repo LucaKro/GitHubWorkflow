@@ -11,12 +11,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from basstler_domain_model.git.commands import GitCommandRunner
-from basstler_domain_model.github.clients import GitHubApi
+from domain_model.git.commands import GitCommandRunner
+from domain_model.github.clients import GitHubApi
 
 from github_workflow.locations import ProbeFile
 from github_workflow.probe.publish import ResultsPublication
-from github_workflow.probe.results import ProbeReport
+from github_workflow.probe.results import EnvironmentFact, ProbeReport
 from github_workflow.probe.scenarios import Probe
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.settings import WorkflowSettings
@@ -42,9 +42,11 @@ def main() -> None:
         report=ProbeReport(Probe.describe_environment(git)),
     )
     default_branch = probe.default_branch()
-    probe.report.environment["repository"] = probe.remote.repository.full_name
-    probe.report.environment["default branch"] = str(default_branch)
-    probe.check_library(git.commit_at("HEAD"))
+    probe.report.environment[EnvironmentFact.REPOSITORY] = (
+        probe.remote.repository.full_name
+    )
+    probe.report.environment[EnvironmentFact.DEFAULT_BRANCH] = str(default_branch)
+    probe.check_library(probe.tree.head().hash)
     probe.check_notes_branch()
     probe.check_issue_board()
     if default_branch is not None:
@@ -56,7 +58,7 @@ def main() -> None:
     (output / ProbeFile.REPORT).write_text(probe.report.markdown())
     (output / ProbeFile.RESULTS).write_text(probe.report.to_json())
     print(probe.report.markdown())
-    print(ResultsPublication(git, remote, output).publish())
+    print(ResultsPublication(remote, output).publish())
 
 
 if __name__ == "__main__":

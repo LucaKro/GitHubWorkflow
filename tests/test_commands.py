@@ -17,37 +17,36 @@ from http import HTTPStatus
 from pathlib import Path
 
 import pytest
-
-from basstler_domain_model.environment import (
+from domain_model.claude_code.hooks import HookKey, HookValue
+from domain_model.environment import (
     ClaudeCodeVariable,
     GitHubActionsVariable,
     GitHubCredentialVariable,
 )
-from basstler_domain_model.git.commands import RemoteName
-from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
-from basstler_domain_model.github.repository_client import (
-    GitHubRepository,
-    PullRequestListState,
-)
-from basstler_domain_model.github.routes import QueryParameter, RepositoryRoute
-from basstler_domain_model.github.vocabulary import (
+from domain_model.git.revisions import BranchName, TextFiles
+from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
+from domain_model.github.repository_client import GitHubRepository, PullRequestListState
+from domain_model.github.routes import RepositoryRoute
+from domain_model.github.vocabulary import (
     ClosingKeyword,
     IssueEventType,
     IssueState,
     PullRequestState,
+    QueryParameter,
     RestJSONKey,
 )
-from basstler_domain_model.locations import PathEnumeration
-from basstler_domain_model.repository import GitHubAddress, Repository
+from domain_model.locations import GitStateFile, PathEnumeration
+from domain_model.repository import GitHubAddress, Repository
 
 import github_workflow
 import github_workflow.session_start
-from github_workflow.__main__ import WorkflowSession
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.command_line import (
     BranchSubcommand,
     FindingSubcommand,
-    ToolRepository,
+    NotesSubcommand,
+    RunnableCommand,
+    WorkflowCommand,
 )
 from github_workflow.discussions import DiscussionPosting, DiscussionSessionLog
 from github_workflow.environment import WorkflowVariable
@@ -71,18 +70,20 @@ from github_workflow.findings import (
     Priority,
     ProvenFindingFiling,
 )
-from github_workflow.hooks import HookKey, HookValue, Tone
-from github_workflow.locations import GitFile, NotesFile, ProjectFile
+from github_workflow.locations import NotesFile, PluginDirectory, ProjectFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection
+from github_workflow.plugin import ToolRepository
 from github_workflow.proofs import BranchProofRunner, FindingTest
 from github_workflow.pull_request_overview import PullRequestLabel
-from github_workflow.command_line import NotesSubcommand, WorkflowCommand
 from github_workflow.remotes import OwnedRemotes
-from github_workflow.upstream import UpstreamSuggestion
+from github_workflow.report_lines import Speaker, Tone
+from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
+from github_workflow.upstream import UpstreamSuggestion
 
 from .repositories_by_owner import RepositoriesByOwner
+from .test_proofs import ProofDataset
 
 # %% datasets
 
@@ -143,7 +144,9 @@ def github(
         whose branch is left to delete.
     """
     with ReplayedApi() as api:
-        api.answers[("GET", root_path(settings))] = setting(HTTPStatus.OK, True)
+        api.answers[("GET", root_path(settings))] = answer_branch_deletion_setting(
+            HTTPStatus.OK, True
+        )
         api.answers[("GET", actions_path(settings))] = RecordedAnswer(
             HTTPStatus.OK, json.dumps({RestJSONKey.ENABLED: True})
         )
@@ -188,7 +191,7 @@ def root_path(settings: WorkflowSettings) -> str:
     return f"/{RepositoryRoute(repository).root}"
 
 
-def setting(status: HTTPStatus, deletes: bool) -> RecordedAnswer:
+def answer_branch_deletion_setting(status: HTTPStatus, deletes: bool) -> RecordedAnswer:
     """:param status: The status to answer with.
     :param deletes: Whether merged branches are deleted.
     :return: An answer carrying the merged-branch deletion setting."""
@@ -249,8 +252,8 @@ def saved_notes(
     :return: Its notes branch as a fresh clone sees it, fetched.
     """
     checkout = repositories.clone(url, "inspector")
-    notes = NotesBranch.on(
-        checkout.git, OwnedRemotes.read(checkout.git, settings).chosen, settings
+    notes = NotesBranch.from_settings(
+        OwnedRemotes.read(checkout.git, settings).chosen, settings
     )
     notes.fetch()
     return notes
@@ -261,15 +264,17 @@ def saved_notes(
 
 def test_a_session_starts_with_the_notes_and_this_branch_s_progress(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     writer = repositories.clone(owned_url, "writer")
-    NotesBranch.on(
-        writer.git, OwnedRemotes.read(writer.git, settings).chosen, settings
+    NotesBranch.from_settings(
+        OwnedRemotes.read(writer.git, settings).chosen, settings
     ).write(
-        {
-            Path(NotesFile.STANDING_NOTES): "a standing note\n",
-            NotesFile.progress_of("feature"): "halfway there\n",
-        },
+        TextFiles(
+            {
+                Path(NotesFile.STANDING_NOTES): "a standing note\n",
+                NotesFile.progress_file("feature"): "halfway there\n",
+            }
+        ),
         "Save",
     )
     checkout = repositories.clone(owned_url, "session")
@@ -284,12 +289,12 @@ def test_a_session_starts_with_the_notes_and_this_branch_s_progress(
 
 def test_a_loaded_note_sits_between_its_markers_as_written(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     note = "a standing note"
     writer = repositories.clone(owned_url, "writer")
-    NotesBranch.on(
-        writer.git, OwnedRemotes.read(writer.git, settings).chosen, settings
-    ).write({Path(NotesFile.STANDING_NOTES): f"{note}\n"}, "Save")
+    NotesBranch.from_settings(
+        OwnedRemotes.read(writer.git, settings).chosen, settings
+    ).write(TextFiles({Path(NotesFile.STANDING_NOTES): f"{note}\n"}), "Save")
     checkout = repositories.clone(owned_url, "session")
 
     start_session(checkout)
@@ -303,21 +308,21 @@ def test_a_loaded_note_sits_between_its_markers_as_written(
 
 def test_claude_local_md_is_excluded_from_git_once(
     repositories: RepositoriesByOwner, owned_url: str
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
 
     start_session(checkout)
     start_session(checkout)
 
     exclude = checkout.root / checkout.git.run(
-        "rev-parse", "--git-path", str(GitFile.EXCLUDE)
+        "rev-parse", "--git-path", str(GitStateFile.EXCLUDE)
     )
     assert exclude.read_text().splitlines().count(str(ProjectFile.CLAUDE_LOCAL)) == 1
 
 
 def test_a_session_start_pushes_nothing(
     repositories: RepositoriesByOwner, owned_url: str
-):
+) -> None:
     before = repositories.branches(owned_url)
 
     start_session(repositories.clone(owned_url, "session"))
@@ -327,7 +332,7 @@ def test_a_session_start_pushes_nothing(
 
 def test_a_session_in_somebody_else_s_repository_loads_nothing(
     repositories: RepositoriesByOwner, foreign_url: str, settings: WorkflowSettings
-):
+) -> None:
     checkout = repositories.clone(foreign_url, "theirs")
 
     finished = start_session(checkout)
@@ -342,7 +347,7 @@ def test_a_session_start_is_shown_to_the_person_and_given_to_the_model(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     route = RepositoryRoute(
         Repository(settings.owner, RepositoriesByOwner.repository_name)
     )
@@ -361,7 +366,7 @@ def test_a_session_start_is_shown_to_the_person_and_given_to_the_model(
     assert not [line for line in shown if line.startswith(f"\033[1;{Tone.PROBLEM}m")]
 
 
-def test_a_session_outside_a_checkout_says_so_in_one_line(tmp_path: Path):
+def test_a_session_outside_a_checkout_says_so_in_one_line(tmp_path: Path) -> None:
     finished = subprocess.run(
         [sys.executable, "-m", github_workflow.session_start.__name__],
         cwd=tmp_path,
@@ -373,7 +378,7 @@ def test_a_session_outside_a_checkout_says_so_in_one_line(tmp_path: Path):
     assert len(json.loads(finished.stdout)[HookKey.SYSTEM_MESSAGE].splitlines()) == 1
 
 
-def test_the_hook_answers_even_without_the_package(tmp_path: Path):
+def test_the_hook_answers_even_without_the_package(tmp_path: Path) -> None:
     finished = subprocess.run(
         [str(Path(__file__).parents[1] / "hooks" / "session-start.sh")],
         cwd=tmp_path,
@@ -431,9 +436,9 @@ def installation_still_running(tmp_path: Path) -> Path:
     :return: A plugin whose installer is still installing, and a home whose runtime is
         the test's virtual environment.
     """
-    installer = tmp_path / "plugin" / "src" / "github_workflow" / "install.py"
-    installer.parent.mkdir(parents=True)
-    shutil.copy(SessionDataset.INSTALLER_STILL_INSTALLING.value, installer)
+    package = tmp_path / "plugin" / PluginDirectory.WORKFLOW_SOURCE / "github_workflow"
+    package.mkdir(parents=True)
+    shutil.copy(SessionDataset.INSTALLER_STILL_INSTALLING, package / "install.py")
     runtime = tmp_path / "home" / ".virtualenvs" / "githubworkflow-runtime"
     runtime.parent.mkdir(parents=True)
     runtime.symlink_to(sys.prefix)
@@ -442,7 +447,7 @@ def installation_still_running(tmp_path: Path) -> Path:
 
 def test_a_session_whose_start_was_missed_is_reported_on_its_first_prompt(
     repositories: RepositoriesByOwner, owned_url: str, tmp_path: Path
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
 
     first = run_session_hook(checkout, HookValue.USER_PROMPT_SUBMIT, "s1", tmp_path)
@@ -458,7 +463,7 @@ def test_a_session_start_that_starts_an_install_leaves_the_report_to_the_first_p
     owned_url: str,
     tmp_path: Path,
     installation_still_running: Path,
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
 
     start = run_session_hook(
@@ -483,7 +488,7 @@ def test_a_session_start_that_starts_an_install_leaves_the_report_to_the_first_p
 
 def test_a_session_reported_at_its_start_is_not_reported_again(
     repositories: RepositoriesByOwner, owned_url: str, tmp_path: Path
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
     run_session_hook(checkout, HookValue.SESSION_START, "s2", tmp_path)
 
@@ -500,8 +505,10 @@ def test_a_session_leaves_merged_branch_deletion_that_is_off_to_the_person(
     owned_url: str,
     settings: WorkflowSettings,
     github: ReplayedApi,
-):
-    github.answers[("GET", root_path(settings))] = setting(HTTPStatus.OK, False)
+) -> None:
+    github.answers[("GET", root_path(settings))] = answer_branch_deletion_setting(
+        HTTPStatus.OK, False
+    )
 
     start_session(repositories.clone(owned_url, "session"))
 
@@ -513,8 +520,10 @@ def test_a_session_links_to_the_settings_of_a_feature_that_is_off(
     owned_url: str,
     settings: WorkflowSettings,
     github: ReplayedApi,
-):
-    github.answers[("GET", root_path(settings))] = setting(HTTPStatus.OK, False)
+) -> None:
+    github.answers[("GET", root_path(settings))] = answer_branch_deletion_setting(
+        HTTPStatus.OK, False
+    )
     repository = Repository(settings.owner, RepositoriesByOwner.repository_name)
 
     finished = start_session(repositories.clone(owned_url, "session"))
@@ -526,7 +535,7 @@ def test_a_session_links_to_the_settings_of_a_feature_that_is_off(
 
 def test_a_session_whose_repository_deletes_merged_branches_changes_nothing(
     repositories: RepositoriesByOwner, owned_url: str, github: ReplayedApi
-):
+) -> None:
     start_session(repositories.clone(owned_url, "session"))
 
     assert {sent.method for sent in github.sent} == {"GET"}
@@ -537,7 +546,7 @@ def test_a_session_whose_repository_deletes_merged_branches_changes_nothing(
 
 def test_an_edited_note_is_saved_to_the_notes_branch(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
     start_session(checkout)
     document = checkout.claude_local.read_text()
@@ -554,7 +563,7 @@ def test_an_edited_note_is_saved_to_the_notes_branch(
 
 def test_saving_without_changes_pushes_nothing(
     repositories: RepositoriesByOwner, owned_url: str
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
     start_session(checkout)
     before = repositories.branches(owned_url)
@@ -566,7 +575,7 @@ def test_saving_without_changes_pushes_nothing(
 
 def test_saving_a_saved_note_again_pushes_nothing(
     repositories: RepositoriesByOwner, owned_url: str
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
     start_session(checkout)
     document = checkout.claude_local.read_text()
@@ -582,7 +591,7 @@ def test_saving_a_saved_note_again_pushes_nothing(
 
 def test_saving_in_somebody_else_s_repository_is_refused(
     repositories: RepositoriesByOwner, foreign_url: str
-):
+) -> None:
     checkout = repositories.clone(foreign_url, "theirs")
     checkout.claude_local.write_text(
         NotesBlock("", "", "", "", "", {NotesSection.STANDING_NOTES: "a note"}).render()
@@ -607,7 +616,9 @@ def finding_checkout(
     checkout = repositories.clone(owned_url, "session")
     monkeypatch.chdir(checkout.root)
     (checkout.root / "tests").mkdir()
-    (checkout.root / "tests" / "test_finding.py").write_text("def test_it(): ...\n")
+    (checkout.root / "tests" / "test_finding.py").write_text(
+        ProofDataset.DOUBLING_SHOWN_WRONG.read_text()
+    )
     (checkout.root / "finding.md").write_text("What was found.\n")
     return checkout
 
@@ -622,11 +633,11 @@ def signed_in(github: ReplayedApi) -> str:
     return login
 
 
-def step_for(checkout: ProjectCheckout, *arguments: str) -> object:
+def build_step(checkout: ProjectCheckout, *arguments: str) -> object:
     """:param checkout: The checkout the command runs in.
     :param arguments: The command line.
     :return: The step it asks for."""
-    parsed = WorkflowSession.parser().parse_args(list(arguments))
+    parsed = RunnableCommand.parser().parse_args(list(arguments))
     return WorkflowSession(checkout.root, WorkflowSettings()).step(parsed)
 
 
@@ -638,19 +649,17 @@ def owner_s_github(settings: WorkflowSettings) -> GitHubRepository:
     )
 
 
-def runner_in(checkout: ProjectCheckout) -> BranchProofRunner:
+def build_proof_runner(checkout: ProjectCheckout) -> BranchProofRunner:
     """:param checkout: The checkout.
     :return: Runs tests on its owner's default branch with an interpreter named
     ``project-python``."""
+    remote = OwnedRemotes.read(checkout.git, WorkflowSettings()).chosen
     return BranchProofRunner(
-        checkout.git,
-        RemoteName.ORIGIN,
-        RepositoriesByOwner.default_branch,
-        "project-python",
+        remote.branch(RepositoriesByOwner.default_branch), "project-python"
     )
 
 
-def finding_test_in(checkout: ProjectCheckout) -> FindingTest:
+def read_finding_test(checkout: ProjectCheckout) -> FindingTest:
     """:param checkout: The checkout.
     :return: The finding test it holds."""
     return FindingTest.read(checkout, checkout.root / "tests" / "test_finding.py")
@@ -658,8 +667,8 @@ def finding_test_in(checkout: ProjectCheckout) -> FindingTest:
 
 def test_a_finding_filed_with_a_test_is_proven_on_the_default_branch(
     finding_checkout: ProjectCheckout, settings: WorkflowSettings
-):
-    step = step_for(
+) -> None:
+    step = build_step(
         finding_checkout,
         WorkflowCommand.FINDING,
         FindingSubcommand.FILE,
@@ -673,19 +682,18 @@ def test_a_finding_filed_with_a_test_is_proven_on_the_default_branch(
     github = owner_s_github(settings)
     assert step == ProvenFindingFiling(
         github,
-        github,
         "A title",
         "What was found.\n",
         Priority.HIGH,
-        finding_test_in(finding_checkout),
-        runner_in(finding_checkout),
+        read_finding_test(finding_checkout),
+        build_proof_runner(finding_checkout),
     )
 
 
 def test_a_finding_filed_without_a_test_runs_none(
     finding_checkout: ProjectCheckout, settings: WorkflowSettings
-):
-    step = step_for(
+) -> None:
+    step = build_step(
         finding_checkout,
         WorkflowCommand.FINDING,
         FindingSubcommand.FILE,
@@ -695,15 +703,13 @@ def test_a_finding_filed_without_a_test_runs_none(
     )
 
     github = owner_s_github(settings)
-    assert step == FindingFiling(
-        github, github, "A title", "What was found.\n", Priority.HIGH
-    )
+    assert step == FindingFiling(github, "A title", "What was found.\n", Priority.HIGH)
 
 
 def test_proving_runs_the_test_on_the_default_branch(
     finding_checkout: ProjectCheckout, settings: WorkflowSettings
-):
-    step = step_for(
+) -> None:
+    step = build_step(
         finding_checkout,
         WorkflowCommand.FINDING,
         FindingSubcommand.PROVE,
@@ -715,10 +721,9 @@ def test_proving_runs_the_test_on_the_default_branch(
     github = owner_s_github(settings)
     assert step == FindingProving(
         github,
-        github,
         3,
-        finding_test_in(finding_checkout),
-        runner_in(finding_checkout),
+        read_finding_test(finding_checkout),
+        build_proof_runner(finding_checkout),
     )
 
 
@@ -745,10 +750,10 @@ def answer_open_pull_request(
 
 def test_proving_on_a_pull_request_runs_the_test_on_its_branch(
     github: ReplayedApi, finding_checkout: ProjectCheckout, settings: WorkflowSettings
-):
+) -> None:
     answer_open_pull_request(github, settings)
 
-    step = step_for(
+    step = build_step(
         finding_checkout,
         WorkflowCommand.FINDING,
         FindingSubcommand.PROVE,
@@ -758,13 +763,16 @@ def test_proving_on_a_pull_request_runs_the_test_on_its_branch(
         "--python=project-python",
     )
 
-    assert step.runner == replace(runner_in(finding_checkout), branch="below")
+    runner = build_proof_runner(finding_checkout)
+    assert step.runner == replace(
+        runner, branch=runner.branch.remote.branch(BranchName("below"))
+    )
 
 
 def test_proving_on_a_branch_runs_the_test_there(
     finding_checkout: ProjectCheckout, settings: WorkflowSettings
-):
-    step = step_for(
+) -> None:
+    step = build_step(
         finding_checkout,
         WorkflowCommand.FINDING,
         FindingSubcommand.PROVE,
@@ -774,8 +782,9 @@ def test_proving_on_a_branch_runs_the_test_there(
         "--python=project-python",
     )
 
+    runner = build_proof_runner(finding_checkout)
     assert step.runner == replace(
-        runner_in(finding_checkout), branch="without-pull-request"
+        runner, branch=runner.branch.remote.branch(BranchName("without-pull-request"))
     )
 
 
@@ -784,10 +793,10 @@ def test_rechecking_on_a_pull_request_runs_the_test_on_its_branch(
     finding_checkout: ProjectCheckout,
     settings: WorkflowSettings,
     signed_in: str,
-):
+) -> None:
     answer_open_pull_request(github, settings)
 
-    step = step_for(
+    step = build_step(
         finding_checkout,
         WorkflowCommand.FINDING,
         FindingSubcommand.RECHECK,
@@ -796,16 +805,19 @@ def test_rechecking_on_a_pull_request_runs_the_test_on_its_branch(
         "--python=project-python",
     )
 
-    assert step.runner == replace(runner_in(finding_checkout), branch="below")
+    runner = build_proof_runner(finding_checkout)
+    assert step.runner == replace(
+        runner, branch=runner.branch.remote.branch(BranchName("below"))
+    )
 
 
 def test_proving_on_a_closed_pull_request_is_refused(
     github: ReplayedApi, finding_checkout: ProjectCheckout, settings: WorkflowSettings
-):
+) -> None:
     answer_open_pull_request(github, settings, state=PullRequestState.CLOSED)
 
     with pytest.raises(UnbuildablePullRequestError):
-        step_for(
+        build_step(
             finding_checkout,
             WorkflowCommand.FINDING,
             FindingSubcommand.PROVE,
@@ -818,8 +830,8 @@ def test_proving_on_a_closed_pull_request_is_refused(
 
 def test_marking_unproven_keeps_the_reason(
     finding_checkout: ProjectCheckout, settings: WorkflowSettings
-):
-    step = step_for(
+) -> None:
+    step = build_step(
         finding_checkout,
         WorkflowCommand.FINDING,
         FindingSubcommand.MARK_UNPROVEN,
@@ -828,13 +840,13 @@ def test_marking_unproven_keeps_the_reason(
     )
 
     github = owner_s_github(settings)
-    assert step == FindingUnproving(github, github, 3, "Needs a live server")
+    assert step == FindingUnproving(github, 3, "Needs a live server")
 
 
 def test_a_recheck_trusts_the_owner_and_the_signed_in_account(
     finding_checkout: ProjectCheckout, settings: WorkflowSettings, signed_in: str
-):
-    step = step_for(
+) -> None:
+    step = build_step(
         finding_checkout,
         WorkflowCommand.FINDING,
         FindingSubcommand.RECHECK,
@@ -844,7 +856,7 @@ def test_a_recheck_trusts_the_owner_and_the_signed_in_account(
 
     assert step == FindingRecheck(
         owner_s_github(settings),
-        runner_in(finding_checkout),
+        build_proof_runner(finding_checkout),
         {settings.owner, signed_in},
         3,
     )
@@ -852,8 +864,8 @@ def test_a_recheck_trusts_the_owner_and_the_signed_in_account(
 
 def test_a_fixed_finding_is_closed_through_the_command_line(
     finding_checkout: ProjectCheckout, settings: WorkflowSettings, signed_in: str
-):
-    step = step_for(
+) -> None:
+    step = build_step(
         finding_checkout,
         WorkflowCommand.FINDING,
         FindingSubcommand.CLOSE,
@@ -864,26 +876,24 @@ def test_a_fixed_finding_is_closed_through_the_command_line(
 
     github = owner_s_github(settings)
     git = finding_checkout.git
-    notes = NotesBranch.on(git, OwnedRemotes.read(git, settings).chosen, settings)
+    notes = NotesBranch.from_settings(OwnedRemotes.read(git, settings).chosen, settings)
     assert step == FindingClosing(
         github,
-        github,
         3,
-        github,
-        runner_in(finding_checkout),
+        build_proof_runner(finding_checkout),
         {settings.owner, signed_in},
         RepositoriesByOwner.default_branch,
         157,
         DiscussionSessionLog(
-            github, DiscussionPosting(notes), git.checked_out_branch()
+            github, DiscussionPosting(notes), git.run("branch", "--show-current")
         ),
     )
 
 
 def test_a_draft_naming_a_finding_rechecks_it_first(
     finding_checkout: ProjectCheckout, settings: WorkflowSettings, signed_in: str
-):
-    step = step_for(
+) -> None:
+    step = build_step(
         finding_checkout,
         WorkflowCommand.DRAFT,
         "--title=A title",
@@ -895,7 +905,7 @@ def test_a_draft_naming_a_finding_rechecks_it_first(
     assert isinstance(step, FindingDraftOpening)
     assert step.recheck == FindingRecheck(
         owner_s_github(settings),
-        runner_in(finding_checkout),
+        build_proof_runner(finding_checkout),
         {settings.owner, signed_in},
         3,
     )
@@ -906,7 +916,7 @@ def test_a_draft_building_on_a_pull_request_rechecks_on_its_branch(
     finding_checkout: ProjectCheckout,
     settings: WorkflowSettings,
     signed_in: str,
-):
+) -> None:
     """
     A fix that needs what the pull request below brings is proven against it, not
     against the default branch.
@@ -918,7 +928,7 @@ def test_a_draft_building_on_a_pull_request_rechecks_on_its_branch(
         RecordedAnswer(HTTPStatus.OK, json.dumps(below))
     )
 
-    step = step_for(
+    step = build_step(
         finding_checkout,
         WorkflowCommand.DRAFT,
         "--title=A title",
@@ -929,7 +939,10 @@ def test_a_draft_building_on_a_pull_request_rechecks_on_its_branch(
     )
 
     assert isinstance(step, FindingDraftOpening)
-    assert step.recheck.runner == replace(runner_in(finding_checkout), branch="below")
+    runner = build_proof_runner(finding_checkout)
+    assert step.recheck.runner == replace(
+        runner, branch=runner.branch.remote.branch(BranchName("below"))
+    )
 
 
 # %% commenting on and editing a finding
@@ -946,7 +959,7 @@ def test_a_finding_is_commented_on_through_the_command_line(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
     (checkout.root / "comment.md").write_text("Found more.\n")
     route = RepositoryRoute(
@@ -976,10 +989,10 @@ def test_a_finding_is_commented_on_through_the_command_line(
 )
 def test_a_finding_on_another_of_the_owner_s_repositories_is_reached(
     finding_checkout: ProjectCheckout, subcommand: FindingSubcommand
-):
+) -> None:
     workflow = Repository(WorkflowSettings().owner, "GitHubWorkflow")
 
-    step = step_for(
+    step = build_step(
         finding_checkout,
         WorkflowCommand.FINDING,
         subcommand,
@@ -988,7 +1001,7 @@ def test_a_finding_on_another_of_the_owner_s_repositories_is_reached(
         f"--repository={workflow.full_name}",
     )
 
-    assert step.board == GitHubRepository.from_environment(workflow)
+    assert step.issues == GitHubRepository.from_environment(workflow)
 
 
 @pytest.mark.parametrize(
@@ -996,9 +1009,9 @@ def test_a_finding_on_another_of_the_owner_s_repositories_is_reached(
 )
 def test_a_finding_on_somebody_else_s_repository_is_not_reached(
     finding_checkout: ProjectCheckout, subcommand: FindingSubcommand
-):
+) -> None:
     with pytest.raises(ForeignRepositoryError):
-        step_for(
+        build_step(
             finding_checkout,
             WorkflowCommand.FINDING,
             subcommand,
@@ -1013,7 +1026,7 @@ def test_a_finding_s_text_is_edited_through_the_command_line(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
     (checkout.root / "finding.md").write_text("What was found, corrected.\n")
     route = RepositoryRoute(
@@ -1109,7 +1122,7 @@ def test_the_person_opens_the_fork_s_pull_request_upstream(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     upstream = answer_as_a_fork(github, settings)
     fork = Repository(settings.owner, RepositoriesByOwner.repository_name)
 
@@ -1137,7 +1150,7 @@ def test_a_session_opening_a_pull_request_upstream_is_refused(
     owned_url: str,
     settings: WorkflowSettings,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     answer_as_a_fork(github, settings)
     monkeypatch.setenv(ClaudeCodeVariable.COMMAND_MARKER, "1")
     fork = Repository(settings.owner, RepositoriesByOwner.repository_name)
@@ -1160,7 +1173,7 @@ def test_a_refusal_is_reported_as_its_reason_without_a_traceback(
     owned_url: str,
     settings: WorkflowSettings,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     monkeypatch.setenv(ClaudeCodeVariable.COMMAND_MARKER, "1")
     fork = Repository(settings.owner, RepositoriesByOwner.repository_name)
 
@@ -1175,7 +1188,7 @@ def test_a_refusal_is_reported_as_its_reason_without_a_traceback(
     refusal = PersonOnlyCommandError(WorkflowCommand.UPSTREAM)
     assert (finished.returncode, finished.stderr) == (
         1,
-        f"github-workflow: {refusal}\n",
+        f"{Speaker.WORKFLOW.says(str(refusal))}\n",
     )
 
 
@@ -1184,13 +1197,13 @@ def test_a_draft_on_a_fork_ends_with_the_command_for_the_person(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     answer_as_a_fork(github, settings)
     checkout = repositories.clone(owned_url, "session")
     checkout.git.run("switch", "--quiet", "--create", "feature")
     (checkout.root / "body.md").write_text("What it does.\n")
 
-    step = step_for(
+    step = build_step(
         checkout,
         WorkflowCommand.DRAFT,
         "--title=Add the thing",
@@ -1206,7 +1219,7 @@ def test_a_rewritten_description_of_a_fork_s_pull_request_keeps_the_upstream_lin
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     answer_as_a_fork(github, settings)
     fork = Repository(settings.owner, RepositoriesByOwner.repository_name)
     route = RepositoryRoute(fork)
@@ -1232,7 +1245,7 @@ def test_a_rewritten_description_of_a_fork_s_pull_request_keeps_the_upstream_lin
     suggestion = UpstreamSuggestion(owner_s_github(settings), fork)
     assert written == [
         {
-            RestJSONKey.BODY: suggestion.appended_to(
+            RestJSONKey.BODY: suggestion.append_once(
                 "What it does, after the review.\n", "feature"
             )
         }
@@ -1244,7 +1257,7 @@ def test_a_rewritten_description_keeps_the_line_closing_its_finding(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     route = RepositoryRoute(
         Repository(settings.owner, RepositoriesByOwner.repository_name)
     )
@@ -1275,7 +1288,7 @@ def test_describe_without_a_number_rewrites_the_work_branch_s_own_pull_request(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     route = RepositoryRoute(
         Repository(settings.owner, RepositoriesByOwner.repository_name)
     )
@@ -1288,7 +1301,7 @@ def test_describe_without_a_number_rewrites_the_work_branch_s_own_pull_request(
     checkout.git.run("switch", "--quiet", "--create", "feature")
     (checkout.root / "body.md").write_text("What it does.\n")
 
-    step = step_for(
+    step = build_step(
         checkout, WorkflowCommand.DESCRIBE, f"--body-file={checkout.root / 'body.md'}"
     )
 
@@ -1308,7 +1321,7 @@ def filing_elsewhere(directory: Path, repository: str, *more: str) -> object:
     """
     body = directory / "finding.md"
     body.write_text("What was refused, and why it should not have been.\n")
-    arguments = WorkflowSession.parser().parse_args(
+    arguments = RunnableCommand.parser().parse_args(
         [
             WorkflowCommand.FINDING,
             FindingSubcommand.FILE,
@@ -1322,12 +1335,13 @@ def filing_elsewhere(directory: Path, repository: str, *more: str) -> object:
     return WorkflowSession(directory, WorkflowSettings()).step(arguments)
 
 
-def test_a_finding_is_filed_on_the_workflow_from_outside_any_checkout(tmp_path: Path):
+def test_a_finding_is_filed_on_the_workflow_from_outside_any_checkout(
+    tmp_path: Path,
+) -> None:
     step = filing_elsewhere(tmp_path, ToolRepository.WORKFLOW)
 
     board = GitHubRepository.from_environment(Repository.parse(ToolRepository.WORKFLOW))
     assert step == FindingFiling(
-        board,
         board,
         "A read was refused",
         (tmp_path / "finding.md").read_text(),
@@ -1335,30 +1349,30 @@ def test_a_finding_is_filed_on_the_workflow_from_outside_any_checkout(tmp_path: 
     )
 
 
-def test_findings_are_listed_on_the_domain_model_from_outside_any_checkout(
+def test_findings_are_listed_on_the_workflow_from_outside_any_checkout(
     tmp_path: Path,
-):
-    arguments = WorkflowSession.parser().parse_args(
+) -> None:
+    arguments = RunnableCommand.parser().parse_args(
         [
             WorkflowCommand.FINDING,
             FindingSubcommand.LIST,
-            f"--repository={ToolRepository.DOMAIN_MODEL}",
+            f"--repository={ToolRepository.WORKFLOW}",
         ]
     )
 
     step = WorkflowSession(tmp_path, WorkflowSettings()).step(arguments)
 
-    repository = Repository.parse(ToolRepository.DOMAIN_MODEL)
+    repository = Repository.parse(ToolRepository.WORKFLOW)
     board = GitHubRepository.from_environment(repository)
     assert step == FindingListing(board, repository)
 
 
-def test_a_finding_on_somebody_else_s_repository_is_refused(tmp_path: Path):
+def test_a_finding_on_somebody_else_s_repository_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ForeignRepositoryError):
         filing_elsewhere(tmp_path, f"{RepositoriesByOwner.foreign_owner}/project")
 
 
-def test_a_finding_filed_elsewhere_carries_no_test(tmp_path: Path):
+def test_a_finding_filed_elsewhere_carries_no_test(tmp_path: Path) -> None:
     """
     The test proving a finding runs on a checkout of the repository it is filed on.
     """
@@ -1374,7 +1388,7 @@ def test_a_fork_s_main_behind_its_upstream_is_synced_through_the_command_line(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     """
     The branches are compared and the fork moved with git, so GitHub's API is asked for
     nothing but the fork's details.
@@ -1403,7 +1417,7 @@ def test_a_fork_s_main_behind_its_upstream_is_synced_through_the_command_line(
     run(github_workflow.__name__, checkout, WorkflowCommand.SYNC, "--upstream")
 
     fork_tip = checkout.git.run("ls-remote", owned_url, default).split()[0]
-    assert (non_reads(github), fork_tip) == ([], writer.commit_at("HEAD"))
+    assert (non_reads(github), fork_tip) == ([], writer.run("rev-parse", "HEAD"))
 
 
 # %% taking in the default branch
@@ -1414,7 +1428,7 @@ def test_the_default_branch_s_new_commits_are_merged_through_the_command_line(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
     git = checkout.git
     git.run("switch", "--quiet", "--create", "feature")
@@ -1432,7 +1446,9 @@ def test_the_default_branch_s_new_commits_are_merged_through_the_command_line(
 
     run(github_workflow.__name__, checkout, WorkflowCommand.SYNC, "--base")
 
-    assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
+    assert RepositoriesByOwner.is_ancestor(
+        git, other.run("rev-parse", "HEAD"), git.run("rev-parse", "HEAD")
+    )
 
 
 def test_another_open_pull_request_s_commits_are_merged_into_the_work_branch(
@@ -1440,7 +1456,7 @@ def test_another_open_pull_request_s_commits_are_merged_into_the_work_branch(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     repository = Repository(settings.owner, RepositoriesByOwner.repository_name)
     other = repositories.clone(owned_url, "other").git
     other.run("switch", "--quiet", "--create", "below")
@@ -1465,7 +1481,9 @@ def test_another_open_pull_request_s_commits_are_merged_into_the_work_branch(
 
     run(github_workflow.__name__, checkout, WorkflowCommand.SYNC, "--on", "56")
 
-    assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
+    assert RepositoriesByOwner.is_ancestor(
+        git, other.run("rev-parse", "HEAD"), git.run("rev-parse", "HEAD")
+    )
 
 
 def test_a_conflicting_merge_is_resolved_and_finished_through_the_command_line(
@@ -1473,7 +1491,7 @@ def test_a_conflicting_merge_is_resolved_and_finished_through_the_command_line(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
     git = checkout.git
     git.run("switch", "--quiet", "--create", "feature")
@@ -1503,7 +1521,9 @@ def test_a_conflicting_merge_is_resolved_and_finished_through_the_command_line(
         "shared.txt",
     )
 
-    assert git.contains(other.commit_at("HEAD"), git.commit_at("HEAD"))
+    assert RepositoriesByOwner.is_ancestor(
+        git, other.run("rev-parse", "HEAD"), git.run("rev-parse", "HEAD")
+    )
     assert (
         checkout.root / "shared.txt"
     ).read_text() == "main's line\nthe branch's line\n"
@@ -1514,7 +1534,7 @@ def test_discarding_a_branch_closes_its_open_draft(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
     git = checkout.git
     git.run("switch", "--quiet", "--create", "tried")
@@ -1565,7 +1585,7 @@ def test_the_work_branch_s_pull_request_is_labelled_through_the_command_line(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     route = RepositoryRoute(
         Repository(settings.owner, RepositoriesByOwner.repository_name)
     )
@@ -1596,7 +1616,7 @@ def test_listing_completes_a_stage_picked_on_github(
     repositories: RepositoriesByOwner,
     owned_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     route = RepositoryRoute(
         Repository(settings.owner, RepositoriesByOwner.repository_name)
     )

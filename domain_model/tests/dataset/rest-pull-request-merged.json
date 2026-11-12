@@ -1,0 +1,1 @@
+{"number": 7, "title": "A title", "html_url": "https://github.com/an-owner/a-repository/pull/7", "state": "closed", "merged_at": "2026-01-01T00:00:00Z", "head": {"ref": "a-branch", "sha": "0123abc", "repo": {"full_name": "a-fork-owner/a-repository"}, "user": {"login": "a-fork-owner"}}, "draft": false, "base": {"ref": "main"}, "labels": []}

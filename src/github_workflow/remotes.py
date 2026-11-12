@@ -7,8 +7,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from basstler_domain_model.git.commands import GitCommandRunner, Remote, RemoteName
-from basstler_domain_model.repository import Repository
+from domain_model.git.commands import GitCommandRunner
+from domain_model.git.remotes import Remote, RemoteName
+from domain_model.repository import Repository
 
 from github_workflow.exceptions import AmbiguousOwnedRemoteError, NoOwnedRemoteError
 from github_workflow.settings import WorkflowSettings
@@ -59,9 +60,9 @@ class OwnedRemotes:
         :param settings: Whose repositories count as owned.
         :return: The checkout's remotes, sorted into owned and the rest.
         """
-        remotes = git.remotes()
+        remotes = Remote.read_configured(git)
         owned = tuple(
-            OwnedRemote(remote.name, remote.push_url, remote.repository)
+            OwnedRemote(remote.git, remote.name, remote.push_url, remote.repository)
             for remote in remotes
             if remote.repository is not None and settings.owns(remote.repository)
         )
@@ -86,8 +87,9 @@ class OwnedRemotes:
         :raises NoOwnedRemoteError: If no remote is owned.
         :raises AmbiguousOwnedRemoteError: If several are, and none is ``origin``.
         """
-        if self.problem is not None:
-            raise self.problem
+        problem = self.problem
+        if problem is not None:
+            raise problem
         return next(
             (remote for remote in self.owned if remote.name == RemoteName.ORIGIN),
             self.owned[0],

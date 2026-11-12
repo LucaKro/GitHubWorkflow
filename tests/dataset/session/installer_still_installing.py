@@ -5,5 +5,10 @@ the background it says it is installing, run directly it finds the runtime curre
 
 import sys
 
-if "--background" in sys.argv:
-    print("github-workflow: installing the runtime")
+
+def main() -> None:
+    """
+    Say the runtime is being installed when started in the background, nothing else.
+    """
+    if "--background" in sys.argv:
+        print("github-workflow: installing the runtime")

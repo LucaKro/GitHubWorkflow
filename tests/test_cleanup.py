@@ -13,14 +13,14 @@ import time
 from pathlib import Path
 
 import pytest
+from domain_model.git.commands import GitCommandRunner
+from domain_model.git.remotes import RemoteName
+from domain_model.git.revisions import BranchName, BranchTip, CommitHash
+from domain_model.github.replayed_api import ReplayedApi
+from domain_model.github.rest_models import RestPullRequest
+from domain_model.github.vocabulary import PullRequestState
 
 import github_workflow
-from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
-from basstler_domain_model.github.replayed_api import ReplayedApi
-from basstler_domain_model.github.rest_models import RestPullRequest
-from basstler_domain_model.github.vocabulary import PullRequestState
-
-from github_workflow.__main__ import WorkflowSession
 from github_workflow.cleanup import (
     BranchCleanup,
     BranchDiscard,
@@ -30,61 +30,82 @@ from github_workflow.cleanup import (
     KeptBranches,
     UnusedCloneRemoval,
 )
-from github_workflow.command_line import WorkflowCommand
+from github_workflow.command_line import RunnableCommand, WorkflowCommand
 from github_workflow.environment import WorkflowVariable
 from github_workflow.exceptions import NothingToDiscardError, UndiscardableBranchError
-from github_workflow.hooks import Tone
 from github_workflow.locations import NotesFile, PluginDataDirectory
 from github_workflow.notes.branch import NotesBranch
-from github_workflow.remotes import OwnedRemotes
 from github_workflow.policy import WritePolicy
+from github_workflow.remotes import OwnedRemotes
+from github_workflow.report_lines import CountedThing, Tone
+from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
 from github_workflow.work import BranchStart, CommitWork, PushWork
 
-from .pull_requests import REPOSITORY, pull_request
+from .pull_requests import pull_request
 from .repositories_by_owner import RepositoriesByOwner
+from .scratch_github import ScratchGitHub
 from .test_commands import github, run  # noqa: F401
 from .test_work import (
     EntriesInMemory,
     PullRequestsFromBranchesInMemory,
     RetiredInMemory,
-    policy_in,
+    build_write_policy,
     write,
 )
 
 # %% helpers
 
 
-def kept(tips: dict[str, str], *pull_requests: RestPullRequest) -> KeptBranches:
+def tip(branch: str, commit: str) -> BranchTip:
+    """
+    :param branch: A branch.
+    :param commit: The commit it is at.
+    :return: The branch at the commit.
+    """
+    return BranchTip(BranchName(branch), CommitHash(commit))
+
+
+def list_protected_branches() -> frozenset[BranchName]:
+    """:return: ``main`` and the notes branch."""
+    return frozenset({BranchName("main"), BranchName("notes")})
+
+
+def build_kept_branches(
+    tips: dict[str, str], *pull_requests: RestPullRequest
+) -> KeptBranches:
     """:param tips: Each branch and its commit.
     :param pull_requests: The repository's pull requests.
     :return: Them, with ``main`` and the notes branch protected."""
     return KeptBranches(
-        tips, list(pull_requests), REPOSITORY, frozenset({"main", "notes"})
+        [tip(branch, commit) for branch, commit in tips.items()],
+        list(pull_requests),
+        ScratchGitHub.owned.full_name,
+        list_protected_branches(),
     )
 
 
 # %% which branches are ready
 
 
-def test_a_closed_pull_request_s_branch_is_ready():
-    branches = kept(
+def test_a_closed_pull_request_s_branch_is_ready() -> None:
+    branches = build_kept_branches(
         {"done": "a1"}, pull_request(1, "done", "a1", PullRequestState.CLOSED)
     )
 
-    assert branches.ready() == ["done"]
+    assert branches.ready() == [tip("done", "a1")]
 
 
-def test_a_branch_with_new_commits_since_closing_is_kept():
-    branches = kept(
+def test_a_branch_with_new_commits_since_closing_is_kept() -> None:
+    branches = build_kept_branches(
         {"reused": "b2"}, pull_request(1, "reused", "b1", PullRequestState.CLOSED)
     )
 
     assert branches.ready() == []
 
 
-def test_a_branch_with_an_open_pull_request_is_kept():
-    branches = kept(
+def test_a_branch_with_an_open_pull_request_is_kept() -> None:
+    branches = build_kept_branches(
         {"again": "c1"},
         pull_request(1, "again", "c1", PullRequestState.CLOSED),
         pull_request(2, "again", "c1", PullRequestState.OPEN),
@@ -93,12 +114,12 @@ def test_a_branch_with_an_open_pull_request_is_kept():
     assert branches.ready() == []
 
 
-def test_the_base_of_an_open_pull_request_is_kept():
+def test_the_base_of_an_open_pull_request_is_kept() -> None:
     """
     Deleting the branch of a closed, unmerged lower pull request would close the open
     one stacked on it, for good.
     """
-    branches = kept(
+    branches = build_kept_branches(
         {"lower": "h1", "upper": "h2"},
         pull_request(1, "lower", "h1", PullRequestState.CLOSED),
         pull_request(2, "upper", "h2", PullRequestState.OPEN, base="lower"),
@@ -107,12 +128,12 @@ def test_the_base_of_an_open_pull_request_is_kept():
     assert branches.ready() == []
 
 
-def test_a_branch_that_never_had_a_pull_request_is_kept():
-    assert kept({"work": "d1"}).ready() == []
+def test_a_branch_that_never_had_a_pull_request_is_kept() -> None:
+    assert build_kept_branches({"work": "d1"}).ready() == []
 
 
-def test_a_protected_branch_is_never_ready():
-    branches = kept(
+def test_a_protected_branch_is_never_ready() -> None:
+    branches = build_kept_branches(
         {"main": "e1", "notes": "e2"},
         pull_request(1, "main", "e1", PullRequestState.CLOSED),
         pull_request(2, "notes", "e2", PullRequestState.CLOSED),
@@ -121,8 +142,8 @@ def test_a_protected_branch_is_never_ready():
     assert branches.ready() == []
 
 
-def test_a_pull_request_from_another_repository_says_nothing_about_this_one():
-    branches = kept(
+def test_a_pull_request_from_another_repository_says_nothing_about_this_one() -> None:
+    branches = build_kept_branches(
         {"same-name": "f1"},
         pull_request(1, "same-name", "f1", PullRequestState.CLOSED, "someone/fork"),
     )
@@ -130,38 +151,46 @@ def test_a_pull_request_from_another_repository_says_nothing_about_this_one():
     assert branches.ready() == []
 
 
-def test_a_discarded_branch_still_at_its_commit_is_ready():
+def test_a_discarded_branch_still_at_its_commit_is_ready() -> None:
     branches = KeptBranches(
-        {"tried": "g1"},
+        [tip("tried", "g1")],
         [],
-        REPOSITORY,
-        frozenset({"main", "notes"}),
-        DiscardedBranches({"tried": "g1"}),
+        ScratchGitHub.owned.full_name,
+        list_protected_branches(),
+        DiscardedBranches((tip("tried", "g1"),)),
     )
 
-    assert branches.ready() == ["tried"]
+    assert branches.ready() == [tip("tried", "g1")]
 
 
-def test_a_discarded_branch_with_new_commits_is_kept():
+def test_a_discarded_branch_with_new_commits_is_kept() -> None:
     branches = KeptBranches(
-        {"tried": "g2"},
+        [tip("tried", "g2")],
         [],
-        REPOSITORY,
-        frozenset({"main", "notes"}),
-        DiscardedBranches({"tried": "g1"}),
+        ScratchGitHub.owned.full_name,
+        list_protected_branches(),
+        DiscardedBranches((tip("tried", "g1"),)),
     )
 
     assert branches.ready() == []
 
 
-def test_the_discarded_list_reads_back_what_it_wrote():
-    discarded = DiscardedBranches({"one": "a1", "two": "b2"})
+def test_the_discarded_list_reads_back_what_it_wrote() -> None:
+    discarded = DiscardedBranches((tip("one", "a1"), tip("two", "b2")))
 
     assert DiscardedBranches.from_text(discarded.to_text()) == discarded
 
 
-def test_the_reminder_names_how_many_and_the_command():
-    branches = kept(
+def test_a_branch_listed_again_replaces_its_earlier_entry() -> None:
+    discarded = DiscardedBranches((tip("one", "a1"), tip("two", "b2")))
+
+    assert discarded.add_tip(tip("one", "c3")) == DiscardedBranches(
+        (tip("two", "b2"), tip("one", "c3"))
+    )
+
+
+def test_the_reminder_names_how_many_and_the_command() -> None:
+    branches = build_kept_branches(
         {"one": "a", "two": "b"},
         pull_request(1, "one", "a", PullRequestState.CLOSED),
         pull_request(2, "two", "b", PullRequestState.CLOSED),
@@ -169,14 +198,14 @@ def test_the_reminder_names_how_many_and_the_command():
 
     [line] = CleanupReminder(branches).lines()
 
-    assert "2 branches ready for deletion" in line.text
+    assert f"{CountedThing.BRANCH.quantify(2)} ready for deletion" in line.text
     assert line.tone is Tone.ACTION
 
 
 # %% deleting them
 
 
-def cleanup_in(
+def build_cleanup(
     repositories: RepositoriesByOwner, url: str, settings: WorkflowSettings
 ) -> tuple[BranchCleanup, GitCommandRunner]:
     """
@@ -188,11 +217,11 @@ def cleanup_in(
     checkout = repositories.clone(url, "cleaner")
     git = checkout.git
     remote = OwnedRemotes.read(git, settings).chosen
-    branch = RemoteBranch(remote.name, "closed-work")
+    branch = remote.branch(BranchName("closed-work"))
     git.run("push", "--quiet", remote.name, f"HEAD:{branch.reference}")
-    commit = git.commit_at("HEAD")
+    commit = CommitHash(git.run("rev-parse", "HEAD"))
     branches = KeptBranches(
-        {branch.name: commit},
+        [BranchTip(branch.name, commit)],
         [
             pull_request(
                 1,
@@ -205,14 +234,14 @@ def cleanup_in(
         remote.repository.full_name,
         frozenset({RepositoriesByOwner.default_branch, settings.notes_branch}),
     )
-    notes = NotesBranch.on(git, remote, settings)
-    return BranchCleanup(git, remote, branches, notes, EntriesInMemory()), git
+    notes = NotesBranch.from_settings(remote, settings)
+    return BranchCleanup(remote, branches, notes, EntriesInMemory()), git
 
 
 def test_a_ready_branch_is_deleted(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
-    cleanup, git = cleanup_in(repositories, owned_url, settings)
+) -> None:
+    cleanup, git = build_cleanup(repositories, owned_url, settings)
 
     cleanup.run()
 
@@ -221,8 +250,8 @@ def test_a_ready_branch_is_deleted(
 
 def test_a_deleted_branch_is_entered_in_the_session_log(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
-    cleanup, _ = cleanup_in(repositories, owned_url, settings)
+) -> None:
+    cleanup, _ = build_cleanup(repositories, owned_url, settings)
 
     cleanup.run()
 
@@ -232,17 +261,17 @@ def test_a_deleted_branch_is_entered_in_the_session_log(
 
 def test_a_branch_the_session_may_not_delete_is_listed_for_the_workflow(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     bare = Path(owned_url.removeprefix("file://"))
     GitCommandRunner(bare).run("config", "receive.denyDeletes", "true")
-    cleanup, git = cleanup_in(repositories, owned_url, settings)
+    cleanup, git = build_cleanup(repositories, owned_url, settings)
 
     cleanup.run()
 
     notes = cleanup.notes
     notes.fetch()
     listed = BranchTips.from_text(notes.read(NotesFile.READY_FOR_DELETION.value))
-    assert listed == BranchTips({"closed-work": cleanup.kept.tips["closed-work"]})
+    assert listed == BranchTips(tuple(cleanup.kept.tips))
     assert settings.notes_branch in notes.read(NotesFile.DELETION_WORKFLOW.value)
 
 
@@ -260,7 +289,7 @@ def listed_for_the_workflow(
     """
     bare = Path(url.removeprefix("file://"))
     GitCommandRunner(bare).run("config", "receive.denyDeletes", "true")
-    cleanup, _ = cleanup_in(repositories, url, settings)
+    cleanup, _ = build_cleanup(repositories, url, settings)
     cleanup.run()
     return cleanup
 
@@ -287,6 +316,7 @@ def run_deletion_workflow(
             str(NotesFile.READY_FOR_DELETION.value),
             RepositoriesByOwner.default_branch,
             settings.notes_branch,
+            str(NotesFile.COMMIT_SCRIPT.value),
         ],
         cwd=runner.working_directory,
         check=True,
@@ -295,7 +325,7 @@ def run_deletion_workflow(
 
 def test_the_workflow_deletes_a_listed_branch_still_at_its_commit(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     listed_for_the_workflow(repositories, owned_url, settings)
 
     run_deletion_workflow(repositories, owned_url, settings)
@@ -305,7 +335,7 @@ def test_the_workflow_deletes_a_listed_branch_still_at_its_commit(
 
 def test_the_workflow_empties_the_list_it_handled(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     cleanup = listed_for_the_workflow(repositories, owned_url, settings)
 
     run_deletion_workflow(repositories, owned_url, settings)
@@ -316,7 +346,7 @@ def test_the_workflow_empties_the_list_it_handled(
 
 def test_the_workflow_keeps_a_listed_branch_that_moved_since(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     listed_for_the_workflow(repositories, owned_url, settings)
     reused = repositories.clone(owned_url, "reuser").git
     reused.run("commit", "--quiet", "--allow-empty", "--message", "New work")
@@ -324,7 +354,7 @@ def test_the_workflow_keeps_a_listed_branch_that_moved_since(
 
     run_deletion_workflow(repositories, owned_url, settings)
 
-    moved = f"{reused.commit_at('HEAD')}\trefs/heads/closed-work"
+    moved = f"{reused.run("rev-parse", 'HEAD')}\trefs/heads/closed-work"
     assert moved in repositories.branches(owned_url)
 
 
@@ -340,11 +370,11 @@ def pushed_work(
     :param settings: The workflow's settings.
     :return: The rules of a clone on a pushed branch ``tried``, and its notes branch.
     """
-    policy = policy_in(repositories.clone(url, "thrower"), settings)
-    BranchStart(policy, "tried").run()
+    policy = build_write_policy(repositories.clone(url, "thrower"), settings)
+    BranchStart(policy, BranchName("tried")).run()
     CommitWork(policy, "Try", [write(policy.checkout, "tried.txt")]).run()
     PushWork(policy).run()
-    return policy, NotesBranch.on(policy.checkout.git, policy.remote, settings)
+    return policy, NotesBranch.from_settings(policy.remote, settings)
 
 
 def discard(
@@ -373,7 +403,7 @@ def discard(
 
 def test_a_discarded_branch_s_open_pull_request_is_closed(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     policy, notes = pushed_work(repositories, owned_url, settings)
     retired = RetiredInMemory()
     opened = [
@@ -389,20 +419,20 @@ def test_a_discarded_branch_s_open_pull_request_is_closed(
 
 def test_a_discarded_branch_is_listed_with_its_commit(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     policy, notes = pushed_work(repositories, owned_url, settings)
 
     discard(policy, notes).run()
 
     listed = notes.read(NotesFile.DISCARDED_BRANCHES.value)
     assert DiscardedBranches.from_text(listed) == DiscardedBranches(
-        {"tried": policy.checkout.git.commit_at("tried")}
+        (tip("tried", policy.checkout.git.run("rev-parse", "tried")),)
     )
 
 
 def test_discarding_the_default_branch_is_refused(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     policy, notes = pushed_work(repositories, owned_url, settings)
 
     with pytest.raises(UndiscardableBranchError):
@@ -411,9 +441,9 @@ def test_discarding_the_default_branch_is_refused(
 
 def test_discarding_a_branch_github_lacks_is_refused(
     repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
-):
+) -> None:
     policy, notes = pushed_work(repositories, owned_url, settings)
-    BranchStart(policy, "never-pushed").run()
+    BranchStart(policy, BranchName("never-pushed")).run()
 
     with pytest.raises(NothingToDiscardError):
         discard(policy, notes).run()
@@ -454,7 +484,7 @@ def test_a_clone_no_session_used_for_a_month_is_removed(
     foreign_url: str,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     data = tmp_path / "plugin-data"
     monkeypatch.setenv(WorkflowVariable.PLUGIN_DATA, str(data))
     checkout = repositories.clone(owned_url, "session")
@@ -466,7 +496,7 @@ def test_a_clone_no_session_used_for_a_month_is_removed(
     assert not clone.exists()
 
 
-def test_a_clone_used_within_the_week_is_kept(foreign_url: str, tmp_path: Path):
+def test_a_clone_used_within_the_week_is_kept(foreign_url: str, tmp_path: Path) -> None:
     removal = UnusedCloneRemoval(tmp_path / "clones")
     clone = foreign_clone(removal.clones, foreign_url)
     clone_used(clone, removal.unused_for.total_seconds() / 2)
@@ -476,19 +506,23 @@ def test_a_clone_used_within_the_week_is_kept(foreign_url: str, tmp_path: Path):
     assert clone.exists()
 
 
-def test_a_fetch_into_an_old_clone_counts_as_using_it(foreign_url: str, tmp_path: Path):
+def test_a_fetch_into_an_old_clone_counts_as_using_it(
+    foreign_url: str, tmp_path: Path
+) -> None:
     removal = UnusedCloneRemoval(tmp_path / "clones")
     clone = foreign_clone(removal.clones, foreign_url)
     clone_used(clone, 2 * removal.unused_for.total_seconds())
 
-    GitCommandRunner(clone).fetch("origin")
+    GitCommandRunner(clone).run("fetch", "--quiet", RemoteName.ORIGIN)
 
     removal.run()
 
     assert clone.exists()
 
 
-def test_an_owner_s_directory_left_empty_is_removed(foreign_url: str, tmp_path: Path):
+def test_an_owner_s_directory_left_empty_is_removed(
+    foreign_url: str, tmp_path: Path
+) -> None:
     removal = UnusedCloneRemoval(tmp_path / "clones")
     clone = foreign_clone(removal.clones, foreign_url)
     clone_used(clone, 2 * removal.unused_for.total_seconds())
@@ -504,10 +538,10 @@ def test_without_the_plugin_s_data_no_clone_is_looked_at(
     owned_url: str,
     settings: WorkflowSettings,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     monkeypatch.delenv(WorkflowVariable.PLUGIN_DATA, raising=False)
     checkout = repositories.clone(owned_url, "session")
-    arguments = WorkflowSession.parser().parse_args([WorkflowCommand.CLEANUP])
+    arguments = RunnableCommand.parser().parse_args([WorkflowCommand.CLEANUP])
 
     step = WorkflowSession(checkout.root, settings).step(arguments)
 

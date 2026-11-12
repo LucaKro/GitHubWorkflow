@@ -5,10 +5,10 @@ name the settings give it.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
-from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
-from basstler_domain_model.git.storage_branch import StorageBranch
+from domain_model.git.storage_branch import StorageBranch
 
 from github_workflow.remotes import OwnedRemote
 from github_workflow.settings import WorkflowSettings
@@ -24,13 +24,20 @@ class NotesBranch(StorageBranch):
     """
 
     @classmethod
-    def on(
-        cls, git: GitCommandRunner, remote: OwnedRemote, settings: WorkflowSettings
+    def from_settings(
+        cls, remote: OwnedRemote, settings: WorkflowSettings
     ) -> NotesBranch:
         """
-        :param git: Runs git in the checkout.
         :param remote: The owner's remote the branch lives on.
         :param settings: The branch's name.
         :return: The notes branch.
         """
-        return cls(git, RemoteBranch(remote.name, settings.notes_branch))
+        return cls(remote.branch(settings.notes_branch))
+
+    @staticmethod
+    def queued_file_name() -> str:
+        """
+        :return: A name for one file queued on the branch, sorting after the name of
+            every file queued before it.
+        """
+        return f"{time.time_ns()}.json"

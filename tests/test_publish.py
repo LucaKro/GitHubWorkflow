@@ -7,8 +7,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from basstler_domain_model.git.commands import RemoteBranch, RemoteName
-from basstler_domain_model.git.storage_branch import StorageBranch
+from domain_model.git.remotes import Remote
+from domain_model.git.revisions import BranchName
+from domain_model.git.storage_branch import StorageBranch
 
 from github_workflow.probe.publish import ResultsBranch, ResultsPublication
 from github_workflow.remotes import OwnedRemotes
@@ -24,7 +25,7 @@ def test_results_land_on_the_results_branch_under_their_directory_s_name(
     owned_url: str,
     settings: WorkflowSettings,
     tmp_path: Path,
-):
+) -> None:
     checkout = repositories.clone(owned_url, "session")
     directory = tmp_path / "check-1"
     directory.mkdir()
@@ -33,10 +34,11 @@ def test_results_land_on_the_results_branch_under_their_directory_s_name(
 
     remote = OwnedRemotes.read(checkout.git, settings).chosen
 
-    ResultsPublication(checkout.git, remote, directory).publish()
+    ResultsPublication(remote, directory).publish()
 
     reader = repositories.clone(owned_url, "reader").git
-    results = StorageBranch(reader, RemoteBranch(RemoteName.ORIGIN, ResultsBranch.NAME))
+    [origin] = Remote.read_configured(reader)
+    results = StorageBranch(origin.branch(BranchName(ResultsBranch.NAME)))
     results.fetch()
     assert results.read(Path("check-1/report.md")) == "all well\n"
     assert checkout.git.run("status", "--porcelain") == before

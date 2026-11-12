@@ -9,21 +9,16 @@ with git's reference updates on standard input.
 
 from __future__ import annotations
 
-import stat
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import auto
 from pathlib import Path
 
-from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.environment import ClaudeCodeVariable
-from basstler_domain_model.git.commands import (
-    GitCommandRunner,
-    ReferenceUpdate,
-    RemoteBranch,
-)
-from basstler_domain_model.repository import Repository
+from domain_model.environment import ClaudeCodeVariable
+from domain_model.git.remotes import ReferenceUpdate, Remote
+from domain_model.locations import GitStateFile
+from domain_model.templates import Placeholder
 
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.exceptions import (
@@ -31,9 +26,34 @@ from github_workflow.exceptions import (
     ForeignPushError,
     UnknownDefaultBranchError,
 )
-from github_workflow.hooks import ReportLine, Tone
-from github_workflow.locations import GitFile, WorkflowTemplate
+from github_workflow.locations import WorkflowTemplate
+from github_workflow.plugin import FileMode
+from github_workflow.report_lines import ReportLine, Speaker, Tone
 from github_workflow.settings import WorkflowSettings
+
+# %% the template's placeholders
+
+
+class PushHookPlaceholder(Placeholder):
+    """
+    The names the ``pre-push`` hook's template leaves to be filled in.
+    """
+
+    MARKER_VARIABLE = auto()
+    """
+    The variable set only in commands a Claude Code session runs.
+    """
+
+    PYTHON = auto()
+    """
+    The interpreter the package is installed in.
+    """
+
+    MODULE = auto()
+    """
+    The module a hook runs.
+    """
+
 
 # %% the check
 
@@ -45,20 +65,10 @@ class PushCheck:
     leaves the default branch alone.
     """
 
-    git: GitCommandRunner
+    destination: Remote
     """
-    Runs git in the checkout pushing.
-    """
-
-    destination: str
-    """
-    The remote pushed to, as git names it to the hook: its name, or its URL when the
-    push names no remote.
-    """
-
-    url: str
-    """
-    The URL the push goes to.
+    The remote pushed to, named as git names it to the hook: its name, or its URL when
+    the push names no remote.
     """
 
     settings: WorkflowSettings
@@ -66,7 +76,7 @@ class PushCheck:
     Whose repositories may be pushed to.
     """
 
-    def check(self, updates: Sequence[ReferenceUpdate]) -> None:
+    def raise_if_forbidden(self, updates: Sequence[ReferenceUpdate]) -> None:
         """
         :param updates: The references the push changes.
         :raises ForeignPushError: If the URL names no repository of the owner's.
@@ -74,41 +84,19 @@ class PushCheck:
             read.
         :raises DefaultBranchWriteError: If the push changes the default branch.
         """
-        owned = Repository.names_a_repository(self.url) and self.settings.owns(
-            Repository.from_remote_url(self.url)
-        )
-        if not owned:
-            raise ForeignPushError(self.url, self.settings.owner)
-        default_branch = self.git.remote_default_branch(self.destination)
+        repository = self.destination.repository
+        if repository is None or not self.settings.owns(repository):
+            raise ForeignPushError(self.destination.push_url, self.settings.owner)
+        default_branch = self.destination.default_branch()
         if default_branch is None:
-            raise UnknownDefaultBranchError(self.destination)
-        reference = RemoteBranch(self.destination, default_branch).reference
-        if any(update.remote_reference == reference for update in updates):
-            raise DefaultBranchWriteError(default_branch)
+            raise UnknownDefaultBranchError(self.destination.name)
+        if any(
+            update.remote_reference == default_branch.reference for update in updates
+        ):
+            raise DefaultBranchWriteError(default_branch.name)
 
 
 # %% the hook
-
-
-class PushHookPlaceholder(StrEnum):
-    """
-    The names the hook's template leaves to be filled in.
-    """
-
-    MARKER_VARIABLE = "__MARKER_VARIABLE__"
-    """
-    The variable set only in commands a Claude Code session runs.
-    """
-
-    PYTHON = "__PYTHON__"
-    """
-    The interpreter the package is installed in.
-    """
-
-    MODULE = "__MODULE__"
-    """
-    The module running the check.
-    """
 
 
 @dataclass(frozen=True)
@@ -128,43 +116,31 @@ class PushHook:
     The interpreter the package is installed in, which the hook runs the check with.
     """
 
-    @classproperty
-    def file_mode(cls) -> int:
-        """
-        The file mode the hook is written with: readable and runnable by everyone,
-        writable by its owner.
-        """
-        everyone = stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
-        runnable = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
-        return everyone | runnable | stat.S_IWUSR
-
     @property
     def path(self) -> Path:
         """
         Where git runs the checkout's ``pre-push`` hook from.
         """
-        return self.checkout.root / self.checkout.git.run(
-            "rev-parse", "--git-path", str(GitFile.PRE_PUSH_HOOK)
-        )
+        return self.checkout.git.git_path(GitStateFile.PRE_PUSH_HOOK)
 
     @property
     def script(self) -> str:
         """
         The hook, as written into the checkout.
         """
-        return (
-            WorkflowTemplate.PRE_PUSH_HOOK.value.read_text()
-            .replace(
-                PushHookPlaceholder.MARKER_VARIABLE, ClaudeCodeVariable.COMMAND_MARKER
-            )
-            .replace(PushHookPlaceholder.PYTHON, str(self.python))
-            .replace(PushHookPlaceholder.MODULE, PushCheck.__module__)
+        return Placeholder.fill(
+            WorkflowTemplate.PRE_PUSH_HOOK.read_text(),
+            {
+                PushHookPlaceholder.MARKER_VARIABLE: ClaudeCodeVariable.COMMAND_MARKER,
+                PushHookPlaceholder.PYTHON: str(self.python),
+                PushHookPlaceholder.MODULE: PushCheck.__module__,
+            },
         )
 
     def install(self) -> list[ReportLine]:
         """
-        Write the hook, replacing an earlier one of the workflow's, but never a
-        ``pre-push`` hook of the checkout's own.
+        Write the hook, replacing an earlier one of the workflow's, but never a ``pre-
+        push`` hook of the checkout's own.
 
         :return: Nothing when the hook was written; one line saying why it was not
             otherwise.
@@ -173,16 +149,18 @@ class PushHook:
         if path.exists() and PushCheck.__module__ not in path.read_text():
             return [
                 ReportLine(
-                    f"github-workflow: {path} is a pre-push hook of the checkout's own, "
-                    f"so pushes run outside the workflow's commands go unchecked; ask "
-                    f"the person whether to merge in the workflow's from "
-                    f"{WorkflowTemplate.PRE_PUSH_HOOK.value}",
+                    Speaker.WORKFLOW.says(
+                        f"{path} is a pre-push hook of the checkout's own, so pushes "
+                        f"run outside the workflow's commands go unchecked; ask the "
+                        f"person whether to merge in the workflow's from "
+                        f"{WorkflowTemplate.PRE_PUSH_HOOK}"
+                    ),
                     Tone.ACTION,
                 )
             ]
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(self.script)
-        path.chmod(self.file_mode)
+        path.chmod(FileMode.RUNNABLE)
         return []
 
 
@@ -194,9 +172,10 @@ def main() -> None:
     Check the push git is about to run, as its ``pre-push`` hook.
     """
     destination, url = sys.argv[1:3]
-    checkout = ProjectCheckout.containing(Path.cwd())
+    checkout = ProjectCheckout.from_directory(Path.cwd())
     updates = [ReferenceUpdate.from_line(line) for line in sys.stdin if line.strip()]
-    PushCheck(checkout.git, destination, url, WorkflowSettings()).check(updates)
+    remote = Remote.from_push_url(checkout.git, destination, url)
+    PushCheck(remote, WorkflowSettings()).raise_if_forbidden(updates)
 
 
 if __name__ == "__main__":

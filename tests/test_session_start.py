@@ -13,12 +13,11 @@ import time
 from pathlib import Path
 
 import pytest
-
-from basstler_domain_model.locations import PathEnumeration
+from domain_model.locations import PathEnumeration
 
 from github_workflow.environment import WorkflowVariable
-from github_workflow.hooks import Tone
 from github_workflow.report import SectionName
+from github_workflow.report_lines import Tone
 from github_workflow.session_start import SessionStart
 from github_workflow.settings import WorkflowSettings
 
@@ -51,7 +50,7 @@ def test_a_section_running_out_of_time_costs_one_red_line(
     owned_url: str,
     settings: WorkflowSettings,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     start = SessionStart(repositories.clone(owned_url, "session"), settings)
     monkeypatch.setattr(sys, "executable", str(SessionDataset.SLOW_SECTION.value))
     started = time.monotonic()
@@ -104,7 +103,9 @@ def markers(tmp_path: Path) -> list[Path]:
     return sorted(tmp_path.glob("*/*"))
 
 
-def test_the_session_s_commands_are_told_where_the_plugin_s_data_is(tmp_path: Path):
+def test_the_session_s_commands_are_told_where_the_plugin_s_data_is(
+    tmp_path: Path,
+) -> None:
     commands_environment = tmp_path / "environment.sh"
     data = tmp_path / "plugin data"
 
@@ -127,13 +128,13 @@ def test_the_session_s_commands_are_told_where_the_plugin_s_data_is(tmp_path: Pa
     assert command.stdout.rstrip("\n") == str(data)
 
 
-def test_a_session_s_marker_is_named_after_its_identifier(tmp_path: Path):
+def test_a_session_s_marker_is_named_after_its_identifier(tmp_path: Path) -> None:
     run_hook(tmp_path, 'a"b')
 
     assert [marker.name for marker in markers(tmp_path)] == ['a"b']
 
 
-def test_the_markers_of_sessions_long_over_are_removed(tmp_path: Path):
+def test_the_markers_of_sessions_long_over_are_removed(tmp_path: Path) -> None:
     run_hook(tmp_path, "over")
     [over] = markers(tmp_path)
     a_month_ago = time.time() - 30 * 24 * 60 * 60

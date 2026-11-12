@@ -1,6 +1,6 @@
 """
-A repository's issues, their comments and labels in memory, for the tests of what the
-workflow writes to them, and a stand-in for running a finding's test.
+A repository's issues and pull requests, their comments and labels in memory, for the
+tests of what the workflow writes to them, and a stand-in for running a finding's test.
 """
 
 from __future__ import annotations
@@ -8,13 +8,11 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 
-from basstler_domain_model.github.issue_models import Issue, IssueComment
-from basstler_domain_model.github.labels import GitHubLabel
-from basstler_domain_model.github.repository_client import (
-    IssueBoard,
-    RepositoryLabels,
-)
-from basstler_domain_model.github.vocabulary import IssueState, IssueStateReason
+from domain_model.github.issue_models import Issue, IssueComment
+from domain_model.github.labels import GitHubLabel
+from domain_model.github.repository_client import ClosablePullRequests
+from domain_model.github.rest_models import RestPullRequest
+from domain_model.github.vocabulary import IssueState, IssueStateReason
 
 from github_workflow.findings import FindingLabel, FindingStage, Priority
 from github_workflow.proofs import FindingTest, ProofAttempt, ProofRunner
@@ -24,9 +22,9 @@ from github_workflow.settings import WorkflowSettings
 
 
 @dataclass(frozen=True)
-class IssuesInMemory(IssueBoard, RepositoryLabels):
+class IssuesInMemory(ClosablePullRequests):
     """
-    A repository's issues and labels, recording every write.
+    A repository's issues, pull requests and labels, recording every write.
     """
 
     open_issues: dict[int, Issue] = field(default_factory=dict)
@@ -51,8 +49,27 @@ class IssuesInMemory(IssueBoard, RepositoryLabels):
 
     writes: list[str] = field(default_factory=list)
     """
-    Every write, in a word and its arguments.
+    Every write to an issue or label, in a word and its arguments.
     """
+
+    pull_requests: dict[int, RestPullRequest] = field(default_factory=dict)
+    """
+    The pull requests, by number.
+    """
+
+    closed_pull_requests: list[int] = field(default_factory=list)
+    """
+    The pull requests closed, in order.
+    """
+
+    def open_pull_requests(self) -> list[RestPullRequest]:
+        return list(self.pull_requests.values())
+
+    def pull_request(self, number: int) -> RestPullRequest:
+        return self.pull_requests[number]
+
+    def close_pull_request(self, number: int) -> None:
+        self.closed_pull_requests.append(number)
 
     def labels(self) -> set[str]:
         return set(self.present_labels)
@@ -112,7 +129,7 @@ class IssuesInMemory(IssueBoard, RepositoryLabels):
         self.writes.append(f"set_issue_description {number} {body}")
 
 
-def finding(number: int, stage: FindingStage, priority: Priority) -> Issue:
+def build_finding(number: int, stage: FindingStage, priority: Priority) -> Issue:
     """:param number: The issue's number.
     :param stage: Where the finding stands.
     :param priority: How urgent it is.

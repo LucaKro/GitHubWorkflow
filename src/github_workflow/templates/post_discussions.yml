@@ -22,8 +22,4 @@ jobs:
       - name: Post the waiting discussions
         env:
           GH_TOKEN: ${{ github.token }}
-          GIT_AUTHOR_NAME: github-actions[bot]
-          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-          GIT_COMMITTER_NAME: github-actions[bot]
-          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-        run: bash "__SCRIPT_FILE__" "__POSTS_DIRECTORY__" "__CATEGORIES_QUERY__" "__CREATE_QUERY__" "__FIND_QUERY__" "__COMMENT_QUERY__" "${GITHUB_REPOSITORY}" "${GITHUB_REF_NAME}"
+        run: bash "__SCRIPT_FILE__" "__POSTS_DIRECTORY__" "__CATEGORIES_QUERY__" "__CREATE_QUERY__" "__FIND_QUERY__" "__COMMENT_QUERY__" "${GITHUB_REPOSITORY}" "${GITHUB_REF_NAME}" "__COMMIT_SCRIPT__"

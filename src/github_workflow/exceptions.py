@@ -4,15 +4,21 @@ The errors the workflow's commands end in.
 
 from __future__ import annotations
 
+from abc import ABC
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from basstler_domain_model.exceptions import DataclassException
+from domain_model.exceptions import DataclassException
+from domain_model.git.revisions import BranchName
+
+from github_workflow.command_line import CommandOption, RunnableCommand
 
 if TYPE_CHECKING:
-    from basstler_domain_model.repository import Repository
-
-    from github_workflow.proofs import BranchTip
+    from domain_model.code_version import CodeVersion
+    from domain_model.git.remotes import Remote
+    from domain_model.git.revisions import BranchTip
+    from domain_model.github.vocabulary import WorkflowRunConclusion
+    from domain_model.repository import Repository
 
 # %% whose repository
 
@@ -111,55 +117,6 @@ class UnknownDefaultBranchError(DataclassException, LookupError):
         return "Check that the remote can be reached and that it has a default branch."
 
 
-# %% saving notes
-
-
-@dataclass
-class NotesBlockMissingError(DataclassException, LookupError):
-    """
-    Raised when saving finds no notes block in ``CLAUDE.local.md``.
-    """
-
-    document: str
-    """
-    The file that was read.
-    """
-
-    def error_message(self) -> str:
-        return f"{self.document} holds no github-workflow notes block"
-
-    def suggest_correction(self) -> str:
-        return "Start a session first, which writes the block, then edit inside it."
-
-
-# %% stacking
-
-
-@dataclass
-class StackContinuesAboveError(DataclassException, ValueError):
-    """
-    Raised when a pull request is to go on top of one that other pull requests in its
-    stack already build on.
-    """
-
-    below: int
-    """
-    The pull request that was to be built on.
-    """
-
-    above: tuple[int, ...]
-    """
-    The pull requests the stack already holds above it.
-    """
-
-    def error_message(self) -> str:
-        holders = ", ".join(f"#{number}" for number in self.above)
-        return f"#{self.below} already has {holders} stacked on it; a stack is a single line"
-
-    def suggest_correction(self) -> str:
-        return "Stack the pull request on the top of that stack instead."
-
-
 # %% writing on a work branch
 
 
@@ -183,7 +140,7 @@ class DefaultBranchWriteError(DataclassException, RuntimeError):
     requests may change.
     """
 
-    branch: str
+    branch: BranchName
     """
     The default branch.
     """
@@ -219,7 +176,7 @@ class PushRefusedError(DataclassException, RuntimeError):
     Raised when the remote refuses a push, which is never forced.
     """
 
-    branch: str
+    branch: BranchName
     """
     The branch that was pushed.
     """
@@ -242,7 +199,7 @@ class BranchNotPushedError(DataclassException, RuntimeError):
     Raised when a pull request is asked for a branch GitHub does not have.
     """
 
-    branch: str
+    branch: BranchName
     """
     The branch.
     """
@@ -261,7 +218,7 @@ class UnpushedCommitsError(DataclassException, RuntimeError):
     the local ones were never pushed.
     """
 
-    branch: str
+    branch: BranchName
     """
     The branch.
     """
@@ -282,12 +239,12 @@ class MergeConflictError(DataclassException, ValueError):
     progress.
     """
 
-    branch: str
+    branch: BranchName
     """
     The work branch.
     """
 
-    merged_branch: str
+    merged_branch: BranchName
     """
     The branch merged into it, as the report names it.
     """
@@ -304,10 +261,15 @@ class MergeConflictError(DataclassException, ValueError):
         )
 
     def suggest_correction(self) -> str:
+        resolved = RunnableCommand.SYNC.usage(
+            CommandOption.CONTINUE,
+            values={CommandOption.CONTINUE: " ".join(self.files)},
+        )
+        abort = RunnableCommand.SYNC.usage(CommandOption.ABORT)
         return (
             "Edit those files to their resolved content, keeping both sides' intent and "
-            f"no conflict markers, then run `sync --continue {' '.join(self.files)}`. "
-            "To give up instead, run `sync --abort`, which leaves the branch as it was."
+            f"no conflict markers, then run `{resolved}`. To give up instead, run "
+            f"`{abort}`, which leaves the branch as it was."
         )
 
 
@@ -318,7 +280,7 @@ class MergeInProgressError(DataclassException, RuntimeError):
     in progress on it.
     """
 
-    branch: str
+    branch: BranchName
     """
     The work branch.
     """
@@ -327,10 +289,9 @@ class MergeInProgressError(DataclassException, RuntimeError):
         return f"a merge is in progress on {self.branch}"
 
     def suggest_correction(self) -> str:
-        return (
-            "Finish it with `sync --continue <resolved files>`, or undo it with "
-            "`sync --abort`."
-        )
+        resolved = RunnableCommand.SYNC.usage(CommandOption.CONTINUE)
+        abort = RunnableCommand.SYNC.usage(CommandOption.ABORT)
+        return f"Finish it with `{resolved}`, or undo it with `{abort}`."
 
 
 @dataclass
@@ -339,7 +300,7 @@ class NoMergeInProgressError(DataclassException, RuntimeError):
     Raised when a merge is to be finished or undone and none is in progress.
     """
 
-    branch: str
+    branch: BranchName
     """
     The work branch.
     """
@@ -348,7 +309,9 @@ class NoMergeInProgressError(DataclassException, RuntimeError):
         return f"no merge is in progress on {self.branch}"
 
     def suggest_correction(self) -> str:
-        return "Start one with `sync --base` or `sync --on <number>`."
+        base = RunnableCommand.SYNC.usage(CommandOption.BASE)
+        stacked = RunnableCommand.SYNC.usage(CommandOption.ON)
+        return f"Start one with `{base}` or `{stacked}`."
 
 
 @dataclass
@@ -473,7 +436,7 @@ class StackedBranchMergeError(DataclassException, ValueError):
     higher in a stack, targeting the branch below it.
     """
 
-    branch: str
+    branch: BranchName
     """
     The work branch.
     """
@@ -489,10 +452,10 @@ class StackedBranchMergeError(DataclassException, ValueError):
         )
 
     def suggest_correction(self) -> str:
+        stacked = RunnableCommand.SYNC.usage(CommandOption.ON)
         return (
             "Merge the default branch into the stack's bottom pull request, and its "
-            "branch into this one with `sync --on <number>`; or use GitHub's Rebase "
-            "stack."
+            f"branch into this one with `{stacked}`; or use GitHub's Rebase stack."
         )
 
 
@@ -503,7 +466,7 @@ class BranchDeletedFromGitHubError(DataclassException, LookupError):
     request was merged.
     """
 
-    branch: str
+    branch: BranchName
     """
     The branch.
     """
@@ -566,7 +529,7 @@ class NoOpenPullRequestError(DataclassException, LookupError):
     Raised when the work branch has no open pull request to write to.
     """
 
-    branch: str
+    branch: BranchName
     """
     The work branch.
     """
@@ -584,7 +547,7 @@ class NothingToLabelError(DataclassException, ValueError):
     Raised when a pull request is to be labelled with no label to add or remove.
     """
 
-    branch: str
+    branch: BranchName
     """
     The work branch.
     """
@@ -593,7 +556,10 @@ class NothingToLabelError(DataclassException, ValueError):
         return f"labelling {self.branch}'s pull request was given no label"
 
     def suggest_correction(self) -> str:
-        return "Name a label to add with --add, or to remove with --remove."
+        return (
+            f"Name a label to add with {CommandOption.ADD}, or to remove with "
+            f"{CommandOption.REMOVE}."
+        )
 
 
 @dataclass
@@ -662,7 +628,7 @@ class UnpushedWorkError(DataclassException, RuntimeError):
     GitHub's copy lacks.
     """
 
-    branch: str
+    branch: BranchName
     """
     The work branch.
     """
@@ -703,7 +669,7 @@ class UndiscardableBranchError(DataclassException, ValueError):
     are never deleted.
     """
 
-    branch: str
+    branch: BranchName
     """
     The branch.
     """
@@ -721,7 +687,7 @@ class NothingToDiscardError(DataclassException, LookupError):
     Raised when the branch to discard is not on GitHub, so there is nothing to delete.
     """
 
-    branch: str
+    branch: BranchName
     """
     The branch.
     """
@@ -802,7 +768,7 @@ class ForkBranchDivergedError(DataclassException, ValueError):
     Raised when a fork's branch to bring up to its upstream's has commits of its own.
     """
 
-    branch: str
+    branch: BranchName
     """
     The fork's branch.
     """
@@ -825,6 +791,37 @@ class ForkBranchDivergedError(DataclassException, ValueError):
 
     def suggest_correction(self) -> str:
         return "Ask the person what to do with those commits."
+
+
+@dataclass
+class UpstreamRemoteNameTakenError(DataclassException, ValueError):
+    """
+    Raised when the checkout configures no remote reaching the repository a fork was
+    forked from, and the remote named for that repository reaches another.
+    """
+
+    remote: Remote
+    """
+    The remote holding the name.
+    """
+
+    upstream: Repository
+    """
+    The repository the fork was forked from.
+    """
+
+    def error_message(self) -> str:
+        reached = self.remote.repository or self.remote.push_url
+        return (
+            f"the checkout's remote {self.remote.name} reaches {reached}, not "
+            f"{self.upstream}, which the fork was forked from"
+        )
+
+    def suggest_correction(self) -> str:
+        return (
+            f"Ask the person to point the remote {self.remote.name} at "
+            f"{self.upstream.rooted_clone_url()}, or to add a remote reaching it."
+        )
 
 
 @dataclass
@@ -851,7 +848,7 @@ class PullRequestNotProposableError(DataclassException, ValueError):
     Raised when a fork's branch has no pull request that can be opened upstream.
     """
 
-    branch: str
+    branch: BranchName
     """
     The fork's branch.
     """
@@ -1001,7 +998,7 @@ class BrokenTestError(DataclassException, ValueError):
     def suggest_correction(self) -> str:
         return (
             "Fix the test, and run it with the interpreter the project's tests run "
-            "with (--python)."
+            f"with ({CommandOption.PYTHON})."
         )
 
 
@@ -1035,7 +1032,7 @@ class FixNotMergedError(DataclassException, ValueError):
     The pull request named as the fix.
     """
 
-    default_branch: str
+    default_branch: BranchName
     """
     The branch it has to be merged into.
     """
@@ -1194,3 +1191,166 @@ class ForeignReviewAddressError(DataclassException, ValueError):
 
     def suggest_correction(self) -> str:
         return "Give the address `review list` shows for the upstream comment."
+
+
+# %% why the upstream reviews could not be read
+
+
+@dataclass
+class UpstreamReviewsUnavailable(DataclassException, ABC):
+    """
+    Why the pull request opened upstream could not be read; returned in place of its
+    reviews rather than raised.
+    """
+
+    def line(self) -> str:
+        """:return: What kept it from being read and what to do about it, in one line."""
+        return (
+            f"upstream reviews not read: {self.error_message()}. "
+            f"{self.suggest_correction()}"
+        )
+
+
+@dataclass
+class UpstreamReadNotStarted(UpstreamReviewsUnavailable):
+    """
+    The fork's Actions started no run answering the request: Actions are off on the
+    fork, or its workflows are, or GitHub dropped the push.
+    """
+
+    fork: Repository
+    """
+    The fork.
+    """
+
+    start_seconds: float
+    """
+    How long each request's run was waited for.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"{self.fork}'s Actions started no run reading them within "
+            f"{self.start_seconds:.0f} seconds of each request"
+        )
+
+    def suggest_correction(self) -> str:
+        return (
+            f"Ask the person to check that Actions and the fork's workflows are on at "
+            f"{self.fork.url}/actions, then list the reviews again"
+        )
+
+
+@dataclass
+class UpstreamAnswerUnreadable(UpstreamReviewsUnavailable):
+    """
+    The fork's Actions answered the request, but this session's code cannot read the
+    answer back.
+    """
+
+    problem: str
+    """
+    What is wrong with the answer.
+    """
+
+    recorder: CodeVersion | None
+    """
+    The code that recorded it, ``None`` when the answer does not say.
+    """
+
+    replayer: CodeVersion
+    """
+    The code this session runs.
+    """
+
+    def error_message(self) -> str:
+        return f"the fork's Actions answered, but {self.problem}"
+
+    def suggest_correction(self) -> str:
+        if self.recorder is None:
+            return (
+                "Ask again: the answer was saved by an older version of the workflow."
+            )
+        if self.recorder != self.replayer:
+            return (
+                f"Update the plugin: the answer was recorded by "
+                f"{self.recorder.described}, this session runs "
+                f"{self.replayer.described}."
+            )
+        return "Ask for the upstream reviews again."
+
+
+@dataclass
+class UpstreamReadFailed(UpstreamReviewsUnavailable):
+    """
+    The fork's Actions run answering the request failed.
+    """
+
+    run: str
+    """
+    The run's page, with its log.
+    """
+
+    conclusion: WorkflowRunConclusion
+    """
+    How it ended.
+    """
+
+    def error_message(self) -> str:
+        return f"the run reading them ended in {self.conclusion}: {self.run}"
+
+    def suggest_correction(self) -> str:
+        return "Read its log, and file what went wrong as a finding of the workflow"
+
+
+@dataclass
+class UpstreamReadUnanswered(UpstreamReviewsUnavailable):
+    """
+    The fork's Actions did not answer the request in time.
+    """
+
+    upstream: Repository
+    """
+    The repository the pull request is open on.
+    """
+
+    timeout_seconds: float
+    """
+    How long the answer was waited for.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"the fork's Actions did not read them on {self.upstream} within "
+            f"{self.timeout_seconds:.0f} seconds"
+        )
+
+    def suggest_correction(self) -> str:
+        return "List the reviews again; the run reading them may still be going"
+
+
+# %% installing the runtime
+
+
+@dataclass
+class RuntimeInstallError(DataclassException, RuntimeError):
+    """
+    Raised when a step building the runtime fails; the build is removed, and the runtime
+    in use left alone.
+    """
+
+    step: str
+    """
+    The step that failed.
+    """
+
+    said: str
+    """
+    The last line the step wrote, on its error output or else its output.
+    """
+
+    def error_message(self) -> str:
+        return f"installing the runtime failed at {self.step}: {self.said}"
+
+    def suggest_correction(self) -> str:
+        return ""

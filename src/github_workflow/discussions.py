@@ -7,25 +7,24 @@ Discussions itself. Ideas are posted this way, and the session log is kept this 
 from __future__ import annotations
 
 import json
-import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from basstler_domain_model.git.commands import GitCommandRunner
-from basstler_domain_model.github.discussions import (
+from domain_model.git.revisions import BranchName, TextFiles
+from domain_model.github.discussions import (
     DefaultDiscussionCategory,
     DiscussionCategory,
 )
-from basstler_domain_model.github.repository_client import RepositoryDiscussions
-from basstler_domain_model.repository import Repository
+from domain_model.github.repository_client import RepositoryDiscussions
+from domain_model.repository import Repository
 
+from github_workflow.checkout import ProjectCheckout
 from github_workflow.exceptions import DiscussionsDisabledError
 from github_workflow.locations import NotesFile, WorkflowTemplate
 from github_workflow.notes.branch import NotesBranch
-from github_workflow.remotes import OwnedRemote
-from github_workflow.settings import WorkflowSettings
 from github_workflow.work import SessionLog, WorkflowStep
+from github_workflow.workflow_templates import NotesBranchWorkflow, PostingPlaceholder
 
 # %% vocabulary
 
@@ -80,47 +79,6 @@ class DiscussionTitle(StrEnum):
     SESSION_LOG = "Session log"
     """
     What sessions did without asking, one comment per entry.
-    """
-
-
-class PostingPlaceholder(StrEnum):
-    """
-    The names the posting workflow template leaves to be filled in.
-    """
-
-    NOTES_BRANCH = "__NOTES_BRANCH__"
-    """
-    The notes branch, whose pushes run the workflow.
-    """
-
-    POSTS_DIRECTORY = "__POSTS_DIRECTORY__"
-    """
-    The directory holding the posts.
-    """
-
-    SCRIPT_FILE = "__SCRIPT_FILE__"
-    """
-    The script posting them.
-    """
-
-    CATEGORIES_QUERY = "__CATEGORIES_QUERY__"
-    """
-    The query reading the repository's categories.
-    """
-
-    CREATE_QUERY = "__CREATE_QUERY__"
-    """
-    The mutation creating a discussion.
-    """
-
-    FIND_QUERY = "__FIND_QUERY__"
-    """
-    The query finding the discussion a comment goes on.
-    """
-
-    COMMENT_QUERY = "__COMMENT_QUERY__"
-    """
-    The mutation commenting on a discussion.
     """
 
 
@@ -197,39 +155,18 @@ class DiscussionPosting:
         """
         :param post: The discussion to post, after those queued before it.
         """
-        workflow = WorkflowTemplate.POSTING_WORKFLOW.value.read_text()
-        for placeholder, value in {
-            PostingPlaceholder.NOTES_BRANCH: self.notes.branch.name,
-            PostingPlaceholder.POSTS_DIRECTORY: NotesFile.DISCUSSION_POSTS.value,
-            PostingPlaceholder.SCRIPT_FILE: NotesFile.POSTING_SCRIPT.value,
-            PostingPlaceholder.CATEGORIES_QUERY: NotesFile.CATEGORIES_QUERY.value,
-            PostingPlaceholder.CREATE_QUERY: NotesFile.CREATE_QUERY.value,
-            PostingPlaceholder.FIND_QUERY: NotesFile.FIND_QUERY.value,
-            PostingPlaceholder.COMMENT_QUERY: NotesFile.COMMENT_QUERY.value,
-        }.items():
-            workflow = workflow.replace(placeholder, str(value))
+        workflow = NotesBranchWorkflow.POSTING.files(
+            self.notes.branch.name,
+            {PostingPlaceholder.POSTS_DIRECTORY: str(NotesFile.DISCUSSION_POSTS)},
+        )
         self.notes.fetch()
         self.notes.write(
-            {
-                NotesFile.DISCUSSION_POSTS.value
-                / f"{time.time_ns()}.json": (post.to_json()),
-                NotesFile.POSTING_WORKFLOW.value: workflow,
-                NotesFile.POSTING_SCRIPT.value: (
-                    WorkflowTemplate.POSTING_SCRIPT.value.read_text()
-                ),
-                NotesFile.CATEGORIES_QUERY.value: (
-                    WorkflowTemplate.CATEGORIES_QUERY.value.read_text()
-                ),
-                NotesFile.CREATE_QUERY.value: (
-                    WorkflowTemplate.CREATE_QUERY.value.read_text()
-                ),
-                NotesFile.FIND_QUERY.value: (
-                    WorkflowTemplate.FIND_QUERY.value.read_text()
-                ),
-                NotesFile.COMMENT_QUERY.value: (
-                    WorkflowTemplate.COMMENT_QUERY.value.read_text()
-                ),
-            },
+            TextFiles(
+                {
+                    NotesFile.DISCUSSION_POSTS
+                    / NotesBranch.queued_file_name(): post.to_json()
+                }
+            ).combine(workflow),
             f"Queue the discussion {post.title!r}",
         )
 
@@ -298,9 +235,9 @@ class DiscussionSessionLog(SessionLog):
     Queues the entries.
     """
 
-    branch: str
+    branch: BranchName | None
     """
-    The branch the session works on, empty when it works on none.
+    The branch the session works on, ``None`` when it works on none.
     """
 
     category: DiscussionCategory = DefaultDiscussionCategory.GENERAL
@@ -314,24 +251,23 @@ class DiscussionSessionLog(SessionLog):
     """
 
     @classmethod
-    def in_checkout(
+    def from_checkout(
         cls,
         discussions: RepositoryDiscussions,
-        git: GitCommandRunner,
-        remote: OwnedRemote,
-        settings: WorkflowSettings,
+        checkout: ProjectCheckout,
+        notes: NotesBranch,
     ) -> DiscussionSessionLog:
         """
         :param discussions: Says whether the repository has Discussions turned on.
-        :param git: Runs git in the checkout the session works in.
-        :param remote: The owner's remote, whose notes branch queues the entries.
-        :param settings: Where the notes live.
+        :param checkout: The checkout the session works in.
+        :param notes: The notes branch, which queues the entries.
         :return: The session log of a session working on the checked-out branch.
         """
+        checked_out = checkout.working_tree.checked_out_branch()
         return cls(
             discussions,
-            DiscussionPosting(NotesBranch.on(git, remote, settings)),
-            git.checked_out_branch(),
+            DiscussionPosting(notes),
+            None if checked_out is None else checked_out.name,
         )
 
     def enter(self, action: str) -> None:
@@ -344,6 +280,6 @@ class DiscussionSessionLog(SessionLog):
                 self.category,
                 self.title,
                 f"{written}{where}: {action}",
-                WorkflowTemplate.SESSION_LOG_INTRODUCTION.value.read_text(),
+                WorkflowTemplate.SESSION_LOG_INTRODUCTION.read_text(),
             )
         )

@@ -1,0 +1,10 @@
+[
+  {
+    "user": {
+      "login": "a-reviewer"
+    },
+    "state": "CHANGES_REQUESTED",
+    "body": "Please fix",
+    "submitted_at": "2026-01-02T00:00:00Z"
+  }
+]

@@ -40,12 +40,13 @@ contradicts one of these changes this file first.
   installs the runtime from the plugin's own copy, so neither an attached GitHubWorkflow
   nor a setup script is needed, and the repository worked in can be any of mine.
 - The runtime reaches no package index: both packages are pure Python without
-  dependencies, so it runs their source, the plugin's own copy and the domain model's
-  at its pinned commit, fetched from GitHub. A session whose network allows GitHub but
-  not PyPI still gets the guard.
+  dependencies, and the plugin ships the domain model beside the workflow
+  (`domain_model/src`), so the runtime runs the source of the plugin's own copy, the
+  two always of one commit. A session whose network reaches no package index still
+  gets the guard.
 - A new runtime is switched to only once its guard works and its commands load, so a
-  domain model pinned too old for the workflow's code leaves the runtime in use alone;
-  a test builds a runtime with the pinned commit, so such a pin fails before it is
+  copy that cannot build one leaves the runtime in use alone; a test builds a runtime
+  from the plugin's own source, so a change breaking the build fails before it is
   merged.
 - A plugin synced after the session started brings hooks newer than the runtime the
   session start installed. Each hook runs its own plugin copy's code, with the runtime

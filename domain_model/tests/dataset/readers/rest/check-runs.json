@@ -1,0 +1,14 @@
+{
+  "check_runs": [
+    {
+      "name": "build",
+      "conclusion": "success",
+      "details_url": "https://example.com/build"
+    },
+    {
+      "name": "lint",
+      "conclusion": null,
+      "details_url": null
+    }
+  ]
+}

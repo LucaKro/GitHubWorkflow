@@ -1,0 +1,17 @@
+{
+  "number": 9,
+  "title": "Add the thing",
+  "body": null,
+  "html_url": "https://github.com/an-upstream-owner/project/pull/9",
+  "state": "open",
+  "merged_at": null,
+  "draft": false,
+  "head": {
+    "ref": "feature",
+    "sha": "9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b",
+    "repo": {"full_name": "LucaKro/project"},
+    "user": {"login": "LucaKro"}
+  },
+  "base": {"ref": "main"},
+  "labels": []
+}

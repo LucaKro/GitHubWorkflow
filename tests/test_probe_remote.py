@@ -9,10 +9,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-
-from basstler_domain_model.git.commands import RemoteBranch
-from basstler_domain_model.git.storage_branch import StorageBranch
-from basstler_domain_model.github.clients import GitHubApi
+from domain_model.git.revisions import BranchName
+from domain_model.git.storage_branch import StorageBranch
+from domain_model.github.clients import GitHubApi
 
 from github_workflow.exceptions import NoOwnedRemoteError
 from github_workflow.probe import __main__ as probe_entry_point
@@ -46,7 +45,7 @@ def test_a_foreign_origin_is_refused_before_anything_is_written(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     entry_point: Callable[[], None],
-):
+) -> None:
     checkout = repositories.clone(foreign_url, "upstream-clone")
     output = tmp_path / "check-1"
     output.mkdir()
@@ -67,7 +66,7 @@ def test_results_go_to_the_owned_remote_when_origin_is_foreign(
     owned_url: str,
     settings: WorkflowSettings,
     tmp_path: Path,
-):
+) -> None:
     checkout = repositories.clone(foreign_url, "upstream-clone")
     checkout.git.run("remote", "add", "fork", owned_url)
     directory = tmp_path / "check-1"
@@ -76,9 +75,9 @@ def test_results_go_to_the_owned_remote_when_origin_is_foreign(
     before = repositories.branches(foreign_url)
     remote = OwnedRemotes.read(checkout.git, settings).chosen
 
-    ResultsPublication(checkout.git, remote, directory).publish()
+    ResultsPublication(remote, directory).publish()
 
-    results = StorageBranch(checkout.git, RemoteBranch(remote.name, ResultsBranch.NAME))
+    results = StorageBranch(remote.branch(BranchName(ResultsBranch.NAME)))
     results.fetch()
     published = results.read(Path("check-1/report.md"))
     assert published == (directory / "report.md").read_text()

@@ -1,0 +1,6 @@
+[project]
+name = "doubling-workspace"
+
+[tool.uv.workspace]
+members = ["packages/*"]
+exclude = ["packages/unused"]

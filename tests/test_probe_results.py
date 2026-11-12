@@ -11,7 +11,7 @@ from github_workflow.probe.results import CheckGroup, ProbeReport
 # %% recording
 
 
-def test_recording_hands_back_whether_the_check_succeeded():
+def test_recording_hands_back_whether_the_check_succeeded() -> None:
     report = ProbeReport({})
 
     assert report.record(CheckGroup.GIT, "push", False, "refused", 0.1) is False
@@ -20,7 +20,7 @@ def test_recording_hands_back_whether_the_check_succeeded():
 # %% writing
 
 
-def test_the_report_has_a_section_only_for_groups_that_ran():
+def test_the_report_has_a_section_only_for_groups_that_ran() -> None:
     report = ProbeReport({})
     report.record(CheckGroup.GIT, "push", True, "pushed", 0.1)
 
@@ -30,7 +30,7 @@ def test_the_report_has_a_section_only_for_groups_that_ran():
     assert f"## {CheckGroup.SIGNALS}" not in markdown
 
 
-def test_the_results_hold_every_outcome():
+def test_the_results_hold_every_outcome() -> None:
     report = ProbeReport({})
     report.record(CheckGroup.GIT, "push", True, "pushed", 0.1)
 

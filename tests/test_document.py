@@ -4,12 +4,21 @@ Tests for :mod:`github_workflow.notes.document`: the notes block in ``CLAUDE.loc
 
 from __future__ import annotations
 
+import pytest
+
 from github_workflow.command_line import (
+    CommandOption,
     FindingSubcommand,
-    ToolRepository,
+    RefusalAdvice,
     WorkflowCommand,
 )
-from github_workflow.notes.document import NotesBlock, NotesSection
+from github_workflow.notes.document import (
+    ArgumentReference,
+    CommandReference,
+    NotesBlock,
+    NotesSection,
+)
+from github_workflow.plugin import ToolRepository
 from github_workflow.policy import Attribution
 
 # %% helpers
@@ -33,22 +42,22 @@ def block(branch: str = "feature") -> NotesBlock:
 # %% writing and reading back
 
 
-def test_the_sections_read_back_as_they_were_written():
+def test_the_sections_read_back_as_they_were_written() -> None:
     written = block()
 
     assert NotesBlock.read_sections(written.render()) == written.sections
 
 
-def test_text_outside_the_block_survives_rewriting_it():
+def test_text_outside_the_block_survives_rewriting_it() -> None:
     before, after = "my own line above\n", "\nmy own line below\n"
     document = before + block().render() + after
 
-    rewritten = block().written_into(document)
+    rewritten = block().updated_document(document)
 
     assert rewritten.startswith(before) and rewritten.endswith(after)
 
 
-def test_a_detached_head_has_no_progress_section():
+def test_a_detached_head_has_no_progress_section() -> None:
     assert NotesSection.BRANCH_PROGRESS not in NotesBlock.read_sections(
         block(branch="").render()
     )
@@ -57,7 +66,9 @@ def test_a_detached_head_has_no_progress_section():
 # %% the rules the header states
 
 
-def test_the_header_names_every_command_a_finding_is_proven_and_worked_on_with():
+def test_the_header_names_every_command_a_finding_is_proven_and_worked_on_with() -> (
+    None
+):
     rendered = block().render()
 
     finding = f"workflow {WorkflowCommand.FINDING}"
@@ -71,7 +82,7 @@ def test_the_header_names_every_command_a_finding_is_proven_and_worked_on_with()
     assert [command for command in named if command not in rendered] == []
 
 
-def test_the_header_names_the_credit_a_commit_refuses_and_the_line_it_carries():
+def test_the_header_names_the_credit_a_commit_refuses_and_the_line_it_carries() -> None:
     """
     A session that does not know the commit command refuses an assistant's co-author
     trailer adds one, is refused, and tries again.
@@ -82,21 +93,23 @@ def test_the_header_names_the_credit_a_commit_refuses_and_the_line_it_carries():
     assert f'"{Attribution.ACKNOWLEDGEMENT}"' in rendered
 
 
-def test_the_header_says_how_to_report_an_unnecessary_refusal():
-    assert ToolRepository.refusal_hint() in block().render()
+def test_the_header_says_how_to_report_an_unnecessary_refusal() -> None:
+    assert RefusalAdvice.hint() in block().render()
 
 
-def test_the_header_says_never_to_get_around_a_refusal():
-    assert ToolRepository.workaround_ban() in block().render()
+def test_the_header_says_never_to_get_around_a_refusal() -> None:
+    assert RefusalAdvice.workaround_ban() in block().render()
 
 
-def test_the_header_names_exactly_the_owner_s_repositories_a_session_may_attach():
-    hint = ToolRepository.refusal_hint()
+def test_the_header_names_exactly_the_owner_s_repositories_a_session_may_attach() -> (
+    None
+):
+    hint = RefusalAdvice.hint()
 
     assert f"attach {' and '.join(ToolRepository)} with push access" in hint
 
 
-def test_the_header_tells_a_session_to_file_findings_without_asking():
+def test_the_header_tells_a_session_to_file_findings_without_asking() -> None:
     """
     A session that asks whether to file a finding costs the person a turn; they review
     findings on GitHub.
@@ -104,4 +117,18 @@ def test_the_header_tells_a_session_to_file_findings_without_asking():
     rendered = block().render()
 
     assert "never ask whether to file" in rendered
-    assert "file it there without asking first" in ToolRepository.refusal_hint()
+    assert "file it there without asking first" in RefusalAdvice.hint()
+
+
+# %% commands named in the header
+
+
+def test_the_header_names_no_command_left_unresolved() -> None:
+    assert CommandReference.pattern().search(block().render()) is None
+
+
+def test_a_reference_to_an_option_a_command_lacks_is_refused() -> None:
+    reference = ArgumentReference("PUSH", (CommandOption.TITLE,))
+
+    with pytest.raises(KeyError):
+        reference.text("workflow")

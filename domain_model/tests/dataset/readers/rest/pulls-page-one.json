@@ -1,0 +1,25 @@
+[
+  {
+    "number": 12,
+    "title": "A pull request",
+    "body": null,
+    "html_url": "https://github.com/upstream-owner/a-repository/pull/12",
+    "state": "closed",
+    "merged_at": null,
+    "draft": false,
+    "head": {
+      "ref": "a-branch",
+      "sha": "a1b2c3",
+      "repo": {
+        "full_name": "a-fork-owner/a-repository"
+      },
+      "user": {
+        "login": "a-fork-owner"
+      }
+    },
+    "base": {
+      "ref": "main"
+    },
+    "labels": []
+  }
+]

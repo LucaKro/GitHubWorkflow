@@ -13,9 +13,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from basstler_domain_model.git.commands import GitCommandRunner, RemoteBranch
-from basstler_domain_model.git.storage_branch import StorageBranch
+from domain_model.git.commands import GitCommandRunner
+from domain_model.git.revisions import BranchName, TextFiles
+from domain_model.git.storage_branch import StorageBranch
 
+from github_workflow.plugin import Distribution
 from github_workflow.remotes import OwnedRemote, OwnedRemotes
 from github_workflow.settings import WorkflowSettings
 
@@ -28,7 +30,7 @@ class ResultsBranch(StrEnum):
     they have been read.
     """
 
-    NAME = "github-workflow/probe-results"
+    NAME = f"{Distribution.WORKFLOW}/probe-results"
     """
     The branch on the remote.
     """
@@ -38,11 +40,6 @@ class ResultsBranch(StrEnum):
 class ResultsPublication:
     """
     One directory of results, published to the results branch of the owner's remote.
-    """
-
-    git: GitCommandRunner
-    """
-    Runs git in the checkout.
     """
 
     remote: OwnedRemote
@@ -59,16 +56,16 @@ class ResultsPublication:
         """
         :return: Where the results were published, in one line.
         """
-        results = StorageBranch(
-            self.git, RemoteBranch(self.remote.name, ResultsBranch.NAME)
-        )
+        results = StorageBranch(self.remote.branch(BranchName(ResultsBranch.NAME)))
         results.fetch()
         results.write(
-            {
-                Path(self.directory.name) / file.name: file.read_text()
-                for file in sorted(self.directory.iterdir())
-                if file.is_file()
-            },
+            TextFiles(
+                {
+                    Path(self.directory.name) / file.name: file.read_text()
+                    for file in sorted(self.directory.iterdir())
+                    if file.is_file()
+                }
+            ),
             f"Record results {self.directory.name}",
         )
         return f"published to {ResultsBranch.NAME}: {self.directory.name}/"
@@ -86,7 +83,7 @@ def main() -> None:
     """
     git = GitCommandRunner(Path.cwd())
     remote = OwnedRemotes.read(git, WorkflowSettings()).chosen
-    print(ResultsPublication(git, remote, Path(sys.argv[1])).publish())
+    print(ResultsPublication(remote, Path(sys.argv[1])).publish())
 
 
 if __name__ == "__main__":

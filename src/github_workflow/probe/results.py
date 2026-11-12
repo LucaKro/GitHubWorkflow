@@ -8,6 +8,8 @@ import json
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 
+from domain_model.programs import Program
+
 # %% one finding
 
 
@@ -17,17 +19,100 @@ class CheckGroup(StrEnum):
     """
 
     LIBRARY = "domain model, used live"
+    """
+    The domain model's own calls to GitHub.
+    """
+
     GIT = "git: a notes branch on the repository"
+    """
+    Git reaching the repository, on a notes branch of the probe's own.
+    """
+
     ISSUE_BOARD = "issues: the finding boards"
+    """
+    Filing, labelling and closing issues.
+    """
+
     PULL_REQUEST = "pull requests: draft, review threads, base"
+    """
+    Opening, rewriting and closing pull requests.
+    """
+
     STACKS = "stacks: retargeting and native stacks, through the stacks command"
+    """
+    Retargeting pull requests and GitHub's native stacks, through ``stack on``.
+    """
+
     SETTINGS = "settings: issues, merged-branch deletion, Actions"
+    """
+    Reading and writing the repository settings the workflow relies on.
+    """
+
     ACTIONS = "Actions: deleting branches from a workflow"
+    """
+    An Actions workflow deleting branches, as the notes branch's workflows do.
+    """
+
     SIGNALS = "signals beside the repository"
+    """
+    What the session can read beside the repository itself.
+    """
+
+
+class EnvironmentFact(StrEnum):
+    """
+    What a probe records about the session it runs in, each valued as the report names
+    it.
+    """
+
+    PYTHON = "python"
+    """
+    The interpreter's version.
+    """
+
+    CLOUD_SESSION = "cloud session"
+    """
+    Whether the session runs in the cloud.
+    """
+
+    TOKEN_VARIABLE_SET = "token variable set"
+    """
+    Whether a variable holds a GitHub token.
+    """
+
+    CHECKED_OUT_BRANCH = "checked-out branch"
+    """
+    The branch the checkout has checked out.
+    """
+
+    GIT_AUTHOR = "git author"
+    """
+    Who git records as a commit's author.
+    """
+
+    GIT = Program.GIT
+    """
+    Git's version.
+    """
+
+    GITHUB_CLI = Program.GITHUB_CLI
+    """
+    The GitHub CLI's version.
+    """
+
+    REPOSITORY = "repository"
+    """
+    The repository the session works in.
+    """
+
+    DEFAULT_BRANCH = "default branch"
+    """
+    Its default branch.
+    """
 
 
 @dataclass(frozen=True)
-class CheckOutcome:
+class ProbeCheckOutcome:
     """
     One check and what it found.
     """
@@ -72,7 +157,7 @@ class ProbeReport:
     What the session runs on, by what was looked at.
     """
 
-    outcomes: list[CheckOutcome] = field(default_factory=list)
+    outcomes: list[ProbeCheckOutcome] = field(default_factory=list)
     """
     Every check, in the order it ran.
     """
@@ -93,7 +178,9 @@ class ProbeReport:
         :param seconds: How long it took.
         :return: *succeeded*, so a scenario can stop at a failed step.
         """
-        self.outcomes.append(CheckOutcome(group, check, succeeded, detail, seconds))
+        self.outcomes.append(
+            ProbeCheckOutcome(group, check, succeeded, detail, seconds)
+        )
         return succeeded
 
     def markdown(self) -> str:

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from domain_model.git.revisions import TextFiles
+
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.remotes import OwnedRemotes
@@ -24,14 +26,26 @@ def test_notes_are_saved_to_the_settings_branch_on_the_owner_s_remote(
     owned_url: str,
     foreign_url: str,
     settings: WorkflowSettings,
-):
+) -> None:
     checkout = repositories.clone(foreign_url, "upstream-clone")
     checkout.git.run("remote", "add", "fork", owned_url)
-    notes = NotesBranch.on(
-        checkout.git, OwnedRemotes.read(checkout.git, settings).chosen, settings
+    notes = NotesBranch.from_settings(
+        OwnedRemotes.read(checkout.git, settings).chosen, settings
     )
 
-    notes.write({Path(NotesFile.STANDING_NOTES): "a standing note\n"}, "Save")
+    notes.write(
+        TextFiles({Path(NotesFile.STANDING_NOTES): "a standing note\n"}), "Save"
+    )
 
     assert settings.notes_branch in repositories.branches(owned_url)
     assert settings.notes_branch not in repositories.branches(foreign_url)
+
+
+# %% queued files
+
+
+def test_a_file_queued_later_sorts_after_one_queued_before() -> None:
+    first = NotesBranch.queued_file_name()
+    later = NotesBranch.queued_file_name()
+
+    assert sorted([later, first]) == [first, later]

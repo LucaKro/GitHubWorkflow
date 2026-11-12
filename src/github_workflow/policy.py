@@ -9,13 +9,18 @@ from dataclasses import dataclass
 from enum import StrEnum
 from functools import cached_property
 
-from basstler_domain_model.github.repository_client import RepositoryDetails
+from domain_model.git.commands import GitIdentity
+from domain_model.git.identity import PersonIdentity
+from domain_model.git.revisions import BranchName
+from domain_model.github.repository_client import RepositoryDetails
 
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.exceptions import (
     AssistantCreditError,
     DefaultBranchWriteError,
     DetachedHeadError,
+    MergeInProgressError,
+    NoMergeInProgressError,
 )
 from github_workflow.remotes import OwnedRemote
 
@@ -35,22 +40,6 @@ class Attribution(StrEnum):
     CO_AUTHOR_TRAILER = "co-authored-by:"
     """
     The trailer crediting a co-author, compared in lower case.
-    """
-
-
-class GitIdentity(StrEnum):
-    """
-    The identities a commit records, as ``git var`` names them.
-    """
-
-    AUTHOR = "GIT_AUTHOR_IDENT"
-    """
-    Who wrote the change.
-    """
-
-    COMMITTER = "GIT_COMMITTER_IDENT"
-    """
-    Who recorded the commit.
     """
 
 
@@ -76,10 +65,10 @@ class AssistantMarker(StrEnum):
         :param identity: An identity, as ``Name <address>`` with anything after it.
         :return: Whether it is an assistant's.
         """
-        name, _, rest = identity.partition("<")
-        domain = rest.partition(">")[0].rpartition("@")[2].casefold()
+        person = PersonIdentity.parse(identity)
+        domain = person.domain
         on_the_domain = domain == cls.ANTHROPIC or domain.endswith(f".{cls.ANTHROPIC}")
-        return on_the_domain or name.strip().casefold() == cls.CLAUDE
+        return on_the_domain or person.name.casefold() == cls.CLAUDE
 
 
 # %% the rules
@@ -107,23 +96,43 @@ class WritePolicy:
     """
 
     @cached_property
-    def default_branch(self) -> str:
+    def default_branch(self) -> BranchName:
         """
         The branch only pull requests change.
         """
         return self.details.default_branch()
 
-    def work_branch(self) -> str:
+    def work_branch(self) -> BranchName:
         """
         :return: The checked-out branch, which a commit or a push may change.
         :raises DetachedHeadError: If no branch is checked out.
         :raises DefaultBranchWriteError: If it is the default branch.
         """
-        branch = self.checkout.git.checked_out_branch()
-        if not branch:
+        branch = self.checkout.working_tree.checked_out_branch()
+        if branch is None:
             raise DetachedHeadError()
-        if branch == self.default_branch:
-            raise DefaultBranchWriteError(branch)
+        if branch.name == self.default_branch:
+            raise DefaultBranchWriteError(branch.name)
+        return branch.name
+
+    def refuse_while_merging(self, branch: BranchName) -> None:
+        """
+        :param branch: The checked-out branch.
+        :raises MergeInProgressError: If a merge is in progress on it.
+        """
+        if self.checkout.merge.in_progress():
+            raise MergeInProgressError(branch)
+
+    def branch_being_merged(self) -> BranchName:
+        """
+        :return: The work branch, which a merge is in progress on.
+        :raises DetachedHeadError: If no branch is checked out.
+        :raises DefaultBranchWriteError: If it is the default branch.
+        :raises NoMergeInProgressError: If no merge is in progress.
+        """
+        branch = self.work_branch()
+        if not self.checkout.merge.in_progress():
+            raise NoMergeInProgressError(branch)
         return branch
 
     def commit_message(self, message: str) -> str:
@@ -134,7 +143,7 @@ class WritePolicy:
             of the message, credits an assistant.
         """
         for identity in GitIdentity:
-            recorded = self.checkout.git.run("var", identity)
+            recorded = self.checkout.git.identity(identity)
             if AssistantMarker.names_an_assistant(recorded):
                 raise AssistantCreditError(recorded)
         for line in message.splitlines():

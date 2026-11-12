@@ -5,27 +5,28 @@ one in use came from another, and a build that fails leaves the runtime in use a
 
 from __future__ import annotations
 
-import re
 import subprocess
 import sys
 import threading
 from pathlib import Path
 
 import pytest
-from basstler_domain_model.environment import GitHubActionsVariable
-from basstler_domain_model.locations import PathEnumeration
+from domain_model.commands import CommandResult, CommandRunner
+from domain_model.environment import ShellVariable
+from domain_model.locations import PathEnumeration
 
+import github_workflow
 import github_workflow.install
 from github_workflow.command_line import WorkflowCommand
-from github_workflow.install import (
-    DirectoryLock,
-    DomainModelSource,
+from github_workflow.exceptions import RuntimeInstallError
+from github_workflow.install import DirectoryLock, RuntimeInstallation, RuntimeSwitch
+from github_workflow.locations import RuntimeLocation, UnstampedDirectory
+from github_workflow.plugin import (
+    FileMode,
     Launcher,
     LauncherInstallation,
-    RuntimeFile,
-    RuntimeInstallation,
-    RuntimeSwitch,
-    UnstampedDirectory,
+    PluginSource,
+    RuntimeModule,
 )
 
 # %% the dataset
@@ -47,11 +48,11 @@ class RuntimeDataset(PathEnumeration):
 
 def test_a_runtime_built_from_a_plugin_whose_content_changed_since_is_not_current(
     tmp_path: Path,
-):
+) -> None:
     plugin = tmp_path / "plugin"
     plugin.mkdir()
     (plugin / "module.py").write_text("before\n")
-    runtime = built_from(tmp_path / "environments" / "runtime", plugin)
+    runtime = stamp_runtime(tmp_path / "environments" / "runtime", plugin)
     (plugin / "module.py").write_text("after\n")
 
     assert not RuntimeInstallation(plugin, runtime).current
@@ -60,54 +61,46 @@ def test_a_runtime_built_from_a_plugin_whose_content_changed_since_is_not_curren
 @pytest.mark.parametrize("directory", list(UnstampedDirectory))
 def test_a_change_outside_what_the_runtime_is_built_from_keeps_it_current(
     tmp_path: Path, directory: UnstampedDirectory
-):
+) -> None:
     plugin = tmp_path / "plugin"
     (plugin / directory).mkdir(parents=True)
-    runtime = built_from(tmp_path / "environments" / "runtime", plugin)
+    runtime = stamp_runtime(tmp_path / "environments" / "runtime", plugin)
     (plugin / directory / "written").write_text("since\n")
 
     assert RuntimeInstallation(plugin, runtime).current
 
 
-def test_the_domain_model_is_pinned_to_one_commit():
-    """
-    A push to the domain model's default branch must not change what a new runtime
-    runs, the guard included, without a change here.
-    """
-    assert re.fullmatch(r"[0-9a-f]{40}", DomainModelSource.COMMIT)
-
-
-def built_from(location: Path, plugin: Path) -> Path:
+def stamp_runtime(location: Path, plugin: Path) -> Path:
     """:param location: Where the runtime is.
     :param plugin: The plugin it was built from.
     :return: The runtime, a directory that says so."""
     location.mkdir(parents=True)
-    (location / RuntimeFile.PLUGIN).write_text(
+    (location / RuntimeLocation.PLUGIN_STAMP).write_text(
         RuntimeInstallation(plugin, location).stamp
     )
     return location
 
 
-def test_a_runtime_built_from_this_plugin_is_current(tmp_path: Path):
+def test_a_runtime_built_from_this_plugin_is_current(tmp_path: Path) -> None:
     plugin = tmp_path / "plugin"
-    runtime = built_from(tmp_path / "runtime", plugin)
+    runtime = stamp_runtime(tmp_path / "runtime", plugin)
 
     assert RuntimeInstallation(plugin, runtime).current
 
 
-def test_a_runtime_built_from_another_plugin_is_not(tmp_path: Path):
-    runtime = built_from(tmp_path / "runtime", tmp_path / "old-plugin")
+def test_a_runtime_built_from_another_plugin_is_not(tmp_path: Path) -> None:
+    runtime = stamp_runtime(tmp_path / "runtime", tmp_path / "old-plugin")
 
     assert not RuntimeInstallation(tmp_path / "new-plugin", runtime).current
 
 
-def test_no_runtime_is_not_current(tmp_path: Path):
+def test_no_runtime_is_not_current(tmp_path: Path) -> None:
     assert not RuntimeInstallation(tmp_path / "plugin", tmp_path / "runtime").current
 
 
-def test_a_current_runtime_is_not_built_again(tmp_path: Path):
+def test_a_current_runtime_is_not_built_again(tmp_path: Path) -> None:
     plugin = tmp_path / "plugin"
-    runtime = built_from(tmp_path / "environments" / "runtime", plugin)
+    runtime = stamp_runtime(tmp_path / "environments" / "runtime", plugin)
 
     assert RuntimeInstallation(plugin, runtime).install() is None
     assert [path.name for path in runtime.parent.iterdir()] == [runtime.name]
@@ -118,34 +111,34 @@ def test_a_current_runtime_is_not_built_again(tmp_path: Path):
 
 def test_a_failing_build_leaves_the_runtime_in_use_alone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+) -> None:
     """
     An interpreter that does not exist fails the very first step, before any download.
     """
-    runtime = built_from(tmp_path / "environments" / "runtime", tmp_path / "old")
+    runtime = stamp_runtime(tmp_path / "environments" / "runtime", tmp_path / "old")
     monkeypatch.setattr(sys, "executable", str(tmp_path / "no-interpreter"))
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(RuntimeInstallError):
         RuntimeInstallation(tmp_path / "new", runtime).install()
 
     assert [path.name for path in runtime.parent.iterdir()] == [runtime.name]
-    assert (runtime / RuntimeFile.PLUGIN).read_text() == (
+    assert (runtime / RuntimeLocation.PLUGIN_STAMP).read_text() == (
         RuntimeInstallation(tmp_path / "old", runtime).stamp
     )
 
 
 def test_a_failing_step_is_reported_with_what_it_said_on_its_error_output(
     tmp_path: Path,
-):
+) -> None:
     build = tmp_path / "build"
     build.mkdir()
 
-    with pytest.raises(SystemExit) as failed:
-        RuntimeInstallation(tmp_path / "plugin", tmp_path / "runtime")._run(
-            [str(RuntimeDataset.FAILING_STEP.value)], build
-        )
+    finished = CommandRunner(tmp_path).run(str(RuntimeDataset.FAILING_STEP))
 
-    assert str(failed.value).endswith(": the reason the step failed")
+    with pytest.raises(RuntimeInstallError) as failed:
+        RuntimeInstallation.raise_if_failed(finished, build)
+
+    assert (failed.value.said, build.exists()) == ("the reason the step failed", False)
 
 
 # %% building without a package index
@@ -153,7 +146,7 @@ def test_a_failing_step_is_reported_with_what_it_said_on_its_error_output(
 
 def test_a_runtime_is_built_without_pip(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+) -> None:
     """
     pip reaches a package index for the build tools of both packages, which a session's
     network may not allow. Every command a build starts is recorded and succeeds;
@@ -162,15 +155,13 @@ def test_a_runtime_is_built_without_pip(
     """
     started: list[list[str]] = []
 
-    def run(command: list[str], **options: object) -> subprocess.CompletedProcess[str]:
-        started.append([str(word) for word in command])
-        if command[1:3] == ["-m", "venv"]:
-            interpreter = Path(command[-1]) / "bin" / "python"
-            interpreter.parent.mkdir(parents=True, exist_ok=True)
-            interpreter.symlink_to(sys.executable)
-        return subprocess.CompletedProcess(command, 0, '{"decision": "deny"}', "")
+    def run(
+        runner: CommandRunner, program: str, *arguments: str, **options: object
+    ) -> CommandResult:
+        started.append([program, *arguments])
+        return builds(program, *arguments)
 
-    monkeypatch.setattr(github_workflow.install.subprocess, "run", run)
+    monkeypatch.setattr(CommandRunner, "run", run)
 
     RuntimeInstallation(
         Path(github_workflow.install.__file__).parents[2],
@@ -181,36 +172,73 @@ def test_a_runtime_is_built_without_pip(
     assert [command for command in started if "pip" in command] == []
 
 
-def builds_commands_check_fails(
-    command: list[str], **options: object
-) -> subprocess.CompletedProcess[str]:
+def test_a_runtime_is_built_without_downloading_the_domain_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """
-    Stands in for every command a build starts: each succeeds, the new guard denies a
-    push, and creating a virtual environment leaves an interpreter in it, except that
-    loading the workflow's commands fails, as with a domain model too old for them.
+    The domain model is shipped with the plugin, so a build runs no git command, which
+    a session's network or a commit gone from GitHub would make fail.
+    """
+    started: list[list[str]] = []
 
-    :param command: The command started.
+    def run(
+        runner: CommandRunner, program: str, *arguments: str, **options: object
+    ) -> CommandResult:
+        started.append([program, *arguments])
+        return builds(program, *arguments)
+
+    monkeypatch.setattr(CommandRunner, "run", run)
+
+    RuntimeInstallation(
+        Path(github_workflow.install.__file__).parents[2],
+        tmp_path / "runtime",
+        tmp_path / "bin",
+    ).install()
+
+    assert [command for command in started if command[0] == "git"] == []
+
+
+def builds(program: str, *arguments: str) -> CommandResult:
+    """
+    Stands in for every command a build starts: each succeeds, and creating a virtual
+    environment leaves an interpreter in it.
+
+    :param program: The program started.
+    :param arguments: Its arguments.
+    :return: How it finished.
+    """
+    if arguments[:2] == ("-m", "venv"):
+        interpreter = Path(arguments[-1]) / RuntimeLocation.INTERPRETER
+        interpreter.parent.mkdir(parents=True, exist_ok=True)
+        interpreter.symlink_to(sys.executable)
+    return CommandResult((program, *arguments), 0, "", "", 0.0)
+
+
+def builds_commands_check_fails(
+    runner: CommandRunner, program: str, *arguments: str, **options: object
+) -> CommandResult:
+    """
+    Stands in for every command a build starts as :func:`builds` does, except that
+    checking the new runtime fails, as with a domain model too old for the workflow's
+    commands.
+
+    :param runner: The runner starting it.
+    :param program: The program started.
+    :param arguments: Its arguments.
     :param options: How it is started.
     :return: How it finished.
     """
-    words = [str(word) for word in command]
-    if words[1:3] == ["-m", "venv"]:
-        interpreter = Path(words[-1]) / "bin" / "python"
-        interpreter.parent.mkdir(parents=True, exist_ok=True)
-        interpreter.symlink_to(sys.executable)
-    if github_workflow.__name__ in words:
-        return subprocess.CompletedProcess(command, 1, "", "ImportError: too old")
-    return subprocess.CompletedProcess(command, 0, '{"decision": "deny"}', "")
+    if RuntimeModule.RUNTIME_CHECK in arguments:
+        return CommandResult((program, *arguments), 1, "", "ImportError: too old", 0.0)
+    return builds(program, *arguments)
 
 
 def test_a_runtime_whose_commands_do_not_load_is_not_switched_to(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    monkeypatch.setattr(
-        github_workflow.install.subprocess, "run", builds_commands_check_fails
-    )
+) -> None:
+    monkeypatch.setattr(CommandRunner, "run", builds_commands_check_fails)
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(RuntimeInstallError):
         RuntimeInstallation(
             Path(github_workflow.install.__file__).parents[2],
             tmp_path / "runtime",
@@ -220,16 +248,10 @@ def test_a_runtime_whose_commands_do_not_load_is_not_switched_to(
     assert not (tmp_path / "runtime").exists()
 
 
-@pytest.mark.skipif(
-    GitHubActionsVariable.REPOSITORY_OWNER.read() is not None,
-    reason="downloads the pinned domain model from GitHub",
-)
-def test_a_runtime_built_with_the_pinned_domain_model_runs_its_commands(
-    tmp_path: Path,
-):
+def test_a_runtime_built_from_the_plugin_runs_its_commands(tmp_path: Path) -> None:
     """
-    Builds a runtime for real, so a pin too old for the workflow's code fails here
-    rather than in a session.
+    Builds a runtime for real, so source the runtime cannot run fails here rather than
+    in a session.
     """
     RuntimeInstallation(
         Path(github_workflow.install.__file__).parents[2],
@@ -239,7 +261,7 @@ def test_a_runtime_built_with_the_pinned_domain_model_runs_its_commands(
 
     finished = subprocess.run(
         [
-            str(tmp_path / "runtime" / "bin" / "python"),
+            str(tmp_path / "runtime" / RuntimeLocation.INTERPRETER),
             "-I",
             "-m",
             github_workflow.__name__,
@@ -252,19 +274,40 @@ def test_a_runtime_built_with_the_pinned_domain_model_runs_its_commands(
     assert finished.returncode == 0
 
 
+def test_a_runtime_holding_a_copy_under_a_former_name_is_replaced_whole(
+    tmp_path: Path,
+) -> None:
+    location = tmp_path / "runtime"
+    former = tmp_path / ".runtime-former"
+    (former / RuntimeLocation.SOURCES / "domain-model").mkdir(parents=True)
+    RuntimeSwitch(location).activate(former)
+
+    RuntimeInstallation(
+        Path(github_workflow.install.__file__).parents[2], location, tmp_path / "bin"
+    ).install()
+
+    copies = sorted(
+        copy.name for copy in (location / RuntimeLocation.SOURCES).iterdir()
+    )
+    assert (copies, former.exists()) == (
+        sorted(source.distribution for source in PluginSource),
+        False,
+    )
+
+
 # %% the launcher
 
 
-def test_the_launcher_runs_the_workflow_from_the_runtime(tmp_path: Path):
+def test_the_launcher_runs_the_workflow_from_the_runtime(tmp_path: Path) -> None:
     """
     A runtime whose interpreter hands over to this one, which has the workflow
     installed.
     """
     runtime = tmp_path / "runtime"
-    (runtime / "bin").mkdir(parents=True)
-    interpreter = runtime / "bin" / "python"
+    interpreter = runtime / RuntimeLocation.INTERPRETER
+    interpreter.parent.mkdir(parents=True)
     interpreter.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
-    interpreter.chmod(0o755)
+    interpreter.chmod(FileMode.RUNNABLE)
     LauncherInstallation(tmp_path / "bin", runtime).install()
 
     ran = subprocess.run(
@@ -278,7 +321,7 @@ def test_the_launcher_runs_the_workflow_from_the_runtime(tmp_path: Path):
 
 def test_a_file_of_the_launcher_s_name_that_is_not_the_workflow_s_is_left_alone(
     tmp_path: Path,
-):
+) -> None:
     (tmp_path / "bin").mkdir()
     own = tmp_path / "bin" / Launcher.COMMAND
     own.write_text("#!/bin/sh\necho mine\n")
@@ -288,7 +331,7 @@ def test_a_file_of_the_launcher_s_name_that_is_not_the_workflow_s_is_left_alone(
     assert own.read_text() == "#!/bin/sh\necho mine\n"
 
 
-def test_an_earlier_launcher_of_the_workflow_s_is_replaced(tmp_path: Path):
+def test_an_earlier_launcher_of_the_workflow_s_is_replaced(tmp_path: Path) -> None:
     LauncherInstallation(tmp_path / "bin", tmp_path / "old").install()
     newer = LauncherInstallation(tmp_path / "bin", tmp_path / "new")
 
@@ -300,9 +343,11 @@ def test_an_earlier_launcher_of_the_workflow_s_is_replaced(tmp_path: Path):
 @pytest.mark.parametrize("on_path", [True, False])
 def test_a_launcher_outside_the_path_says_so(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, on_path: bool
-):
+) -> None:
     directory = tmp_path / "bin"
-    monkeypatch.setenv("PATH", str(directory) if on_path else "/usr/bin")
+    monkeypatch.setenv(
+        ShellVariable.COMMAND_SEARCH_PATH, str(directory) if on_path else "/usr/bin"
+    )
 
     said = LauncherInstallation(directory, tmp_path / "runtime").install()
 
@@ -314,7 +359,7 @@ def test_a_launcher_outside_the_path_says_so(
 
 def test_an_install_waits_for_the_one_running_and_takes_its_runtime(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+) -> None:
     """
     An interpreter that does not exist makes an install that does not wait fail at once,
     so a running install is what keeps it waiting.
@@ -332,52 +377,77 @@ def test_an_install_waits_for_the_one_running_and_takes_its_runtime(
         waiting.start()
         waiting.join(timeout=0.5)
         assert waiting.is_alive()
-        built_from(runtime, plugin)
+        stamp_runtime(runtime, plugin)
     waiting.join()
 
     assert installed == [None]
 
 
-def test_a_current_runtime_is_not_started_again(tmp_path: Path):
+def test_a_current_runtime_is_not_started_again(tmp_path: Path) -> None:
     plugin = tmp_path / "plugin"
-    runtime = built_from(tmp_path / "environments" / "runtime", plugin)
+    runtime = stamp_runtime(tmp_path / "environments" / "runtime", plugin)
 
     assert RuntimeInstallation(plugin, runtime).start() is None
 
 
-def test_a_started_install_runs_this_installer_on_its_own(
+def test_a_started_install_runs_the_installer_from_the_plugin_s_own_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    plugin = tmp_path / "plugin"
+) -> None:
+    """
+    The command started, run itself on a runtime built from the plugin since, finds the
+    installer in the plugin's source and has nothing to install.
+    """
+    plugin = Path(github_workflow.install.__file__).parents[2]
     runtime = tmp_path / "runtime"
     started: list[list[str]] = []
-    monkeypatch.setattr(
-        subprocess, "Popen", lambda command, **options: started.append(command)
-    )
+    with monkeypatch.context() as starting:
+        starting.setattr(
+            subprocess, "Popen", lambda command, **options: started.append(command)
+        )
+        RuntimeInstallation(plugin, runtime).start()
+    stamp_runtime(runtime, plugin)
 
-    RuntimeInstallation(plugin, runtime).start()
+    [command] = started
+    finished = subprocess.run(command, capture_output=True, text=True)
 
-    assert started == [
+    assert (finished.returncode, finished.stdout) == (0, "")
+
+
+def test_the_installer_runs_on_the_standard_library_and_the_plugin_s_source() -> None:
+    """
+    Without the interpreter's own packages, as the system's interpreter may have none.
+    """
+    plugin = Path(github_workflow.install.__file__).parents[2]
+
+    finished = subprocess.run(
         [
             sys.executable,
             "-I",
-            github_workflow.install.__file__,
-            str(plugin),
-            str(runtime),
-        ]
-    ]
+            "-S",
+            "-c",
+            "import sys; sys.path[:0] = sys.argv.pop(1).split(':'); "
+            f"import {github_workflow.install.__name__}",
+            PluginSource.search_path(plugin),
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert (finished.returncode, finished.stderr) == (0, "")
 
 
 # %% switching over
 
 
-def test_the_first_switch_turns_the_runtime_into_a_link_to_the_build(tmp_path: Path):
+def test_the_first_switch_turns_the_runtime_into_a_link_to_the_build(
+    tmp_path: Path,
+) -> None:
     location = tmp_path / "runtime"
     location.mkdir()
     build = tmp_path / ".runtime-build"
     build.mkdir()
 
-    RuntimeSwitch(location).to(build)
+    RuntimeSwitch(location).activate(build)
 
     assert location.resolve() == build.resolve()
     assert sorted(path.name for path in tmp_path.iterdir()) == [
@@ -386,7 +456,9 @@ def test_the_first_switch_turns_the_runtime_into_a_link_to_the_build(tmp_path: P
     ]
 
 
-def test_a_later_switch_moves_the_link_and_removes_the_build_before(tmp_path: Path):
+def test_a_later_switch_moves_the_link_and_removes_the_build_before(
+    tmp_path: Path,
+) -> None:
     location = tmp_path / "runtime"
     first = tmp_path / ".runtime-first"
     second = tmp_path / ".runtime-second"
@@ -394,17 +466,17 @@ def test_a_later_switch_moves_the_link_and_removes_the_build_before(tmp_path: Pa
     second.mkdir()
     location.symlink_to(first.name)
 
-    RuntimeSwitch(location).to(second)
+    RuntimeSwitch(location).activate(second)
 
     assert location.resolve() == second.resolve()
     assert not first.exists()
 
 
-def test_a_switch_where_no_runtime_was_creates_the_link(tmp_path: Path):
+def test_a_switch_where_no_runtime_was_creates_the_link(tmp_path: Path) -> None:
     build = tmp_path / ".runtime-build"
     build.mkdir()
 
-    RuntimeSwitch(tmp_path / "runtime").to(build)
+    RuntimeSwitch(tmp_path / "runtime").activate(build)
 
     assert (tmp_path / "runtime").resolve() == build.resolve()
 
@@ -414,9 +486,9 @@ def test_a_switch_where_no_runtime_was_creates_the_link(tmp_path: Path):
 
 def test_a_command_line_names_the_launcher_running_this_interpreter(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+) -> None:
     LauncherInstallation(tmp_path / "bin", Path(sys.executable).parents[1]).install()
-    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+    monkeypatch.setenv(ShellVariable.COMMAND_SEARCH_PATH, str(tmp_path / "bin"))
 
     assert WorkflowCommand.command_line(WorkflowCommand.PUSH) == (
         f"{Launcher.COMMAND} {WorkflowCommand.PUSH}"
@@ -425,8 +497,8 @@ def test_a_command_line_names_the_launcher_running_this_interpreter(
 
 def test_a_launcher_running_another_interpreter_is_not_named(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+) -> None:
     LauncherInstallation(tmp_path / "bin", tmp_path / "another-runtime").install()
-    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+    monkeypatch.setenv(ShellVariable.COMMAND_SEARCH_PATH, str(tmp_path / "bin"))
 
     assert WorkflowCommand.command_line(WorkflowCommand.PUSH).startswith(sys.executable)

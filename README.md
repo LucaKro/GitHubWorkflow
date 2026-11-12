@@ -1,13 +1,20 @@
 # GitHubWorkflow
 
-A personal GitHub workflow for Claude Code sessions, built on
-[basstler-domain-model](https://github.com/LucaKro/basstler_domain_model): standing notes
-and per-branch progress every session starts with, and every write to git and GitHub made
-through the workflow's own commands.
+A personal GitHub workflow for Claude Code sessions: standing notes and per-branch
+progress every session starts with, and every write to git and GitHub made through the
+workflow's own commands. It is built on the domain model of git and GitHub in
+[`domain_model/`](domain_model), shipped with the plugin as a package of its own.
+
+[TUTORIAL.md](TUTORIAL.md) walks through how the parts work together;
+[REQUIREMENTS.md](REQUIREMENTS.md) says what the workflow has to do.
 
 ## Licence
 
-This project is licensed under the [Apache License 2.0](LICENSE).
+This project is licensed under the [Apache License 2.0](LICENSE), except for
+`domain_model/src/domain_model/exceptions.py` and
+`domain_model/src/domain_model/class_property.py`, which contain code adapted
+from [krrood](https://github.com/cram2/krrood) and remain under the GNU Lesser General
+Public License, Version 3.
 
 Part of the code and ideas are based on
 [basstler](https://github.com/AbdelrhmanBassiouny/basstler) at commit

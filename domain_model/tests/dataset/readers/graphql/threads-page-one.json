@@ -1,0 +1,34 @@
+{
+  "repository": {
+    "pullRequest": {
+      "reviewThreads": {
+        "pageInfo": {
+          "hasNextPage": true,
+          "endCursor": "a-cursor"
+        },
+        "nodes": [
+          {
+            "id": "thread-1",
+            "isResolved": false,
+            "isOutdated": false,
+            "path": "a.py",
+            "line": 1,
+            "comments": {
+              "nodes": [
+                {
+                  "databaseId": 101,
+                  "author": {
+                    "login": "a-reviewer"
+                  },
+                  "body": "First",
+                  "createdAt": "2026-01-01T00:00:00Z",
+                  "url": "https://example.com/101"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -14,12 +14,11 @@
 # The session start never installs itself: it starts the install in a process of its own
 # and leaves the report to the first prompt, which waits for that install.
 #
-# GITHUB_WORKFLOW_PYTHON names an interpreter to run instead, with the package already
-# installed, and skips the install; development uses it.
+# With GITHUB_WORKFLOW_PYTHON set, the runtime is not installed.
 set -uo pipefail
 
 EVENT="${1:-SessionStart}"
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+source "$(dirname "$0")/runtime.sh"
 SESSION="$(python3 -I -c 'import json, sys; print(json.load(sys.stdin).get("session_id", ""))' 2>/dev/null)"
 MARKERS="${TMPDIR:-/tmp}/github-workflow-sessions"
 REPORTED="${MARKERS}/${SESSION:-unknown}"
@@ -36,14 +35,6 @@ fi
 # Records that the session got its report.
 reported() {
   mkdir -p "$(dirname "${REPORTED}")" && touch "${REPORTED}"
-}
-
-# Answers the hook with one line shown to the person, bold in the colour the second
-# argument names as an ANSI code: red (31) unless given.
-say() {
-  local text="${1//\\/\\\\}"
-  text="${text//\"/\\\"}"
-  printf '{"systemMessage": "\\u001b[1;%sm%s\\u001b[0m"}\n' "${2:-31}" "${text}"
 }
 
 # Answers the hook with what went wrong, which counts as the session's report.
@@ -63,11 +54,8 @@ fi
 ERRORS="$(mktemp)"
 trap 'rm -f "${ERRORS}"' EXIT
 
-if [ -n "${GITHUB_WORKFLOW_PYTHON:-}" ]; then
-  PYTHON="${GITHUB_WORKFLOW_PYTHON}"
-else
-  RUNTIME="${HOME}/.virtualenvs/githubworkflow-runtime"
-  INSTALL=(python3 -I "${PLUGIN_ROOT}/src/github_workflow/install.py")
+if [ -z "${GITHUB_WORKFLOW_PYTHON:-}" ]; then
+  INSTALL=(install_runtime)
   if [ "${EVENT}" = "SessionStart" ]; then
     INSTALL+=(--background)
   fi
@@ -80,7 +68,6 @@ else
     exit 0
   fi
   export GITHUB_WORKFLOW_INSTALLED
-  PYTHON="${RUNTIME}/bin/python"
 fi
 if [ ! -x "${PYTHON}" ]; then
   report "github-workflow: notes not loaded: no interpreter at ${PYTHON}"
@@ -88,9 +75,7 @@ if [ ! -x "${PYTHON}" ]; then
 fi
 
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
-# The plugin's own code goes first, so a plugin updated after the runtime was installed
-# never runs code older than this hook; the runtime supplies the libraries.
-export PYTHONPATH="${PLUGIN_ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
+use_plugin_source
 if ! OUTPUT="$("${PYTHON}" -m github_workflow.session_start "${EVENT}" 2>"${ERRORS}")"; then
   report "github-workflow: notes not loaded: $(tail -n 1 "${ERRORS}")"
   exit 0

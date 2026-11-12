@@ -1,0 +1,4 @@
+{"total_count": 2, "workflow_runs": [
+  {"id": 42248800857, "name": "Post discussions", "head_branch": "github-workflow/notes", "head_sha": "a56977634fe779cbbfdbcdfe79b46553c32014f3", "path": ".github/workflows/post-discussions.yml", "event": "push", "status": "completed", "conclusion": "failure", "html_url": "https://github.com/LucaKro/project/actions/runs/42248800857"},
+  {"id": 42248800858, "name": "Delete branches ready for deletion", "head_branch": "github-workflow/notes", "head_sha": "a56977634fe779cbbfdbcdfe79b46553c32014f3", "path": ".github/workflows/delete-ready-branches.yml", "event": "push", "status": "in_progress", "conclusion": null, "html_url": "https://github.com/LucaKro/project/actions/runs/42248800858"}
+]}

@@ -32,6 +32,7 @@
 
 ### Running Tests
 - Run tests with pytest
+- Make sure a test run can never exhaust the machine's working memory: check the free memory before starting, cap the run's memory so the run is killed rather than the machine, and account for other test runs already going on the same machine
 
 ## Code Style
 - Always use dataclasses
@@ -44,7 +45,11 @@
 
 ### Naming
 - Names are technically correct, simple and descriptive, in that order. An inaccurate name is worse than a vague one, because a reader who trusts it stops reading
-- A name stays correct and understandable when read on its own, without its class or a keyword argument next to it - after `value = instance.attribute`, in a log line, in a traceback, or when passed on positionally. A `Pipe` field `size` says nothing once it leaves the class; `inner_diameter` does. A generic word that would fit anything never passes this test
+- The name of a field, method or function stays correct and understandable when read on its own, without its class or a keyword argument next to it - after `value = instance.attribute`, in a log line, in a traceback, or when passed on positionally. A `Pipe` field `size` says nothing once it leaves the class; `inner_diameter` does. A `Pipe` method `check` says nothing in a traceback, which never shows `Pipe.check`; `check_for_leaks` does. A generic word that would fit anything never passes this test
+- Never begin a function or method name with one of the prepositions `as_`, `for_`, `with_`, `of_`, and never name one with a bare preposition such as `of` or `on`: the phrase it starts is only finished by the class name in front of it
+- Never end a function or method name with a preposition that only its first argument finishes, such as `bottom_of(body)`: name what it returns or does, such as `bottom_height(body)`. A preposition that belongs to the verb, as in `look_for` or `is_contained_in`, is part of the name
+- Never name a function or method with a bare participle, such as `making(check)` or `trimmed(answer)`: like a preposition, it is finished only by the class in front of it and the argument behind. An alternative constructor is `from_<what it is given>`, anything else a verb phrase. A property named for an attribute with a noun or an adjective, such as `described` or `abbreviated`, is exempt
+- Begin a function or method name with `from_` or `to_` only for an alternative constructor or a conversion, such as `from_json` or `to_json`
 - Use the plain word every reader already knows. Use a specialist, metaphorical or in-house term only where it is genuinely the precise word, never as shorthand between the people who were in the discussion
 - Where the domain or file format already has a word for something, use that word
 - Never abbreviate an identifier
@@ -83,13 +88,13 @@
 - Reduce nesting and complexity with guard clauses: handle alternative outputs first by inverting conditions and returning early, so the main branch holds the main output and the biggest compute. A single level of abstraction never justifies deep nesting; split the method instead
 
 ### Errors
-- Never use try-except; a program in an illegal state raises an appropriate exception
+- A program in an illegal state raises an appropriate exception. Never use try-except as a workaround for a missing interface, such as catching a lookup that should have been a check; catch only where the handling is the behaviour itself, such as re-raising a failure with what the caller needs to know, and catch the narrowest exception that does
 - Create meaningful custom exceptions as dataclasses
 - Put each exception in the `exceptions.py` closest to the code that raises it:
   - An exception raised only within one subpackage goes in that subpackage's `exceptions.py`; create the file if the subpackage has none
   - An exception raised across several subpackages goes in the `exceptions.py` of their nearest common package
 - Never use `assert` outside tests: Python drops it when run with `-O`, so the check silently disappears. Raise a custom exception instead
-- Custom exceptions subclass `basstler_domain_model.exceptions.DataclassException`, implementing its `error_message` and `suggest_correction`
+- Custom exceptions subclass `domain_model.exceptions.DataclassException`, implementing its `error_message` and `suggest_correction`
 
 ### Constants and Class-Level Values
 - Never use global variables, module-level constants or `ClassVar`. Instead:
@@ -97,7 +102,7 @@
   - A default a caller may want to change is a parameter of the method that uses it if only that method does, otherwise a dataclass field with that default. For example, a `Heater` takes `target_temperature: float = 20.0` as a field instead of declaring `DEFAULT_TARGET_TEMPERATURE: ClassVar[float] = 20.0`
   - A constant that belongs to a class is a `classproperty`
   - `ClassVar` is allowed only for state that explicitly has to be shared and mutable across every instance of a class. This almost never applies
-- Use `basstler_domain_model.class_property.classproperty`
+- Use `domain_model.class_property.classproperty`
 
 ### Structured Data
 - Structured data is the default over bare strings, hardcoded values and meaningless numbers: reach for the structured form first and justify the literal, never the other way round
@@ -107,7 +112,7 @@
 - Data whose shape someone else controls - an API response, a configuration file - is mirrored in dataclasses and parsed by a `from_json` classmethod, so the field names and the access path into the payload are written once
 - A tuple whose positions carry meaning becomes a dataclass, or an enum when the positions are a fixed set of alternatives rather than fields
 - A long literal document - a query, a template, a schema - lives in a file of its own type and is read in, never embedded as a string
-- A path enum subclasses `basstler_domain_model.locations.PathEnumeration`, so every path derived from a member is a plain `Path`; its members' `name` is the path's last component, so read the member name as `_name_`
+- A path enum subclasses `domain_model.locations.PathEnumeration`, so every path derived from a member is a plain `Path`; its members' `name` is the path's last component, so read the member name as `_name_`
 
 ## Type Hints
 - Every parameter and return value has an accurate type hint, `Any` and `-> None` included
@@ -116,7 +121,7 @@
 - When each class in a family declares the type it handles, carry that type as a bound generic parameter, not a `ClassVar`, so it is part of the signature and cannot disagree with a separate attribute: bind it in each member (`class MemberOfFamily(Family[ConcreteType])`)
 
 ## Documentation
-- Every class and method has meaningful, non-trivial documentation in reStructuredText. Every field has its own docstring directly below it, not a description in the class docstring
+- Every module, class, function and field has meaningful, non-trivial documentation in reStructuredText; an enumeration's members count as fields. Every field has its own docstring directly below it, not a description in the class docstring
 - An override that keeps its base contract has no docstring and inherits the base one. One that changes the contract documents only the difference and references the overridden method with `:meth:`
 - A docstring states what the code does and its contract, short and to the point. It never contains:
   - how the code does it
@@ -124,10 +129,10 @@
   - the current callers or consumers ("used by X and Y") - that goes stale and reads as exhaustive
   - justification of design decisions, comparison with rejected or hypothetical designs, or review and implementation history
   - type information - the type hints carry it
-- Keep docstrings and comments short and never write walls of text. Comments are meaningful and DRY; remove comments that restate the code
+- A docstring holds at most 4 lines of prose, field lists, literal blocks and a module's usage line aside, and a comment block at most 3 lines. Comments are meaningful and DRY; remove comments that restate the code
 - Reference code with Sphinx roles (`:func:`, `:class:`, `:attr:`, `:meth:`), never with plain backticks, and use directives such as `.. note::` and `.. warning::` for notes and warnings
 - Never use all-caps words for emphasis in docstrings or comments; use RST emphasis (`*word*`). Genuine identifiers, acronyms and enum/constant names (`UUID`, `WHERE`, `Definiteness.DEFINITE`) are exempt
-- Always format modified Python files with black followed by docformatter, through the repository's pre-commit hook (`scripts/format_docstrings.py`)
+- Always format modified Python files with black followed by docformatter, through the repository's pre-commit hook (`domain_model/scripts/format_docstrings.py`)
 
 ## Version Control
 - Author commits as the human user running the tool, with their own configured git `user.name` and `user.email`. Never author or amend a commit as an assistant, and never credit one as author or co-author: no `Co-Authored-By:` trailer for an assistant, no `noreply@anthropic.com` or similar as author or committer
@@ -143,13 +148,14 @@
 # Project Rules
 
 ## Package
-- Every Python module lives in the `github_workflow` package under `src/`
+- The repository holds two packages: the workflow, `github_workflow` under `src/`, and the domain model it is built on, `domain_model` under `domain_model/src/`, with its own `pyproject.toml`, tests and `AGENTS.md`. Every Python module lives in one of them
 - Name every file and directory once, in `github_workflow.locations`; every environment variable once, in `github_workflow.environment`
-- GitHub's and git's data, and the clients that read and write them, come from `basstler_domain_model`; this package holds only the workflow built on them. Something that models GitHub or git rather than this workflow belongs in `basstler_domain_model`
-- The package depends only on the libraries `pyproject.toml` lists
+- GitHub's and git's data, and the clients that read and write them, come from `domain_model`; `github_workflow` holds only the workflow built on them. Something that models GitHub or git rather than this workflow belongs in `domain_model`
+- Each package depends only on the libraries its `pyproject.toml` lists
 
 ## The Guard
-- `github_workflow.guard`, and every module it imports, runs on the standard library alone, so the hook can run it from the plugin's source when the runtime cannot run. It imports nothing from `basstler_domain_model`: an exception to using its `classproperty` (the guard uses `classmethod`) and to naming Claude Code's variables only there (the guard names the one it reads, and a test checks the two agree)
+- `github_workflow.guard`, `github_workflow.coarse_guard`, `github_workflow.approval` and `github_workflow.install`, and every module they import, run on the standard library and the plugin's own source alone - the workflow's and the domain model's - so the hooks can run them when the runtime cannot, and the installer can build the runtime
+- `domain_model` depends on nothing but the standard library, so the guard can import it from the plugin's source
 
 ## Releases
 - No file carries the version: `hatch-vcs` reads it from the latest git tag

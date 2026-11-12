@@ -8,27 +8,24 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 
-from basstler_domain_model.github.repository_client import (
-    PullRequestBaseWriter,
+from domain_model.git.revisions import BranchName
+from domain_model.github.repository_client import (
     PullRequestOpener,
-    PullRequestReader,
-    PullRequestWriter,
-    StackReader,
-    StackWriter,
+    RewritablePullRequests,
+    StackHost,
 )
-from basstler_domain_model.github.rest_models import RestPullRequest
-from basstler_domain_model.github.stack_models import Stack, StackedPullRequest
-from basstler_domain_model.github.vocabulary import PullRequestState
+from domain_model.github.rest_models import RestPullRequest
+from domain_model.github.stack_models import Stack, StackedPullRequest
+from domain_model.github.vocabulary import PullRequestState
 
 from .pull_requests import pull_request
+from .repositories_by_owner import RepositoriesByOwner
 
 # %% the stand-in
 
 
 @dataclass(frozen=True)
-class StackedPullRequestsInMemory(
-    PullRequestReader, PullRequestBaseWriter, StackReader, StackWriter
-):
+class StackedPullRequestsInMemory(StackHost):
     """
     A repository's pull requests, each a branch and the base it targets, and its stacks.
     """
@@ -49,17 +46,17 @@ class StackedPullRequestsInMemory(
     """
 
     @staticmethod
-    def branch_of(number: int) -> str:
+    def name_branch(number: int) -> str:
         """:param number: A pull request.
         :return: Its branch."""
         return f"branch-{number}"
 
-    def stacked(self, numbers: Sequence[int]) -> list[StackedPullRequest]:
+    def build_stack(self, numbers: Sequence[int]) -> list[StackedPullRequest]:
         """:param numbers: Pull requests, bottom first.
         :return: Them as a stack holds them."""
         return [
             StackedPullRequest(
-                number, PullRequestState.OPEN, True, self.branch_of(number)
+                number, PullRequestState.OPEN, True, self.name_branch(number)
             )
             for number in numbers
         ]
@@ -68,9 +65,9 @@ class StackedPullRequestsInMemory(
         return [self.pull_request(number) for number in self.bases]
 
     def pull_request(self, number: int) -> RestPullRequest:
-        return pull_request(number, self.branch_of(number), base=self.bases[number])
+        return pull_request(number, self.name_branch(number), base=self.bases[number])
 
-    def set_base(self, number: int, branch: str) -> None:
+    def set_base(self, number: int, branch: BranchName) -> None:
         self.writes.append(f"set_base {number} {branch}")
         self.bases[number] = branch
 
@@ -80,7 +77,7 @@ class StackedPullRequestsInMemory(
     def stack(self, number: int) -> Stack:
         return next(stack for stack in self.existing_stacks if stack.number == number)
 
-    def stack_of(self, pull_request: int) -> Stack | None:
+    def containing_stack(self, pull_request: int) -> Stack | None:
         return next(
             (stack for stack in self.existing_stacks if pull_request in stack.numbers),
             None,
@@ -88,7 +85,7 @@ class StackedPullRequestsInMemory(
 
     def create_stack(self, pull_requests: Sequence[int]) -> Stack:
         self.writes.append(f"create_stack {list(pull_requests)}")
-        return Stack(1, "main", True, self.stacked(pull_requests))
+        return Stack(1, "main", True, self.build_stack(pull_requests))
 
     def add_to_stack(self, stack: Stack, pull_requests: Sequence[int]) -> Stack:
         self.writes.append(f"add_to_stack {stack.number} {list(pull_requests)}")
@@ -96,7 +93,7 @@ class StackedPullRequestsInMemory(
             stack.number,
             stack.base,
             True,
-            stack.pull_requests + self.stacked(pull_requests),
+            stack.pull_requests + self.build_stack(pull_requests),
         )
 
     def unstack(self, stack: Stack) -> Stack | None:
@@ -118,7 +115,9 @@ class DraftsAndStacksInMemory(StackedPullRequestsInMemory, PullRequestOpener):
     The description each draft was opened with, by its number.
     """
 
-    def open_draft(self, head: str, base: str, title: str, body: str) -> int:
+    def open_draft(
+        self, head: BranchName, base: BranchName, title: str, body: str
+    ) -> int:
         number = max(self.bases, default=0) + 1
         self.writes.append(f"open_draft {head} {base}")
         self.bases[number] = base
@@ -130,10 +129,11 @@ class DraftsAndStacksInMemory(StackedPullRequestsInMemory, PullRequestOpener):
 
 
 @dataclass(frozen=True)
-class DraftsInMemory(DraftsAndStacksInMemory, PullRequestWriter):
+class DraftsInMemory(DraftsAndStacksInMemory, RewritablePullRequests):
     """
     The stand-in, with pull requests that are drafts or not, open or closed, whose
-    descriptions can be rewritten.
+    descriptions and titles can be rewritten, on a repository whose default branch is
+    the scratch repositories'.
     """
 
     drafts: frozenset[int] = frozenset()
@@ -163,3 +163,9 @@ class DraftsInMemory(DraftsAndStacksInMemory, PullRequestWriter):
 
     def set_description(self, number: int, body: str) -> None:
         self.writes.append(f"set_description {number} {body}")
+
+    def set_issue_title(self, number: int, title: str) -> None:
+        self.writes.append(f"set_issue_title {number} {title}")
+
+    def default_branch(self) -> BranchName:
+        return RepositoriesByOwner.default_branch

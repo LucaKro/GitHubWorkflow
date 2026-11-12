@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "github-workflow"
-description = "A personal GitHub workflow, built on basstler-domain-model."
+description = "A personal GitHub workflow, built on its domain model of git and GitHub."
 requires-python = ">=3.12"
 authors = [
     {name = "LucaKro", email = "luc_kro@uni-bremen.de"}
@@ -16,7 +16,7 @@ classifiers = [
     "Topic :: Software Development :: Version Control :: Git",
 ]
 dependencies = [
-    "basstler-domain-model",
+    "github-workflow-domain-model",
 ]
 dynamic = ["version"]
 
@@ -31,10 +31,3 @@ fallback-version = "0.0.0"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/github_workflow"]
-
-# Docstrings are formatted by docformatter on top of black.
-[tool.docformatter]
-make-summary-multi-line = true
-pre-summary-newline = true
-close-quotes-on-newline = true
-black = true

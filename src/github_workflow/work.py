@@ -5,63 +5,53 @@ The writes a session makes to git and GitHub, each one step that checks the
 
 from __future__ import annotations
 
-import re
 import sys
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
-from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-from basstler_domain_model.git.commands import (
-    GitCommandRunner,
-    ProposedPush,
-    RemoteBranch,
-)
-from basstler_domain_model.github.repository_client import (
-    IssueBoard,
-    RepositoryLabels,
+from domain_model.git.commands import GitCommandRunner
+from domain_model.git.conflict_markers import ConflictMarker
+from domain_model.git.remotes import ProposedPush, RemoteBranch
+from domain_model.git.revisions import BranchName, LocalBranch
+from domain_model.git.working_tree import WorkingTree
+from domain_model.github.closing_lines import ClosingLines
+from domain_model.github.repository_client import (
+    BranchStacks,
+    IssueTracker,
     PullRequestOpener,
     PullRequestReader,
     PullRequestsFromForks,
-    PullRequestWriter,
-    RepositoryDetails,
-    StackReader,
+    RewritablePullRequests,
 )
-from basstler_domain_model.github.vocabulary import ClosingKeyword, PullRequestState
-from basstler_domain_model.repository import GitHubAddress, Repository
+from domain_model.github.stack_placement import StackPlacement
+from domain_model.github.vocabulary import PullRequestState
+from domain_model.repository import GitHubAddress, Repository
 
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.command_line import WorkflowCommand
+from github_workflow.command_line import RunnableCommand
 from github_workflow.exceptions import (
-    ConflictMarkersLeftError,
-    MergeConflictError,
-    MergeInProgressError,
-    NoMergeInProgressError,
-    UnresolvedConflictError,
-    StackedBranchMergeError,
     BranchDeletedFromGitHubError,
     BranchNotPushedError,
+    ConflictMarkersLeftError,
     DetachedHeadError,
     DraftUnfinishedError,
+    MergeConflictError,
     NothingToDescribeError,
     PullRequestNotOpenError,
     PushRefusedError,
+    StackedBranchMergeError,
     UnbuildablePullRequestError,
-    UnreplaceablePullRequestError,
     UnpushedCommitsError,
+    UnreplaceablePullRequestError,
+    UnresolvedConflictError,
 )
-from github_workflow.hooks import NumberLink
-from github_workflow.labels import DescribedLabel
+from github_workflow.labels import IssueLabel
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
 from github_workflow.push_hook import PushHook
 from github_workflow.settings import WorkflowSettings
-from github_workflow.stacks import StackPlacement
-
-if TYPE_CHECKING:
-    from basstler_domain_model.github.repository_client import GitHubRepository
 
 # %% one step
 
@@ -89,9 +79,9 @@ class LocalBranchFollowing:
     A local branch fast-forwarded to GitHub's copy, unless it has commits of its own.
     """
 
-    git: GitCommandRunner
+    tree: WorkingTree
     """
-    Runs git in the checkout.
+    The checkout's working tree, whose branches follow.
     """
 
     def follow(self, branch: RemoteBranch) -> str:
@@ -100,15 +90,17 @@ class LocalBranchFollowing:
         :return: What happened to the local copy, as an addition to a report; empty
             when there is none or it is up to date.
         """
-        local = self.git.commit_or_none(branch.reference)
-        if local is None or local == self.git.commit_at(branch.tracking_reference):
+        local = LocalBranch(self.tree.git, branch.name)
+        fetched = branch.tracking_branch
+        at = local.commit_or_none()
+        if at is None or at == fetched.commit():
             return ""
-        if not self.git.contains(local, branch.tracking_reference):
+        if not at.is_contained_in(fetched):
             return f"; local {branch.name} kept: it has commits GitHub's lacks"
-        if self.git.checked_out_branch() == branch.name:
-            self.git.fast_forward(branch.tracking_reference).raise_if_failed()
+        if self.tree.checked_out_branch() == local:
+            self.tree.fast_forward(fetched).raise_if_failed()
             return f"; local {branch.name} fast-forwarded to it"
-        moved = self.git.fast_forward_branch(branch.name, branch.tracking_reference)
+        moved = local.fast_forward(fetched)
         if not moved.succeeded:
             return f"; local {branch.name} kept: it is checked out in another worktree"
         return f"; local {branch.name} fast-forwarded to it"
@@ -128,31 +120,31 @@ class BranchStart(WorkflowStep):
     Where the branch is started from.
     """
 
-    name: str
+    name: BranchName
     """
     The new branch.
     """
 
-    base: str | None = None
+    base: BranchName | None = None
     """
     The branch to start from, the default branch when ``None``.
     """
 
     def run(self) -> str:
-        base = RemoteBranch(
-            self.policy.remote.name, self.base or self.policy.default_branch
-        )
-        git = self.policy.checkout.git
-        fetched = git.fetch_branch(base)
+        base = self.policy.remote.branch(self.base or self.policy.default_branch)
+        checkout = self.policy.checkout
+        started = LocalBranch(checkout.git, self.name)
+        fetched = base.fetch()
         if fetched.succeeded:
-            git.create_branch(self.name, base.tracking_reference)
-            started = f"on {self.name}, started from {base.remote}/{base.name}"
+            started.create(base.tracking_branch)
+            line = f"on {self.name}, started from {base.remote.name}/{base.name}"
             if base.name != self.policy.default_branch:
-                return started
-            return f"{started}{LocalBranchFollowing(git).follow(base)}"
-        if git.commit_or_none(base.reference) is None:
+                return line
+            return f"{line}{LocalBranchFollowing(checkout.working_tree).follow(base)}"
+        local_base = LocalBranch(checkout.git, base.name)
+        if local_base.commit_or_none() is None:
             fetched.raise_if_failed()
-        git.create_branch(self.name, base.name)
+        started.create(local_base)
         return f"on {self.name}, started from the local {base.name}"
 
 
@@ -167,15 +159,14 @@ class BranchSwitch(WorkflowStep):
     The checkout switched in.
     """
 
-    name: str
+    name: BranchName
     """
     The branch to switch to.
     """
 
     def run(self) -> str:
-        git = self.policy.checkout.git
-        git.fetch_branch(RemoteBranch(self.policy.remote.name, self.name))
-        git.switch_to(self.name)
+        self.policy.remote.branch(self.name).fetch()
+        LocalBranch(self.policy.checkout.git, self.name).switch()
         return f"on {self.name}"
 
 
@@ -208,11 +199,11 @@ class CommitWork(WorkflowStep):
         :raises MergeInProgressError: If a merge is in progress.
         """
         branch = self.policy.work_branch()
-        MergeInProgress(self.policy.checkout.git).refuse_while_in_progress(branch)
-        commit = self.policy.checkout.git.commit(
+        self.policy.refuse_while_merging(branch)
+        commit = self.policy.checkout.working_tree.commit(
             self.policy.commit_message(self.message), self.paths
         )
-        return f"committed {commit[:7]} on {branch}"
+        return f"committed {commit.hash.abbreviated} on {branch}"
 
 
 @dataclass(frozen=True)
@@ -231,13 +222,10 @@ class PushWork(WorkflowStep):
         """
         :raises MergeInProgressError: If a merge is in progress.
         """
-        branch = RemoteBranch(self.policy.remote.name, self.policy.work_branch())
-        MergeInProgress(self.policy.checkout.git).refuse_while_in_progress(branch.name)
-        pushed = self.policy.checkout.git.push(
-            ProposedPush(
-                branch.remote, f"{branch.name}:{branch.reference}", sets_upstream=True
-            )
-        )
+        branch = self.policy.remote.branch(self.policy.work_branch())
+        self.policy.refuse_while_merging(branch.name)
+        local = LocalBranch(self.policy.checkout.git, branch.name)
+        pushed = ProposedPush(branch, local, sets_upstream=True).publish()
         if not pushed.succeeded:
             raise PushRefusedError(branch.name, pushed.error_output)
         return f"pushed {branch.name} to {self.policy.remote.repository.full_name}"
@@ -253,7 +241,7 @@ class DescriptionEnding(ABC):
     """
 
     @abstractmethod
-    def appended_to(self, body: str, branch: str) -> str:
+    def append_once(self, body: str, branch: BranchName) -> str:
         """
         :param body: A pull request's description, which may end with it already.
         :param branch: The pull request's branch.
@@ -368,8 +356,8 @@ class DraftOpening(WorkflowStep):
         :raises DraftUnfinishedError: If closing the replaced pull request, labelling
             the issues or stacking the draft fails once it is opened.
         """
-        branch = RemoteBranch(self.policy.remote.name, self.policy.work_branch())
-        if not self.policy.checkout.git.has_remote_branch(branch):
+        branch = self.policy.remote.branch(self.policy.work_branch())
+        if not branch.exists():
             raise BranchNotPushedError(branch.name)
         if self.replacement is not None:
             self.check_replaceable(self.replacement.number, branch.name)
@@ -378,10 +366,10 @@ class DraftOpening(WorkflowStep):
         base = (
             self.policy.default_branch
             if self.below is None
-            else self.placement.pull_requests.pull_request(self.below).head.branch
+            else self.placement.host.pull_request(self.below).head.branch
         )
         body = (
-            self.ending.appended_to(self.body, branch.name)
+            self.ending.append_once(self.body, branch.name)
             if self.ending is not None and self.below is None
             else self.body
         )
@@ -391,7 +379,9 @@ class DraftOpening(WorkflowStep):
         except Exception as raised:
             raise DraftUnfinishedError(number, str(raised)) from raised
 
-    def finish(self, number: int, branch: str, base: str, body: str) -> str:
+    def finish(
+        self, number: int, branch: BranchName, base: BranchName, body: str
+    ) -> str:
         """
         Close the pull request the opened draft replaces, label the issues the draft
         closes, and stack it, where asked to.
@@ -402,8 +392,8 @@ class DraftOpening(WorkflowStep):
         :param body: Its description.
         :return: What was done.
         """
-        link = NumberLink(number, self.policy.remote.repository.issue_url(number))
-        opened = f"opened draft {link.markdown()}: {branch} onto {base}"
+        link = self.policy.remote.repository.issue_link(number)
+        opened = f"opened draft {link}: {branch} onto {base}"
         if self.replacement is not None:
             replaced = self.replacement.number
             self.replacement.retirement.retire(replaced, f"Replaced by #{number}.")
@@ -417,14 +407,14 @@ class DraftOpening(WorkflowStep):
         stack = self.placement.place(self.below, number)
         return f"{opened}, in stack {stack.number}"
 
-    def check_replaceable(self, number: int, branch: str) -> None:
+    def check_replaceable(self, number: int, branch: BranchName) -> None:
         """
         :param number: The pull request to replace.
         :param branch: The work branch the draft is opened from.
         :raises UnreplaceablePullRequestError: If it is not open, is on another
             repository, or is the work branch's own.
         """
-        replaced = self.placement.pull_requests.pull_request(number)
+        replaced = self.placement.host.pull_request(number)
         repository = self.policy.remote.repository.full_name
         if replaced.state is not PullRequestState.OPEN:
             raise UnreplaceablePullRequestError(number, f"it is {replaced.state}")
@@ -438,21 +428,6 @@ class DraftOpening(WorkflowStep):
             )
 
 
-class IssueLabel(DescribedLabel):
-    """
-    The labels the workflow puts on an issue about the pull requests working on it.
-    """
-
-    PULL_REQUEST_OPENED = (
-        "pull request opened",
-        "An open pull request of this repository closes it once merged",
-        "5319e7",
-    )
-    """
-    A draft whose description closes the issue is open.
-    """
-
-
 @dataclass(frozen=True)
 class PullRequestOpenedLabelling:
     """
@@ -460,14 +435,9 @@ class PullRequestOpenedLabelling:
     closes, put on when it opens and taken off when it is closed unmerged.
     """
 
-    board: IssueBoard
+    issues: IssueTracker
     """
-    Labels the issues.
-    """
-
-    labels: RepositoryLabels
-    """
-    Creates the label where the repository lacks it.
+    The issues, and the labels they are given.
     """
 
     def label(self, description: str) -> list[int]:
@@ -478,10 +448,9 @@ class PullRequestOpenedLabelling:
         issues = ClosingLines(description).issues()
         if not issues:
             return []
-        if IssueLabel.PULL_REQUEST_OPENED not in self.labels.labels():
-            self.labels.create_label(IssueLabel.PULL_REQUEST_OPENED)
+        self.issues.create_missing_labels([IssueLabel.PULL_REQUEST_OPENED])
         for issue in issues:
-            self.board.add_labels(issue, [IssueLabel.PULL_REQUEST_OPENED])
+            self.issues.add_labels(issue, [IssueLabel.PULL_REQUEST_OPENED])
         return issues
 
     def unlabel(self, description: str) -> list[int]:
@@ -492,51 +461,11 @@ class PullRequestOpenedLabelling:
         carrying = [
             issue
             for issue in ClosingLines(description).issues()
-            if IssueLabel.PULL_REQUEST_OPENED in self.board.issue(issue).labels
+            if IssueLabel.PULL_REQUEST_OPENED in self.issues.issue(issue).labels
         ]
         for issue in carrying:
-            self.board.remove_label(issue, IssueLabel.PULL_REQUEST_OPENED)
+            self.issues.remove_label(issue, IssueLabel.PULL_REQUEST_OPENED)
         return carrying
-
-
-@dataclass(frozen=True)
-class ClosingLines:
-    """
-    The lines of a pull request's description that close an issue once it is merged,
-    such as ``Fixes #148``.
-    """
-
-    description: str
-    """
-    The description.
-    """
-
-    def lines(self) -> list[str]:
-        """
-        :return: The closing lines, in order.
-        """
-        keyword = "|".join(map(re.escape, ClosingKeyword))
-        closing = re.compile(rf"(?:{keyword}) #\d+")
-        stripped = (line.strip() for line in self.description.splitlines())
-        return [line for line in stripped if closing.fullmatch(line)]
-
-    def issues(self) -> list[int]:
-        """
-        :return: The issues of the description's repository that the closing lines
-            close, in order.
-        """
-        return [int(line.rpartition("#")[2]) for line in self.lines()]
-
-    def kept_in(self, rewritten: str) -> str:
-        """
-        :param rewritten: A new description replacing this one.
-        :return: It, ending with every closing line of this one it lacks.
-        """
-        held = ClosingLines(rewritten).lines()
-        missing = [line for line in self.lines() if line not in held]
-        if not missing:
-            return rewritten
-        return f"{rewritten.rstrip()}\n\n" + "\n".join(missing) + "\n"
 
 
 @dataclass(frozen=True)
@@ -551,24 +480,10 @@ class DescriptionRewrite(WorkflowStep):
     :raises PullRequestNotOpenError: If the pull request is not open.
     """
 
-    pull_requests: PullRequestReader
+    pull_requests: RewritablePullRequests
     """
-    Reads the pull request.
-    """
-
-    writer: PullRequestWriter
-    """
-    Writes its description.
-    """
-
-    titles: IssueBoard
-    """
-    Writes its title, a pull request being an issue to GitHub too.
-    """
-
-    repository: RepositoryDetails
-    """
-    Reads the repository's default branch.
+    Reads the pull request and the repository's default branch, and writes its
+    description and title.
     """
 
     number: int
@@ -600,82 +515,22 @@ class DescriptionRewrite(WorkflowStep):
             raise PullRequestNotOpenError(self.number)
         rewritten = []
         if self.body is not None:
-            kept = ClosingLines(pull_request.body or "").kept_in(self.body)
-            onto_default = pull_request.base == self.repository.default_branch()
+            kept = ClosingLines(pull_request.body or "").append_missing_lines(self.body)
+            onto_default = pull_request.base == self.pull_requests.default_branch()
             body = (
-                self.ending.appended_to(kept, pull_request.head.branch)
+                self.ending.append_once(kept, pull_request.head.branch)
                 if self.ending is not None and onto_default
                 else kept
             )
-            self.writer.set_description(self.number, body)
+            self.pull_requests.set_description(self.number, body)
             rewritten.append("description")
         if self.title is not None:
-            self.titles.set_issue_title(self.number, self.title)
+            self.pull_requests.set_issue_title(self.number, self.title)
             rewritten.append("title")
         return f"rewrote the {' and '.join(rewritten)} of #{self.number}"
 
 
 # %% bringing a branch up to date
-
-
-class TrackingReferenceWrite(StrEnum):
-    """
-    How the reflog names a write of a remote-tracking reference from what GitHub holds,
-    compared as the start of the entry.
-    """
-
-    FETCH = "fetch"
-    """
-    A fetch stored the branch.
-    """
-
-    PULL = "pull"
-    """
-    A pull stored the branch.
-    """
-
-    PUSH = "update by push"
-    """
-    A push sent the branch.
-    """
-
-
-class PullRequestBranches(ABC):
-    """
-    The branches pull requests on the owner's repository were opened from.
-    """
-
-    @abstractmethod
-    def opened_from(self, branch: str) -> bool:
-        """
-        :param branch: A branch of the owner's repository.
-        :return: Whether a pull request, open or closed, was opened from it.
-        """
-
-
-@dataclass(frozen=True)
-class GitHubPullRequestBranches(PullRequestBranches):
-    """
-    The branches pull requests were opened from, as GitHub lists the pull requests.
-    """
-
-    github: GitHubRepository
-    """
-    The owner's repository on GitHub.
-    """
-
-    repository: str
-    """
-    The repository's full name, which a pull request's head names when it is from this
-    repository.
-    """
-
-    def opened_from(self, branch: str) -> bool:
-        return any(
-            pull_request.head.repository == self.repository
-            and pull_request.head.branch == branch
-            for pull_request in self.github.all_pull_requests()
-        )
 
 
 @dataclass(frozen=True)
@@ -694,20 +549,21 @@ class BranchSync(WorkflowStep):
     The checkout and the remote synced with.
     """
 
-    pull_request_branches: PullRequestBranches
+    pull_requests: PullRequestsFromForks
     """
-    The branches pull requests were opened from, which shows a branch was on GitHub.
+    The owner's repository, whose pull requests from a branch show it was on GitHub.
     """
 
     def run(self) -> str:
-        git = self.policy.checkout.git
-        name = git.checked_out_branch()
-        if not name:
+        tree = self.policy.checkout.working_tree
+        checked_out = tree.checked_out_branch()
+        if checked_out is None:
             raise DetachedHeadError()
-        branch = RemoteBranch(self.policy.remote.name, name)
-        last_seen = git.commit_or_none(branch.tracking_reference)
-        fetched = git.fetch_branch(branch)
-        if not fetched.succeeded and git.has_remote_branch(branch):
+        name = checked_out.name
+        branch = self.policy.remote.branch(name)
+        last_seen = branch.tracking_branch.commit_or_none()
+        fetched = branch.fetch()
+        if not fetched.succeeded and branch.exists():
             fetched.raise_if_failed()
         if (
             not fetched.succeeded
@@ -717,103 +573,34 @@ class BranchSync(WorkflowStep):
             raise BranchDeletedFromGitHubError(name)
         if not fetched.succeeded:
             return f"{name} is not on GitHub yet"
-        on_github = git.commit_at(branch.tracking_reference)
-        local = git.commit_at("HEAD")
+        on_github = branch.tracking_branch.commit()
+        local = tree.head()
         if local == on_github:
             return f"{name} is up to date"
-        if git.contains(local, on_github):
-            git.fast_forward(on_github).raise_if_failed()
+        if local.is_contained_in(on_github):
+            tree.fast_forward(on_github).raise_if_failed()
             return f"{name} fast-forwarded to GitHub's"
-        if git.contains(on_github, local):
+        if on_github.is_contained_in(local):
             return f"{name} is ahead of GitHub's: push it"
-        if last_seen is None or not git.contains(local, last_seen):
+        if last_seen is None or not local.is_contained_in(last_seen):
             raise UnpushedCommitsError(name)
-        git.reset_kept(on_github)
+        tree.reset_kept(on_github)
         return f"{name} moved to the branch GitHub rebased"
 
     def was_on_github(self, branch: RemoteBranch) -> bool:
         """
-        :param branch: A branch GitHub does not have, whose remote-tracking reference
-            the checkout has.
+        :param branch: A branch GitHub does not have, whose remote-tracking branch the
+            checkout has.
         :return: Whether GitHub had it: a fetch or a push wrote its remote-tracking
-            reference, or a pull request was opened from it.
+            branch, or a pull request was opened from it.
         """
-        reflog = self.policy.checkout.git.attempt(
-            "reflog", "show", "--format=%gs", branch.tracking_reference
-        )
-        entries = reflog.output.splitlines() if reflog.succeeded else []
-        writes = tuple(TrackingReferenceWrite)
-        if any(entry.startswith(writes) for entry in entries):
+        if branch.tracking_branch.was_fetched_or_pushed():
             return True
-        return self.pull_request_branches.opened_from(branch.name)
+        owner = self.policy.remote.repository.owner
+        return bool(self.pull_requests.fork_branch_pull_requests(owner, branch.name))
 
 
 # %% taking in the default branch
-
-
-class ConflictMarker(StrEnum):
-    """
-    The lines git writes into a file around each conflict a merge leaves, compared as
-    the start of a line.
-    """
-
-    OURS = "<<<<<<< "
-    """
-    Opens a conflict, with the branch's own side.
-    """
-
-    THEIRS = ">>>>>>> "
-    """
-    Closes a conflict, after the merged branch's side.
-    """
-
-    @classmethod
-    def left_in(cls, text: str) -> bool:
-        """
-        :param text: A file's text.
-        :return: Whether a conflict is still marked in it.
-        """
-        return any(line.startswith(tuple(cls)) for line in text.splitlines())
-
-
-@dataclass(frozen=True)
-class MergeInProgress:
-    """
-    The merge a checkout is in the middle of, if any: started, conflicting, and neither
-    committed nor undone yet.
-    """
-
-    git: GitCommandRunner
-    """
-    The checkout.
-    """
-
-    def exists(self) -> bool:
-        """
-        :return: Whether a merge is in progress.
-        """
-        return self.git.attempt(
-            "rev-parse", "--quiet", "--verify", "MERGE_HEAD"
-        ).succeeded
-
-    def message(self) -> str:
-        """
-        :return: The commit message the merge was started with, without the lines git
-            adds as comments.
-        """
-        path = self.git.working_directory / self.git.run(
-            "rev-parse", "--git-path", "MERGE_MSG"
-        )
-        lines = path.read_text().splitlines()
-        return "\n".join(line for line in lines if not line.startswith("#")).strip()
-
-    def refuse_while_in_progress(self, branch: str) -> None:
-        """
-        :param branch: The checked-out branch.
-        :raises MergeInProgressError: If a merge is in progress.
-        """
-        if self.exists():
-            raise MergeInProgressError(branch)
 
 
 @dataclass(frozen=True)
@@ -839,21 +626,21 @@ class WorkBranchMerge:
         :raises MergeConflictError: If the merge conflicts.
         """
         branch = self.policy.work_branch()
-        git = self.policy.checkout.git
-        MergeInProgress(git).refuse_while_in_progress(branch)
-        git.fetch_branch(merged).raise_if_failed()
-        if git.contains(merged.tracking_reference, "HEAD"):
+        checkout = self.policy.checkout
+        self.policy.refuse_while_merging(branch)
+        merged.fetch().raise_if_failed()
+        fetched = merged.tracking_branch
+        if fetched.is_contained_in(checkout.working_tree.head()):
             return f"{branch} has {described}'s commits already"
-        result = git.merge(
-            merged.tracking_reference,
-            self.policy.commit_message(f"Merge {described} into {branch}"),
+        result = checkout.merge.start(
+            fetched, self.policy.commit_message(f"Merge {described} into {branch}")
         )
         if not result.succeeded:
-            conflicted = git.conflicted_files()
+            conflicted = checkout.merge.conflicted_files()
             if not conflicted:
                 result.raise_if_failed()
             raise MergeConflictError(branch, described, tuple(conflicted))
-        push = WorkflowCommand.command_line(WorkflowCommand.PUSH)
+        push = RunnableCommand.PUSH.usage()
         return f"merged {described} into {branch}; push it with `{push}`"
 
 
@@ -881,27 +668,26 @@ class MergeCompletion(WorkflowStep):
     """
 
     def run(self) -> str:
-        branch = self.policy.work_branch()
-        git = self.policy.checkout.git
-        merge = MergeInProgress(git)
-        if not merge.exists():
-            raise NoMergeInProgressError(branch)
+        branch = self.policy.branch_being_merged()
+        checkout = self.policy.checkout
         marked = [
             str(path)
             for path in self.resolved
-            if ConflictMarker.left_in((git.working_directory / path).read_text())
+            if ConflictMarker.marks_conflict((checkout.root / path).read_text())
         ]
         if marked:
             raise ConflictMarkersLeftError(tuple(marked))
-        git.run("add", "--", *map(str, self.resolved))
-        unresolved = git.conflicted_files()
+        checkout.working_tree.stage(self.resolved)
+        unresolved = checkout.merge.conflicted_files()
         if unresolved:
             raise UnresolvedConflictError(tuple(unresolved))
-        message = self.policy.commit_message(merge.message())
-        git.run("commit", "--quiet", "--message", message)
-        push = WorkflowCommand.command_line(WorkflowCommand.PUSH)
-        commit = git.commit_at("HEAD")
-        return f"committed the merge {commit[:7]} on {branch}; push it with `{push}`"
+        message = self.policy.commit_message(checkout.merge.message())
+        commit = checkout.working_tree.commit_staged(message)
+        push = RunnableCommand.PUSH.usage()
+        return (
+            f"committed the merge {commit.hash.abbreviated} on {branch}; push it with "
+            f"`{push}`"
+        )
 
 
 @dataclass(frozen=True)
@@ -919,11 +705,8 @@ class MergeAbort(WorkflowStep):
     """
 
     def run(self) -> str:
-        branch = self.policy.work_branch()
-        git = self.policy.checkout.git
-        if not MergeInProgress(git).exists():
-            raise NoMergeInProgressError(branch)
-        git.abort_merge()
+        branch = self.policy.branch_being_merged()
+        self.policy.checkout.merge.abort()
         return f"undid the merge on {branch}; it is as it was before"
 
 
@@ -944,25 +727,20 @@ class BaseMerge(WorkflowStep):
     The checkout, its work branch and the default branch.
     """
 
-    pull_requests: PullRequestsFromForks
+    branches: BranchStacks
     """
-    Finds the pull requests opened from the work branch.
-    """
-
-    stacks: StackReader
-    """
-    Reads whether one is in a stack.
+    Finds the pull requests opened from the work branch, and whether one is in a stack.
     """
 
     def run(self) -> str:
         branch = self.policy.work_branch()
         owner = self.policy.remote.repository.owner
-        for pull_request in self.pull_requests.pull_requests_from(owner, branch):
-            stacked = self.stacks.stack_of(pull_request.number) is not None
+        for pull_request in self.branches.fork_branch_pull_requests(owner, branch):
+            stacked = self.branches.containing_stack(pull_request.number) is not None
             above = pull_request.base != self.policy.default_branch
             if pull_request.state is PullRequestState.OPEN and stacked and above:
                 raise StackedBranchMergeError(branch, pull_request.number)
-        default = RemoteBranch(self.policy.remote.name, self.policy.default_branch)
+        default = self.policy.remote.branch(self.policy.default_branch)
         return WorkBranchMerge(self.policy).merge(default, default.name)
 
 
@@ -983,7 +761,7 @@ class OpenPullRequestBranch:
     The owner's repository, which the branch has to be on.
     """
 
-    def of(self, number: int) -> str:
+    def branch(self, number: int) -> BranchName:
         """
         :param number: The pull request.
         :return: Its branch.
@@ -1034,8 +812,8 @@ class PullRequestMerge(WorkflowStep):
         self.policy.work_branch()
         branch = OpenPullRequestBranch(
             self.pull_requests, self.policy.remote.repository
-        ).of(self.number)
-        merged = RemoteBranch(self.policy.remote.name, branch)
+        ).branch(self.number)
+        merged = self.policy.remote.branch(branch)
         described = f"#{self.number}'s branch {branch}"
         return WorkBranchMerge(self.policy).merge(merged, described)
 
@@ -1091,12 +869,20 @@ class NotesSaving(WorkflowStep):
                 f"nothing changed since the last save to {self.save.notes.branch.name}"
             )
         line = f"saved {', '.join(map(str, saved))} to {self.save.notes.branch.name}"
-        checked_out = self.save.checkout.git.checked_out_branch()
-        if self.save.progress_branch in {"", checked_out}:
+        progress = self.save.progress_branch
+        checked_out = self.save.checkout.working_tree.checked_out_branch()
+        if progress is None or (
+            checked_out is not None and checked_out.name == progress
+        ):
             return line
+        elsewhere = (
+            "a detached HEAD"
+            if checked_out is None
+            else f"the checked-out {checked_out.name}'s"
+        )
         return (
-            f"{line}; the progress is {self.save.progress_branch}'s, loaded at session "
-            f"start, not the checked-out {checked_out}'s"
+            f"{line}; the progress is {progress}'s, loaded at session start, not "
+            f"{elsewhere}"
         )
 
 
@@ -1144,7 +930,7 @@ class RepositoryCloning(WorkflowStep):
                 f"for what changed since"
             )
         GitCommandRunner.clone(
-            self.repository.clone_url_under(self.hosting_root), destination
+            self.repository.rooted_clone_url(self.hosting_root), destination
         )
         checkout = ProjectCheckout(GitCommandRunner(destination))
         refused = PushHook(checkout, Path(sys.executable)).install()

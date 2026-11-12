@@ -1,0 +1,45 @@
+[
+  {
+    "id": 2891461,
+    "number": 14,
+    "node_id": "PRS_kwDOVe87h84ALB7F",
+    "url": "https://api.github.com/repos/LucaKro/GitHubWorkflow/stacks/14",
+    "base": {
+      "ref": "main"
+    },
+    "open": true,
+    "created_at": "2026-11-01T12:58:24Z",
+    "pull_requests": [
+      {
+        "number": 11,
+        "state": "open",
+        "draft": true,
+        "merged_at": null,
+        "head": {
+          "ref": "probe/stack-a-20261101T125815Z",
+          "sha": "e776a4f41c431de6e675c2220a715cded7b0331a"
+        }
+      },
+      {
+        "number": 12,
+        "state": "open",
+        "draft": true,
+        "merged_at": null,
+        "head": {
+          "ref": "probe/stack-b-20261101T125815Z",
+          "sha": "d4e089e9722868c95f071721137a6fa7ea21fd71"
+        }
+      },
+      {
+        "number": 13,
+        "state": "open",
+        "draft": true,
+        "merged_at": null,
+        "head": {
+          "ref": "probe/stack-c-20261101T125815Z",
+          "sha": "21fd920fea9621bb6ad4005d12f1ecae5437e9e0"
+        }
+      }
+    ]
+  }
+]

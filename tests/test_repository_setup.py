@@ -9,30 +9,22 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import pytest
+from domain_model.git.revisions import BranchName
+from domain_model.github.repository_client import RepositoryFeatures
+from domain_model.github.rest_models import Workflow, WorkflowRun
+from domain_model.github.vocabulary import WorkflowState
 
-from basstler_domain_model.github.repository_client import (
-    RepositoryDiscussions,
-    RepositorySettings,
-    RepositoryWorkflows,
-)
-from basstler_domain_model.github.rest_models import Workflow, WorkflowRun
-from basstler_domain_model.github.vocabulary import WorkflowState
-from basstler_domain_model.repository import Repository
-
-from github_workflow.hooks import Tone
 from github_workflow.locations import NotesFile
+from github_workflow.report_lines import Tone
 from github_workflow.repository_setup import RepositorySetup
 
-REPOSITORY = Repository("LucaKro", "a-repository")
-"""
-The repository every setup here is made sure of.
-"""
+from .scratch_github import ScratchGitHub
 
 # %% settings in memory
 
 
 @dataclass(frozen=True)
-class SettingsInMemory(RepositorySettings, RepositoryDiscussions, RepositoryWorkflows):
+class SettingsInMemory(RepositoryFeatures):
     """
     A repository's features, each on or off, and its workflows, recording every change
     asked for.
@@ -95,68 +87,70 @@ class SettingsInMemory(RepositorySettings, RepositoryDiscussions, RepositoryWork
     def workflows(self) -> list[Workflow]:
         return list(self.listed)
 
-    def runs_on(self, branch: str) -> list[WorkflowRun]:
+    def branch_runs(self, branch: BranchName) -> list[WorkflowRun]:
         return []
 
 
 # %% turning features on
 
 
-def test_a_repository_set_up_already_is_left_alone():
+def test_a_repository_set_up_already_is_left_alone() -> None:
     settings = SettingsInMemory()
 
-    assert RepositorySetup(REPOSITORY, settings, settings, settings).lines() == []
+    assert RepositorySetup(ScratchGitHub.owned, settings).lines() == []
     assert settings.changes == []
 
 
-def test_merged_branch_deletion_and_issues_that_are_off_are_left_for_the_person():
+def test_merged_branch_deletion_and_issues_that_are_off_are_left_for_the_person() -> (
+    None
+):
     """
     Turning a feature on changes the repository for everyone who uses it, a fork's
     public issues among it: only the person opts in.
     """
     settings = SettingsInMemory(deletes=False, issues=False)
 
-    lines = RepositorySetup(REPOSITORY, settings, settings, settings).lines()
+    lines = RepositorySetup(ScratchGitHub.owned, settings).lines()
 
     assert settings.changes == []
     assert [line.tone for line in lines] == [Tone.ACTION] * 2
 
 
-def test_actions_that_are_off_are_left_for_the_person_to_turn_on():
+def test_actions_that_are_off_are_left_for_the_person_to_turn_on() -> None:
     """
     Actions run every workflow on the repository, an upstream's on a fork among them,
     under the owner's account: only the person decides that.
     """
     settings = SettingsInMemory(actions=False)
 
-    [line] = RepositorySetup(REPOSITORY, settings, settings, settings).lines()
+    [line] = RepositorySetup(ScratchGitHub.owned, settings).lines()
 
     assert settings.changes == []
     assert line.tone is Tone.ACTION
-    assert f"{REPOSITORY.settings_url}/actions" in line.text
+    assert ScratchGitHub.owned.actions_settings_url in line.text
 
 
-def test_actions_that_cannot_be_read_are_not_touched():
+def test_actions_that_cannot_be_read_are_not_touched() -> None:
     settings = SettingsInMemory(actions=None)
 
-    assert RepositorySetup(REPOSITORY, settings, settings, settings).lines() == []
+    assert RepositorySetup(ScratchGitHub.owned, settings).lines() == []
     assert settings.changes == []
 
 
 @pytest.mark.parametrize(
     "settings, page",
     [
-        (SettingsInMemory(deletes=False), REPOSITORY.settings_url),
-        (SettingsInMemory(issues=False), REPOSITORY.settings_url),
-        (SettingsInMemory(actions=False), f"{REPOSITORY.settings_url}/actions"),
-        (SettingsInMemory(discussions=False), REPOSITORY.settings_url),
+        (SettingsInMemory(deletes=False), ScratchGitHub.owned.settings_url),
+        (SettingsInMemory(issues=False), ScratchGitHub.owned.settings_url),
+        (SettingsInMemory(actions=False), ScratchGitHub.owned.actions_settings_url),
+        (SettingsInMemory(discussions=False), ScratchGitHub.owned.settings_url),
     ],
     ids=["deletion", "issues", "actions", "discussions"],
 )
 def test_a_feature_that_is_off_says_where_to_turn_it_on(
     settings: SettingsInMemory, page: str
-):
-    [line] = RepositorySetup(REPOSITORY, settings, settings, settings).lines()
+) -> None:
+    [line] = RepositorySetup(ScratchGitHub.owned, settings).lines()
 
     assert settings.changes == []
     assert line.tone is Tone.ACTION
@@ -166,7 +160,9 @@ def test_a_feature_that_is_off_says_where_to_turn_it_on(
 # %% the notes branch's workflows
 
 
-def test_a_notes_workflow_github_turned_off_is_reported_with_where_to_turn_it_on():
+def test_a_notes_workflow_github_turned_off_is_reported_with_where_to_turn_it_on() -> (
+    None
+):
     posting = Workflow(
         "Post discussions",
         str(NotesFile.POSTING_WORKFLOW.value),
@@ -174,9 +170,12 @@ def test_a_notes_workflow_github_turned_off_is_reported_with_where_to_turn_it_on
     )
     settings = SettingsInMemory(listed=[posting])
 
-    [line] = RepositorySetup(REPOSITORY, settings, settings, settings).lines()
+    [line] = RepositorySetup(ScratchGitHub.owned, settings).lines()
 
-    assert (line.tone, f"{REPOSITORY.url}/actions" in line.text) == (Tone.ACTION, True)
+    assert (line.tone, ScratchGitHub.owned.actions_url in line.text) == (
+        Tone.ACTION,
+        True,
+    )
 
 
 @pytest.mark.parametrize(
@@ -191,7 +190,7 @@ def test_a_notes_workflow_github_turned_off_is_reported_with_where_to_turn_it_on
     ],
     ids=["running", "not the notes branch's"],
 )
-def test_other_workflows_are_left_unreported(workflow: Workflow):
+def test_other_workflows_are_left_unreported(workflow: Workflow) -> None:
     settings = SettingsInMemory(listed=[workflow])
 
-    assert RepositorySetup(REPOSITORY, settings, settings, settings).lines() == []
+    assert RepositorySetup(ScratchGitHub.owned, settings).lines() == []

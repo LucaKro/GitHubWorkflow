@@ -1,0 +1,9 @@
+{
+  "statuses": [
+    {
+      "context": "deploy",
+      "state": "failure",
+      "target_url": "https://example.com/deploy"
+    }
+  ]
+}

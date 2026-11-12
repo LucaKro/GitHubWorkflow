@@ -1,6 +1,5 @@
 """
-Compute one section of the session start, in a process of its own so a failure or a slow
-answer costs only that section.
+Compute one section of the session start, run in a process of its own.
 
 Usage: ``python -m github_workflow.report <section>``; prints one report line as JSON
 per line, or nothing when there is nothing to say.
@@ -9,30 +8,25 @@ per line, or nothing when there is nothing to say.
 from __future__ import annotations
 
 import sys
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from basstler_domain_model.github.repository_client import GitHubRepository
+from domain_model.class_family import ClassFamily
+from domain_model.class_property import classproperty
+from domain_model.github.repository_client import GitHubRepository
 
-from github_workflow.checkout import ProjectCheckout
-from github_workflow.cleanup import CleanupReminder, KeptBranches
-from github_workflow.discussions import DiscussionSessionLog
-from github_workflow.findings import FindingsSummary, SessionPullRequestClosing
-from github_workflow.freshness import BranchFreshening, FreshnessReport
-from github_workflow.label_events import LabelsCompletedReport, PickedLabelCompletion
-from github_workflow.notes.branch import NotesBranch
-from github_workflow.policy import WritePolicy
-from github_workflow.pull_request_overview import (
-    PullRequestOverview,
-    PullRequestSignalReader,
-)
-from github_workflow.remotes import OwnedRemotes
-from github_workflow.report_section import ReportSection, SectionContext
+from github_workflow.cleanup import CleanupReminder
+from github_workflow.findings import FindingsSummary
+from github_workflow.freshness import FreshnessReport
+from github_workflow.label_events import LabelsCompletedReport
+from github_workflow.pull_request_overview import PullRequestOverview
+from github_workflow.report_section import ReportSection
 from github_workflow.repository_setup import RepositorySetup
+from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
-from github_workflow.stacks import StackPlacement
 from github_workflow.upstream import UpstreamMergeFollowing
-from github_workflow.work import PullRequestOpenedLabelling
 
 # %% the sections
 
@@ -72,75 +66,149 @@ class SectionName(StrEnum):
     The fork's pull requests merged upstream, closed, and their stacks moved on.
     """
 
-    def section(self, context: SectionContext) -> ReportSection:
+
+# %% building a section
+
+
+@dataclass(frozen=True)
+class SectionBuilder(ClassFamily, ABC):
+    """
+    Builds one section from the checkout the session starts in.
+    """
+
+    session: WorkflowSession
+    """
+    The checkout the session starts in.
+    """
+
+    @classproperty
+    @abstractmethod
+    def section_name(cls) -> SectionName:
         """
-        :param context: Where the section looks.
+        The section this builds.
+        """
+
+    @abstractmethod
+    def section(self) -> ReportSection:
+        """
         :return: The section.
         """
-        match self:
-            case SectionName.SETUP:
-                return RepositorySetup(
-                    context.remote.repository,
-                    context.github,
-                    context.github,
-                    context.github,
-                )
-            case SectionName.PULL_REQUESTS:
-                return PullRequestOverview(
-                    PullRequestSignalReader.of(context.github),
-                    context.github,
-                    context.github,
-                    context.checkout.git.checked_out_branch(),
-                )
-            case SectionName.FINDINGS:
-                completion = PickedLabelCompletion(
-                    context.github, context.github, context.github
-                )
-                return LabelsCompletedReport(
-                    completion,
-                    FindingsSummary(context.github, context.remote.repository),
-                )
-            case SectionName.CLEANUP:
-                return CleanupReminder(
-                    KeptBranches.read(
-                        context.checkout.git,
-                        context.remote,
-                        context.github,
-                        NotesBranch.on(
-                            context.checkout.git, context.remote, context.settings
-                        ),
-                    )
-                )
-            case SectionName.UPSTREAM_MERGES:
-                github = context.github
-                log = DiscussionSessionLog.in_checkout(
-                    github, context.checkout.git, context.remote, context.settings
-                )
-                return UpstreamMergeFollowing(
-                    context.remote.repository,
-                    github,
-                    github,
-                    github,
-                    GitHubRepository.from_environment,
-                    SessionPullRequestClosing(
-                        github,
-                        github,
-                        github,
-                        log,
-                        github,
-                        PullRequestOpenedLabelling(github, github),
-                    ),
-                    github,
-                    StackPlacement(github, github, github, github),
-                )
-            case SectionName.FRESHNESS:
-                return FreshnessReport(
-                    BranchFreshening(
-                        WritePolicy(context.checkout, context.remote, context.github),
-                        context.github,
-                        context.github,
-                    )
-                )
+
+    @classmethod
+    def from_section_name(
+        cls, session: WorkflowSession, name: SectionName
+    ) -> SectionBuilder:
+        """
+        :param session: The checkout the session starts in.
+        :param name: A section.
+        :return: What builds it from that checkout.
+        """
+        builder = next(
+            builder
+            for builder in cls.concrete_subclasses()
+            if builder.section_name is name
+        )
+        return builder(session)
+
+
+@dataclass(frozen=True)
+class SetupBuilder(SectionBuilder):
+    """
+    Builds the section turning on the repository features the workflow relies on.
+    """
+
+    @classproperty
+    def section_name(cls) -> SectionName:
+        return SectionName.SETUP
+
+    def section(self) -> ReportSection:
+        return RepositorySetup(self.session.remote.repository, self.session.github)
+
+
+@dataclass(frozen=True)
+class PullRequestsBuilder(SectionBuilder):
+    """
+    Builds the section over the open pull requests.
+    """
+
+    @classproperty
+    def section_name(cls) -> SectionName:
+        return SectionName.PULL_REQUESTS
+
+    def section(self) -> ReportSection:
+        github = self.session.github
+        checked_out = self.session.checkout.working_tree.checked_out_branch()
+        return PullRequestOverview(
+            github,
+            self.session.thread_source,
+            None if checked_out is None else checked_out.name,
+        )
+
+
+@dataclass(frozen=True)
+class FindingsBuilder(SectionBuilder):
+    """
+    Builds the section over the findings waiting for the person.
+    """
+
+    @classproperty
+    def section_name(cls) -> SectionName:
+        return SectionName.FINDINGS
+
+    def section(self) -> ReportSection:
+        return LabelsCompletedReport(
+            self.session.label_completion,
+            FindingsSummary(self.session.github, self.session.remote.repository),
+        )
+
+
+@dataclass(frozen=True)
+class CleanupBuilder(SectionBuilder):
+    """
+    Builds the section over the branches ready for deletion.
+    """
+
+    @classproperty
+    def section_name(cls) -> SectionName:
+        return SectionName.CLEANUP
+
+    def section(self) -> ReportSection:
+        return CleanupReminder(self.session.kept_branches)
+
+
+@dataclass(frozen=True)
+class FreshnessBuilder(SectionBuilder):
+    """
+    Builds the section bringing the fork's default branch and the work branch up to
+    date.
+    """
+
+    @classproperty
+    def section_name(cls) -> SectionName:
+        return SectionName.FRESHNESS
+
+    def section(self) -> ReportSection:
+        return FreshnessReport(self.session.freshening)
+
+
+@dataclass(frozen=True)
+class UpstreamMergesBuilder(SectionBuilder):
+    """
+    Builds the section following the fork's pull requests merged upstream.
+    """
+
+    @classproperty
+    def section_name(cls) -> SectionName:
+        return SectionName.UPSTREAM_MERGES
+
+    def section(self) -> ReportSection:
+        return UpstreamMergeFollowing(
+            self.session.remote.repository.owner,
+            self.session.github,
+            GitHubRepository.from_environment,
+            self.session.session_closing,
+            self.session.placement,
+        )
 
 
 # %% entry point
@@ -150,14 +218,10 @@ def main() -> None:
     """
     Compute the section the command line names, and print its lines.
     """
-    checkout = ProjectCheckout.containing(Path.cwd())
-    settings = WorkflowSettings()
-    remote = OwnedRemotes.read(checkout.git, settings).chosen
-    context = SectionContext(
-        checkout, remote, GitHubRepository.from_environment(remote.repository), settings
-    )
-    for line in SectionName(sys.argv[1]).section(context).lines():
-        print(line.json())
+    session = WorkflowSession(Path.cwd(), WorkflowSettings())
+    builder = SectionBuilder.from_section_name(session, SectionName(sys.argv[1]))
+    for line in builder.section().lines():
+        print(line.to_json())
 
 
 if __name__ == "__main__":

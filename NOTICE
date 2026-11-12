@@ -1,7 +1,8 @@
 GitHubWorkflow
 Copyright 2026 Luca Krohm
 
-Licensed under the Apache License, Version 2.0 (see LICENSE).
+Licensed under the Apache License, Version 2.0 (see LICENSE), except for the code
+adapted from krrood named below.
 
 It contains code adapted, and changed, from basstler
 (https://github.com/AbdelrhmanBassiouny/basstler) at commit
@@ -19,3 +20,12 @@ basstler's NOTICE reads:
     src/basstler/exceptions.py and src/basstler/class_property.py contain code
     adapted from krrood (https://github.com/cram2/krrood), which remains under its
     own licence.
+
+The domain model shipped in domain_model/ was copied from basstler-domain-model
+(https://github.com/LucaKro/basstler_domain_model) at commit
+4dd8c9af90e51d07167e30e7c98e6d933736caa4, and renamed here: its package to domain_model, its
+distribution to github-workflow-domain-model. Its own NOTICE is in domain_model/NOTICE.
+In this project, domain_model/src/domain_model/exceptions.py and
+domain_model/src/domain_model/class_property.py contain code adapted from
+krrood (https://github.com/cram2/krrood), which remains under its own licence, the GNU
+Lesser General Public License, Version 3.

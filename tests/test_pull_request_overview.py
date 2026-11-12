@@ -8,34 +8,31 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 
 import pytest
-
-from basstler_domain_model.github.pull_request_models import (
+from domain_model.github.labels import GitHubLabel
+from domain_model.github.pull_request_models import (
     CheckResult,
     CheckStatus,
     UpstreamPullRequestSnapshot,
 )
-from basstler_domain_model.github.readers import PullRequestSource
-from basstler_domain_model.github.labels import GitHubLabel
-from basstler_domain_model.github.repository_client import (
-    PullRequestReader,
-    RepositoryLabels,
-    ReviewRequests,
-)
-from basstler_domain_model.github.rest_models import RestPullRequest
-from basstler_domain_model.github.review_models import (
-    Author,
-    ReviewThread,
-    ThreadComment,
-)
-from basstler_domain_model.github.vocabulary import CheckOutcome, MergeableState
+from domain_model.github.readers import PullRequestSource
+from domain_model.github.repository_client import PullRequestTracker
+from domain_model.github.rest_models import RestPullRequest
+from domain_model.github.review_models import Author, ReviewThread, ThreadComment
+from domain_model.github.vocabulary import CheckOutcome, MergeableState
 
-from github_workflow.hooks import Emphasis, Highlight, NumberLink, Tone
 from github_workflow.pull_request_overview import (
     PullRequestDetails,
     PullRequestGroup,
     PullRequestLabel,
     PullRequestOverview,
     PullRequestSignalReader,
+)
+from github_workflow.report_lines import (
+    CountedThing,
+    Emphasis,
+    Highlight,
+    Speaker,
+    Tone,
 )
 from github_workflow.upstream import UpstreamLabel
 
@@ -65,9 +62,7 @@ def thread(resolved: bool) -> ReviewThread:
 
 
 @dataclass(frozen=True)
-class PullRequestsWithSignals(
-    PullRequestReader, PullRequestSource, ReviewRequests, RepositoryLabels
-):
+class PullRequestsWithSignals(PullRequestTracker, PullRequestSource):
     """
     Open pull requests with their merge state, checks, threads and labels, how many wait
     on the person's review, and the repository's labels.
@@ -157,23 +152,20 @@ class PullRequestsWithSignals(
     def overview(self, checked_out: str = "elsewhere") -> PullRequestOverview:
         """:param checked_out: The branch the session works on.
         :return: The section over these pull requests."""
-        return PullRequestOverview(
-            PullRequestSignalReader(self, self), self, self, checked_out
-        )
+        return PullRequestOverview(self, self, checked_out)
 
 
-FAILING = CheckStatus.over(
-    [CheckResult("build", CheckOutcome.FAILURE, "https://example.com/build")]
-)
-"""
-Checks one of which failed.
-"""
+def failing_checks() -> CheckStatus:
+    """:return: Checks one of which failed."""
+    return CheckStatus.from_results(
+        [CheckResult("build", CheckOutcome.FAILURE, "https://example.com/build")]
+    )
 
 
 # %% the lines
 
 
-def test_a_pull_request_nothing_asks_attention_for_is_ok():
+def test_a_pull_request_nothing_asks_attention_for_is_ok() -> None:
     github = PullRequestsWithSignals(mergeable={1: MergeableState.CLEAN})
 
     [_, line] = github.overview().lines()
@@ -187,7 +179,7 @@ def test_a_pull_request_nothing_asks_attention_for_is_ok():
     [
         (
             PullRequestsWithSignals(
-                mergeable={1: MergeableState.CLEAN}, checks={1: FAILING}
+                mergeable={1: MergeableState.CLEAN}, checks={1: failing_checks()}
             ),
             "CI failing",
         ),
@@ -208,14 +200,14 @@ def test_a_pull_request_nothing_asks_attention_for_is_ok():
 )
 def test_a_signal_is_named_and_asks_for_attention(
     github: PullRequestsWithSignals, signal: str
-):
+) -> None:
     [_, line] = github.overview().lines()
 
     assert line.text.endswith(f"Change 1 - {signal}")
     assert line.tone is Tone.ACTION
 
 
-def test_the_pull_request_of_the_session_s_branch_is_marked():
+def test_the_pull_request_of_the_session_s_branch_is_marked() -> None:
     github = PullRequestsWithSignals(mergeable={1: MergeableState.CLEAN})
 
     [_, line] = github.overview(checked_out="branch-1").lines()
@@ -223,7 +215,7 @@ def test_the_pull_request_of_the_session_s_branch_is_marked():
     assert line.text.endswith("Change 1 - this branch · ok")
 
 
-def test_a_pull_request_s_status_tags_are_shown_in_their_own_style():
+def test_a_pull_request_s_status_tags_are_shown_in_their_own_style() -> None:
     github = PullRequestsWithSignals(mergeable={1: MergeableState.CLEAN})
 
     [_, line] = github.overview().lines()
@@ -231,15 +223,15 @@ def test_a_pull_request_s_status_tags_are_shown_in_their_own_style():
     assert line.emphases == (Emphasis("- ok", Highlight.STATUS),)
 
 
-def test_a_pull_request_is_named_with_its_page():
+def test_a_pull_request_is_named_with_its_page() -> None:
     github = PullRequestsWithSignals(mergeable={1: MergeableState.CLEAN})
 
     [_, line] = github.overview().lines()
 
-    assert line.text.split()[0] == NumberLink(1, github.pull_request(1).url).markdown()
+    assert line.text.split()[0] == github.pull_request(1).markdown_link
 
 
-def test_pull_requests_are_grouped_open_upstream_then_drafts_then_ready():
+def test_pull_requests_are_grouped_open_upstream_then_drafts_then_ready() -> None:
     github = PullRequestsWithSignals(
         mergeable={number: MergeableState.CLEAN for number in (1, 2, 3, 4)},
         drafts=frozenset({2, 4}),
@@ -251,23 +243,22 @@ def test_pull_requests_are_grouped_open_upstream_then_drafts_then_ready():
     headings = [line.text for line in lines if not line.text.startswith(" ")]
     named = [line.text.split()[0] for line in lines if line.text.startswith(" ")]
     assert (headings, named) == (
-        [f"github-workflow: {group}:" for group in PullRequestGroup],
-        [
-            NumberLink(number, github.pull_request(number).url).markdown()
-            for number in (3, 4, 2, 1)
-        ],
+        [Speaker.WORKFLOW.says(f"{group}:") for group in PullRequestGroup],
+        [github.pull_request(number).markdown_link for number in (3, 4, 2, 1)],
     )
 
 
-def test_pull_requests_waiting_on_the_person_are_counted():
+def test_pull_requests_waiting_on_the_person_are_counted() -> None:
     github = PullRequestsWithSignals(waiting=2)
 
     [line] = github.overview().lines()
 
-    assert line.text == "github-workflow: 2 pull requests wait on your review"
+    assert line.text == Speaker.WORKFLOW.says(
+        f"{CountedThing.WAITING_PULL_REQUEST.quantify(2)} on your review"
+    )
 
 
-def test_a_shelved_pull_request_is_left_out():
+def test_a_shelved_pull_request_is_left_out() -> None:
     github = PullRequestsWithSignals(
         mergeable={1: MergeableState.DIRTY}, shelved=frozenset({1})
     )
@@ -275,7 +266,7 @@ def test_a_shelved_pull_request_is_left_out():
     assert github.overview().lines() == []
 
 
-def test_the_shelving_label_is_created_for_the_person_to_pick():
+def test_the_shelving_label_is_created_for_the_person_to_pick() -> None:
     github = PullRequestsWithSignals()
 
     github.overview().lines()
@@ -286,16 +277,16 @@ def test_the_shelving_label_is_created_for_the_person_to_pick():
 # %% the details
 
 
-def test_the_details_name_the_failing_check_the_merge_state_and_the_thread():
+def test_the_details_name_the_failing_check_the_merge_state_and_the_thread() -> None:
     github = PullRequestsWithSignals(
         mergeable={1: MergeableState.DIRTY},
-        checks={1: FAILING},
+        checks={1: failing_checks()},
         threads={1: [thread(resolved=False)]},
     )
 
     details = PullRequestDetails(PullRequestSignalReader(github, github), 1).run()
 
-    [check] = FAILING.unsuccessful
+    [check] = failing_checks().unsuccessful
     assert details.splitlines()[1:] == [
         f"check {check.outcome}: {check.name} {check.url}",
         f"merge state: {MergeableState.DIRTY}",

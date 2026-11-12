@@ -10,27 +10,26 @@ import sys
 from pathlib import Path
 
 import pytest
-from basstler_domain_model.git.commands import RemoteName
-from basstler_domain_model.github.issue_models import IssueComment
-from basstler_domain_model.locations import PathEnumeration
+from domain_model.environment import PythonVariable
+from domain_model.git.remotes import Remote, RemoteName
+from domain_model.git.revisions import CommitHash
+from domain_model.github.issue_models import IssueComment
+from domain_model.locations import PathEnumeration, PythonProjectFile
 
 from github_workflow.checkout import ProjectCheckout
-from github_workflow.environment import PythonVariable
 from github_workflow.exceptions import (
     BrokenTestError,
     FileOutsideCheckoutError,
     PassingTestError,
 )
-from github_workflow.locations import ProjectFile
 from github_workflow.proofs import (
+    BranchProofRunner,
     BranchTip,
     FindingTest,
-    BranchProofRunner,
     Proof,
     ProofOutcome,
 )
 from github_workflow.settings import WorkflowSettings
-from github_workflow.workspace import PackageDirectories
 
 from .repositories_by_owner import RepositoriesByOwner
 
@@ -95,6 +94,13 @@ class ProofDataset(PathEnumeration):
     could find it.
     """
 
+    COMMENT_ENDS_AND_FENCES = (
+        Path(__file__).parent / "dataset" / "proofs" / "comment_ends_and_fences.py"
+    )
+    """
+    A module whose text holds a comment's end and a fence of four backticks.
+    """
+
     WORKSPACE_PYPROJECT = (
         Path(__file__).parent / "dataset" / "proofs" / "workspace_pyproject.toml"
     )
@@ -109,7 +115,7 @@ class DoublingProjectFile(PathEnumeration):
     Where the doubling project keeps its files, relative to its root.
     """
 
-    PACKAGE = ProjectFile.SOURCE_DIRECTORY / "doubling" / "__init__.py"
+    PACKAGE = PythonProjectFile.SOURCE_DIRECTORY / "doubling" / "__init__.py"
     """
     The package.
     """
@@ -169,9 +175,8 @@ def runner(
     :param python: The interpreter the tests run with.
     :return: Runs tests on the checkout's default branch on GitHub.
     """
-    return BranchProofRunner(
-        checkout.git, RemoteName.ORIGIN, RepositoriesByOwner.default_branch, python
-    )
+    [origin] = Remote.read_configured(checkout.git)
+    return BranchProofRunner(origin.branch(RepositoriesByOwner.default_branch), python)
 
 
 def finding_test(source: ProofDataset) -> FindingTest:
@@ -184,9 +189,8 @@ def github_s_tip(checkout: ProjectCheckout) -> BranchTip:
     """:param checkout: The checkout.
     :return: Where GitHub's default branch is."""
     branch = RepositoriesByOwner.default_branch
-    return BranchTip(
-        branch, checkout.git.run("ls-remote", RemoteName.ORIGIN, branch).split()[0]
-    )
+    listed = checkout.git.run("ls-remote", RemoteName.ORIGIN, branch)
+    return BranchTip(branch, CommitHash(listed.split()[0]))
 
 
 # %% running on the default branch
@@ -194,7 +198,7 @@ def github_s_tip(checkout: ProjectCheckout) -> BranchTip:
 
 def test_a_test_failing_on_the_default_branch_proves_the_finding(
     checkout: ProjectCheckout,
-):
+) -> None:
     publish_package(checkout, ProofDataset.DOUBLING_WRONG)
 
     attempt = runner(checkout).attempt(finding_test(ProofDataset.DOUBLING_SHOWN_WRONG))
@@ -207,7 +211,7 @@ def test_a_test_failing_on_the_default_branch_proves_the_finding(
 
 def test_a_proof_carries_the_test_the_commit_and_pytest_s_failure(
     checkout: ProjectCheckout,
-):
+) -> None:
     publish_package(checkout, ProofDataset.DOUBLING_WRONG)
     test = finding_test(ProofDataset.DOUBLING_SHOWN_WRONG)
 
@@ -218,7 +222,7 @@ def test_a_proof_carries_the_test_the_commit_and_pytest_s_failure(
 
 def test_a_test_passing_on_the_default_branch_proves_nothing(
     checkout: ProjectCheckout,
-):
+) -> None:
     publish_package(checkout, ProofDataset.DOUBLING_CORRECT)
 
     attempt = runner(checkout).attempt(finding_test(ProofDataset.DOUBLING_SHOWN_WRONG))
@@ -230,13 +234,13 @@ def test_a_test_passing_on_the_default_branch_proves_nothing(
 
 def test_a_bug_only_on_the_work_branch_proves_nothing(
     checkout: ProjectCheckout, monkeypatch: pytest.MonkeyPatch
-):
+) -> None:
     publish_package(checkout, ProofDataset.DOUBLING_CORRECT)
     checkout.git.run("switch", "--quiet", "--create", "work")
     commit_package(checkout, ProofDataset.DOUBLING_WRONG)
     monkeypatch.setenv(
         PythonVariable.MODULE_SEARCH_PATH,
-        str(checkout.root / ProjectFile.SOURCE_DIRECTORY),
+        str(checkout.root / PythonProjectFile.SOURCE_DIRECTORY),
     )
 
     attempt = runner(checkout).attempt(finding_test(ProofDataset.DOUBLING_SHOWN_WRONG))
@@ -246,7 +250,7 @@ def test_a_bug_only_on_the_work_branch_proves_nothing(
 
 def test_github_s_default_branch_is_fetched_before_the_test_runs(
     checkout: ProjectCheckout, repositories: RepositoriesByOwner, owned_url: str
-):
+) -> None:
     publish_package(checkout, ProofDataset.DOUBLING_CORRECT)
     publish_package(
         repositories.clone(owned_url, "elsewhere"), ProofDataset.DOUBLING_WRONG
@@ -260,7 +264,7 @@ def test_github_s_default_branch_is_fetched_before_the_test_runs(
     )
 
 
-def test_the_checkout_s_files_are_left_alone(checkout: ProjectCheckout):
+def test_the_checkout_s_files_are_left_alone(checkout: ProjectCheckout) -> None:
     publish_package(checkout, ProofDataset.DOUBLING_WRONG)
     before = checkout.git.run("status", "--porcelain")
 
@@ -281,7 +285,9 @@ def test_the_checkout_s_files_are_left_alone(checkout: ProjectCheckout):
         ProofDataset.READS_MISSING_DATA,
     ],
 )
-def test_a_broken_test_proves_nothing(checkout: ProjectCheckout, source: ProofDataset):
+def test_a_broken_test_proves_nothing(
+    checkout: ProjectCheckout, source: ProofDataset
+) -> None:
     publish_package(checkout, ProofDataset.DOUBLING_WRONG)
 
     attempt = runner(checkout).attempt(finding_test(source))
@@ -293,7 +299,7 @@ def test_a_broken_test_proves_nothing(checkout: ProjectCheckout, source: ProofDa
 
 def test_a_file_missing_outside_the_tests_still_proves_the_finding(
     checkout: ProjectCheckout,
-):
+) -> None:
     publish_package(checkout, ProofDataset.DOUBLING_WRONG)
 
     attempt = runner(checkout).attempt(finding_test(ProofDataset.CODE_MISSES_A_FILE))
@@ -303,7 +309,7 @@ def test_a_file_missing_outside_the_tests_still_proves_the_finding(
 
 def test_a_module_that_cannot_be_collected_is_reported_with_its_exception(
     checkout: ProjectCheckout,
-):
+) -> None:
     publish_package(checkout, ProofDataset.DOUBLING_WRONG)
 
     attempt = runner(checkout).attempt(finding_test(ProofDataset.UNCOLLECTABLE_MODULE))
@@ -313,7 +319,7 @@ def test_a_module_that_cannot_be_collected_is_reported_with_its_exception(
 
 def test_an_interpreter_that_cannot_run_pytest_proves_nothing(
     checkout: ProjectCheckout, tmp_path: Path
-):
+) -> None:
     publish_package(checkout, ProofDataset.DOUBLING_WRONG)
     missing = str(tmp_path / "no-interpreter-here")
 
@@ -339,7 +345,7 @@ def commit_workspace_member(checkout: ProjectCheckout, package: ProofDataset) ->
     target = member / DoublingProjectFile.PACKAGE
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(package.read_text())
-    (checkout.root / ProjectFile.PYPROJECT).write_text(
+    (checkout.root / PythonProjectFile.PYPROJECT).write_text(
         ProofDataset.WORKSPACE_PYPROJECT.read_text()
     )
     checkout.git.run("add", ".")
@@ -348,7 +354,7 @@ def commit_workspace_member(checkout: ProjectCheckout, package: ProofDataset) ->
 
 def test_a_workspace_member_is_imported_from_the_default_branch(
     checkout: ProjectCheckout, monkeypatch: pytest.MonkeyPatch
-):
+) -> None:
     """
     Not from the working checkout the interpreter installed it from, which holds the
     fix.
@@ -361,7 +367,8 @@ def test_a_workspace_member_is_imported_from_the_default_branch(
     commit_workspace_member(checkout, ProofDataset.DOUBLING_CORRECT)
     installed = checkout.root / DoublingProjectFile.WORKSPACE_MEMBER
     monkeypatch.setenv(
-        PythonVariable.MODULE_SEARCH_PATH, str(installed / ProjectFile.SOURCE_DIRECTORY)
+        PythonVariable.MODULE_SEARCH_PATH,
+        str(installed / PythonProjectFile.SOURCE_DIRECTORY),
     )
 
     attempt = runner(checkout).attempt(finding_test(ProofDataset.DOUBLING_SHOWN_WRONG))
@@ -376,44 +383,19 @@ def workspace(root: Path, *members: Path) -> None:
     :param root: Its root.
     :param members: The directories made, relative to it.
     """
-    (root / ProjectFile.PYPROJECT).write_text(
+    (root / PythonProjectFile.PYPROJECT).write_text(
         ProofDataset.WORKSPACE_PYPROJECT.read_text()
     )
     for member in members:
         (root / member).mkdir(parents=True)
 
 
-def test_a_workspace_member_s_source_directory_is_searched(tmp_path: Path):
-    source = Path("packages") / "laid-out" / ProjectFile.SOURCE_DIRECTORY
-    workspace(tmp_path, source, Path("packages") / "flat")
-
-    assert PackageDirectories(tmp_path).search_path() == [
-        str(tmp_path),
-        str(tmp_path / "packages" / "flat"),
-        str(tmp_path / source),
-    ]
-
-
-def test_a_directory_the_workspace_excludes_is_not_searched(tmp_path: Path):
-    workspace(tmp_path, Path("packages") / "unused")
-
-    assert PackageDirectories(tmp_path).search_path() == [str(tmp_path)]
-
-
-def test_a_project_that_is_no_workspace_is_searched_in_its_source_directory(
-    tmp_path: Path,
-):
-    (tmp_path / ProjectFile.SOURCE_DIRECTORY).mkdir()
-
-    assert PackageDirectories(tmp_path).search_path() == [
-        str(tmp_path / ProjectFile.SOURCE_DIRECTORY)
-    ]
-
-
 # %% the test file
 
 
-def test_a_test_file_is_read_at_its_path_in_the_repository(checkout: ProjectCheckout):
+def test_a_test_file_is_read_at_its_path_in_the_repository(
+    checkout: ProjectCheckout,
+) -> None:
     file = checkout.root / DoublingProjectFile.TEST
     file.parent.mkdir(parents=True)
     file.write_text(ProofDataset.DOUBLING_SHOWN_WRONG.read_text())
@@ -425,7 +407,7 @@ def test_a_test_file_is_read_at_its_path_in_the_repository(checkout: ProjectChec
 
 def test_a_test_file_outside_the_checkout_is_refused(
     checkout: ProjectCheckout, tmp_path: Path
-):
+) -> None:
     with pytest.raises(FileOutsideCheckoutError):
         FindingTest.read(checkout, ProofDataset.DOUBLING_SHOWN_WRONG)
 
@@ -433,38 +415,38 @@ def test_a_test_file_outside_the_checkout_is_refused(
 # %% the comment
 
 
-def proof_of(source: str, commit: str = "0123456789abcdef") -> Proof:
+def build_proof(source: str, commit: str = "0123456789abcdef") -> Proof:
     """:param source: The test's text.
     :param commit: The commit it failed on.
     :return: A proof by that test."""
     return Proof(
         FindingTest(DoublingProjectFile.TEST, source),
-        BranchTip(RepositoriesByOwner.default_branch, commit),
+        BranchTip(RepositoriesByOwner.default_branch, CommitHash(commit)),
         "assert 6 == 4",
     )
 
 
-def test_a_posted_proof_reads_back_as_it_was(settings: WorkflowSettings):
-    proof = proof_of(ProofDataset.DOUBLING_SHOWN_WRONG.read_text())
+def test_a_posted_proof_reads_back_as_it_was(settings: WorkflowSettings) -> None:
+    proof = build_proof(ProofDataset.DOUBLING_SHOWN_WRONG.read_text())
 
     posted = [IssueComment(settings.owner, proof.comment())]
 
-    assert Proof.posted_in(posted, [settings.owner]) == proof
+    assert Proof.latest_posted(posted, [settings.owner]) == proof
 
 
 def test_a_test_holding_comment_ends_and_fences_reads_back_as_it_was(
     settings: WorkflowSettings,
-):
-    proof = proof_of('text = """\n-->\n````\n"""\n')
+) -> None:
+    proof = build_proof(ProofDataset.COMMENT_ENDS_AND_FENCES.read_text())
 
     posted = [IssueComment(settings.owner, proof.comment())]
 
-    assert Proof.posted_in(posted, [settings.owner]) == proof
+    assert Proof.latest_posted(posted, [settings.owner]) == proof
 
 
-def test_the_latest_proof_counts(settings: WorkflowSettings):
-    earlier = proof_of("def test_one(): pass\n", "1111111")
-    later = proof_of("def test_two(): pass\n", "2222222")
+def test_the_latest_proof_counts(settings: WorkflowSettings) -> None:
+    earlier = build_proof(ProofDataset.DOUBLING_SHOWN_WRONG.read_text(), "1111111")
+    later = build_proof(ProofDataset.MISSPELT_IMPORT.read_text(), "2222222")
 
     posted = [
         IssueComment(settings.owner, earlier.comment()),
@@ -472,22 +454,22 @@ def test_the_latest_proof_counts(settings: WorkflowSettings):
         IssueComment(settings.owner, "Looks right."),
     ]
 
-    assert Proof.posted_in(posted, [settings.owner]) == later
+    assert Proof.latest_posted(posted, [settings.owner]) == later
 
 
-def test_a_proof_by_an_untrusted_author_is_ignored(settings: WorkflowSettings):
-    trusted = proof_of("def test_one(): pass\n", "1111111")
-    forged = proof_of("def test_two(): pass\n", "2222222")
+def test_a_proof_by_an_untrusted_author_is_ignored(settings: WorkflowSettings) -> None:
+    trusted = build_proof(ProofDataset.DOUBLING_SHOWN_WRONG.read_text(), "1111111")
+    forged = build_proof(ProofDataset.MISSPELT_IMPORT.read_text(), "2222222")
 
     posted = [
         IssueComment(settings.owner.upper(), trusted.comment()),
         IssueComment(RepositoriesByOwner.foreign_owner, forged.comment()),
     ]
 
-    assert Proof.posted_in(posted, [settings.owner]) == trusted
+    assert Proof.latest_posted(posted, [settings.owner]) == trusted
 
 
-def test_an_issue_without_a_proof_has_none(settings: WorkflowSettings):
+def test_an_issue_without_a_proof_has_none(settings: WorkflowSettings) -> None:
     posted = [IssueComment(settings.owner, "Looks right.")]
 
-    assert Proof.posted_in(posted, [settings.owner]) is None
+    assert Proof.latest_posted(posted, [settings.owner]) is None

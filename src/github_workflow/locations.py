@@ -4,10 +4,11 @@ Every file and directory this package names, each written once.
 
 from __future__ import annotations
 
+from enum import StrEnum
 from pathlib import Path
 
-from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.locations import PathEnumeration
+from domain_model.git.revisions import BranchName
+from domain_model.locations import GitHubRepositoryFile, PathEnumeration
 
 # %% the notes branch
 
@@ -38,12 +39,19 @@ class NotesFile(PathEnumeration):
     The branches thrown away, one per line with the commit each was at when discarded.
     """
 
-    DELETION_WORKFLOW = Path(".github/workflows/delete-ready-branches.yml")
+    DELETION_WORKFLOW = (
+        GitHubRepositoryFile.WORKFLOWS_DIRECTORY / "delete-ready-branches.yml"
+    )
     """
     The Actions workflow deleting those branches whenever the notes branch is pushed.
     """
 
-    DELETION_SCRIPT = Path(".github/scripts/delete-ready-branches.sh")
+    SCRIPTS_DIRECTORY = Path(".github/scripts")
+    """
+    The scripts the notes branch's workflows run.
+    """
+
+    DELETION_SCRIPT = SCRIPTS_DIRECTORY / "delete-ready-branches.sh"
     """
     The script the deletion workflow runs.
     """
@@ -53,32 +61,32 @@ class NotesFile(PathEnumeration):
     The discussions waiting to be posted, one file each, removed once posted.
     """
 
-    POSTING_WORKFLOW = Path(".github/workflows/post-discussions.yml")
+    POSTING_WORKFLOW = GitHubRepositoryFile.WORKFLOWS_DIRECTORY / "post-discussions.yml"
     """
     The Actions workflow posting those discussions whenever they change.
     """
 
-    POSTING_SCRIPT = Path(".github/scripts/post-discussions.sh")
+    POSTING_SCRIPT = SCRIPTS_DIRECTORY / "post-discussions.sh"
     """
     The script the posting workflow runs.
     """
 
-    CATEGORIES_QUERY = Path(".github/scripts/discussion-categories.graphql")
+    CATEGORIES_QUERY = SCRIPTS_DIRECTORY / "discussion-categories.graphql"
     """
     The query the posting script reads the repository's discussion categories with.
     """
 
-    CREATE_QUERY = Path(".github/scripts/create-discussion.graphql")
+    CREATE_QUERY = SCRIPTS_DIRECTORY / "create-discussion.graphql"
     """
     The mutation the posting script creates a discussion with.
     """
 
-    FIND_QUERY = Path(".github/scripts/find-discussions.graphql")
+    FIND_QUERY = SCRIPTS_DIRECTORY / "find-discussions.graphql"
     """
     The query the posting script finds the discussion a comment goes on with.
     """
 
-    COMMENT_QUERY = Path(".github/scripts/add-discussion-comment.graphql")
+    COMMENT_QUERY = SCRIPTS_DIRECTORY / "add-discussion-comment.graphql"
     """
     The mutation the posting script comments on a discussion with.
     """
@@ -95,24 +103,20 @@ class NotesFile(PathEnumeration):
     recorded by the Actions workflow.
     """
 
-    UPSTREAM_REVIEW_WORKFLOW = Path(".github/workflows/read-upstream-reviews.yml")
+    UPSTREAM_REVIEW_WORKFLOW = (
+        GitHubRepositoryFile.WORKFLOWS_DIRECTORY / "read-upstream-reviews.yml"
+    )
     """
     The Actions workflow answering the requests.
     """
 
-    @classproperty
-    def workflows(cls) -> list[NotesFile]:
-        """
-        The Actions workflows the notes branch carries.
-        """
-        return [
-            cls.DELETION_WORKFLOW,
-            cls.POSTING_WORKFLOW,
-            cls.UPSTREAM_REVIEW_WORKFLOW,
-        ]
+    COMMIT_SCRIPT = SCRIPTS_DIRECTORY / "commit-notes-branch.sh"
+    """
+    The script every workflow on the notes branch commits and pushes its changes with.
+    """
 
     @classmethod
-    def progress_of(cls, branch: str) -> Path:
+    def progress_file(cls, branch: BranchName) -> Path:
         """
         :param branch: A work branch.
         :return: Where its progress is kept.
@@ -133,40 +137,11 @@ class ProjectFile(PathEnumeration):
     The personal memory file Claude Code loads, which the notes are written into.
     """
 
-    LABEL_COMPLETION_WORKFLOW = Path(".github/workflows/complete-finding-labels.yml")
+    LABEL_COMPLETION_WORKFLOW = (
+        GitHubRepositoryFile.WORKFLOWS_DIRECTORY / "complete-finding-labels.yml"
+    )
     """
     The Actions workflow completing finding labels picked on GitHub.
-    """
-
-    SOURCE_DIRECTORY = Path("src")
-    """
-    Where a Python project laid out with a source directory keeps its packages.
-    """
-
-    PYPROJECT = Path("pyproject.toml")
-    """
-    The Python project's settings, which may name the members of its uv workspace.
-    """
-
-    UV_LOCK = Path("uv.lock")
-    """
-    The versions uv pins a project's environment to, there when uv manages it.
-    """
-
-
-class GitFile(PathEnumeration):
-    """
-    The files inside a repository's git directory the workflow writes, relative to it.
-    """
-
-    EXCLUDE = Path("info/exclude")
-    """
-    The repository's own ignore list, which is never committed.
-    """
-
-    PRE_PUSH_HOOK = Path("hooks/pre-push")
-    """
-    The hook git runs before every push, which may refuse it.
     """
 
 
@@ -179,82 +154,85 @@ class WorkflowTemplate(PathEnumeration):
     package.
     """
 
-    DELETION_WORKFLOW = (
-        Path(__file__).parent / "templates" / "delete_ready_branches.yml"
-    )
+    DIRECTORY = Path(__file__).parent / "templates"
+    """
+    Where they are shipped.
+    """
+
+    DELETION_WORKFLOW = DIRECTORY / "delete_ready_branches.yml"
     """
     The Actions workflow deleting the branches listed on the notes branch.
     """
 
-    DELETION_SCRIPT = Path(__file__).parent / "templates" / "delete_ready_branches.sh"
+    DELETION_SCRIPT = DIRECTORY / "delete_ready_branches.sh"
     """
     The script the deletion workflow runs.
     """
 
-    POSTING_WORKFLOW = Path(__file__).parent / "templates" / "post_discussions.yml"
+    POSTING_WORKFLOW = DIRECTORY / "post_discussions.yml"
     """
     The Actions workflow posting the discussions queued on the notes branch.
     """
 
-    POSTING_SCRIPT = Path(__file__).parent / "templates" / "post_discussions.sh"
+    POSTING_SCRIPT = DIRECTORY / "post_discussions.sh"
     """
     The script the posting workflow runs.
     """
 
-    CATEGORIES_QUERY = (
-        Path(__file__).parent / "templates" / "discussion_categories.graphql"
-    )
+    CATEGORIES_QUERY = DIRECTORY / "discussion_categories.graphql"
     """
     The query reading a repository's discussion categories.
     """
 
-    CREATE_QUERY = Path(__file__).parent / "templates" / "create_discussion.graphql"
+    CREATE_QUERY = DIRECTORY / "create_discussion.graphql"
     """
     The mutation creating a discussion.
     """
 
-    FIND_QUERY = Path(__file__).parent / "templates" / "find_discussions.graphql"
+    FIND_QUERY = DIRECTORY / "find_discussions.graphql"
     """
     The query listing a category's discussions, the oldest first.
     """
 
-    COMMENT_QUERY = (
-        Path(__file__).parent / "templates" / "add_discussion_comment.graphql"
-    )
+    COMMENT_QUERY = DIRECTORY / "add_discussion_comment.graphql"
     """
     The mutation commenting on a discussion.
     """
 
-    UPSTREAM_REVIEW_WORKFLOW = (
-        Path(__file__).parent / "templates" / "read_upstream_reviews.yml"
-    )
+    UPSTREAM_REVIEW_WORKFLOW = DIRECTORY / "read_upstream_reviews.yml"
     """
     The Actions workflow reading the reviews of pull requests opened upstream for the
     requests queued on the notes branch.
     """
 
-    SESSION_LOG_INTRODUCTION = (
-        Path(__file__).parent / "templates" / "session_log_introduction.md"
-    )
+    COMMIT_SCRIPT = DIRECTORY / "commit_notes_branch.sh"
+    """
+    The script the notes branch's workflows commit and push their changes with.
+    """
+
+    SESSION_LOG_INTRODUCTION = DIRECTORY / "session_log_introduction.md"
     """
     The text the session log discussion is started with.
     """
 
-    LABEL_COMPLETION_WORKFLOW = (
-        Path(__file__).parent / "templates" / "complete_finding_labels.yml"
-    )
+    LABEL_COMPLETION_WORKFLOW = DIRECTORY / "complete_finding_labels.yml"
     """
     The Actions workflow completing finding labels picked on GitHub.
     """
 
-    PROOF_COMMENT = Path(__file__).parent / "templates" / "proof_comment.md"
+    PROOF_COMMENT = DIRECTORY / "proof_comment.md"
     """
     The comment posting a finding's proof on its issue.
     """
 
-    PRE_PUSH_HOOK = Path(__file__).parent / "templates" / "pre_push.sh"
+    PRE_PUSH_HOOK = DIRECTORY / "pre_push.sh"
     """
     The ``pre-push`` hook checking every push from a Claude Code session.
+    """
+
+    NOTES_HEADER = DIRECTORY / "notes_header.md"
+    """
+    The instructions the notes block opens with.
     """
 
 
@@ -317,7 +295,9 @@ class RepositoryFile(PathEnumeration):
     Where in a repository the probe puts the files it pushes.
     """
 
-    BRANCH_DELETION_WORKFLOW = Path(".github/workflows/probe-branch-deletion.yml")
+    BRANCH_DELETION_WORKFLOW = (
+        GitHubRepositoryFile.WORKFLOWS_DIRECTORY / "probe-branch-deletion.yml"
+    )
     """
     The branch deletion workflow, where GitHub Actions finds it.
     """
@@ -337,15 +317,81 @@ class PluginDataDirectory(PathEnumeration):
     """
 
 
-# %% git's state
+# %% the plugin and its runtime
 
 
-class GitStateFile(PathEnumeration):
+class PluginDirectory(PathEnumeration):
     """
-    The files git keeps in a repository's git directory that the workflow reads.
+    The directories of the plugin a runtime is built from, relative to the plugin's.
     """
 
-    FETCH_HEAD = Path("FETCH_HEAD")
+    WORKFLOW_SOURCE = Path("src")
     """
-    What the last fetch brought in, rewritten by every fetch.
+    The workflow's source.
+    """
+
+    DOMAIN_MODEL_SOURCE = Path("domain_model/src")
+    """
+    The domain model's source, shipped with the plugin.
+    """
+
+
+class UnstampedDirectory(StrEnum):
+    """
+    The directories in a plugin whose content is not part of what a runtime is built
+    from, by name.
+    """
+
+    GIT = ".git"
+    """
+    The plugin's history, when it is a checkout.
+    """
+
+    BYTECODE = "__pycache__"
+    """
+    Compiled modules, written as the plugin's code runs.
+    """
+
+
+class RuntimeLocation(PathEnumeration):
+    """
+    The files and directories inside a runtime the installer writes, relative to it.
+    """
+
+    PLUGIN_STAMP = Path("github-workflow-plugin")
+    """
+    Holds the directory of the plugin the runtime was built from, and a digest of its
+    content.
+    """
+
+    INTERPRETER = Path("bin/python")
+    """
+    The runtime's interpreter.
+    """
+
+    SOURCES = Path("sources")
+    """
+    Holds the copy of every source directory of the plugin.
+    """
+
+
+class SitePackagesFile(PathEnumeration):
+    """
+    The files the installer writes into a runtime's site-packages, relative to it.
+    """
+
+    SOURCE_PATHS = Path("github-workflow.pth")
+    """
+    Lists the source directories the runtime's interpreter imports from.
+    """
+
+
+class HomeDirectory(PathEnumeration):
+    """
+    The directories under the person's home directory the workflow writes to.
+    """
+
+    LAUNCHERS = Path(".local/bin")
+    """
+    Where the launcher is written: the usual place for one's own commands.
     """
