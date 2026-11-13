@@ -124,6 +124,59 @@ def test_a_pull_request_others_already_build_on_is_not_built_on_again() -> None:
         placement(repository).place(1, 3)
 
 
+def test_a_pull_request_others_already_build_on_is_refused_before_any_write() -> None:
+    repository = StackedPullRequestsInMemory({1: "main", 2: "main", 3: "main"})
+    existing_stack(repository, 1, 2)
+
+    with pytest.raises(StackContinuesAboveError):
+        placement(repository).place(1, 3)
+
+    assert repository.writes == []
+
+
+# %% moving a stacked pull request onto another
+
+
+def test_a_stacked_pull_request_leaves_its_stack_before_its_base_changes() -> None:
+    """
+    GitHub refuses to change the base of a pull request in a stack; what sits on the one
+    moved moves with it.
+    """
+    repository = StackedPullRequestsInMemory(
+        {96: "main", 58: "main", 60: StackedPullRequestsInMemory.name_branch(58)}
+    )
+    existing = existing_stack(repository, 58, 60)
+
+    placement(repository).place(96, 58)
+
+    assert repository.writes == [
+        f"unstack {existing.number}",
+        f"set_base 58 {StackedPullRequestsInMemory.name_branch(96)}",
+        "create_stack [96, 58, 60]",
+    ]
+
+
+def test_the_pull_requests_below_one_moved_off_stay_stacked() -> None:
+    repository = StackedPullRequestsInMemory(
+        {
+            96: "main",
+            40: "main",
+            50: StackedPullRequestsInMemory.name_branch(40),
+            58: StackedPullRequestsInMemory.name_branch(50),
+        }
+    )
+    existing = existing_stack(repository, 40, 50, 58)
+
+    placement(repository).place(96, 58)
+
+    assert repository.writes == [
+        f"unstack {existing.number}",
+        "create_stack [40, 50]",
+        f"set_base 58 {StackedPullRequestsInMemory.name_branch(96)}",
+        "create_stack [96, 58]",
+    ]
+
+
 def test_a_pull_request_others_already_build_on_is_found_unplaceable_first() -> None:
     repository = StackedPullRequestsInMemory({1: "main", 2: "main"})
     existing_stack(repository, 1, 2)

@@ -24,6 +24,26 @@ def test_a_substitution_s_command_is_split_out_too():
     assert SimpleCommand(["git", "push"]) in commands
 
 
+def test_a_substitution_inside_single_quotes_is_text():
+    line = "echo 'see $(git push) and `gh` here'"
+
+    assert CommandLine(line).simple_commands() == [
+        SimpleCommand(["echo", "see $(git push) and `gh` here"])
+    ]
+
+
+def test_a_substitution_inside_double_quotes_is_still_split_out():
+    commands = CommandLine('echo "it\'s `gh` here"').simple_commands()
+
+    assert SimpleCommand(["gh"]) in commands
+
+
+def test_a_substitution_keeps_the_single_quoted_words_of_its_command():
+    commands = CommandLine("echo $(bash -c 'git push')").simple_commands()
+
+    assert SimpleCommand(["bash", "-c", "git push"]) in commands
+
+
 def test_a_redirection_s_target_is_no_word_of_the_command():
     assert CommandLine("git log > out.txt 2>&1").simple_commands() == [
         SimpleCommand(["git", "log"])

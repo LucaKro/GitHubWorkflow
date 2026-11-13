@@ -97,3 +97,42 @@ gh api graphql --input body.json
 echo \\`git push`
 echo `echo \`git push\``
 echo "a \` b" && git push
+git apply change.patch
+git apply --check --index change.patch
+git apply --stat --apply change.patch
+echo "see `git push` here"
+echo 'quoted' $(git push)
+echo $(bash -c 'git push')
+find . -exec git push \;
+stdbuf -o0 git push
+setsid git push
+ionice git push
+flock /tmp/l git push
+parallel git push ::: x
+npx git push
+busybox git push
+ssh localhost git push
+script -c "git push" /dev/null
+dash -c "git push"
+ksh -c "git push"
+fish -c "git push"
+builtin command git push
+trap 'git push' EXIT
+coproc git push
+rm .git/hooks/pre-push
+chmod -x .git/hooks/pre-push
+echo x > .git/hooks/pre-push
+echo x >> .git/config
+sed -i s/a/b/ .git/config
+cp x .git/config
+dd if=x of=.git/config
+git log > .git/hooks/pre-push
+echo x > ~/.gitconfig
+echo x > ~/.config/git/config
+echo x > /etc/gitconfig
+readonly CLAUDECODE=
+local CLAUDECODE=
+printf -v CLAUDECODE ''
+read CLAUDECODE < /dev/null
+let CLAUDECODE=0
+curl -X POST https://API.GITHUB.COM/x

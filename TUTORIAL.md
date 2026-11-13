@@ -132,7 +132,7 @@ settle with `sync`:
 
 | Command | What it does |
 |---|---|
-| `sync` | Follows GitHub's copy of the checked-out branch: fast-forward, or move to the branch GitHub rebased when every local commit had been pushed |
+| `sync` | Follows GitHub's copy of the checked-out branch: fast-forward, or move to the branch GitHub rebased when every local commit had been pushed, even after a plain `git fetch` |
 | `sync --base` | Merges GitHub's default branch into the work branch |
 | `sync --on <number>` | Merges another open pull request's branch, to build on it |
 | `sync --upstream` | Fast-forwards a fork's default branch to its upstream's |
@@ -213,13 +213,17 @@ Four layers, from the first to the last resort:
 
 1. **The guard** (`PreToolUse` hook) reads every Bash command line, file write and GitHub
    tool call before it runs. It looks through shells and wrappers (`bash -c`, `env`,
-   `timeout`, `eval`, subshells) for `git`, `gh`, `curl` and `wget`.
+   `timeout`, `eval`, subshells), and any other program given one of them (`stdbuf git
+   push`, `trap 'git push' EXIT`), for `git`, `gh`, `curl` and `wget`. Text in single
+   quotes is text: `echo 'run $(git push)'` only prints.
    - Git and `gh` are judged by an allowlist of reading forms: `git status`, `git log`,
      `git fetch`, `gh pr view` pass; anything else counts as writing.
    - `curl` and `wget` may read GitHub but not send to it.
-   - Writing git's configuration or hooks with a file tool is denied.
+   - Writing git's configuration or hooks with a file tool, a redirection or a program
+     such as `rm` or `sed -i` is denied.
+   - `git apply --check` and `--stat` pass; applying a patch does not.
    - A command it cannot see into (a program named by `$variable`, a shell reading its
-     input, `xargs git`) is denied and shown to you.
+     input, `xargs git`, `curl -K` or an address in `$URL`) is denied and shown to you.
    - A denial names the workflow command that does the job, when there is one.
 2. **Fallbacks.** When the runtime is broken, the guard runs from the plugin's source on
    the standard library alone. When that fails too, a coarse guard denies every call
@@ -234,7 +238,8 @@ seen by any layer; only a token scoped to your repositories stops that, at GitHu
 
 **Permission prompts.** The plugin's mod (`hooks/approval.ts`) approves a Bash call that
 is exactly one workflow command a session may run on its own, with at most `cd` before it
-and `head` or `tail` after it. Commands that are your decision (`finding accept`,
+and `head` or `tail` filtering its output after it, and every file it is given inside the
+working or the temporary directory. Commands that are your decision (`finding accept`,
 `describe <number>`, `stack on`) are never approved this way, so Claude Code asks you.
 
 ## 8. Notes, progress and the notes branch

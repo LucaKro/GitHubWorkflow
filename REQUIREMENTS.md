@@ -248,7 +248,11 @@ them:
   curl or wget, every GitHub tool and every write to git's configuration, and lets
   everything else run. Only when the stand-in cannot run either is every call blocked.
 - That guard catches accidents, not intent: it reads only the command lines of git, gh,
-  curl and wget, through shells and wrappers. A push run any other way - an
+  curl and wget, through shells, wrappers and any other program given one of them,
+  except those that never run their arguments, such as `echo` or `grep`; a text in
+  single quotes it reads as text. It also denies a redirection or a program such as
+  `rm`, `cp` or `sed` writing where git reads its configuration or hooks, and any
+  builtin setting `CLAUDECODE`. A push run any other way - an
   interpreter, a build tool, a script - is caught by a `pre-push` hook the session
   start writes into the checkout, which refuses a push to anyone else's repository or
   to the default branch. It checks only pushes from a Claude Code session (where
@@ -256,7 +260,9 @@ them:
   terminal pass unchecked. A checkout with a `pre-push` hook of its own keeps it, and
   the session start says the workflow's is missing.
 - A command the guard denies only because it cannot see what it runs - a program named
-  by an expansion (`eval` among them), a shell reading its input, `xargs` - is shown to
+  by an expansion (`eval` among them), a shell reading its input, `xargs`, `source` of
+  a stream, curl or wget reading options from elsewhere or sending to an address an
+  expansion names - is shown to
   me, so I can judge how often that happens and whether the rule is worth its cost.
 - Not covered: a write to GitHub's API from an interpreter or a script (including the
   domain model's clients called from a one-off snippet), and a push that skips hooks
@@ -284,8 +290,9 @@ them:
 - close a pull request only as discarded, replaced or merged upstream, and only an open
   one from a work branch on my repository, labelled `closed by session`, with a comment
   saying why, telling me in chat. At session start, a fork's pull request labelled
-  `opened upstream` whose pull request upstream was merged - found through GitHub's
-  search, which a cloud session reaches - is closed as merged upstream, linking it, and
+  `opened upstream` whose pull request upstream was merged - the one my own "Opened
+  upstream" comment on it links, found through GitHub's search, which a cloud session
+  reaches - is closed as merged upstream, linking it, and
   the pull request stacked on it moves onto the default branch, the stack made again
   from the open ones above. One the fork merged already, as the fork sync does, still
   has what is stacked on it moved
@@ -328,11 +335,15 @@ still marks what was closed.
 The guard never asks me to confirm a workflow command, and neither does auto mode: the
 plugin's mod approves a command line that is exactly one workflow command a session
 runs on its own, through `github-workflow`, with at most `cd` before it and `head` or
-`tail` after it, once nothing refused it. What is mine to decide - a finding's stage
+`tail` filtering its output after it, once nothing refused it. A file it is given to
+read or run (`--body-file`, `--test`, `--python`) lies in the working directory or the
+temporary directory, links followed; any other line is left to my permissions. What
+is mine to decide - a finding's stage
 (`finding accept`, `shelve`, `reject`), its priority or text (`finding prioritize`,
-`edit`), another pull request's description (`describe <number>`) or its place in a
-stack (`stack on`), and a comment on a pull request of my repository, open or closed
-(`comment <number>`) - the mod never approves, and a session does it only when I said so
+`edit`), another pull request's description (`describe <number>`, in any spelling the
+number takes) or its place in a stack (`stack on`), and a comment on a pull request of
+my repository, open or closed (`comment <number>`) - the mod never approves, and a
+session does it only when I said so
 in the conversation.
 Everything else written to GitHub needs me to ask for it.
 
@@ -378,7 +389,8 @@ Everything else written to GitHub needs me to ask for it.
   one below with `sync --on`, or is left to GitHub's *Rebase stack*.
 - A merge that conflicts is left in progress, its files named. The session resolves
   them and finishes it with `sync --continue <files>`, which refuses while a conflict
-  is still marked or a file still conflicts, or undoes it with `sync --abort`. Nothing
+  is still marked or a file still conflicts, and takes a file deleted as resolved by
+  its removal, or undoes it with `sync --abort`. Nothing
   is committed or pushed on the branch meanwhile.
 - A work branch builds on another open pull request of my repository before it is
   merged with `sync --on <number>`, which merges that pull request's branch the same

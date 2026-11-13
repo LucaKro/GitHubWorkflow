@@ -9,6 +9,7 @@ Runs on the standard library alone, like :mod:`github_workflow.guard`, which rea
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import sys
 from abc import ABC, abstractmethod
@@ -539,8 +540,16 @@ class SessionRunsOnOwnPullRequest(CommandAuthority):
     naming no number; naming another's is the person's word.
     """
 
+    @classproperty
+    def number_spelling(cls) -> re.Pattern[str]:
+        """
+        Every spelling the parser reads as a number: with a sign, spaces around it or
+        underscores between its digits.
+        """
+        return re.compile(r"\s*[+-]?\d+(?:_\d+)*\s*")
+
     def runs_unasked(self, arguments: Sequence[str]) -> bool:
-        return not any(word.isdigit() for word in arguments)
+        return not any(self.number_spelling.fullmatch(word) for word in arguments)
 
 
 @dataclass(frozen=True)
