@@ -110,7 +110,8 @@ instead, never a traceback.
 Review threads are read through whichever API the place reaches: GraphQL on your machine
 and in Actions, the proxy's REST routes in a cloud session. `review list` shows each
 thread with the identifier of its first comment, which `review reply` and `review
-resolve` take.
+resolve` take. A thread whose comments the session cannot see, such as one of a review
+still pending, is shown by where it is, marked `comments not visible`.
 
 A session closes things on its own only in these cases, always labelled `closed by
 session`, with a comment saying why, and entered in the repository's "Session log"

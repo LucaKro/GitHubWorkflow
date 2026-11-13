@@ -257,10 +257,9 @@ class ReviewThreadListing(WorkflowStep):
             f"{''.join(review.body.splitlines()[:1])}"
             for review in snapshot.reviews
         ]
-        lines += [
-            f"{self.describe_thread(thread)} {thread.comments[0].url}"
-            for thread in sorted(snapshot.threads, key=lambda each: each.is_resolved)
-        ]
+        for thread in sorted(snapshot.threads, key=lambda each: each.is_resolved):
+            addresses = [comment.url for comment in thread.comments[:1]]
+            lines.append(" ".join([self.describe_thread(thread), *addresses]))
         return "\n".join(lines)
 
     @staticmethod
@@ -268,11 +267,15 @@ class ReviewThreadListing(WorkflowStep):
         """
         :param thread: A review thread.
         :return: It in one line: its first comment's identifier, whether it is
-            resolved, where it is, and who said what first.
+            resolved, where it is, and who said what first; or, for a thread none of
+            whose comments are visible, such as one of a review still pending, only
+            whether it is resolved and where it is.
         """
-        first = thread.comments[0]
         state = "resolved" if thread.is_resolved else "unresolved"
         state += ", outdated" if thread.is_outdated else ""
+        if not thread.comments:
+            return f"({state}, comments not visible) {thread.location}"
+        first = thread.comments[0]
         said = first.body.splitlines()[0] if first.body else ""
         return (
             f"{first.database_identifier} ({state}) {thread.location}: "

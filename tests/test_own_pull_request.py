@@ -333,6 +333,49 @@ def test_the_upstream_pull_request_s_reviews_and_threads_follow_with_addresses(
     ]
 
 
+def test_a_thread_without_visible_comments_is_described_by_its_location() -> None:
+    hidden = replace(thread(8), comments=[])
+
+    described = ReviewThreadListing.describe_thread(hidden)
+
+    assert described == f"(unresolved, comments not visible) {hidden.location}"
+
+
+def test_a_thread_without_visible_comments_is_listed_among_the_others(
+    work: WritePolicy,  # noqa: F811
+) -> None:
+    hidden = replace(thread(8), comments=[])
+    listing = ReviewThreadListing(
+        own(work, pull_request(3, "feature")),
+        threads(thread(9), hidden),
+        ForkOf(None),
+        UpstreamReviewsInMemory(),
+    )
+
+    listed = listing.run().splitlines()
+
+    assert listed == [
+        ReviewThreadListing.describe_thread(thread(9)),
+        ReviewThreadListing.describe_thread(hidden),
+    ]
+
+
+def test_an_upstream_thread_without_visible_comments_is_listed_without_address(
+    work: WritePolicy,  # noqa: F811
+) -> None:
+    hidden = replace(thread(77), comments=[])
+    listing = ReviewThreadListing(
+        own(work, opened_upstream(3)),
+        threads(),
+        ForkOf(ScratchGitHub.upstream),
+        UpstreamReviewsInMemory([hidden]),
+    )
+
+    listed = listing.run().splitlines()
+
+    assert listed[-1] == ReviewThreadListing.describe_thread(hidden)
+
+
 @dataclass(frozen=True)
 class UpstreamUnreadable(UpstreamReviews):
     """
