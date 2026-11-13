@@ -15,6 +15,7 @@ from domain_model.call_effects import CallEffect
 from domain_model.class_family import ClassFamily
 from domain_model.class_property import classproperty
 from domain_model.git.options import (
+    ApplyOption,
     ArchiveOption,
     BranchOption,
     ConfigOption,
@@ -57,13 +58,35 @@ class GitConfigurationLocation(StrEnum):
     The user's configuration file.
     """
 
+    SYSTEM = "gitconfig"
+    """
+    The system's configuration file, in ``/etc``.
+    """
+
+    CONFIGURATION_HOME = ".config"
+    """
+    The user's directory of configuration, holding :attr:`USER_DIRECTORY`.
+    """
+
+    USER_DIRECTORY = "git"
+    """
+    The user's directory of git's configuration files, inside
+    :attr:`CONFIGURATION_HOME`.
+    """
+
     @classmethod
     def holds(cls, path: PurePath) -> bool:
         """
         :param path: A file's path.
         :return: Whether git reads its configuration or hooks from the file.
         """
-        return cls.REPOSITORY in path.parts or path.name == cls.USER
+        parts = path.parts
+        in_user_directory = any(
+            parts[index : index + 2] == (cls.CONFIGURATION_HOME, cls.USER_DIRECTORY)
+            for index in range(len(parts))
+        )
+        named = path.name in (cls.USER, cls.SYSTEM)
+        return cls.REPOSITORY in parts or named or in_user_directory
 
 
 # %% options and subcommands
@@ -618,6 +641,39 @@ class ArchiveReadingForms(PartlyReadingForms):
             if argument == ArchiveOption.OUTPUT_SHORT
         ]
         return not any(GitConfigurationLocation.holds(PurePath(path)) for path in files)
+
+
+@dataclass(frozen=True)
+class ApplyReadingForms(PartlyReadingForms):
+    """
+    Apply, which reads when it only checks the patch or reports on it.
+    """
+
+    @classproperty
+    def subcommand(cls) -> GitSubcommand:
+        return GitSubcommand.APPLY
+
+    @classproperty
+    def options(cls) -> type[GitOption]:
+        return ApplyOption
+
+    @classproperty
+    def reporting_options(cls) -> frozenset[GitOption]:
+        """
+        The options with which nothing is applied.
+        """
+        return frozenset(
+            {
+                ApplyOption.CHECK,
+                ApplyOption.STAT,
+                ApplyOption.NUMSTAT,
+                ApplyOption.SUMMARY,
+            }
+        )
+
+    def form_reads(self, arguments: GitSubcommandArguments) -> bool:
+        options = {self.options.look_up(option) for option in arguments.options}
+        return bool(options & self.reporting_options)
 
 
 # %% one call

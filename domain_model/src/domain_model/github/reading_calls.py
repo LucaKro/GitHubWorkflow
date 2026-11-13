@@ -95,6 +95,39 @@ class SendingOptions:
         return None
 
 
+@dataclass(frozen=True)
+class ConfigurationOptions:
+    """
+    The options with which an HTTP client reads further options from a file or a string,
+    which the call itself does not show.
+    """
+
+    short: str
+    """
+    The single letters that do, wherever they stand in a cluster of short options.
+    """
+
+    long: tuple[str, ...]
+    """
+    The long options that do.
+    """
+
+    def given(self, arguments: Sequence[str]) -> bool:
+        """
+        :param arguments: A call's arguments.
+        :return: Whether one of them is such an option.
+        """
+        for argument in arguments:
+            if argument.startswith("--"):
+                if argument.partition("=")[0] in self.long:
+                    return True
+                continue
+            short_cluster = argument.startswith("-")
+            if short_cluster and set(argument[1:]) & set(self.short):
+                return True
+        return False
+
+
 # %% gh
 
 
@@ -314,6 +347,7 @@ class HttpClient(Enum):
         SendingOptions(
             "dFT", ("--data", "--json", "--form", "--upload-file"), "X", ("--request",)
         ),
+        ConfigurationOptions("K", ("--config",)),
     )
     """
     curl.
@@ -327,18 +361,33 @@ class HttpClient(Enum):
             "",
             ("--method",),
         ),
+        ConfigurationOptions("e", ("--config", "--execute")),
     )
     """
     wget.
     """
 
-    def __init__(self, program: str, sending: SendingOptions) -> None:
+    def __init__(
+        self,
+        program: str,
+        sending: SendingOptions,
+        configuration: ConfigurationOptions,
+    ) -> None:
         """
         :param program: The client's program, by its name.
         :param sending: Its options that send something.
+        :param configuration: Its options that read further options from elsewhere.
         """
         self.program = program
         self.sending = sending
+        self.configuration = configuration
+
+    @classproperty
+    def scheme_separator(cls) -> str:
+        """
+        What separates an address's scheme from its host.
+        """
+        return "://"
 
     def sends_to_github(self, arguments: Sequence[str]) -> bool:
         """
@@ -346,9 +395,27 @@ class HttpClient(Enum):
         :return: Whether the call sends something to GitHub.
         """
         reaches_github = any(
-            host in argument for argument in arguments for host in GitHubHost
+            host in argument.lower() for argument in arguments for host in GitHubHost
         )
         return reaches_github and self.sending.sends(arguments)
+
+    def may_send_unseen(self, arguments: Sequence[str]) -> bool:
+        """
+        :param arguments: What follows the client's name.
+        :return: Whether the call could send something to GitHub without showing it:
+            it reads options from elsewhere, or sends to an address an expansion
+            names.
+        """
+        if self.configuration.given(arguments):
+            return True
+        if not self.sending.sends(arguments):
+            return False
+        hosts = [
+            argument.partition(self.scheme_separator)[2].partition("/")[0]
+            for argument in arguments
+            if self.scheme_separator in argument
+        ]
+        return not hosts or any("$" in host for host in hosts)
 
 
 # %% the GitHub MCP server
