@@ -23,7 +23,7 @@ from github_workflow.checkout import ProjectCheckout
 from github_workflow.exceptions import DiscussionsDisabledError
 from github_workflow.locations import NotesFile, WorkflowTemplate
 from github_workflow.notes.branch import NotesBranch
-from github_workflow.work import SessionLog, WorkflowStep
+from github_workflow.workflow_step import SessionLog, WorkflowStep
 from github_workflow.workflow_templates import NotesBranchWorkflow, PostingPlaceholder
 
 # %% vocabulary

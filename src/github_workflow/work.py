@@ -54,23 +54,7 @@ from github_workflow.policy import WritePolicy
 from github_workflow.push_hook import PushHook
 from github_workflow.remotes import ForkUpstream
 from github_workflow.settings import WorkflowSettings
-
-# %% one step
-
-
-class WorkflowStep(ABC):
-    """
-    One write a session asks the workflow for.
-    """
-
-    @abstractmethod
-    def run(self) -> str:
-        """
-        Make the write.
-
-        :return: What was done, in one line.
-        """
-
+from github_workflow.workflow_step import WorkflowStep
 
 # %% branches
 
@@ -294,20 +278,6 @@ class PullRequestRetirement(ABC):
         """
         :param number: The pull request.
         :param reason: Why it is closed, commented on it.
-        """
-
-
-class SessionLog(ABC):
-    """
-    Where what a session does without asking is entered, for the person to read in one
-    place.
-    """
-
-    @abstractmethod
-    def enter(self, action: str) -> None:
-        """
-        :param action: What the session did, in one line, naming the issues, pull
-            requests and branches it touched.
         """
 
 

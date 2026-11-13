@@ -38,11 +38,8 @@ from github_workflow.upstream_reviews import (
     ForwardedUpstreamReviews,
     UpstreamReviews,
 )
-from github_workflow.work import (
-    OpenPullRequestBranch,
-    PullRequestOpenedLabelling,
-    WorkflowStep,
-)
+from github_workflow.work import OpenPullRequestBranch, PullRequestOpenedLabelling
+from github_workflow.workflow_step import WorkflowStep
 
 # %% the session
 

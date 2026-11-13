@@ -81,8 +81,8 @@ from github_workflow.work import (
     PushWork,
     Replacement,
     RepositoryCloning,
-    SessionLog,
 )
+from github_workflow.workflow_step import SessionLog
 
 from .issues_in_memory import IssuesInMemory
 from .pull_requests import pull_request

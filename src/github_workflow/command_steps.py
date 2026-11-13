@@ -81,8 +81,8 @@ from github_workflow.work import (
     Replacement,
     RepositoryCloning,
     StackPlacing,
-    WorkflowStep,
 )
+from github_workflow.workflow_step import WorkflowStep
 
 if TYPE_CHECKING:
     from github_workflow.session import WorkflowSession

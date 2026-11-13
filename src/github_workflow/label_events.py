@@ -30,7 +30,7 @@ from github_workflow.findings import (
 from github_workflow.locations import ProjectFile, WorkflowTemplate
 from github_workflow.report_lines import ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportSection
-from github_workflow.work import WorkflowStep
+from github_workflow.workflow_step import WorkflowStep
 from github_workflow.workflow_templates import ActionRequirement
 
 # %% completing the label

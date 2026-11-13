@@ -42,8 +42,8 @@ from github_workflow.work import (
     DescriptionEnding,
     LocalBranchFollowing,
     PullRequestRetirement,
-    WorkflowStep,
 )
+from github_workflow.workflow_step import WorkflowStep
 
 # %% proposing
 

@@ -51,9 +51,8 @@ from github_workflow.work import (
     DraftOpening,
     PullRequestOpenedLabelling,
     PullRequestRetirement,
-    SessionLog,
-    WorkflowStep,
 )
+from github_workflow.workflow_step import SessionLog, WorkflowStep
 
 # %% the labels
 
