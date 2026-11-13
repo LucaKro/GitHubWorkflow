@@ -96,11 +96,12 @@ class LocalBranchFollowing:
 @dataclass(frozen=True)
 class BranchStart(WorkflowStep):
     """
-    A new work branch, started from GitHub's copy of the default branch or of another.
+    A new work branch, checked out.
 
-    branch - from the repository the fork was forked from when only it has the branch,
-    or from the local branch when GitHub has none - and checked out. Started from
-    GitHub's default branch, it also fast-forwards the local default branch to it.
+    It starts from GitHub's copy of the default branch or of another branch, from the
+    repository the fork was forked from when only that has the branch, or from the local
+    branch when GitHub has none. When it starts from GitHub's default branch, the local
+    default branch is fast-forwarded to it as well.
     """
 
     policy: WritePolicy
