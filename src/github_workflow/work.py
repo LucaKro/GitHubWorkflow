@@ -13,7 +13,7 @@ from pathlib import Path
 
 from domain_model.git.commands import GitCommandRunner
 from domain_model.git.conflict_markers import ConflictMarker
-from domain_model.git.remotes import ProposedPush, RemoteBranch
+from domain_model.git.remotes import ProposedPush, Remote, RemoteBranch
 from domain_model.git.revisions import BranchName, LocalBranch
 from domain_model.git.working_tree import WorkingTree
 from domain_model.github.closing_lines import ClosingLines
@@ -99,9 +99,10 @@ class BranchStart(WorkflowStep):
     A new work branch, checked out.
 
     It starts from GitHub's copy of the default branch or of another branch, from the
-    repository the fork was forked from when only that has the branch, or from the local
-    branch when GitHub has none. When it starts from GitHub's default branch, the local
-    default branch is fast-forwarded to it as well.
+    repository the fork was forked from when only that has the branch, from another
+    remote of the checkout when the branch is named ``<remote>/<branch>``, or from the
+    local branch when none has it. When it starts from GitHub's default branch, the
+    local default branch is fast-forwarded to it as well.
     """
 
     policy: WritePolicy
@@ -140,12 +141,14 @@ class BranchStart(WorkflowStep):
             if base.name != self.policy.default_branch:
                 return line
             return f"{line}{LocalBranchFollowing(checkout.working_tree).follow(base)}"
-        upstream_base = self.upstream_branch(base.name)
-        if upstream_base is not None:
-            started.create(upstream_base.tracking_branch)
+        elsewhere = self.upstream_branch(base.name) or self.other_remote_branch(
+            base.name
+        )
+        if elsewhere is not None:
+            started.create(elsewhere.tracking_branch)
             return (
                 f"on {self.name}, started from "
-                f"{upstream_base.remote.name}/{upstream_base.name}"
+                f"{elsewhere.remote.name}/{elsewhere.name}"
             )
         local_base = LocalBranch(checkout.git, base.name)
         if local_base.commit_or_none() is None:
@@ -165,6 +168,27 @@ class BranchStart(WorkflowStep):
         if upstream is None:
             return None
         branch = ForkUpstream(self.policy.checkout.git, upstream).remote().branch(name)
+        return branch if branch.fetch().succeeded else None
+
+    def other_remote_branch(self, name: BranchName) -> RemoteBranch | None:
+        """
+        :param name: A branch neither the owner's repository nor its upstream has,
+            named ``<remote>/<branch>``.
+        :return: That branch of the checkout's remote of that name, as just fetched;
+            ``None`` when no remote has the name, or the remote lacks the branch.
+        """
+        remote_name, _, branch_name = name.partition("/")
+        remote = next(
+            (
+                remote
+                for remote in Remote.read_configured(self.policy.checkout.git)
+                if remote.name == remote_name
+            ),
+            None,
+        )
+        if remote is None or not branch_name:
+            return None
+        branch = remote.branch(BranchName(branch_name))
         return branch if branch.fetch().succeeded else None
 
 

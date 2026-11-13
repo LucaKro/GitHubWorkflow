@@ -993,7 +993,8 @@ class RunnableCommand(CommandSpecification, Enum):
             CommandArgument(
                 CommandOption.ON,
                 "branch",
-                "the branch to start from, the upstream's when the fork lacks it",
+                "the branch to start from, the upstream's when the fork lacks it, or "
+                "<remote>/<branch> of another remote of the checkout",
                 BranchName,
             ),
         ),
