@@ -202,7 +202,7 @@ On your machine they are read directly. A cloud session cannot reach the upstrea
 writes a request to the notes branch; an Actions workflow there reads GitHub's answers
 and saves them, and the session replays them. Nothing is ever written upstream: after
 changing something for an upstream comment, the session says so on the fork's pull
-request with `review addressed <comment address> --body-file <what changed>`.
+request with `review addressed <comment number or address> --body-file <what changed>`.
 
 `clone <owner/name>` clones any repository to read it. Somebody else's goes into the
 plugin's data directory and carries the push hook, so nothing can be pushed from it.

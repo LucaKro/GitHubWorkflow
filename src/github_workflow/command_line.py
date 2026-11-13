@@ -98,6 +98,11 @@ class WorkflowCommand(StrEnum):
     ready for review.
     """
 
+    COMMENT = "comment"
+    """
+    Comment on a pull request of the owner's repository.
+    """
+
     CLONE = "clone"
     """
     Clone a repository, next to the checkout the command runs in: the owner's to work
@@ -1297,6 +1302,19 @@ class RunnableCommand(CommandSpecification, Enum):
     ``describe``.
     """
 
+    COMMENT = (
+        (WorkflowCommand.COMMENT,),
+        "comment on a pull request of the owner's repository, on the person's word",
+        SessionRunsOnPersonsWord(),
+        (
+            CommandArgument.number("the pull request, open or closed"),
+            CommandArgument.body_file("the comment"),
+        ),
+    )
+    """
+    ``comment``.
+    """
+
     CLONE = (
         (WorkflowCommand.CLONE,),
         "clone a repository: the owner's to work in, anyone's to read",
@@ -1381,7 +1399,8 @@ class RunnableCommand(CommandSpecification, Enum):
             CommandArgument(
                 ArgumentName.ADDRESS,
                 "its address",
-                "the upstream comment's address, as `review list` shows it",
+                "the upstream comment's number or address, as `review list` shows "
+                "them",
             ),
             CommandArgument.body_file("what was changed for it"),
         ),

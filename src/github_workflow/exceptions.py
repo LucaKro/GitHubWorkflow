@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     from domain_model.github.vocabulary import WorkflowRunConclusion
     from domain_model.repository import Repository
 
+    from github_workflow.findings import FindingStage
+
 # %% whose repository
 
 
@@ -722,6 +724,24 @@ class NotAFindingError(DataclassException, LookupError):
 
 
 @dataclass
+class AlreadyInStageError(NotAFindingError):
+    """
+    Raised when a finding is to be moved to the stage it is in already.
+    """
+
+    stage: FindingStage
+    """
+    The stage it is in.
+    """
+
+    def error_message(self) -> str:
+        return f"#{self.number} is {self.stage.short_name} already"
+
+    def suggest_correction(self) -> str:
+        return "Nothing needs doing."
+
+
+@dataclass
 class PersonOnlyCommandError(DataclassException, PermissionError):
     """
     Raised when a command only the person runs is run from a Claude Code session.
@@ -1191,6 +1211,33 @@ class ForeignReviewAddressError(DataclassException, ValueError):
 
     def suggest_correction(self) -> str:
         return "Give the address `review list` shows for the upstream comment."
+
+
+@dataclass
+class UnknownUpstreamCommentError(DataclassException, LookupError):
+    """
+    Raised when a number said to be addressed is no comment on the pull request opened
+    upstream.
+    """
+
+    number: int
+    """
+    The number given.
+    """
+
+    upstream_url: str
+    """
+    The pull request opened upstream.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.number} is no review comment on {self.upstream_url}"
+
+    def suggest_correction(self) -> str:
+        return (
+            "Give the number `review list` shows first on the upstream comment's line, "
+            "or the address at its end."
+        )
 
 
 # %% why the upstream reviews could not be read

@@ -530,6 +530,34 @@ class DescriptionRewrite(WorkflowStep):
         return f"rewrote the {' and '.join(rewritten)} of #{self.number}"
 
 
+@dataclass(frozen=True)
+class PullRequestComment(WorkflowStep):
+    """
+    A comment on a pull request of the owner's repository, open or closed, which the
+    person asked for.
+    """
+
+    pull_requests: RewritablePullRequests
+    """
+    Reads the pull request, and writes the comment.
+    """
+
+    number: int
+    """
+    The pull request.
+    """
+
+    body: str
+    """
+    The comment.
+    """
+
+    def run(self) -> str:
+        self.pull_requests.pull_request(self.number)
+        url = self.pull_requests.add_comment(self.number, self.body)
+        return f"commented on #{self.number}: {url}"
+
+
 # %% bringing a branch up to date
 
 

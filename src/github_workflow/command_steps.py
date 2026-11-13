@@ -76,6 +76,7 @@ from github_workflow.work import (
     MergeAbort,
     MergeCompletion,
     NotesSaving,
+    PullRequestComment,
     PullRequestMerge,
     PushWork,
     Replacement,
@@ -534,6 +535,20 @@ class FindingRejectStep(CommandStep):
 
 
 @dataclass(frozen=True)
+class CommentStep(CommandStep):
+    """
+    Builds the step ``comment`` asks for.
+    """
+
+    @classproperty
+    def command(cls) -> RunnableCommand:
+        return RunnableCommand.COMMENT
+
+    def step(self) -> WorkflowStep:
+        return PullRequestComment(self.session.github, self.arguments.number, self.body)
+
+
+@dataclass(frozen=True)
 class FindingCommentStep(CommandStep):
     """
     Builds the step ``finding comment`` asks for.
@@ -789,6 +804,7 @@ class ReviewAddressedStep(CommandStep):
             session.github,
             self.arguments.address,
             self.body,
+            session.upstream_reviews,
         )
 
 
