@@ -274,3 +274,22 @@ def test_the_checked_out_branch_is_not_moved(
     moved = main.fast_forward(LocalBranch(checkout, BranchName("ahead")))
 
     assert (moved.succeeded, main.commit()) == (False, before)
+
+
+# %% a branch's settings
+
+
+def test_a_branch_setting_reads_back_what_was_written(
+    checkout: GitCommandRunner,  # noqa: F811
+) -> None:
+    branch = LocalBranch(checkout, BranchName("feature/x"))
+
+    branch.write_setting("base", "SUTURO/project:main")
+
+    assert branch.read_setting("base") == "SUTURO/project:main"
+
+
+def test_a_branch_setting_never_written_reads_none(
+    checkout: GitCommandRunner,  # noqa: F811
+) -> None:
+    assert LocalBranch(checkout, BranchName("main")).read_setting("base") is None

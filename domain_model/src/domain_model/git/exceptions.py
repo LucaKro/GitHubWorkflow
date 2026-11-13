@@ -126,3 +126,21 @@ class StorageBranchWriteConflict(DataclassException, RuntimeError):
 
     def suggest_correction(self) -> str:
         return "Fetch the branch, read the files again and write them anew."
+
+
+@dataclass
+class MalformedRepositoryBranchError(DataclassException, ValueError):
+    """
+    Raised when a branch of a repository is not in ``owner/name:branch`` form.
+    """
+
+    text: str
+    """
+    The value that could not be parsed.
+    """
+
+    def error_message(self) -> str:
+        return f"expected a branch of a repository as 'owner/name:branch', got {self.text!r}"
+
+    def suggest_correction(self) -> str:
+        return "Name the repository as owner/name, a colon, and the branch."

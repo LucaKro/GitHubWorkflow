@@ -85,6 +85,7 @@ from github_workflow.report_lines import Speaker, Tone
 from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
 from github_workflow.upstream import IssueMoveSuggestion, UpstreamSuggestion
+from github_workflow.work import CheckoutOtherForkBases
 
 from .repositories_by_owner import RepositoriesByOwner
 from .test_proofs import ProofDataset
@@ -1304,7 +1305,12 @@ def test_a_draft_on_a_fork_ends_with_the_command_for_the_person(
     )
 
     fork = Repository(settings.owner, RepositoriesByOwner.repository_name)
-    assert step.ending == UpstreamSuggestion(owner_s_github(settings), fork)
+    assert step.ending == UpstreamSuggestion(
+        owner_s_github(settings),
+        fork,
+        RepositoriesByOwner.default_branch,
+        CheckoutOtherForkBases(checkout.git),
+    )
 
 
 def test_a_rewritten_description_of_a_fork_s_pull_request_keeps_the_upstream_line(
@@ -1335,11 +1341,18 @@ def test_a_rewritten_description_of_a_fork_s_pull_request_keeps_the_upstream_lin
     )
 
     written = [sent.payload for sent in github.sent if sent.method == "PATCH"]
-    suggestion = UpstreamSuggestion(owner_s_github(settings), fork)
+    suggestion = UpstreamSuggestion(
+        owner_s_github(settings),
+        fork,
+        RepositoriesByOwner.default_branch,
+        CheckoutOtherForkBases(checkout.git),
+    )
     assert written == [
         {
             RestJSONKey.BODY: suggestion.append_once(
-                "What it does, after the review.\n", "feature"
+                "What it does, after the review.\n",
+                "feature",
+                RepositoriesByOwner.default_branch,
             )
         }
     ]

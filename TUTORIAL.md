@@ -79,8 +79,9 @@ What each step checks:
   branch from it and checks it out. A base your fork lacks, such as an upstream release
   branch, is fetched from the repository it was forked from. One that neither has, named
   `<remote>/<branch>`, such as `suturo/main` of a team's fork, is fetched from that
-  remote of the checkout. Started from the default branch, it also fast-forwards your
-  local default branch.
+  remote of the checkout and recorded as the branch's base (see
+  [section 6](#6-forks-and-their-upstream)). Started from the default branch, it also
+  fast-forwards your local default branch.
 - **`commit -m <message> <paths>`** stages exactly the paths given and commits them as
   you. It refuses on the default branch, on a detached `HEAD`, during a merge, and when
   the author, committer or a `Co-authored-by:` trailer names an assistant. It adds the
@@ -221,6 +222,17 @@ github-workflow upstream LucaKro/<fork> <branch>
 Only you run that. The guard denies it to a session, and the command itself refuses
 where Claude Code's marker variable is set. It opens the pull request upstream, links the
 two and labels the fork's one `opened upstream`.
+
+A work branch started from another fork's branch, such as `suturo/main`, goes to that
+fork instead. Its draft targets a mirror of the branch on your fork, named
+`<owner>/<branch>` (here `SUTURO/main`), which `draft` pushes first. The draft then shows
+only your changes, and its description ends with:
+
+```bash
+github-workflow upstream LucaKro/<fork> <branch> --onto SUTURO/<repo>:main
+```
+
+That opens the pull request on the other fork, onto its branch.
 
 From then on `review list` also shows the upstream pull request's reviews and threads.
 On your machine they are read directly. A cloud session cannot reach the upstream, so it

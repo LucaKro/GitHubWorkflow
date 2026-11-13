@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 from domain_model.class_property import classproperty
-from domain_model.git.remotes import ProposedPush, RemoteBranch
+from domain_model.git.remotes import ProposedPush, RemoteBranch, RepositoryBranch
 from domain_model.git.revisions import BranchName, BranchTip, Commit
 from domain_model.github.labels import LabelWrite
 from domain_model.github.closing_lines import ClosingLines
@@ -36,7 +36,7 @@ from domain_model.github.vocabulary import (
 )
 from domain_model.repository import Repository
 
-from github_workflow.command_line import ArgumentName, RunnableCommand
+from github_workflow.command_line import ArgumentName, CommandOption, RunnableCommand
 from github_workflow.exceptions import (
     ForeignRepositoryError,
     ForkBranchDivergedError,
@@ -56,6 +56,7 @@ from github_workflow.report_section import ReportSection
 from github_workflow.settings import WorkflowSettings
 from github_workflow.work import (
     DescriptionEnding,
+    OtherForkBases,
     LocalBranchFollowing,
     PullRequestRetirement,
 )
@@ -68,15 +69,16 @@ from github_workflow.workflow_step import WorkflowStep
 class UpstreamProposal(WorkflowStep):
     """
     The open pull request of a branch of the owner's fork opened on the repository the
-    fork was forked from, ready for review, with the same title and a description
-    linking back to it; the fork's pull request then links to the new one and is
-    labelled :attr:`UpstreamLabel.OPENED_UPSTREAM`.
+    fork was forked from, or onto a branch of another fork of it, ready for review,
+    with the same title and a description linking back to it; the fork's pull request
+    then links to the new one and is labelled :attr:`UpstreamLabel.OPENED_UPSTREAM`.
 
     :raises PersonOnlyCommandError: If a Claude Code session runs it.
     :raises ForeignRepositoryError: If the repository is somebody else's.
     :raises NotAForkError: If the repository was forked from none.
     :raises PullRequestNotProposableError: If the branch has no open pull request onto
-        the fork's default branch, or one is open upstream already.
+        the fork's default branch, or onto the mirror of :attr:`onto`, or one is open
+        on the target already.
     """
 
     repository: Repository
@@ -110,6 +112,13 @@ class UpstreamProposal(WorkflowStep):
     Whether a Claude Code session runs the command.
     """
 
+    onto: RepositoryBranch | None = None
+    """
+    The branch of another fork of the same upstream to open it onto, from the fork's
+    pull request onto that branch's mirror; ``None`` for the upstream's default branch,
+    from the fork's pull request onto its own.
+    """
+
     def run(self) -> str:
         if self.run_by_a_session:
             raise PersonOnlyCommandError(" ".join(RunnableCommand.UPSTREAM.words))
@@ -119,20 +128,21 @@ class UpstreamProposal(WorkflowStep):
         if upstream is None:
             raise NotAForkError(self.repository)
         local = self.local_pull_request()
-        proposals = self.upstream_repository(upstream)
+        target = upstream if self.onto is None else self.onto.repository
+        proposals = self.upstream_repository(target)
         already = proposals.open_fork_branch_pull_requests(
             self.repository.owner, self.branch
         )
         if already:
             raise PullRequestNotProposableError(
                 self.branch,
-                f"its pull request is open on {upstream} already, as "
+                f"its pull request is open on {target} already, as "
                 f"#{already[0].number}: {already[0].url}",
             )
         opened = proposals.open_fork_pull_request(
             self.repository.owner,
             self.branch,
-            proposals.default_branch(),
+            proposals.default_branch() if self.onto is None else self.onto.branch,
             local.title,
             self.body_linking(local.url),
         )
@@ -144,11 +154,12 @@ class UpstreamProposal(WorkflowStep):
                 local.labels, [UpstreamLabel.OPENED_UPSTREAM]
             ).labels,
         )
-        return f"opened {upstream}#{opened.number}: {opened.url}"
+        return f"opened {target}#{opened.number}: {opened.url}"
 
     def local_pull_request(self) -> RestPullRequest:
         """
-        :return: The fork's open pull request from the branch, onto its default branch.
+        :return: The fork's open pull request from the branch, onto its default branch,
+            or onto the mirror of :attr:`onto`.
         :raises PullRequestNotProposableError: If there is none.
         """
         every = self.fork.fork_branch_pull_requests(self.repository.owner, self.branch)
@@ -167,20 +178,24 @@ class UpstreamProposal(WorkflowStep):
                 self.branch,
                 f"its pull request #{latest.number} is {latest.state}, not open",
             )
-        default_branch = self.fork.default_branch()
-        onto_default = [
+        expected_base = (
+            self.fork.default_branch()
+            if self.onto is None
+            else OtherForkBases.mirror_name(self.onto)
+        )
+        onto_expected = [
             pull_request
             for pull_request in open_ones
-            if pull_request.base == default_branch
+            if pull_request.base == expected_base
         ]
-        if not onto_default:
+        if not onto_expected:
             stacked = open_ones[0]
             raise PullRequestNotProposableError(
                 self.branch,
                 f"its pull request #{stacked.number} is stacked on {stacked.base}, not "
-                f"onto {default_branch}: open the one below upstream first",
+                f"onto {expected_base}: open the one below upstream first",
             )
-        return onto_default[0]
+        return onto_expected[0]
 
     @staticmethod
     def body_linking(url: str) -> str:
@@ -380,7 +395,9 @@ class PersonCommandEnding:
 class UpstreamSuggestion(DescriptionEnding):
     """
     The command line opening a fork's pull request upstream, ending its description for
-    the person to copy; nothing on a repository that is no fork.
+    the person to copy: onto the upstream's default branch for a pull request onto the
+    fork's, onto another fork's branch for one onto its mirror; nothing otherwise, or on
+    a repository that is no fork.
     """
 
     fork_details: ForkDetails
@@ -393,31 +410,59 @@ class UpstreamSuggestion(DescriptionEnding):
     The repository the pull request is opened on.
     """
 
-    def append_once(self, body: str, branch: BranchName) -> str:
+    default_branch: BranchName
+    """
+    The repository's default branch.
+    """
+
+    other_fork_bases: OtherForkBases
+    """
+    The other forks' branches work branches were started from.
+    """
+
+    def append_once(self, body: str, branch: BranchName, base: BranchName) -> str:
         upstream = self.fork_details.upstream()
         if upstream is None:
             return body
+        other_base = self.other_fork_bases.read(branch)
+        if other_base is not None and base == OtherForkBases.mirror_name(other_base):
+            target, onto = other_base.repository, other_base
+        elif base == self.default_branch:
+            target, onto = upstream, None
+        else:
+            return body
         return PersonCommandEnding(
-            f"open this pull request on {upstream}",
-            self.opening_command(self.repository, branch),
+            f"open this pull request on {target}",
+            self.opening_command(self.repository, branch, onto),
         ).append_once(body)
 
     @staticmethod
-    def opening_command(repository: Repository, branch: BranchName) -> str:
+    def opening_command(
+        repository: Repository, branch: BranchName, onto: RepositoryBranch | None
+    ) -> str:
         """
         :param repository: The owner's fork.
         :param branch: Its branch.
-        :return: The command line opening the branch's pull request upstream, as the
+        :param onto: The other fork's branch to open it onto, ``None`` for the
+            upstream's default branch.
+        :return: The command line opening the branch's pull request there, as the
             person runs it on their own machine.
         """
-        words = RunnableCommand.UPSTREAM.words_naming(
-            ArgumentName.REPOSITORY,
-            ArgumentName.BRANCH,
-            values={
-                ArgumentName.REPOSITORY: repository.full_name,
-                ArgumentName.BRANCH: branch,
-            },
-        )
+        values = {
+            ArgumentName.REPOSITORY: repository.full_name,
+            ArgumentName.BRANCH: branch,
+        }
+        if onto is None:
+            words = RunnableCommand.UPSTREAM.words_naming(
+                ArgumentName.REPOSITORY, ArgumentName.BRANCH, values=values
+            )
+        else:
+            words = RunnableCommand.UPSTREAM.words_naming(
+                ArgumentName.REPOSITORY,
+                ArgumentName.BRANCH,
+                CommandOption.ONTO,
+                values={**values, CommandOption.ONTO: onto.full_name},
+            )
         return " ".join([Launcher.COMMAND, *words])
 
 

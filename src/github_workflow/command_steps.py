@@ -341,8 +341,14 @@ class DraftStep(FreshenedCommandStep):
             self.title,
             self.body,
             arguments.on,
-            UpstreamSuggestion(session.github, session.remote.repository),
+            UpstreamSuggestion(
+                session.github,
+                session.remote.repository,
+                session.default_branch(),
+                session.other_fork_bases,
+            ),
             replacement,
+            session.other_fork_bases,
         )
         if arguments.finding is None:
             return draft
@@ -432,7 +438,12 @@ class DescribeStep(FreshenedCommandStep):
             number,
             self.body,
             self.title,
-            UpstreamSuggestion(session.github, session.remote.repository),
+            UpstreamSuggestion(
+                session.github,
+                session.remote.repository,
+                session.default_branch(),
+                session.other_fork_bases,
+            ),
             repository=session.remote.repository,
         )
 
@@ -908,6 +919,7 @@ class UpstreamStep(CommandStep):
             GitHubRepository.from_environment,
             self.session.settings,
             ClaudeCodeVariable.COMMAND_MARKER.read() is not None,
+            self.arguments.onto,
         )
 
 

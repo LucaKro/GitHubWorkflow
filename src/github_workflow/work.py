@@ -9,11 +9,18 @@ import sys
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 
 from domain_model.git.commands import GitCommandRunner
 from domain_model.git.conflict_markers import ConflictMarker
-from domain_model.git.remotes import ProposedPush, Remote, RemoteBranch
+from domain_model.git.remotes import (
+    ProposedPush,
+    Remote,
+    RemoteBranch,
+    RepositoryBranch,
+    UnconfiguredRemote,
+)
 from domain_model.git.revisions import BranchName, LocalBranch
 from domain_model.git.working_tree import WorkingTree
 from domain_model.github.closing_lines import ClosingLines
@@ -100,9 +107,10 @@ class BranchStart(WorkflowStep):
 
     It starts from GitHub's copy of the default branch or of another branch, from the
     repository the fork was forked from when only that has the branch, from another
-    remote of the checkout when the branch is named ``<remote>/<branch>``, or from the
-    local branch when none has it. When it starts from GitHub's default branch, the
-    local default branch is fast-forwarded to it as well.
+    remote of the checkout when the branch is named ``<remote>/<branch>``, which it
+    records as the branch's base, or from the local branch when none has it. When it
+    starts from GitHub's default branch, the local default branch is fast-forwarded to
+    it as well.
     """
 
     policy: WritePolicy
@@ -141,14 +149,23 @@ class BranchStart(WorkflowStep):
             if base.name != self.policy.default_branch:
                 return line
             return f"{line}{LocalBranchFollowing(checkout.working_tree).follow(base)}"
-        elsewhere = self.upstream_branch(base.name) or self.other_remote_branch(
-            base.name
-        )
-        if elsewhere is not None:
-            started.create(elsewhere.tracking_branch)
+        upstream_base = self.upstream_branch(base.name)
+        if upstream_base is not None:
+            started.create(upstream_base.tracking_branch)
             return (
                 f"on {self.name}, started from "
-                f"{elsewhere.remote.name}/{elsewhere.name}"
+                f"{upstream_base.remote.name}/{upstream_base.name}"
+            )
+        other_base = self.other_remote_branch(base.name)
+        if other_base is not None:
+            started.create(other_base.tracking_branch)
+            repository = other_base.remote.fetched_repository()
+            if repository is not None:
+                recorded = RepositoryBranch(repository, other_base.name)
+                CheckoutOtherForkBases(checkout.git).record(self.name, recorded)
+            return (
+                f"on {self.name}, started from "
+                f"{other_base.remote.name}/{other_base.name}"
             )
         local_base = LocalBranch(checkout.git, base.name)
         if local_base.commit_or_none() is None:
@@ -280,17 +297,114 @@ class PushWork(WorkflowStep):
 
 class DescriptionEnding(ABC):
     """
-    What the description of a pull request onto the default branch ends with, given its
-    branch.
+    What the description of a pull request ends with, given its branch and the branch it
+    targets.
     """
 
     @abstractmethod
-    def append_once(self, body: str, branch: BranchName) -> str:
+    def append_once(self, body: str, branch: BranchName, base: BranchName) -> str:
         """
         :param body: A pull request's description, which may end with it already.
         :param branch: The pull request's branch.
-        :return: The description, ending with it once.
+        :param base: The branch it targets.
+        :return: The description, ending with it once where a pull request onto that
+            base ends with it; unchanged otherwise.
         """
+
+
+# %% the base a work branch was started from on another fork
+
+
+class BranchSetting(StrEnum):
+    """
+    The settings the workflow keeps for a branch in the checkout's git configuration.
+    """
+
+    OTHER_FORK_BASE = "githubWorkflowBase"
+    """
+    The branch of another fork the branch was started from, as ``owner/name:branch``.
+    """
+
+
+class OtherForkBases(ABC):
+    """
+    The branches of other forks of the same upstream that work branches were started
+    from, each mirrored onto the owner's fork for the work branch's draft to target.
+    """
+
+    @abstractmethod
+    def read(self, branch: BranchName) -> RepositoryBranch | None:
+        """
+        :param branch: A work branch.
+        :return: The other fork's branch it was started from, ``None`` for none.
+        """
+
+    @abstractmethod
+    def mirror(self, base: RepositoryBranch, owned: Remote) -> BranchName:
+        """
+        Push the other fork's branch, as it is now, to its mirror on the owner's fork.
+
+        :param base: The other fork's branch.
+        :param owned: The owner's remote.
+        :return: The mirror's branch.
+        :raises GitCommandFailed: If the branch cannot be fetched or pushed.
+        """
+
+    @staticmethod
+    def mirror_name(base: RepositoryBranch) -> BranchName:
+        """
+        :param base: A branch of another fork.
+        :return: The branch mirroring it on the owner's fork, ``<owner>/<branch>``.
+        """
+        return BranchName(f"{base.repository.owner}/{base.branch}")
+
+
+@dataclass(frozen=True)
+class CheckoutOtherForkBases(OtherForkBases):
+    """
+    The other forks' branches the checkout's work branches were started from, kept in
+    its git configuration.
+    """
+
+    git: GitCommandRunner
+    """
+    Runs git in the checkout.
+    """
+
+    def read(self, branch: BranchName) -> RepositoryBranch | None:
+        recorded = LocalBranch(self.git, branch).read_setting(
+            BranchSetting.OTHER_FORK_BASE
+        )
+        return None if recorded is None else RepositoryBranch.parse(recorded)
+
+    def record(self, branch: BranchName, base: RepositoryBranch) -> None:
+        """
+        :param branch: A work branch.
+        :param base: The other fork's branch it was started from.
+        """
+        LocalBranch(self.git, branch).write_setting(
+            BranchSetting.OTHER_FORK_BASE, base.full_name
+        )
+
+    def mirror(self, base: RepositoryBranch, owned: Remote) -> BranchName:
+        source = next(
+            (
+                remote
+                for remote in Remote.read_configured(self.git)
+                if remote.fetched_repository() == base.repository
+            ),
+            None,
+        ) or UnconfiguredRemote(
+            self.git,
+            base.repository.owner,
+            base.repository.rooted_clone_url(),
+            base.repository,
+        )
+        branch = source.branch(base.branch)
+        branch.fetch().raise_if_failed()
+        mirror = owned.branch(self.mirror_name(base))
+        ProposedPush(mirror, branch.tracking_branch).publish().raise_if_failed()
+        return mirror.name
 
 
 class PullRequestRetirement(ABC):
@@ -377,6 +491,12 @@ class DraftOpening(WorkflowStep):
     The pull request the draft replaces, ``None`` for none.
     """
 
+    other_fork_bases: OtherForkBases | None = None
+    """
+    The other forks' branches work branches were started from, which a draft onto the
+    default branch targets the mirror of instead; ``None`` targets the default branch.
+    """
+
     def run(self) -> str:
         """
         :raises UnreplaceablePullRequestError: If the pull request to replace is not
@@ -394,20 +514,36 @@ class DraftOpening(WorkflowStep):
         if self.below is not None:
             self.placement.check_placeable(self.below)
         base = (
-            self.policy.default_branch
+            self.default_base(branch.name)
             if self.below is None
             else self.placement.host.pull_request(self.below).head.branch
         )
         body = (
-            self.ending.append_once(self.body, branch.name)
-            if self.ending is not None and self.below is None
-            else self.body
+            self.body
+            if self.ending is None
+            else self.ending.append_once(self.body, branch.name, base)
         )
         number = self.opener.open_draft(branch.name, base, self.title, body)
         try:
             return self.finish(number, branch.name, base, body)
         except Exception as raised:
             raise DraftUnfinishedError(number, str(raised)) from raised
+
+    def default_base(self, branch: BranchName) -> BranchName:
+        """
+        :param branch: The work branch.
+        :return: The branch a draft not stacked on another targets: the mirror of the
+            other fork's branch the work branch was started from, pushed now, or else
+            the default branch.
+        """
+        recorded = (
+            None
+            if self.other_fork_bases is None
+            else self.other_fork_bases.read(branch)
+        )
+        if recorded is None:
+            return self.policy.default_branch
+        return self.other_fork_bases.mirror(recorded, self.policy.remote)
 
     def finish(
         self, number: int, branch: BranchName, base: BranchName, body: str
@@ -504,7 +640,7 @@ class DescriptionRewrite(WorkflowStep):
     A new description, title or both for an open pull request on the owner's repository,
     a draft or ready for review, so it follows the pushed commits; a closed or merged
     one keeps its own. A new description keeps the lines of the old one that close an
-    issue, and one onto the default branch ends as a draft's does.
+    issue, and it ends as a draft onto the same base does.
 
     :raises NothingToDescribeError: If neither is given.
     :raises PullRequestNotOpenError: If the pull request is not open.
@@ -554,11 +690,12 @@ class DescriptionRewrite(WorkflowStep):
         rewritten = []
         if self.body is not None:
             kept = ClosingLines(pull_request.body or "").append_missing_lines(self.body)
-            onto_default = pull_request.base == self.pull_requests.default_branch()
             body = (
-                self.ending.append_once(kept, pull_request.head.branch)
-                if self.ending is not None and onto_default
-                else kept
+                kept
+                if self.ending is None
+                else self.ending.append_once(
+                    kept, pull_request.head.branch, pull_request.base
+                )
             )
             self.pull_requests.set_description(self.number, body)
             rewritten.append("description")

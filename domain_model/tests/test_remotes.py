@@ -10,13 +10,17 @@ from pathlib import Path
 import pytest
 
 from domain_model.git.commands import GitCommandRunner
-from domain_model.git.exceptions import MalformedReferenceUpdateError
+from domain_model.git.exceptions import (
+    MalformedReferenceUpdateError,
+    MalformedRepositoryBranchError,
+)
 from domain_model.git.remotes import (
     ProposedPush,
     ReferenceUpdate,
     Remote,
     RemoteBranch,
     RemoteName,
+    RepositoryBranch,
     UnconfiguredRemote,
 )
 from domain_model.git.revisions import BranchName, BranchTip, CommitHash, LocalBranch
@@ -312,3 +316,20 @@ def test_a_pre_push_line_reads_as_the_update_it_describes() -> None:
 def test_a_pre_push_line_missing_a_field_is_refused() -> None:
     with pytest.raises(MalformedReferenceUpdateError):
         ReferenceUpdate.from_line(f"refs/heads/work {'1' * 40} refs/heads/main")
+
+
+# %% a branch of a repository
+
+
+def test_a_repository_branch_round_trips_through_its_full_name() -> None:
+    branch = RepositoryBranch(Repository("SUTURO", "project"), BranchName("feature/x"))
+
+    assert RepositoryBranch.parse(branch.full_name) == branch
+
+
+@pytest.mark.parametrize("malformed", ["SUTURO/project", "SUTURO:main", "a/b:"])
+def test_a_repository_branch_without_repository_or_branch_is_refused(
+    malformed: str,
+) -> None:
+    with pytest.raises(MalformedRepositoryBranchError):
+        RepositoryBranch.parse(malformed)
