@@ -1,40 +1,57 @@
 """
-Opening a pull request of the owner's fork on the repository it was forked from: a
-command only the person runs, which a draft's description suggests to them.
+The repository the owner's fork was forked from: opening a pull request or moving an
+issue of the fork there, commands only the person runs, which the description suggests
+to them; checking a finding against the upstream's issues; following the upstream.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
+import re
+from abc import ABC, abstractmethod
+from collections.abc import Callable, Collection
+from dataclasses import dataclass, field
+from enum import StrEnum
 
 from domain_model.class_property import classproperty
 from domain_model.git.remotes import ProposedPush, RemoteBranch
 from domain_model.git.revisions import BranchName, BranchTip, Commit
 from domain_model.github.labels import LabelWrite
+from domain_model.github.closing_lines import ClosingLines
+from domain_model.github.issue_models import Issue
 from domain_model.github.repository_client import (
+    ClosablePullRequests,
     FollowedFork,
     ForkDetails,
     ProposingFork,
     PullRequestSearch,
+    RecentIssues,
+    UpstreamIssueTracker,
     UpstreamRepository,
 )
 from domain_model.github.rest_models import RestPullRequest
 from domain_model.github.stack_placement import StackPlacement
-from domain_model.github.vocabulary import PullRequestState
+from domain_model.github.vocabulary import (
+    IssueState,
+    IssueStateReason,
+    PullRequestState,
+)
 from domain_model.repository import Repository
 
 from github_workflow.command_line import ArgumentName, RunnableCommand
 from github_workflow.exceptions import (
     ForeignRepositoryError,
     ForkBranchDivergedError,
+    IssueNotMovableError,
+    IssueTemplatesRequiredError,
     NotAForkError,
     PersonOnlyCommandError,
     PullRequestNotProposableError,
+    UpstreamIssueMatchError,
 )
 from github_workflow.labels import UpstreamLabel
 from github_workflow.plugin import Launcher
 from github_workflow.policy import WritePolicy
+from github_workflow.proofs import Proof
 from github_workflow.remotes import ForkUpstream
 from github_workflow.report_lines import CountedThing, ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportSection
@@ -319,6 +336,49 @@ class ForkTips:
 
 
 @dataclass(frozen=True)
+class PersonCommandEnding:
+    """
+    The end of a pull request's or issue's description giving the person a command line
+    only they may run, for them to copy.
+    """
+
+    purpose: str
+    """
+    What the command does, as the sentence introducing it finishes ``To ...``.
+    """
+
+    command: str
+    """
+    The command line.
+    """
+
+    @property
+    def text(self) -> str:
+        """
+        The ending itself.
+        """
+        return (
+            f"---\n\n"
+            f"To {self.purpose}, run this yourself (a Claude Code session may not):\n\n"
+            f"```bash\n{self.command}\n```"
+        )
+
+    def remove(self, body: str) -> str:
+        """
+        :param body: A description, which may hold the ending.
+        :return: The description without it.
+        """
+        return body.replace(self.text, "").rstrip()
+
+    def append_once(self, body: str) -> str:
+        """
+        :param body: A description, which may hold the ending already.
+        :return: The description, ending with it once.
+        """
+        return f"{self.remove(body)}\n\n{self.text}\n"
+
+
+@dataclass(frozen=True)
 class UpstreamSuggestion(DescriptionEnding):
     """
     The command line opening a fork's pull request upstream, ending its description for
@@ -339,13 +399,10 @@ class UpstreamSuggestion(DescriptionEnding):
         upstream = self.fork_details.upstream()
         if upstream is None:
             return body
-        ending = (
-            f"---\n\n"
-            f"To open this pull request on {upstream}, run this yourself (a Claude "
-            f"Code session may not):\n\n"
-            f"```bash\n{self.opening_command(self.repository, branch)}\n```"
-        )
-        return f"{body.replace(ending, '').rstrip()}\n\n{ending}\n"
+        return PersonCommandEnding(
+            f"open this pull request on {upstream}",
+            self.opening_command(self.repository, branch),
+        ).append_once(body)
 
     @staticmethod
     def opening_command(repository: Repository, branch: BranchName) -> str:
@@ -364,6 +421,375 @@ class UpstreamSuggestion(DescriptionEnding):
             },
         )
         return " ".join([Launcher.COMMAND, *words])
+
+
+# %% findings filed on a fork
+
+
+class CommonWord(StrEnum):
+    """
+    The words too many titles share to tell what one is about, besides single letters.
+    """
+
+    A = "a"
+    AN = "an"
+    AND = "and"
+    ARE = "are"
+    AS = "as"
+    AT = "at"
+    BE = "be"
+    BUT = "but"
+    BY = "by"
+    CAN = "can"
+    DOES = "does"
+    FOR = "for"
+    FROM = "from"
+    HAS = "has"
+    IF = "if"
+    IN = "in"
+    INTO = "into"
+    IS = "is"
+    IT = "it"
+    ITS = "its"
+    NO = "no"
+    NOT = "not"
+    OF = "of"
+    ON = "on"
+    OR = "or"
+    SHOULD = "should"
+    SO = "so"
+    SUCH = "such"
+    THAT = "that"
+    THE = "the"
+    THIS = "this"
+    TO = "to"
+    WHEN = "when"
+    WITH = "with"
+    WITHOUT = "without"
+
+
+@dataclass(frozen=True)
+class TitleWords:
+    """
+    The words of an issue's title that tell what it is about, in lower case.
+    """
+
+    words: frozenset[str]
+    """
+    The words.
+    """
+
+    @classmethod
+    def from_title(cls, title: str) -> TitleWords:
+        """
+        :param title: An issue's title.
+        :return: Its words, common words and single letters left out.
+        """
+        return cls(
+            frozenset(
+                word
+                for word in re.findall(r"[a-z0-9]+", title.casefold())
+                if len(word) > 1 and word not in set(CommonWord)
+            )
+        )
+
+    def shared_share(self, other: TitleWords) -> float:
+        """
+        :param other: Another title's words.
+        :return: The share of these words the other title has too; none of no words.
+        """
+        if not self.words:
+            return 0.0
+        return len(self.words & other.words) / len(self.words)
+
+
+@dataclass(frozen=True)
+class FindingUpstream:
+    """
+    What filing a finding on a repository has to do with the repository it was forked
+    from: a finding titled like one of the upstream's recent issues is refused unless
+    that issue was checked, and one filed on a fork ends with the command moving it.
+    """
+
+    repository: Repository
+    """
+    The repository the finding is filed on.
+    """
+
+    fork_details: ForkDetails
+    """
+    Reads which repository it was forked from.
+    """
+
+    upstream_issues: Callable[[Repository], RecentIssues]
+    """
+    Reaches the repository it was forked from.
+    """
+
+    checked: tuple[int, ...] = ()
+    """
+    The upstream's issues titled like the finding that were checked and found not to
+    cover it.
+    """
+
+    least_shared_share: float = 0.5
+    """
+    The share of the finding title's words an upstream issue's title has to share to
+    count as titled like it.
+    """
+
+    def check_title(self, title: str, body: str) -> str:
+        """
+        :param title: The finding's title.
+        :param body: Its text.
+        :return: The text, ending with the upstream issues checked, when any were.
+        :raises UpstreamIssueMatchError: If one of the upstream's recent issues not
+            checked is titled like the finding.
+        """
+        upstream = self.fork_details.upstream()
+        if upstream is None:
+            return body
+        words = TitleWords.from_title(title)
+        unchecked = tuple(
+            issue.number
+            for issue in self.upstream_issues(upstream).recent_issues() or []
+            if issue.number not in self.checked
+            and words.shared_share(TitleWords.from_title(issue.title))
+            >= self.least_shared_share
+        )
+        if unchecked:
+            raise UpstreamIssueMatchError(upstream, unchecked)
+        if not self.checked:
+            return body
+        links = ", ".join(upstream.issue_link(number) for number in self.checked)
+        return f"{body}\n\nChecked against {upstream} {links}, which do not cover it."
+
+    def suggest_move(self, body: str, number: int) -> str | None:
+        """
+        :param body: The text of the finding filed.
+        :param number: Its issue.
+        :return: The text, ending with the command line moving it upstream for the
+            person to run; ``None`` on a repository that is no fork.
+        """
+        upstream = self.fork_details.upstream()
+        if upstream is None:
+            return None
+        ending = IssueUpstreamMove.ending(self.repository, number, upstream)
+        return ending.append_once(body)
+
+
+# %% moving an issue
+
+
+class Confirmation(ABC):
+    """
+    Asks the person running a command a question they answer yes or no.
+    """
+
+    @abstractmethod
+    def confirm(self, question: str) -> bool:
+        """
+        :param question: The question.
+        :return: Whether the person answered yes.
+        """
+
+
+class AffirmativeAnswer(StrEnum):
+    """
+    The answers on a terminal that mean yes, in any case.
+    """
+
+    YES = "yes"
+    """
+    The word.
+    """
+
+    LETTER = "y"
+    """
+    Its first letter.
+    """
+
+
+@dataclass(frozen=True)
+class TerminalConfirmation(Confirmation):
+    """
+    Asks on the terminal the command runs in; anything but a yes is a no.
+    """
+
+    def confirm(self, question: str) -> bool:
+        answer = input(f"{question} [{AffirmativeAnswer.LETTER}/N] ")
+        return answer.strip().casefold() in set(AffirmativeAnswer)
+
+
+@dataclass(frozen=True)
+class IssueUpstreamMove(WorkflowStep):
+    """
+    An open issue of the owner's fork opened on the repository it was forked from, as
+    the person, with its title and text but none of its labels or the command moving
+    it, and its latest proof; then closed on the fork, linking the new one, with the
+    fork's open pull requests closing it, once the person agrees.
+
+    :raises PersonOnlyCommandError: If a Claude Code session runs it.
+    :raises ForeignRepositoryError: If the repository is somebody else's.
+    :raises NotAForkError: If the repository was forked from none.
+    :raises IssueNotMovableError: If the issue is closed, or the person keeps the pull
+        requests closing it.
+    :raises IssueTemplatesRequiredError: If the upstream files issues through templates
+        and the issue was not rewritten to follow them; it is labelled
+        :attr:`UpstreamLabel.TEMPLATE_REQUIRED` and given a comment linking them.
+    """
+
+    repository: Repository
+    """
+    The owner's fork.
+    """
+
+    number: int
+    """
+    The fork's issue.
+    """
+
+    fork: ClosablePullRequests
+    """
+    The fork's issues and pull requests.
+    """
+
+    fork_details: ForkDetails
+    """
+    Reads which repository the fork was forked from.
+    """
+
+    upstream_repository: Callable[[Repository], UpstreamIssueTracker]
+    """
+    Reaches the repository the fork was forked from.
+    """
+
+    settings: WorkflowSettings
+    """
+    Whose forks issues are moved from.
+    """
+
+    confirmation: Confirmation
+    """
+    Asks the person whether to close the pull requests closing the issue.
+    """
+
+    run_by_a_session: bool = field(kw_only=True)
+    """
+    Whether a Claude Code session runs the command.
+    """
+
+    follows_template: bool = field(kw_only=True)
+    """
+    Whether the issue was rewritten to follow the upstream's issue templates.
+    """
+
+    proof_authors: Collection[str] = field(kw_only=True)
+    """
+    The logins whose proofs on the issue count.
+    """
+
+    def run(self) -> str:
+        if self.run_by_a_session:
+            words = RunnableCommand.ISSUE_UPSTREAM.words
+            raise PersonOnlyCommandError(" ".join(words))
+        if not self.settings.owns(self.repository):
+            raise ForeignRepositoryError(self.repository, self.settings.owner)
+        upstream = self.fork_details.upstream()
+        if upstream is None:
+            raise NotAForkError(self.repository)
+        issue = self.fork.issue(self.number)
+        if issue.state is not IssueState.OPEN:
+            raise IssueNotMovableError(self.number, "it is closed")
+        target = self.upstream_repository(upstream)
+        if not self.follows_template:
+            self.check_templates(issue, upstream, target.issue_templates())
+        closing = self.agreed_closing_pull_requests()
+        body = self.ending(self.repository, self.number, upstream).remove(issue.body)
+        opened = target.open_issue(issue.title, body, [])
+        url = upstream.issue_url(opened)
+        comments = self.fork.comments(self.number)
+        proof = Proof.latest_posted_comment(comments, self.proof_authors)
+        if proof is not None:
+            origin = self.repository.issue_url(self.number)
+            target.add_comment(opened, f"Proven on {origin}:\n\n{proof.body}")
+        for pull_request in closing:
+            self.fork.add_comment(pull_request.number, f"Its issue moved to {url}.")
+            self.fork.close_pull_request(pull_request.number)
+        self.fork.add_comment(self.number, f"Moved upstream: {url}")
+        self.fork.close_issue(self.number, IssueStateReason.NOT_PLANNED)
+        closed = [f"#{self.number}", *(each.markdown_link for each in closing)]
+        return f"opened [{upstream}#{opened}]({url}); closed {', '.join(closed)}"
+
+    def check_templates(
+        self, issue: Issue, upstream: Repository, templates: list[str]
+    ) -> None:
+        """
+        Label the issue and link the templates on it, once, when there are any.
+
+        :param issue: The fork's issue.
+        :param upstream: The repository it is moved to.
+        :param templates: The pages of the upstream's issue templates.
+        :raises IssueTemplatesRequiredError: If there are any.
+        """
+        if not templates:
+            return
+        if UpstreamLabel.TEMPLATE_REQUIRED not in issue.labels:
+            listed = "\n".join(f"- {template}" for template in templates)
+            self.fork.create_missing_labels([UpstreamLabel.TEMPLATE_REQUIRED])
+            self.fork.add_labels(self.number, [UpstreamLabel.TEMPLATE_REQUIRED])
+            self.fork.add_comment(
+                self.number,
+                f"{upstream} files issues through these templates; rewrite this issue "
+                f"to follow them before moving it there:\n\n{listed}",
+            )
+        raise IssueTemplatesRequiredError(self.number, upstream, tuple(templates))
+
+    def agreed_closing_pull_requests(self) -> list[RestPullRequest]:
+        """
+        :return: The fork's open pull requests whose description closes the issue,
+            which the person agreed to close.
+        :raises IssueNotMovableError: If the person did not agree.
+        """
+        closing = [
+            pull_request
+            for pull_request in self.fork.open_pull_requests()
+            if self.number in ClosingLines(pull_request.body or "").issues()
+        ]
+        if not closing:
+            return []
+        links = ", ".join(pull_request.url for pull_request in closing)
+        question = (
+            f"#{self.number} is closed by the open pull requests {links}; close them "
+            f"and move it?"
+        )
+        if not self.confirmation.confirm(question):
+            raise IssueNotMovableError(
+                self.number, "the pull requests closing it stay open"
+            )
+        return closing
+
+    @staticmethod
+    def ending(
+        repository: Repository, number: int, upstream: Repository
+    ) -> PersonCommandEnding:
+        """
+        :param repository: The owner's fork.
+        :param number: Its issue.
+        :param upstream: The repository the fork was forked from.
+        :return: The end of the issue's text giving the person the command line moving
+            it there.
+        """
+        words = RunnableCommand.ISSUE_UPSTREAM.words_naming(
+            ArgumentName.REPOSITORY,
+            ArgumentName.NUMBER,
+            values={
+                ArgumentName.REPOSITORY: repository.full_name,
+                ArgumentName.NUMBER: str(number),
+            },
+        )
+        command = " ".join([Launcher.COMMAND, *words])
+        return PersonCommandEnding(f"move this issue to {upstream}", command)
 
 
 # %% following merges upstream

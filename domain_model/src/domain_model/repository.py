@@ -13,6 +13,21 @@ from domain_model.class_property import classproperty
 from domain_model.exceptions import MalformedRepositoryError
 from domain_model.number_links import HasNumberLink
 
+# %% names GitHub gives a meaning
+
+
+class ReservedRepositoryName(StrEnum):
+    """
+    The repository names GitHub reads something into.
+    """
+
+    COMMUNITY_HEALTH = ".github"
+    """
+    The owner's repository whose community health files, issue templates among them,
+    apply to each of the owner's repositories lacking its own.
+    """
+
+
 # %% addresses
 
 
@@ -226,6 +241,14 @@ class Repository:
     def actions_url(self) -> str:
         """:return: The repository's page listing its Actions workflows and runs."""
         return f"{self.url}/actions"
+
+    @property
+    def community_health_repository(self) -> Repository:
+        """
+        The owner's repository whose community health files apply to this one where it
+        lacks its own.
+        """
+        return Repository(self.owner, ReservedRepositoryName.COMMUNITY_HEALTH)
 
     def issue_url(self, number: int) -> str:
         """

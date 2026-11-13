@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from domain_model.git.revisions import BranchName
@@ -20,6 +21,7 @@ from domain_model.github.exceptions import NotAnIssueError
 from domain_model.github.issue_models import Issue, IssueComment, LabelEvent
 from domain_model.github.labels import GitHubLabel
 from domain_model.github.rest_models import (
+    RepositoryContent,
     RestPullRequest,
     RestRepository,
     SearchedPullRequest,
@@ -29,14 +31,17 @@ from domain_model.github.rest_models import (
 from domain_model.github.routes import RepositoryRoute
 from domain_model.github.stack_models import Stack
 from domain_model.github.vocabulary import (
+    IssueListingState,
     IssueState,
     IssueStateReason,
     PullRequestState,
     QueryParameter,
+    RepositoryContentKind,
     RestJSONKey,
     RollupState,
     StackAction,
 )
+from domain_model.locations import IssueTemplateLocation
 from domain_model.repository import Repository
 
 # %% what a caller reads and writes
@@ -456,9 +461,10 @@ class CommentReader(ABC):
         """
 
 
-class IssueBoard(LabelWriter, Commenter, IssueTitleWriter, CommentReader, ABC):
+@dataclass(frozen=True)
+class IssueOpener(ABC):
     """
-    Filing, listing, labelling, rewriting and closing a repository's issues.
+    Files issues on a repository.
     """
 
     @abstractmethod
@@ -469,6 +475,44 @@ class IssueBoard(LabelWriter, Commenter, IssueTitleWriter, CommentReader, ABC):
         :param labels: The labels it is filed with.
         :return: The new issue's number.
         """
+
+
+@dataclass(frozen=True)
+class RecentIssues(ABC):
+    """
+    Reads the issues most recently filed on a repository.
+    """
+
+    @abstractmethod
+    def recent_issues(self) -> list[Issue] | None:
+        """
+        :return: The first page of the repository's issues, open and closed, the newest
+            first and pull requests left out; ``None`` when the credential may not read
+            them.
+        """
+
+
+@dataclass(frozen=True)
+class IssueTemplateSource(ABC):
+    """
+    Finds the templates a repository has issues filed through.
+    """
+
+    @abstractmethod
+    def issue_templates(self) -> list[str]:
+        """
+        :return: The pages of the issue templates, issue forms and their configuration
+            the repository has, or, where it has none, those its owner's
+            :attr:`~domain_model.repository.Repository.community_health_repository` has.
+        """
+
+
+class IssueBoard(
+    LabelWriter, Commenter, IssueTitleWriter, CommentReader, IssueOpener, ABC
+):
+    """
+    Filing, listing, labelling, rewriting and closing a repository's issues.
+    """
 
     @abstractmethod
     def issues(self, labels: Sequence[str], state: IssueState) -> list[Issue]:
@@ -722,6 +766,14 @@ class UpstreamRepository(PullRequestsFromForks, RepositoryDetails, ABC):
 
 
 @dataclass(frozen=True)
+class UpstreamIssueTracker(Commenter, IssueOpener, IssueTemplateSource, ABC):
+    """
+    The repository a fork was forked from, as far as moving an issue of the fork there
+    goes: the templates it has issues filed through, filing one, and commenting on it.
+    """
+
+
+@dataclass(frozen=True)
 class ProposingFork(
     UpstreamRepository,
     ForkedRepository,
@@ -755,6 +807,8 @@ class GitHubRepository(
     FollowedFork,
     ProposingFork,
     RewritablePullRequests,
+    UpstreamIssueTracker,
+    RecentIssues,
 ):
     """
     Every pull-request, stack and label call this tooling makes, against one repository.
@@ -1055,6 +1109,65 @@ class GitHubRepository(
             for entry in self._every_entry(listing)
             if not Issue.is_pull_request(entry)
         ]
+
+    def recent_issues(self) -> list[Issue] | None:
+        listing = self.route.listing(
+            self.route.issues(), {QueryParameter.STATE: IssueListingState.ALL}
+        )
+        answer = self.api.attempt("GET", listing)
+        if answer.refused:
+            return None
+        answer.raise_if_failed("GET", listing)
+        return [
+            Issue.from_json(entry)
+            for entry in answer.body
+            if not Issue.is_pull_request(entry)
+        ]
+
+    def issue_templates(self) -> list[str]:
+        own = self.own_issue_templates()
+        if own:
+            return own
+        defaults = self.repository.community_health_repository
+        return GitHubRepository(defaults, self.api).own_issue_templates()
+
+    def own_issue_templates(self) -> list[str]:
+        """
+        :return: The pages of the issue templates, issue forms and their configuration
+            the repository has itself.
+        """
+        found = []
+        for directory in {location.parent for location in IssueTemplateLocation}:
+            for entry in self.directory_contents(directory):
+                if not any(
+                    entry.path.casefold() == location.as_posix().casefold()
+                    for location in IssueTemplateLocation
+                ):
+                    continue
+                if entry.kind is not RepositoryContentKind.DIRECTORY:
+                    found.append(entry.page)
+                    continue
+                found += [
+                    inner.page
+                    for inner in self.directory_contents(Path(entry.path))
+                    if inner.kind is RepositoryContentKind.FILE
+                ]
+        return sorted(found)
+
+    def directory_contents(self, directory: Path) -> list[RepositoryContent]:
+        """
+        :param directory: A directory of the repository, relative to its root.
+        :return: The files and directories directly inside it on the default branch,
+            none when it is no directory or the credential may not read it.
+        """
+        path = self.route.contents(directory)
+        answer = self.api.attempt("GET", path)
+        if answer.refused:
+            return []
+        answer.raise_if_failed("GET", path)
+        if not isinstance(answer.body, list):
+            return []
+        return [RepositoryContent.from_json(entry) for entry in answer.body]
 
     def close_issue(self, number: int, reason: IssueStateReason) -> None:
         self.api.request(

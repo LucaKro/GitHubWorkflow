@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from enum import StrEnum
+from pathlib import Path
 from typing import Any, Self, TypeVar
 
 from domain_model.github.exceptions import (
@@ -133,9 +134,16 @@ class GraphQLDocument(StrEnum):
     DISCUSSION_SEARCH_PAGE = "discussion_search_page"
     DISCUSSION_COMMENTS_PAGE = "discussion_comments_page"
 
+    @property
+    def path(self) -> Path:
+        """
+        The file the document is shipped in.
+        """
+        return PackageLocation.QUERIES / f"{self}.graphql"
+
     def read(self) -> str:
         """:return: The document's text."""
-        return (PackageLocation.QUERIES / f"{self}.graphql").read_text()
+        return self.path.read_text()
 
 
 class GitHubVocabulary(StrEnum):
@@ -459,6 +467,7 @@ class RestJSONKey(StrEnum):
     FULL_NAME = "full_name"
     PARENT = "parent"
     BRANCH = "branch"
+    TYPE = "type"
 
 
 # %% issues and workflow runs
@@ -477,6 +486,43 @@ class IssueEventType(StrEnum):
     UNLABELED = "unlabeled"
     """
     A label removed.
+    """
+
+
+class RepositoryContentKind(StrEnum):
+    """
+    The ``type`` REST reports a repository's file or directory with.
+    """
+
+    FILE = "file"
+    """
+    A file.
+    """
+
+    DIRECTORY = "dir"
+    """
+    A directory.
+    """
+
+    SYMBOLIC_LINK = "symlink"
+    """
+    A symbolic link.
+    """
+
+    SUBMODULE = "submodule"
+    """
+    Another repository checked out inside it.
+    """
+
+
+class IssueListingState(StrEnum):
+    """
+    The ``state`` the issue list API filters on beyond :class:`IssueState`.
+    """
+
+    ALL = "all"
+    """
+    Open and closed issues alike.
     """
 
 

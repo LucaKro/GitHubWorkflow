@@ -116,6 +116,12 @@ class WorkflowCommand(StrEnum):
     person's alone, never a session's.
     """
 
+    ISSUE = "issue"
+    """
+    Move an issue of the owner's fork to the repository it was forked from; the
+    person's alone, never a session's.
+    """
+
     LABEL = "label"
     """
     Add labels of the repository's to the work branch's pull request, or remove them.
@@ -244,6 +250,18 @@ class FindingSubcommand(StrEnum):
     """
     Write the Actions workflow completing finding labels picked on GitHub into the
     checkout.
+    """
+
+
+class IssueSubcommand(StrEnum):
+    """
+    What ``issue`` does.
+    """
+
+    UPSTREAM = "upstream"
+    """
+    Open an issue of the owner's fork on the repository it was forked from, and close
+    it on the fork.
     """
 
 
@@ -446,6 +464,16 @@ class CommandOption(StrEnum):
     PRIORITY = "--priority"
     """
     How urgent a finding is.
+    """
+
+    NOT_UPSTREAM = "--not-upstream"
+    """
+    An issue of the upstream repository checked and found not to cover the finding.
+    """
+
+    FOLLOWS_TEMPLATE = "--follows-template"
+    """
+    The issue was rewritten to follow the upstream repository's issue templates.
     """
 
     TEST = "--test"
@@ -779,6 +807,21 @@ class CommandArgument:
             "another of the owner's repositories, as owner/name, no checkout needed; "
             "the checkout's when left out",
             alternative=alternative,
+        )
+
+    @classmethod
+    def checked_upstream_issue(cls) -> CommandArgument:
+        """
+        An issue of the upstream titled like a finding, checked and found not to cover
+        it.
+        """
+        return cls(
+            CommandOption.NOT_UPSTREAM,
+            "number",
+            "an issue of the fork's upstream titled like it, checked and found not to "
+            "cover it; once for each",
+            int,
+            count=ArgumentCount.REPEATED,
         )
 
     @classmethod
@@ -1147,6 +1190,7 @@ class RunnableCommand(CommandSpecification, Enum):
             ),
             CommandArgument.other_repository(alternative=True),
             CommandArgument.interpreter(),
+            CommandArgument.checked_upstream_issue(),
         ),
     )
     """
@@ -1510,6 +1554,7 @@ class RunnableCommand(CommandSpecification, Enum):
             CommandArgument(CommandOption.TITLE, "title", required=True),
             CommandArgument.body_file("the issue's text, summing up the conversation"),
             CommandArgument.other_repository(),
+            CommandArgument.checked_upstream_issue(),
         ),
     )
     """
@@ -1544,6 +1589,27 @@ class RunnableCommand(CommandSpecification, Enum):
     )
     """
     ``upstream``.
+    """
+
+    ISSUE_UPSTREAM = (
+        (WorkflowCommand.ISSUE, IssueSubcommand.UPSTREAM),
+        "move an issue of a fork to its upstream; the person's alone",
+        PersonRuns(),
+        (
+            CommandArgument(
+                ArgumentName.REPOSITORY, "owner/name", "the owner's fork, as owner/name"
+            ),
+            CommandArgument(ArgumentName.NUMBER, "number", "the fork's issue", int),
+            CommandArgument(
+                CommandOption.FOLLOWS_TEMPLATE,
+                description="the issue was rewritten to follow the upstream's issue "
+                "templates",
+                count=ArgumentCount.NONE,
+            ),
+        ),
+    )
+    """
+    ``issue upstream``.
     """
 
     @classmethod

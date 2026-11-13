@@ -42,6 +42,7 @@ from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.report_lines import ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportGroup, ReportSection
+from github_workflow.upstream import FindingUpstream
 from github_workflow.workflow_step import WorkflowStep
 from github_workflow.workflow_templates import ForwardedSubject
 
@@ -730,9 +731,9 @@ class TagFiling(WorkflowStep):
     The issues of the owner's repository the finding is filed on.
     """
 
-    repository: Repository
+    upstream: FindingUpstream
     """
-    That repository.
+    That repository, as far as the one it was forked from goes.
     """
 
     title: str
@@ -753,16 +754,21 @@ class TagFiling(WorkflowStep):
     def run(self) -> str:
         """
         :raises UnknownTagError: If no tagged comment waits at the page.
+        :raises UpstreamIssueMatchError: If an issue upstream not checked yet is
+            titled like the finding.
         """
         status = self.tags.read()
         mention = status.waiting_tag(self.comment)
         body = f"{self.body.rstrip()}\n\nTagged in {mention.comment.url}\n"
-        number = FindingFiling(self.board, self.title, body, self.priority).file([])
-        issue = self.repository.issue_url(number)
+        number = FindingFiling(
+            self.board, self.title, body, self.priority, self.upstream
+        ).file([])
+        repository = self.upstream.repository
+        issue = repository.issue_url(number)
         status.ledger.handle(mention, issue, status.found).save(
             self.tags.notes, f"File the tagged comment {mention.comment.url}"
         )
-        return f"filed {self.repository}#{number} ({self.priority.level}) for {self.comment}"
+        return f"filed {repository}#{number} ({self.priority.level}) for {self.comment}"
 
 
 @dataclass(frozen=True)

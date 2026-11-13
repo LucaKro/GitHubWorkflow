@@ -35,6 +35,7 @@ from github_workflow.exceptions import (
     PassingTestError,
     ProofNoLongerHoldsError,
     UnprovenFindingCloseError,
+    UpstreamIssueMatchError,
 )
 from github_workflow.findings import (
     ClosedBy,
@@ -76,7 +77,9 @@ from github_workflow.work import DraftOpening, IssueLabel, PullRequestOpenedLabe
 from .issues_in_memory import (
     IssuesInMemory,
     PresetOutcomeRunner,
+    RecentIssuesInMemory,
     build_finding,
+    finding_upstream,
     labelled_board,
 )
 from .pull_requests import pull_request
@@ -138,7 +141,7 @@ def test_a_finding_is_filed_unreviewed_with_its_priority_and_every_label_created
 ):
     board = IssuesInMemory()
 
-    FindingFiling(board, "A title", "A body", Priority.HIGH).run()
+    FindingFiling(board, "A title", "A body", Priority.HIGH, finding_upstream()).run()
 
     created = [f"create_label {label}" for label in FindingLabel.every_label]
     assert board.writes == created + [
@@ -149,7 +152,7 @@ def test_a_finding_is_filed_unreviewed_with_its_priority_and_every_label_created
 def test_labels_the_repository_has_are_not_created_again() -> None:
     board = IssuesInMemory(present_labels=set(FindingLabel.every_label))
 
-    FindingFiling(board, "A title", "A body", Priority.LOW).run()
+    FindingFiling(board, "A title", "A body", Priority.LOW, finding_upstream()).run()
 
     assert board.writes == [f"open_issue 1 {[FindingStage.UNREVIEWED, Priority.LOW]}"]
 
@@ -161,7 +164,13 @@ def test_a_proven_finding_is_filed_unreviewed_and_proven_with_its_proof_posted()
     failing = runner(ProofOutcome.FAILS)
 
     ProvenFindingFiling(
-        board, "A title", "A body", Priority.HIGH, finding_test(), failing
+        board,
+        "A title",
+        "A body",
+        Priority.HIGH,
+        finding_upstream(),
+        finding_test(),
+        failing,
     ).run()
 
     assert board.writes == [
@@ -181,10 +190,111 @@ def test_a_finding_whose_test_does_not_fail_is_not_filed(
 
     with pytest.raises(error):
         ProvenFindingFiling(
-            board, "A title", "A body", Priority.HIGH, finding_test(), runner(outcome)
+            board,
+            "A title",
+            "A body",
+            Priority.HIGH,
+            finding_upstream(),
+            finding_test(),
+            runner(outcome),
         ).run()
 
     assert board.writes == []
+
+
+# %% filing on a fork
+
+
+def upstream_issue(number: int, title: str) -> Issue:
+    """:param number: The issue's number upstream.
+    :param title: Its title.
+    :return: It, closed."""
+    return Issue(number, title, (), IssueState.CLOSED)
+
+
+def test_a_finding_titled_like_an_upstream_issue_is_not_filed() -> None:
+    board = labelled_board()
+    known = upstream_issue(5, "Review list crashes on the thread of a pending review")
+    upstream = finding_upstream(ScratchGitHub.upstream, known)
+
+    with pytest.raises(UpstreamIssueMatchError) as refused:
+        FindingFiling(
+            board,
+            "review list crashes on a pending review's thread",
+            "A body",
+            Priority.MEDIUM,
+            upstream,
+        ).run()
+
+    assert (refused.value.matches, board.writes) == ((5,), [])
+
+
+def test_a_finding_titled_like_a_checked_upstream_issue_is_filed_naming_it() -> None:
+    board = labelled_board()
+    known = upstream_issue(5, "Review list crashes on a pending review")
+    upstream = finding_upstream(ScratchGitHub.upstream, known, checked=(5,))
+
+    FindingFiling(
+        board,
+        "review list crashes on a pending review",
+        "A body",
+        Priority.LOW,
+        upstream,
+    ).run()
+
+    assert board.descriptions[1] == upstream.check_title("", "A body")
+    assert ScratchGitHub.upstream.issue_link(5) in board.descriptions[1]
+
+
+def test_a_finding_titled_unlike_the_upstream_issues_ends_with_the_move_command() -> (
+    None
+):
+    board = labelled_board()
+    known = upstream_issue(5, "Discussions are posted twice")
+    upstream = finding_upstream(ScratchGitHub.upstream, known)
+
+    FindingFiling(
+        board,
+        "review list crashes on a pending review",
+        "A body",
+        Priority.LOW,
+        upstream,
+    ).run()
+
+    assert board.writes[-1] == (
+        f"set_issue_description 1 {upstream.suggest_move('A body', 1)}"
+    )
+
+
+def test_a_finding_is_filed_when_the_upstream_s_issues_cannot_be_read() -> None:
+    board = labelled_board()
+    upstream = replace(
+        finding_upstream(ScratchGitHub.upstream),
+        upstream_issues=lambda repository: RecentIssuesInMemory(None),
+    )
+
+    FindingFiling(board, "A title", "A body", Priority.LOW, upstream).run()
+
+    assert board.writes[0] == f"open_issue 1 {[FindingStage.UNREVIEWED, Priority.LOW]}"
+
+
+def test_a_finding_on_a_repository_that_is_no_fork_has_no_move_command() -> None:
+    board = labelled_board()
+
+    FindingFiling(board, "A title", "A body", Priority.LOW, finding_upstream()).run()
+
+    assert board.descriptions[1] == "A body"
+
+
+def test_a_new_text_of_a_finding_on_a_fork_ends_with_the_move_command() -> None:
+    board = IssuesInMemory({1: build_finding(1, FindingStage.UNREVIEWED, Priority.LOW)})
+    upstream = finding_upstream(ScratchGitHub.upstream)
+
+    FindingEdit(board, 1, None, "Corrected.", upstream).run()
+
+    assert board.writes == [
+        f"set_issue_description 1 {upstream.suggest_move('Corrected.', 1)}"
+    ]
 
 
 # %% prioritizing
@@ -664,7 +774,9 @@ def test_a_finding_is_commented_on() -> None:
 def test_a_finding_s_title_and_text_are_rewritten() -> None:
     board = IssuesInMemory({1: build_finding(1, FindingStage.UNREVIEWED, Priority.LOW)})
 
-    FindingEdit(board, 1, "A sharper title", "What was found, corrected.").run()
+    FindingEdit(
+        board, 1, "A sharper title", "What was found, corrected.", finding_upstream()
+    ).run()
 
     assert board.writes == [
         "set_issue_title 1 A sharper title",
@@ -675,7 +787,7 @@ def test_a_finding_s_title_and_text_are_rewritten() -> None:
 def test_only_what_is_given_is_rewritten() -> None:
     board = IssuesInMemory({1: build_finding(1, FindingStage.UNREVIEWED, Priority.LOW)})
 
-    FindingEdit(board, 1, None, "What was found, corrected.").run()
+    FindingEdit(board, 1, None, "What was found, corrected.", finding_upstream()).run()
 
     assert board.writes == ["set_issue_description 1 What was found, corrected."]
 
@@ -684,7 +796,7 @@ def test_an_edit_changing_nothing_is_refused() -> None:
     board = IssuesInMemory({1: build_finding(1, FindingStage.UNREVIEWED, Priority.LOW)})
 
     with pytest.raises(NothingToEditError):
-        FindingEdit(board, 1, None, None).run()
+        FindingEdit(board, 1, None, None, finding_upstream()).run()
 
     assert board.writes == []
 
@@ -695,7 +807,7 @@ def test_a_closed_finding_is_not_edited() -> None:
     )
 
     with pytest.raises(NotAFindingError):
-        FindingEdit(board, 1, "A title", None).run()
+        FindingEdit(board, 1, "A title", None, finding_upstream()).run()
 
     assert board.writes == []
 

@@ -20,7 +20,7 @@ from domain_model.github.vocabulary import (
 @dataclass(frozen=True)
 class Issue(JSONModel):
     """
-    One issue: its number, title, labels and whether it is open.
+    One issue: its number, title, labels, whether it is open, and its description.
     """
 
     number: int
@@ -43,6 +43,11 @@ class Issue(JSONModel):
     Whether it is open.
     """
 
+    body: str = ""
+    """
+    Its description, as Markdown; empty when it has none.
+    """
+
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> Issue:
         return cls(
@@ -50,6 +55,7 @@ class Issue(JSONModel):
             data[RestJSONKey.TITLE],
             tuple(label[RestJSONKey.NAME] for label in data[RestJSONKey.LABELS]),
             IssueState(data[RestJSONKey.STATE]),
+            data.get(RestJSONKey.BODY) or "",
         )
 
     @staticmethod

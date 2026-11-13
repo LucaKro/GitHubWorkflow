@@ -5,6 +5,7 @@ one in use came from another, and a build that fails leaves the runtime in use a
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 import threading
@@ -20,7 +21,11 @@ import github_workflow.install
 from github_workflow.command_line import WorkflowCommand
 from github_workflow.exceptions import RuntimeInstallError
 from github_workflow.install import DirectoryLock, RuntimeInstallation, RuntimeSwitch
-from github_workflow.locations import RuntimeLocation, UnstampedDirectory
+from github_workflow.locations import (
+    RuntimeLocation,
+    UnstampedDirectory,
+    WorkflowTemplate,
+)
 from github_workflow.plugin import (
     FileMode,
     Launcher,
@@ -28,6 +33,7 @@ from github_workflow.plugin import (
     PluginSource,
     RuntimeModule,
 )
+from github_workflow.runtime_check import RuntimeCheck
 
 # %% the dataset
 
@@ -246,6 +252,29 @@ def test_a_runtime_whose_commands_do_not_load_is_not_switched_to(
         ).install()
 
     assert not (tmp_path / "runtime").exists()
+
+
+def test_a_runtime_built_from_a_plugin_missing_a_shipped_file_is_not_switched_to(
+    tmp_path: Path,
+) -> None:
+    root = Path(github_workflow.install.__file__).parents[2]
+    plugin = tmp_path / "plugin"
+    for source in PluginSource:
+        shutil.copytree(
+            root / source.path,
+            plugin / source.path,
+            ignore=shutil.ignore_patterns(UnstampedDirectory.BYTECODE),
+        )
+    (plugin / WorkflowTemplate.PROOF_COMMENT.relative_to(root)).unlink()
+
+    with pytest.raises(RuntimeInstallError):
+        RuntimeInstallation(plugin, tmp_path / "runtime", tmp_path / "bin").install()
+
+    assert not (tmp_path / "runtime").exists()
+
+
+def test_every_shipped_file_is_in_this_checkout() -> None:
+    assert [path for path in RuntimeCheck.shipped_files if not path.exists()] == []
 
 
 def test_a_runtime_built_from_the_plugin_runs_its_commands(tmp_path: Path) -> None:

@@ -1,36 +1,45 @@
 """
 Tests for :mod:`github_workflow.upstream`: the person, and only the person, opens a
-fork's pull request on its upstream, linking back to it.
+fork's pull request on its upstream, linking back to it, or moves an issue of the fork
+there.
 """
 
 from __future__ import annotations
 
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
 from domain_model.git.exceptions import GitCommandFailed
 from domain_model.git.remotes import RemoteName
-from domain_model.git.revisions import BranchName
-from domain_model.github.issue_models import IssueComment
+from domain_model.git.revisions import BranchName, BranchTip, CommitHash
+from domain_model.github.issue_models import Issue, IssueComment
 from domain_model.github.labels import GitHubLabel
 from domain_model.github.repository_client import (
     FollowedFork,
     ForkDetails,
     ProposingFork,
     PullRequestSearch,
+    UpstreamIssueTracker,
 )
 from domain_model.github.rest_models import RestPullRequest, SearchedPullRequest
 from domain_model.github.stack_models import Stack
 from domain_model.github.stack_placement import StackPlacement
-from domain_model.github.vocabulary import PullRequestState
+from domain_model.github.vocabulary import (
+    ClosingKeyword,
+    IssueState,
+    IssueStateReason,
+    PullRequestState,
+)
 from domain_model.repository import GitHubAddress, Repository
 
 from github_workflow.exceptions import (
     ForeignRepositoryError,
     ForkBranchDivergedError,
+    IssueNotMovableError,
+    IssueTemplatesRequiredError,
     NotAForkError,
     PersonOnlyCommandError,
     PullRequestNotProposableError,
@@ -40,8 +49,14 @@ from github_workflow.policy import WritePolicy
 from github_workflow.push_hook import PushHook
 from github_workflow.report_lines import Tone
 from github_workflow.settings import WorkflowSettings
+from github_workflow.findings import FindingStage, Priority
+from github_workflow.proofs import FindingTest, Proof
 from github_workflow.upstream import (
+    CommonWord,
+    Confirmation,
     ForkMainSync,
+    IssueUpstreamMove,
+    TitleWords,
     UpstreamLabel,
     UpstreamMergeFollowing,
     UpstreamProposal,
@@ -49,9 +64,10 @@ from github_workflow.upstream import (
 )
 from github_workflow.work import BranchStart
 
+from .issues_in_memory import IssuesInMemory
 from .pull_requests import pull_request
 from .repositories_by_owner import RepositoriesByOwner
-from .scratch_github import ScratchGitHub
+from .scratch_github import ForkOf, ScratchGitHub
 from .stacked_pull_requests import StackedPullRequestsInMemory
 from .test_push_hook import in_claude_code  # noqa: F401  (a fixture)
 from .test_work import RetiredInMemory, work  # noqa: F401  (a fixture)
@@ -791,3 +807,288 @@ def test_what_is_stacked_on_a_merged_pull_request_never_opened_upstream_is_left_
     )
 
     assert (section.lines(), retired.retired, fork.writes) == ([], [], [])
+
+
+# %% moving an issue upstream
+
+
+@dataclass(frozen=True)
+class IssueIntakeInMemory(UpstreamIssueTracker):
+    """
+    A repository taking issues, through the templates given, recording each one filed.
+    """
+
+    templates: list[str] = field(default_factory=list)
+    """
+    The pages of its issue templates.
+    """
+
+    opened: list[tuple[str, str, list[str]]] = field(default_factory=list)
+    """
+    Each issue filed: its title, text and labels.
+    """
+
+    comments: list[tuple[int, str]] = field(default_factory=list)
+    """
+    Each comment: its issue and text.
+    """
+
+    def open_issue(self, title: str, body: str, labels: Sequence[str]) -> int:
+        self.opened.append((title, body, list(labels)))
+        return 12
+
+    def add_comment(self, number: int, body: str) -> str:
+        self.comments.append((number, body))
+        return "https://comment"
+
+    def issue_templates(self) -> list[str]:
+        return list(self.templates)
+
+
+@dataclass(frozen=True)
+class PresetAnswer(Confirmation):
+    """
+    Answers every question the same, keeping the questions.
+    """
+
+    agrees: bool = False
+    """
+    Whether the person answers yes.
+    """
+
+    questions: list[str] = field(default_factory=list)
+    """
+    Every question asked, in order.
+    """
+
+    def confirm(self, question: str) -> bool:
+        self.questions.append(question)
+        return self.agrees
+
+
+def fork_issues(body: str = "What happens.", *labels: str) -> IssuesInMemory:
+    """:param body: The text of the fork's issue 4.
+    :param labels: Its labels besides a finding's.
+    :return: The fork's issues: issue 4, an accepted finding."""
+    carried = (FindingStage.ACCEPTED, Priority.MEDIUM, *labels)
+    return IssuesInMemory({4: Issue(4, "A title", carried, IssueState.OPEN, body)})
+
+
+def issue_move(
+    fork: IssuesInMemory,
+    intake: IssueIntakeInMemory,
+    confirmation: Confirmation | None = None,
+    *,
+    repository: Repository = ScratchGitHub.owned,
+    forked_from: Repository | None = ScratchGitHub.upstream,
+    run_by_a_session: bool = False,
+    follows_template: bool = False,
+) -> IssueUpstreamMove:
+    """:param fork: The fork's issues and pull requests.
+    :param intake: The upstream.
+    :param confirmation: Answers the person's questions; a no when ``None``.
+    :param repository: The repository moved from.
+    :param forked_from: What it was forked from.
+    :param run_by_a_session: Whether a Claude Code session runs it.
+    :param follows_template: Whether the issue follows the templates.
+    :return: Issue 4 moved upstream."""
+    return IssueUpstreamMove(
+        repository,
+        4,
+        fork,
+        ForkOf(forked_from),
+        lambda upstream: intake,
+        WorkflowSettings(),
+        PresetAnswer() if confirmation is None else confirmation,
+        run_by_a_session=run_by_a_session,
+        follows_template=follows_template,
+        proof_authors={WorkflowSettings().owner},
+    )
+
+
+def proven_issues(author: str) -> IssuesInMemory:
+    """:param author: Who posted the proof.
+    :return: The fork's issues, issue 4 carrying a proof between other comments."""
+    fork = fork_issues()
+    proof = Proof(
+        FindingTest(Path("tests/test_it.py"), "def test_it():\n    assert False\n"),
+        BranchTip(BranchName("main"), CommitHash("a" * 40)),
+        "assert False",
+    )
+    fork.posted[4] = [
+        IssueComment(WorkflowSettings().owner, "Seen again."),
+        IssueComment(author, proof.comment()),
+        IssueComment(WorkflowSettings().owner, "Still there."),
+    ]
+    return fork
+
+
+def test_the_issue_s_proof_is_posted_on_the_new_one() -> None:
+    fork = proven_issues(WorkflowSettings().owner)
+    intake = IssueIntakeInMemory()
+
+    issue_move(fork, intake).run()
+
+    origin = ScratchGitHub.owned.issue_url(4)
+    assert intake.comments == [(12, f"Proven on {origin}:\n\n{fork.posted[4][1].body}")]
+
+
+def test_a_proof_somebody_else_posted_is_not_moved() -> None:
+    intake = IssueIntakeInMemory()
+
+    issue_move(proven_issues("somebody-else"), intake).run()
+
+    assert intake.comments == []
+
+
+def test_an_issue_is_opened_upstream_without_its_labels_or_move_command() -> None:
+    ending = IssueUpstreamMove.ending(ScratchGitHub.owned, 4, ScratchGitHub.upstream)
+    fork = fork_issues(ending.append_once("What happens."))
+    intake = IssueIntakeInMemory()
+
+    issue_move(fork, intake).run()
+
+    assert intake.opened == [("A title", "What happens.", [])]
+
+
+def test_the_moved_issue_is_closed_on_the_fork_linking_the_new_one() -> None:
+    fork = fork_issues()
+
+    issue_move(fork, IssueIntakeInMemory()).run()
+
+    assert fork.writes == [
+        f"add_comment 4 Moved upstream: {ScratchGitHub.upstream.issue_url(12)}",
+        f"close_issue 4 {IssueStateReason.NOT_PLANNED}",
+    ]
+
+
+@pytest.mark.parametrize(
+    "move, error",
+    [
+        (
+            lambda fork, intake: issue_move(fork, intake, run_by_a_session=True),
+            PersonOnlyCommandError,
+        ),
+        (
+            lambda fork, intake: issue_move(
+                fork, intake, repository=ScratchGitHub.upstream
+            ),
+            ForeignRepositoryError,
+        ),
+        (
+            lambda fork, intake: issue_move(fork, intake, forked_from=None),
+            NotAForkError,
+        ),
+    ],
+    ids=["session", "foreign", "no fork"],
+)
+def test_a_move_the_person_may_not_make_writes_nothing(
+    move: Callable[[IssuesInMemory, IssueIntakeInMemory], IssueUpstreamMove],
+    error: type[Exception],
+) -> None:
+    fork, intake = fork_issues(), IssueIntakeInMemory()
+
+    with pytest.raises(error):
+        move(fork, intake).run()
+
+    assert (fork.writes, intake.opened) == ([], [])
+
+
+def test_a_closed_issue_is_not_moved() -> None:
+    fork = fork_issues()
+    fork.open_issues[4] = replace(fork.open_issues[4], state=IssueState.CLOSED)
+    intake = IssueIntakeInMemory()
+
+    with pytest.raises(IssueNotMovableError):
+        issue_move(fork, intake).run()
+
+    assert intake.opened == []
+
+
+def test_an_issue_for_an_upstream_with_templates_is_labelled_and_linked_to_them() -> (
+    None
+):
+    fork = fork_issues()
+    intake = IssueIntakeInMemory(["https://templates/bug.yml"])
+
+    with pytest.raises(IssueTemplatesRequiredError):
+        issue_move(fork, intake).run()
+
+    assert (fork.open_issues[4].labels[-1], intake.opened) == (
+        UpstreamLabel.TEMPLATE_REQUIRED,
+        [],
+    )
+    assert "https://templates/bug.yml" in fork.posted[4][0].body
+
+
+def test_an_issue_labelled_for_the_templates_already_is_not_linked_again() -> None:
+    fork = fork_issues("What happens.", UpstreamLabel.TEMPLATE_REQUIRED)
+    intake = IssueIntakeInMemory(["https://templates/bug.yml"])
+
+    with pytest.raises(IssueTemplatesRequiredError):
+        issue_move(fork, intake).run()
+
+    assert fork.writes == []
+
+
+def test_an_issue_following_the_templates_is_moved() -> None:
+    fork = fork_issues()
+    intake = IssueIntakeInMemory(["https://templates/bug.yml"])
+
+    issue_move(fork, intake, follows_template=True).run()
+
+    assert intake.opened == [("A title", "What happens.", [])]
+
+
+def closing_pull_request(number: int) -> RestPullRequest:
+    """:param number: The pull request.
+    :return: It, open, its description closing issue 4."""
+    body = ClosingKeyword.FIXES.reference(4)
+    return replace(pull_request(number, "feature"), body=body)
+
+
+def test_the_pull_requests_closing_the_issue_are_closed_once_the_person_agrees() -> (
+    None
+):
+    fork = fork_issues()
+    fork.pull_requests[7] = closing_pull_request(7)
+    fork.pull_requests[8] = pull_request(8, "other")
+
+    issue_move(fork, IssueIntakeInMemory(), PresetAnswer(agrees=True)).run()
+
+    assert fork.closed_pull_requests == [7]
+
+
+def test_an_issue_whose_closing_pull_requests_the_person_keeps_is_not_moved() -> None:
+    fork = fork_issues()
+    fork.pull_requests[7] = closing_pull_request(7)
+    intake = IssueIntakeInMemory()
+    answer = PresetAnswer(agrees=False)
+
+    with pytest.raises(IssueNotMovableError):
+        issue_move(fork, intake, answer).run()
+
+    assert (len(answer.questions), intake.opened, fork.writes) == (1, [], [])
+
+
+def test_an_issue_without_closing_pull_requests_asks_nothing() -> None:
+    answer = PresetAnswer()
+
+    issue_move(fork_issues(), IssueIntakeInMemory(), answer).run()
+
+    assert answer.questions == []
+
+
+# %% titles alike
+
+
+def test_common_words_and_single_letters_leave_a_title_s_words() -> None:
+    title = f"{CommonWord.THE} review's thread {CommonWord.OF} a pending review"
+
+    assert TitleWords.from_title(title).words == {"review", "thread", "pending"}
+
+
+def test_a_title_s_share_counts_the_words_the_other_has_too() -> None:
+    words = TitleWords(frozenset({"review", "thread"}))
+
+    assert words.shared_share(TitleWords(frozenset({"review", "list"}))) == 0.5

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import quote, urlencode
 
 from domain_model.class_property import classproperty
@@ -149,6 +150,14 @@ class RepositoryRoute:
         """
         query = f"?{urlencode(filters)}" if filters else ""
         return f"{self.root}/issues{query}"
+
+    def contents(self, path: Path) -> str:
+        """
+        :param path: A directory or file of the repository, relative to its root.
+        :return: Its content on the default branch: a directory's entries, or the file.
+        """
+        relative = "" if path == Path() else quote(path.as_posix())
+        return f"{self.root}/contents/{relative}"
 
     def issue(self, number: int) -> str:
         """:param number: The issue or pull request.

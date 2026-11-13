@@ -24,6 +24,7 @@ from domain_model.github.vocabulary import (
     JSONModel,
     MergeableState,
     PullRequestState,
+    RepositoryContentKind,
     RestJSONKey,
     WorkflowRunConclusion,
     WorkflowRunStatus,
@@ -259,6 +260,39 @@ class RestRepository(JSONModel):
                 if RestJSONKey.PARENT in data
                 else None
             ),
+        )
+
+
+# %% a repository's files
+
+
+@dataclass(frozen=True)
+class RepositoryContent(JSONModel):
+    """
+    One file or directory of a repository, as a directory's listing names it.
+    """
+
+    path: str
+    """
+    Where it is, relative to the repository's root.
+    """
+
+    kind: RepositoryContentKind
+    """
+    Whether it is a file, a directory, or something else.
+    """
+
+    page: str
+    """
+    Its page on GitHub.
+    """
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> RepositoryContent:
+        return cls(
+            data[RestJSONKey.PATH],
+            RepositoryContentKind(data[RestJSONKey.TYPE]),
+            data[RestJSONKey.HTML_URL],
         )
 
 

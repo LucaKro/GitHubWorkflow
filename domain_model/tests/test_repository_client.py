@@ -9,6 +9,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from http import HTTPStatus
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
@@ -21,13 +22,16 @@ from domain_model.github.labels import GitHubLabel
 from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
 from domain_model.github.repository_client import GitHubRepository
 from domain_model.github.routes import RepositoryRoute
+from domain_model.locations import IssueTemplateLocation
 from domain_model.github.vocabulary import (
     ClosingKeyword,
     IssueEventType,
+    IssueListingState,
     IssueState,
     IssueStateReason,
     PullRequestState,
     QueryParameter,
+    RepositoryContentKind,
     RestJSONKey,
     WorkflowRunConclusion,
     WorkflowRunStatus,
@@ -623,6 +627,119 @@ def test_an_issue_s_comments_are_read_with_their_authors():
 
 def test_a_closing_reference_is_the_keyword_before_the_issue_s_number():
     assert ClosingKeyword.FIXES.reference(3) == f"{ClosingKeyword.FIXES} #3"
+
+
+# %% recent issues and issue templates
+
+
+def test_the_recent_issues_are_read_open_and_closed_with_their_text():
+    listing = ROUTE.listing(
+        ROUTE.issues(), {QueryParameter.STATE: IssueListingState.ALL}
+    )
+    closed = {
+        **issue_entry(3, []),
+        RestJSONKey.STATE: IssueState.CLOSED.value,
+        RestJSONKey.BODY: "What happens.",
+    }
+    pull_request = {**issue_entry(2, []), RestJSONKey.PULL_REQUEST: {}}
+    answers = {
+        ("GET", f"/{listing}"): RecordedAnswer(
+            HTTPStatus.OK, json.dumps([closed, pull_request])
+        )
+    }
+
+    with ReplayedApi(answers) as api:
+        issues = client(api).recent_issues()
+
+    assert issues == [Issue(3, "Issue 3", (), IssueState.CLOSED, "What happens.")]
+
+
+def test_recent_issues_the_credential_may_not_read_are_none():
+    with ReplayedApi({}) as api:
+        issues = client(api).recent_issues()
+
+    assert issues is None
+
+
+def content_entry(path: Path, kind: RepositoryContentKind) -> dict[str, object]:
+    """:param path: A file or directory of the repository.
+    :param kind: What it is.
+    :return: It as a directory's listing names it."""
+    return {
+        RestJSONKey.PATH: path.as_posix(),
+        RestJSONKey.TYPE: kind.value,
+        RestJSONKey.HTML_URL: f"{REPOSITORY.url}/blob/main/{path.as_posix()}",
+    }
+
+
+def contents_answer(
+    route: RepositoryRoute, directory: Path, *entries: dict[str, object]
+) -> dict[tuple[str, str], RecordedAnswer]:
+    """:param route: The repository's paths.
+    :param directory: One of its directories.
+    :param entries: What the directory holds.
+    :return: The listing of the directory, answered with them."""
+    return {
+        ("GET", f"/{route.contents(directory)}"): RecordedAnswer(
+            HTTPStatus.OK, json.dumps(list(entries))
+        )
+    }
+
+
+def test_every_file_in_the_template_directory_is_an_issue_template():
+    directory = IssueTemplateLocation.TEMPLATE_DIRECTORY
+    form, configuration = directory / "bug.yml", directory / "config.yml"
+    answers = {
+        **contents_answer(
+            ROUTE,
+            directory.parent,
+            content_entry(directory, RepositoryContentKind.DIRECTORY),
+        ),
+        **contents_answer(
+            ROUTE,
+            directory,
+            content_entry(form, RepositoryContentKind.FILE),
+            content_entry(configuration, RepositoryContentKind.FILE),
+        ),
+    }
+
+    with ReplayedApi(answers) as api:
+        templates = client(api).issue_templates()
+
+    assert templates == [
+        content_entry(form, RepositoryContentKind.FILE)[RestJSONKey.HTML_URL],
+        content_entry(configuration, RepositoryContentKind.FILE)[RestJSONKey.HTML_URL],
+    ]
+
+
+def test_a_single_template_is_found_whatever_the_case_of_its_name():
+    template = Path(IssueTemplateLocation.DOCUMENTATION_TEMPLATE.as_posix().lower())
+    entry = content_entry(template, RepositoryContentKind.FILE)
+    answers = contents_answer(ROUTE, template.parent, entry)
+
+    with ReplayedApi(answers) as api:
+        templates = client(api).issue_templates()
+
+    assert templates == [entry[RestJSONKey.HTML_URL]]
+
+
+def test_a_repository_without_templates_has_its_owner_s_default_ones():
+    defaults = RepositoryRoute(REPOSITORY.community_health_repository)
+    template = IssueTemplateLocation.ROOT_TEMPLATE
+    entry = content_entry(template, RepositoryContentKind.FILE)
+    answers = contents_answer(defaults, template.parent, entry)
+
+    with ReplayedApi(answers) as api:
+        templates = client(api).issue_templates()
+
+    assert templates == [entry[RestJSONKey.HTML_URL]]
+
+
+def test_a_repository_whose_owner_has_no_templates_has_none():
+    with ReplayedApi({}) as api:
+        templates = client(api).issue_templates()
+
+    assert templates == []
 
 
 # %% against any REST API

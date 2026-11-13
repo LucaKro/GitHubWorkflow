@@ -48,6 +48,7 @@ from github_workflow.report_lines import (
     Tone,
 )
 from github_workflow.report_section import ReportGroup, ReportSection
+from github_workflow.upstream import FindingUpstream
 from github_workflow.work import (
     DraftOpening,
     PullRequestOpenedLabelling,
@@ -326,7 +327,9 @@ class FindingLabelling(WorkflowStep, ABC):
 @dataclass(frozen=True)
 class FindingFiling(FindingLabelling):
     """
-    A finding filed as an unreviewed issue with its priority.
+    A finding filed as an unreviewed issue with its priority, unless an issue of the
+    repository it was forked from is titled like it; on a fork, its text ends with the
+    command line moving it there.
     """
 
     title: str
@@ -344,7 +347,16 @@ class FindingFiling(FindingLabelling):
     How urgent it is.
     """
 
+    upstream: FindingUpstream
+    """
+    The repository it is filed on, as far as the one it was forked from goes.
+    """
+
     def run(self) -> str:
+        """
+        :raises UpstreamIssueMatchError: If an issue upstream not checked yet is
+            titled like it.
+        """
         number = self.file([])
         return f"filed finding #{number} ({self.priority.level})"
 
@@ -352,11 +364,18 @@ class FindingFiling(FindingLabelling):
         """
         :param evidence: The evidence it is filed with, if any.
         :return: The number of the issue filed.
+        :raises UpstreamIssueMatchError: If an issue upstream not checked yet is
+            titled like it.
         """
+        body = self.upstream.check_title(self.title, self.body)
         self.create_missing_labels()
-        return self.issues.open_issue(
-            self.title, self.body, [FindingStage.UNREVIEWED, self.priority, *evidence]
+        number = self.issues.open_issue(
+            self.title, body, [FindingStage.UNREVIEWED, self.priority, *evidence]
         )
+        suggested = self.upstream.suggest_move(body, number)
+        if suggested is not None:
+            self.issues.set_issue_description(number, suggested)
+        return number
 
 
 @dataclass(frozen=True)
@@ -703,7 +722,8 @@ class FindingComment(FindingChange):
 @dataclass(frozen=True)
 class FindingEdit(FindingChange):
     """
-    An open finding's title, text or both rewritten, the rest left as it is.
+    An open finding's title, text or both rewritten, the rest left as it is; on a fork,
+    a new text ends with the command line moving it upstream.
 
     :raises NothingToEditError: If neither is given.
     """
@@ -718,6 +738,11 @@ class FindingEdit(FindingChange):
     The new text, ``None`` to keep the old one.
     """
 
+    upstream: FindingUpstream
+    """
+    The repository the finding is on, as far as the one it was forked from goes.
+    """
+
     def run(self) -> str:
         if self.title is None and self.body is None:
             raise NothingToEditError(self.number)
@@ -725,7 +750,9 @@ class FindingEdit(FindingChange):
         if self.title is not None:
             self.issues.set_issue_title(self.number, self.title)
         if self.body is not None:
-            self.issues.set_issue_description(self.number, self.body)
+            suggested = self.upstream.suggest_move(self.body, self.number)
+            body = self.body if suggested is None else suggested
+            self.issues.set_issue_description(self.number, body)
         return f"edited finding #{self.number}"
 
 

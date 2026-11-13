@@ -73,7 +73,14 @@ from github_workflow.tags import (
     TagShowing,
     WaitingTags,
 )
-from github_workflow.upstream import ForkMainSync, UpstreamProposal, UpstreamSuggestion
+from github_workflow.upstream import (
+    FindingUpstream,
+    ForkMainSync,
+    IssueUpstreamMove,
+    TerminalConfirmation,
+    UpstreamProposal,
+    UpstreamSuggestion,
+)
 from github_workflow.work import (
     BaseMerge,
     BranchStart,
@@ -490,14 +497,25 @@ class FindingFileStep(CommandStep):
 
     def step(self) -> WorkflowStep:
         session, arguments = self.session, self.arguments
+        board = (
+            session.findings_board(arguments.repository)
+            if arguments.test is None
+            else session.github
+        )
+        upstream = FindingUpstream(
+            board.repository,
+            board,
+            GitHubRepository.from_environment,
+            tuple(arguments.not_upstream or ()),
+        )
         if arguments.test is None:
-            board = session.findings_board(arguments.repository)
-            return FindingFiling(board, self.title, self.body, self.priority)
+            return FindingFiling(board, self.title, self.body, self.priority, upstream)
         return ProvenFindingFiling(
-            session.github,
+            board,
             self.title,
             self.body,
             self.priority,
+            upstream,
             FindingTest.read(session.checkout, arguments.test),
             session.proof_runner(arguments.python, session.default_branch()),
         )
@@ -627,7 +645,12 @@ class FindingEditStep(CommandStep):
 
     def step(self) -> WorkflowStep:
         board = self.session.findings_board(self.arguments.repository)
-        return FindingEdit(board, self.arguments.number, self.title, self.body)
+        upstream = FindingUpstream(
+            board.repository, board, GitHubRepository.from_environment
+        )
+        return FindingEdit(
+            board, self.arguments.number, self.title, self.body, upstream
+        )
 
 
 @dataclass(frozen=True)
@@ -796,7 +819,12 @@ class TagFileStep(CommandStep):
             WaitingTags(session.tag_source, session.notes),
             arguments.tag,
             board,
-            board.repository,
+            FindingUpstream(
+                board.repository,
+                board,
+                GitHubRepository.from_environment,
+                tuple(arguments.not_upstream or ()),
+            ),
             arguments.title,
             self.body,
             self.priority,
@@ -887,6 +915,33 @@ class UpstreamStep(CommandStep):
             GitHubRepository.from_environment,
             self.session.settings,
             ClaudeCodeVariable.COMMAND_MARKER.read() is not None,
+        )
+
+
+@dataclass(frozen=True)
+class IssueUpstreamStep(CommandStep):
+    """
+    Builds the step ``issue upstream`` asks for.
+    """
+
+    @classproperty
+    def command(cls) -> RunnableCommand:
+        return RunnableCommand.ISSUE_UPSTREAM
+
+    def step(self) -> WorkflowStep:
+        fork = Repository.parse(self.arguments.repository)
+        github = GitHubRepository.from_environment(fork)
+        return IssueUpstreamMove(
+            fork,
+            self.arguments.number,
+            github,
+            github,
+            GitHubRepository.from_environment,
+            self.session.settings,
+            TerminalConfirmation(),
+            run_by_a_session=ClaudeCodeVariable.COMMAND_MARKER.read() is not None,
+            follows_template=self.arguments.follows_template,
+            proof_authors={self.session.settings.owner, github.authenticated_login()},
         )
 
 

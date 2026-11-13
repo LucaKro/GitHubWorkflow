@@ -71,7 +71,7 @@ class PullRequestLabel(DescribedLabel):
 
 class UpstreamLabel(DescribedLabel):
     """
-    The labels a fork's pull request carries about its upstream.
+    The labels a fork's pull request or issue carries about its upstream.
     """
 
     OPENED_UPSTREAM = (
@@ -81,4 +81,15 @@ class UpstreamLabel(DescribedLabel):
     )
     """
     Opened on the repository the fork was forked from, by ``upstream``.
+    """
+
+    TEMPLATE_REQUIRED = (
+        "upstream: issue template",
+        "The upstream repository files issues through templates: rewrite this one to "
+        "follow them before moving it there",
+        "fbca04",
+    )
+    """
+    An issue of the fork waiting to be rewritten to follow the upstream's issue
+    templates, which a comment on it links, before ``issue upstream`` moves it.
     """

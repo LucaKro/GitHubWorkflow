@@ -47,6 +47,7 @@ import github_workflow.session_start
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.command_line import (
     BranchSubcommand,
+    CommandOption,
     FindingSubcommand,
     NotesSubcommand,
     RunnableCommand,
@@ -84,7 +85,7 @@ from github_workflow.remotes import OwnedRemotes
 from github_workflow.report_lines import Speaker, Tone
 from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
-from github_workflow.upstream import UpstreamSuggestion
+from github_workflow.upstream import FindingUpstream, UpstreamSuggestion
 
 from .repositories_by_owner import RepositoriesByOwner
 from .test_proofs import ProofDataset
@@ -769,6 +770,7 @@ def test_a_finding_filed_with_a_test_is_proven_on_the_default_branch(
         "A title",
         "What was found.\n",
         Priority.HIGH,
+        filed_on(github),
         read_finding_test(finding_checkout),
         build_proof_runner(finding_checkout),
     )
@@ -787,7 +789,35 @@ def test_a_finding_filed_without_a_test_runs_none(
     )
 
     github = owner_s_github(settings)
-    assert step == FindingFiling(github, "A title", "What was found.\n", Priority.HIGH)
+    assert step == FindingFiling(
+        github, "A title", "What was found.\n", Priority.HIGH, filed_on(github)
+    )
+
+
+def test_upstream_issues_checked_are_passed_on(
+    finding_checkout: ProjectCheckout, settings: WorkflowSettings
+) -> None:
+    step = build_step(
+        finding_checkout,
+        WorkflowCommand.FINDING,
+        FindingSubcommand.FILE,
+        "--title=A title",
+        "--body-file=finding.md",
+        f"--priority={Priority.HIGH.level}",
+        f"{CommandOption.NOT_UPSTREAM}=5",
+        f"{CommandOption.NOT_UPSTREAM}=7",
+    )
+
+    assert step.upstream == filed_on(owner_s_github(settings), (5, 7))
+
+
+def filed_on(board: GitHubRepository, checked: tuple[int, ...] = ()) -> FindingUpstream:
+    """:param board: The repository a finding is filed on.
+    :param checked: The upstream issues checked.
+    :return: It, as filing a finding on it goes."""
+    return FindingUpstream(
+        board.repository, board, GitHubRepository.from_environment, checked
+    )
 
 
 def test_proving_runs_the_test_on_the_default_branch(
@@ -1430,6 +1460,7 @@ def test_a_finding_is_filed_on_the_workflow_from_outside_any_checkout(
         "A read was refused",
         (tmp_path / "finding.md").read_text(),
         Priority.MEDIUM,
+        filed_on(board),
     )
 
 

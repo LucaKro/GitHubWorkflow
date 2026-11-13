@@ -51,7 +51,7 @@ from github_workflow.tags import (
     WaitingTags,
 )
 
-from .issues_in_memory import IssuesInMemory
+from .issues_in_memory import IssuesInMemory, finding_upstream
 from .repositories_by_owner import RepositoriesByOwner
 from .scratch_github import ScratchGitHub
 from .test_discussions import clone_notes_branch
@@ -346,7 +346,7 @@ def filing(notes: NotesBranch, board: IssuesInMemory, comment: str) -> TagFiling
         WaitingTags(FixedTagSource(incomplete(found_directly())), notes),
         comment,
         board,
-        ScratchGitHub.owned,
+        finding_upstream(),
         "Test restarts",
         "The planner loses its goals on restart.",
         Priority.at_level(PriorityLevel.MEDIUM),
