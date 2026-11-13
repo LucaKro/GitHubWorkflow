@@ -526,6 +526,26 @@ def test_a_remote_named_upstream_reaching_another_repository_is_refused(
     assert tracked_tip(work, RemoteName.UPSTREAM) is None
 
 
+def test_a_remote_named_upstream_whose_pushes_are_turned_off_is_fetched(
+    work: WritePolicy, repositories: RepositoriesByOwner
+) -> None:
+    """
+    A common guard against pushing upstream by accident: a push URL that reaches
+    nothing.
+    """
+    give_fork_upstream(work, repositories, ahead=1, own=0)
+    git = work.checkout.git
+    git.run(
+        "remote", "add", RemoteName.UPSTREAM, ScratchGitHub.upstream.rooted_clone_url()
+    )
+    git.run("remote", "set-url", "--push", RemoteName.UPSTREAM, "no-push")
+
+    ForkMainSync(work, ForkOfTheUpstream()).run()
+
+    _, theirs = default_branch_tips(work, repositories)
+    assert tracked_tip(work, RemoteName.UPSTREAM) == theirs
+
+
 def test_a_repository_that_is_no_fork_follows_no_upstream(work: WritePolicy) -> None:
     with pytest.raises(NotAForkError):
         ForkMainSync(work, ForkOfTheUpstream(forked_from=None)).run()

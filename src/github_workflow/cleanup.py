@@ -192,7 +192,8 @@ class KeptBranches:
 
     protected: frozenset[BranchName]
     """
-    The branches never deleted: the default branch and the notes branch.
+    The branches never deleted: the default branch, the notes branch and those GitHub
+    protects.
     """
 
     discarded: DiscardedBranches = field(default_factory=DiscardedBranches)
@@ -243,11 +244,14 @@ class KeptBranches:
             tips = pool.submit(remote.branch_tips)
             pull_requests = pool.submit(github.all_pull_requests)
             default_branch = pool.submit(github.default_branch)
+            protected = pool.submit(github.protected_branches)
         return cls(
             tips.result(),
             pull_requests.result(),
             remote.repository.full_name,
-            frozenset({default_branch.result(), notes.branch.name}),
+            frozenset(
+                {default_branch.result(), notes.branch.name, *protected.result()}
+            ),
             DiscardedBranches.from_text(notes.read(NotesFile.DISCARDED_BRANCHES)),
         )
 

@@ -30,3 +30,4 @@ github-workflow finding recheck 7 --python /bin/sh
 github-workflow finding prove 7 --test /etc/test_x.py
 github-workflow push ; cd / ; tail -f /etc/passwd
 github-workflow push | head -n 5 /etc/passwd
+github-workflow branch discard develop

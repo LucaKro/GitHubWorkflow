@@ -221,7 +221,9 @@ Four layers, from the first to the last resort:
    - `curl` and `wget` may read GitHub but not send to it.
    - Writing git's configuration or hooks with a file tool, a redirection or a program
      such as `rm` or `sed -i` is denied.
-   - `git apply --check` and `--stat` pass; applying a patch does not.
+   - `git apply --check` and `--stat` pass; applying a patch does not. `git worktree add
+     --detach <dir> <commit>` gives a second copy at a commit to read and test in, and
+     `remove` and `prune` tidy it away; a worktree on a branch is denied.
    - A command it cannot see into (a program named by `$variable`, a shell reading its
      input, `xargs git`, `curl -K` or an address in `$URL`) is denied and shown to you.
    - A denial names the workflow command that does the job, when there is one.

@@ -121,6 +121,18 @@ class Remote:
         """:return: How git is told to reach the remote."""
         return self.name
 
+    def fetched_repository(self) -> Repository | None:
+        """
+        :return: The repository a fetch from the remote reaches, which a push need
+            not; ``None`` when its URL names none.
+        """
+        url = self.git.run(
+            GitSubcommand.REMOTE, RemoteReadingCommand.GET_URL, self.name
+        )
+        if not Repository.names_a_repository(url):
+            return None
+        return Repository.from_remote_url(url)
+
     def branch(self, name: BranchName) -> RemoteBranch:
         """
         :param name: A branch's name.
