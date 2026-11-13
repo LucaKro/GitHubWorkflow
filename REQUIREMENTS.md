@@ -314,7 +314,7 @@ them:
   threads, which it always lists, with the link to turn them on or to the run's log. The workflow lives only on
   the notes branch, never on the default branch or upstream. Nothing is ever
   written upstream: having changed something for an upstream comment, the session says
-  so on the own pull request with `review addressed <address> --body-file <what
+  so on the own pull request with `review addressed <number or address> --body-file <what
   changed>`, which links the comment
 - add a comment to a finding (`finding comment`), a closed one too, such as a correction
   after the fix landed, and on another of my repositories with `--repository`
@@ -341,8 +341,9 @@ temporary directory, links followed; any other line is left to my permissions. W
 is mine to decide - a finding's stage
 (`finding accept`, `shelve`, `reject`), its priority or text (`finding prioritize`,
 `edit`), another pull request's description (`describe <number>`, in any spelling the
-number takes) or its place in a
-stack (`stack on`) - the mod never approves, and a session does it only when I said so
+number takes) or its place in a stack (`stack on`), and a comment on a pull request of
+my repository, open or closed (`comment <number>`) - the mod never approves, and a
+session does it only when I said so
 in the conversation.
 Everything else written to GitHub needs me to ask for it.
 

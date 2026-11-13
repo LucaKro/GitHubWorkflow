@@ -181,6 +181,11 @@ class GitHubCliWrite(StrEnum):
     Rewriting a pull request.
     """
 
+    PULL_REQUEST_COMMENT = "pr comment"
+    """
+    Commenting on a pull request.
+    """
+
 
 class GitHubToolWrite(StrEnum):
     """
@@ -210,6 +215,11 @@ class GitHubToolWrite(StrEnum):
     RESOLVE_REVIEW_THREAD = "resolve_review_thread"
     """
     Resolves a review thread.
+    """
+
+    ADD_ISSUE_COMMENT = "add_issue_comment"
+    """
+    Comments on an issue or pull request.
     """
 
 
@@ -398,6 +408,23 @@ class LabelAlternative(WorkflowAlternative):
 
     def command_line(self) -> str:
         return RunnableCommand.LABEL.usage(CommandOption.ADD, CommandOption.REMOVE)
+
+
+@dataclass(frozen=True)
+class CommentAlternative(WorkflowAlternative):
+    """
+    Commenting on a pull request, with ``comment``, which a session runs only when the
+    person asks for the comment.
+    """
+
+    @classproperty
+    def writes(cls) -> tuple[str, ...]:
+        return GitHubCliWrite.PULL_REQUEST_COMMENT, GitHubToolWrite.ADD_ISSUE_COMMENT
+
+    def command_line(self) -> str:
+        return RunnableCommand.COMMENT.usage(
+            ArgumentName.NUMBER, CommandOption.BODY_FILE
+        )
 
 
 @dataclass(frozen=True)

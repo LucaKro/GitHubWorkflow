@@ -16,6 +16,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from domain_model.code_version import CodeVersion
 from domain_model.git.revisions import BranchName, TextFiles
@@ -49,6 +50,9 @@ from github_workflow.workflow_templates import (
     NotesBranchWorkflow,
     UpstreamReviewPlaceholder,
 )
+
+if TYPE_CHECKING:
+    from github_workflow.policy import WritePolicy
 
 # %% requests
 
@@ -153,6 +157,21 @@ class UpstreamReviews(ABC):
         :param request: Which pull request.
         :return: Its reviews, threads and checks, or why they could not be read.
         """
+
+    def read_work_branch_snapshot(
+        self, upstream: Repository, policy: WritePolicy
+    ) -> UpstreamPullRequestSnapshot | UpstreamReviewsUnavailable:
+        """
+        :param upstream: The repository the owner's was forked from.
+        :param policy: The checkout and its work branch.
+        :return: The reviews, threads and checks of the pull request the work branch
+            has open upstream, or why they could not be read.
+        """
+        return self.snapshot(
+            UpstreamReviewRequest(
+                upstream, policy.remote.repository.owner, policy.work_branch()
+            )
+        )
 
 
 @dataclass(frozen=True)

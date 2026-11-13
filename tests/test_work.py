@@ -63,6 +63,7 @@ from github_workflow.remotes import OwnedRemotes
 from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
 from github_workflow.work import (
+    PullRequestComment,
     BaseMerge,
     BranchStart,
     BranchSwitch,
@@ -1305,6 +1306,31 @@ def test_a_rewrite_changing_nothing_is_refused() -> None:
         step.run()
 
     assert github.writes == []
+
+
+# %% commenting on a pull request
+
+
+def test_a_comment_is_posted_on_the_pull_request_named() -> None:
+    github = DraftsInMemory({1: "main"})
+
+    PullRequestComment(github, 1, "The plan.").run()
+
+    assert github.writes == ["add_comment 1"]
+
+
+def test_a_closed_pull_request_is_commented_on_too() -> None:
+    github = DraftsInMemory({1: "main"}, closed=frozenset({1}))
+
+    PullRequestComment(github, 1, "A correction.").run()
+
+    assert github.writes == ["add_comment 1"]
+
+
+def test_commenting_on_a_pull_request_is_the_person_s_word() -> None:
+    words = list(RunnableCommand.COMMENT.words)
+
+    assert not RunnableCommand.COMMENT.runs_unasked(words)
 
 
 # %% cloning
