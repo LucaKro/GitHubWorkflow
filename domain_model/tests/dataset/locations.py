@@ -266,3 +266,9 @@ class DatasetLocation(PathEnumeration):
     """
     A test file whose one test fails.
     """
+
+    LOADED_MODULES_SCRIPT = DIRECTORY / "imports" / "loaded_modules.py"
+    """
+    A Python script importing the module its argument names, printing every module that
+    loaded.
+    """
