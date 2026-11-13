@@ -443,7 +443,20 @@ class IssueTitleWriter(ABC):
 
 
 @dataclass(frozen=True)
-class IssueBoard(LabelWriter, Commenter, IssueTitleWriter, ABC):
+class CommentReader(ABC):
+    """
+    Reads the comments on a repository's issues and pull requests.
+    """
+
+    @abstractmethod
+    def comments(self, number: int) -> list[IssueComment]:
+        """
+        :param number: The issue or pull request to read.
+        :return: Its comments, oldest first.
+        """
+
+
+class IssueBoard(LabelWriter, Commenter, IssueTitleWriter, CommentReader, ABC):
     """
     Filing, listing, labelling, rewriting and closing a repository's issues.
     """
@@ -489,13 +502,6 @@ class IssueBoard(LabelWriter, Commenter, IssueTitleWriter, ABC):
 
         :param number: The issue or pull request to write.
         :param label: A label it carries.
-        """
-
-    @abstractmethod
-    def comments(self, number: int) -> list[IssueComment]:
-        """
-        :param number: The issue or pull request to read.
-        :return: Its comments, oldest first.
         """
 
     @abstractmethod
@@ -681,10 +687,13 @@ class RepositoryFeatures(
 
 
 @dataclass(frozen=True)
-class FollowedFork(PullRequestReader, RepositoryDetails, ForkDetails, StackReader, ABC):
+class FollowedFork(
+    PullRequestReader, RepositoryDetails, ForkDetails, StackReader, CommentReader, ABC
+):
     """
-    A fork, as far as following its pull requests upstream goes: its pull requests and
-    the stacks holding them, its default branch and what it was forked from.
+    A fork, as far as following its pull requests upstream goes: its pull requests, their
+    comments and the stacks holding them, its default branch and what it was forked
+    from.
     """
 
 

@@ -234,7 +234,8 @@ seen by any layer; only a token scoped to your repositories stops that, at GitHu
 
 **Permission prompts.** The plugin's mod (`hooks/approval.ts`) approves a Bash call that
 is exactly one workflow command a session may run on its own, with at most `cd` before it
-and `head` or `tail` after it. Commands that are your decision (`finding accept`,
+and `head` or `tail` filtering its output after it, and every file it is given inside the
+working or the temporary directory. Commands that are your decision (`finding accept`,
 `describe <number>`, `stack on`) are never approved this way, so Claude Code asks you.
 
 ## 8. Notes, progress and the notes branch
