@@ -64,6 +64,13 @@ from github_workflow.pull_request_overview import (
     PullRequestDetails,
     PullRequestSignalReader,
 )
+from github_workflow.tags import (
+    TagDismissal,
+    TagFiling,
+    TagListing,
+    TagShowing,
+    WaitingTags,
+)
 from github_workflow.upstream import ForkMainSync, UpstreamProposal, UpstreamSuggestion
 from github_workflow.work import (
     BaseMerge,
@@ -676,6 +683,82 @@ class IdeaFileStep(CommandStep):
             DiscussionPosting(session.notes),
             session.remote.repository,
             DiscussionPost(DiscussionCategory(category), arguments.title, self.body),
+        )
+
+
+# %% tagged comments
+
+
+@dataclass(frozen=True)
+class TagListStep(CommandStep):
+    """
+    Builds the step ``tag list`` asks for.
+    """
+
+    @classproperty
+    def command(cls) -> RunnableCommand:
+        return RunnableCommand.TAG_LIST
+
+    def step(self) -> WorkflowStep:
+        session = self.session
+        return TagListing(WaitingTags(session.fresh_tag_source, session.notes))
+
+
+@dataclass(frozen=True)
+class TagShowStep(CommandStep):
+    """
+    Builds the step ``tag show`` asks for.
+    """
+
+    @classproperty
+    def command(cls) -> RunnableCommand:
+        return RunnableCommand.TAG_SHOW
+
+    def step(self) -> WorkflowStep:
+        session = self.session
+        return TagShowing(
+            WaitingTags(session.tag_source, session.notes), self.arguments.tag
+        )
+
+
+@dataclass(frozen=True)
+class TagFileStep(CommandStep):
+    """
+    Builds the step ``tag file`` asks for.
+    """
+
+    @classproperty
+    def command(cls) -> RunnableCommand:
+        return RunnableCommand.TAG_FILE
+
+    def step(self) -> WorkflowStep:
+        session, arguments = self.session, self.arguments
+        board = session.findings_board(arguments.repository)
+        return TagFiling(
+            WaitingTags(session.tag_source, session.notes),
+            arguments.tag,
+            board,
+            board.repository,
+            arguments.title,
+            self.body,
+            self.priority,
+        )
+
+
+@dataclass(frozen=True)
+class TagDismissStep(CommandStep):
+    """
+    Builds the step ``tag dismiss`` asks for.
+    """
+
+    @classproperty
+    def command(cls) -> RunnableCommand:
+        return RunnableCommand.TAG_DISMISS
+
+    def step(self) -> WorkflowStep:
+        session = self.session
+        return TagDismissal(
+            WaitingTags(session.tag_source, session.notes), self.arguments.tag
         )
 
 

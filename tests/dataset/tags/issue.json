@@ -1,0 +1,8 @@
+{
+  "number": 4,
+  "title": "The planner forgets its goals",
+  "html_url": "https://github.com/an-upstream-owner/project/issues/4",
+  "user": {"login": "a-maintainer"},
+  "body": "Goals vanish after a restart.",
+  "created_at": "2026-11-10T09:00:00Z"
+}

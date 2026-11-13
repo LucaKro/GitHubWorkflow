@@ -62,6 +62,11 @@ class IssuesInMemory(ClosablePullRequests):
     The pull requests closed, in order.
     """
 
+    descriptions: dict[int, str] = field(default_factory=dict)
+    """
+    The description each issue was filed with, by number.
+    """
+
     def open_pull_requests(self) -> list[RestPullRequest]:
         return list(self.pull_requests.values())
 
@@ -81,6 +86,7 @@ class IssuesInMemory(ClosablePullRequests):
     def open_issue(self, title: str, body: str, labels: Sequence[str]) -> int:
         number = max(self.open_issues, default=0) + 1
         self.open_issues[number] = Issue(number, title, tuple(labels), IssueState.OPEN)
+        self.descriptions[number] = body
         self.writes.append(f"open_issue {number} {list(labels)}")
         return number
 

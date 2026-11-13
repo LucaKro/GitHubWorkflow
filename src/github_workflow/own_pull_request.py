@@ -21,13 +21,13 @@ from domain_model.github.review_writers import ReviewThreadWriter
 
 from github_workflow.exceptions import (
     ForeignReviewAddressError,
+    ForwardedReadUnavailable,
     NoOpenPullRequestError,
     NothingToLabelError,
     PersonOnlyLabelError,
     ReviewThreadNotFoundError,
     UnknownLabelError,
     UnpushedWorkError,
-    UpstreamReviewsUnavailable,
 )
 from github_workflow.labels import PullRequestLabel, UpstreamLabel
 from github_workflow.policy import WritePolicy
@@ -244,14 +244,14 @@ class ReviewThreadListing(WorkflowStep):
         if upstream is None:
             return "\n".join(lines)
         policy = self.pull_request.policy
-        snapshot = self.upstream_reviews.snapshot(
+        snapshot = self.upstream_reviews.read(
             UpstreamReviewRequest(
                 upstream,
                 policy.remote.repository.owner,
                 policy.work_branch(),
             )
         )
-        if isinstance(snapshot, UpstreamReviewsUnavailable):
+        if isinstance(snapshot, ForwardedReadUnavailable):
             lines.append(snapshot.line())
             return "\n".join(lines)
         lines.append(f"upstream {upstream}#{snapshot.number} {snapshot.url}:")

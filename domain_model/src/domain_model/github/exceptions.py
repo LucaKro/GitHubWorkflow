@@ -146,6 +146,29 @@ class UnrecognisedGitHubValueError(DataclassException, ValueError):
 
 
 @dataclass
+class MalformedConversationUrlError(DataclassException, ValueError):
+    """
+    Raised when an address is not the page of an issue, a pull request or a discussion
+    on GitHub, or of a comment in one.
+    """
+
+    url: str
+    """
+    The address given.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.url} is not the page of an issue, pull request or discussion"
+
+    def suggest_correction(self) -> str:
+        return (
+            "Give its page as GitHub shows it, "
+            "https://github.com/<owner>/<name>/<issues|pull|discussions>/<number>, "
+            "with the comment's #anchor if it names a comment."
+        )
+
+
+@dataclass
 class NoCheckOutcomesError(DataclassException, ValueError):
     """
     Raised when a verdict is asked for over no checks at all.

@@ -1,0 +1,30 @@
+# Reads __SUBJECT__ for the requests waiting in __REQUESTS_DIRECTORY__ on this notes
+# branch, whenever they change, and saves GitHub's answers in __ANSWERS_DIRECTORY__ for
+# the session to read them from. Written by the workflow's commands, since a cloud
+# session cannot reach every repository, nor GitHub's GraphQL, itself; nothing is
+# written where it reads.
+name: Read __SUBJECT__
+on:
+  push:
+    branches: [__NOTES_BRANCH__]
+    paths: ["__REQUESTS_DIRECTORY__/**"]
+permissions:
+  contents: write
+concurrency:
+  group: ${{ github.workflow }}
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the workflow
+        run: python -m pip install --quiet __REQUIREMENTS__
+      - name: Read and save the answers
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          __ENTRY_POINT__ "__REQUESTS_DIRECTORY__" "__ANSWERS_DIRECTORY__"
+          bash "__COMMIT_SCRIPT__" "Answer the requests for __SUBJECT__" "${GITHUB_REF_NAME}" "__REQUESTS_DIRECTORY__" "__ANSWERS_DIRECTORY__"

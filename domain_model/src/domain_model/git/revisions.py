@@ -20,6 +20,7 @@ from domain_model.git.options import (
     CommitTreeOption,
     FetchOption,
     HashObjectOption,
+    LsTreeOption,
     MergeBaseOption,
     MergeTreeOption,
     RevListOption,
@@ -175,6 +176,19 @@ class Revision(ABC):
         """
         shown = self.git.attempt(GitSubcommand.SHOW, f"{self.revision_name}:{path}")
         return shown.standard_output if shown.succeeded else None
+
+    def file_names(self, directory: Path) -> list[str]:
+        """
+        :param directory: A directory, relative to the repository's root.
+        :return: The name of every entry in it as this revision records it, in git's
+            order; none when it has no such directory.
+        """
+        listed = self.git.attempt(
+            GitSubcommand.LS_TREE,
+            LsTreeOption.NAME_ONLY,
+            f"{self.revision_name}:{directory}",
+        )
+        return listed.output.splitlines() if listed.succeeded else []
 
     def file_blob(self, path: Path) -> str | None:
         """

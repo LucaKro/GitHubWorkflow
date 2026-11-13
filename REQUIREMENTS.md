@@ -188,6 +188,33 @@ them:
 - Where the repository has Discussions turned off, `idea file` refuses and queues
   nothing.
 
+## Tagged comments
+
+- I tag a comment anywhere on GitHub - an issue's or pull request's description, a
+  comment, a review or a comment on its changes, a discussion, its comments and replies
+  - by mentioning myself in it (`@LucaKro`). No hidden markers.
+- The tags are found by GitHub's search: issues and pull requests mentioning me that I
+  opened, commented on or reviewed, and discussions I opened or commented on, changed
+  since the ledger's cursor; of what they find, only my own texts mentioning me count.
+- The session start lists the tags waiting, each a Markdown link to the comment, and
+  files nothing. It never pushes: a cloud session, which reaches neither other
+  people's repositories nor GraphQL, lists what it reads itself - the issues and pull
+  requests on the repositories attached to it - and the newest answer the repository's
+  Actions saved, and says when there is none.
+- `tag list` reads them afresh: directly, or from a cloud session through the
+  repository's Actions, the request queued on the notes branch as for upstream reviews,
+  waiting for their answer.
+- A session files tags only when I say so: one unreviewed finding per tag, with a
+  priority it judges, on the one of my repositories or forks the tag's content is about,
+  never upstream; its text sums the conversation up (`tag show` prints it) and links the
+  comment. I may dismiss a tag instead. Nothing is written where the tag is: no reply,
+  no reaction, no edit.
+- What is done is recorded in a ledger on the notes branch of the repository the session
+  works in: each filed tag's comment with the issue it became, each dismissed one alone.
+  It stays small: a cursor marks the time before which every tag is handled, it moves
+  only as far as a search that read every conversation it found, and entries older than
+  it are dropped.
+
 ## Notes and progress
 
 - On a notes branch on each repository - the fork, or the repository itself - readable

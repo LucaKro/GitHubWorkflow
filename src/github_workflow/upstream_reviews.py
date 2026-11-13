@@ -9,46 +9,25 @@ Usage on the runner: ``python -m github_workflow.upstream_reviews <requests dire
 
 from __future__ import annotations
 
-import argparse
-import json
-import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path
+from typing import Any, Self
 
-from domain_model.code_version import CodeVersion
-from domain_model.git.revisions import BranchName, TextFiles
-from domain_model.github.answer_recording import (
-    AnswerRecording,
-    RecordingClient,
-    ReplayingClient,
-)
-from domain_model.github.clients import GitHubApi, GitHubReader
-from domain_model.github.exceptions import (
-    RecordedReadMissingError,
-    UnreadableRecordingError,
-)
+from domain_model.class_property import classproperty
+from domain_model.git.revisions import BranchName
+from domain_model.github.clients import GitHubReader
 from domain_model.github.pull_request_models import UpstreamPullRequestSnapshot
 from domain_model.github.readers import GraphQLReadSource
-from domain_model.github.repository_client import RepositoryWorkflows
-from domain_model.github.vocabulary import WorkflowRunConclusion
 from domain_model.repository import Repository
 
-from github_workflow.exceptions import (
-    UpstreamAnswerUnreadable,
-    UpstreamReadFailed,
-    UpstreamReadNotStarted,
-    UpstreamReadUnanswered,
-    UpstreamReviewsUnavailable,
+from github_workflow.exceptions import ForwardedReadUnavailable
+from github_workflow.forwarded_reads import (
+    ForwardedReadAnswering,
+    ForwardedReading,
+    ForwardedRequest,
 )
-from github_workflow.locations import NotesFile
-from github_workflow.notes.branch import NotesBranch
-from github_workflow.workflow_templates import (
-    ActionRequirement,
-    NotesBranchWorkflow,
-    UpstreamReviewPlaceholder,
-)
+from github_workflow.workflow_templates import ForwardedSubject
 
 # %% requests
 
@@ -75,7 +54,7 @@ class UpstreamReviewKey(StrEnum):
 
 
 @dataclass(frozen=True)
-class UpstreamReviewRequest:
+class UpstreamReviewRequest(ForwardedRequest[UpstreamPullRequestSnapshot]):
     """
     A request for the reviews of the pull request a fork's branch has open upstream.
     """
@@ -95,40 +74,30 @@ class UpstreamReviewRequest:
     The fork's branch.
     """
 
-    name: str = field(default_factory=NotesBranch.queued_file_name)
-    """
-    The request's file name on the notes branch, its answer's too.
-    """
+    @classproperty
+    def subject(cls) -> ForwardedSubject:
+        return ForwardedSubject.UPSTREAM_REVIEWS
 
-    def to_json(self) -> str:
-        """:return: The request, as the notes branch holds it."""
-        return json.dumps(
-            {
-                UpstreamReviewKey.UPSTREAM: self.upstream.full_name,
-                UpstreamReviewKey.FORK_OWNER: self.fork_owner,
-                UpstreamReviewKey.BRANCH: self.branch,
-            },
-            indent=2,
-        )
+    def to_json(self) -> dict[str, Any]:
+        return {
+            UpstreamReviewKey.UPSTREAM: self.upstream.full_name,
+            UpstreamReviewKey.FORK_OWNER: self.fork_owner,
+            UpstreamReviewKey.BRANCH: self.branch,
+        }
 
     @classmethod
-    def from_file(cls, path: Path) -> UpstreamReviewRequest:
-        """
-        :param path: A request, as :meth:`to_json` wrote it.
-        :return: The request.
-        """
-        data = json.loads(path.read_text())
+    def from_json(cls, data: dict[str, Any], name: str) -> Self:
         return cls(
             Repository.parse(data[UpstreamReviewKey.UPSTREAM]),
             data[UpstreamReviewKey.FORK_OWNER],
             BranchName(data[UpstreamReviewKey.BRANCH]),
-            path.name,
+            name=name,
         )
 
-    def snapshot(self, client: GitHubReader) -> UpstreamPullRequestSnapshot:
+    def read(self, client: GitHubReader) -> UpstreamPullRequestSnapshot:
         """
-        :param client: How the reads reach GitHub, or the answers they got before.
-        :return: The upstream pull request's reviews, threads and checks.
+        :return: The upstream pull request's reviews, threads and checks; see
+            :meth:`ForwardedRequest.read`.
         :raises UpstreamPullRequestNotFound: If the branch has none upstream.
         """
         reader = GraphQLReadSource().reader(client, self.upstream, self.fork_owner)
@@ -146,9 +115,9 @@ class UpstreamReviews(ABC):
     """
 
     @abstractmethod
-    def snapshot(
+    def read(
         self, request: UpstreamReviewRequest
-    ) -> UpstreamPullRequestSnapshot | UpstreamReviewsUnavailable:
+    ) -> UpstreamPullRequestSnapshot | ForwardedReadUnavailable:
         """
         :param request: Which pull request.
         :return: Its reviews, threads and checks, or why they could not be read.
@@ -167,229 +136,27 @@ class DirectUpstreamReviews(UpstreamReviews):
     How the reads reach GitHub.
     """
 
-    def snapshot(
+    def read(
         self, request: UpstreamReviewRequest
-    ) -> UpstreamPullRequestSnapshot | UpstreamReviewsUnavailable:
-        return request.snapshot(self.client)
+    ) -> UpstreamPullRequestSnapshot | ForwardedReadUnavailable:
+        return request.read(self.client)
 
 
 @dataclass(frozen=True)
-class ForwardedUpstreamReviews(UpstreamReviews):
+class ForwardedUpstreamReviews(ForwardedReading, UpstreamReviews):
     """
-    Has the fork's Actions read it: queues the request on the notes branch with the
-    workflow answering it, then waits for the answer there and reads it again from
-    GitHub's recorded answers, giving up early when the fork's Actions start no run for
-    it, after asking again, or the run fails.
+    Has the fork's Actions read it, through a request queued on the notes branch.
     """
-
-    notes: NotesBranch
-    """
-    The fork's notes branch.
-    """
-
-    fork: Repository
-    """
-    The fork, whose Actions answer the request.
-    """
-
-    workflows: RepositoryWorkflows
-    """
-    Reads the fork's workflow runs.
-    """
-
-    timeout_seconds: float = 300.0
-    """
-    How long to wait for the answer.
-    """
-
-    start_seconds: float = 90.0
-    """
-    How long the fork's Actions may take to start the run answering the request.
-    """
-
-    interval_seconds: float = 5.0
-    """
-    How long to wait between looks.
-    """
-
-    tries: int = 2
-    """
-    How many times the request is made before the fork's Actions are taken to be off.
-    """
-
-    def snapshot(
-        self, request: UpstreamReviewRequest
-    ) -> UpstreamPullRequestSnapshot | UpstreamReviewsUnavailable:
-        """
-        Asks again, under a new name, when no run starts for a request within
-        :attr:`start_seconds`, up to :attr:`tries` times.
-        """
-        for _ in range(self.tries):
-            answered = self.answer(request)
-            if not isinstance(answered, UpstreamReadNotStarted):
-                return answered
-            request = replace(request, name=NotesBranch.queued_file_name())
-        return answered
-
-    def answer(
-        self, request: UpstreamReviewRequest
-    ) -> UpstreamPullRequestSnapshot | UpstreamReviewsUnavailable:
-        """
-        :param request: The request to queue and wait for.
-        :return: The upstream pull request, read again from the answer, or why no
-            answer came.
-        """
-        queued = self.queue(request)
-        answer = NotesFile.UPSTREAM_REVIEW_ANSWERS / request.name
-        waited = 0.0
-        while True:
-            self.notes.fetch()
-            saved = self.notes.read(answer)
-            if saved is not None:
-                return self.replay(request, saved)
-            stopped = self.stopped_run(queued, waited)
-            if stopped is not None:
-                return stopped
-            if waited >= self.timeout_seconds:
-                return UpstreamReadUnanswered(request.upstream, self.timeout_seconds)
-            time.sleep(self.interval_seconds)
-            waited += self.interval_seconds
-
-    @staticmethod
-    def replay(
-        request: UpstreamReviewRequest, saved: str
-    ) -> UpstreamPullRequestSnapshot | UpstreamReviewsUnavailable:
-        """
-        :param request: The request answered.
-        :param saved: The answer the fork's Actions saved.
-        :return: The upstream pull request, read again from the answer, or why this
-            session's code cannot read it.
-        """
-        try:
-            recording = AnswerRecording.from_json(saved)
-            return request.snapshot(ReplayingClient(recording))
-        except RecordedReadMissingError as missing:
-            return UpstreamAnswerUnreadable(
-                missing.error_message(), missing.recorder, missing.replayer
-            )
-        except UnreadableRecordingError as unreadable:
-            return UpstreamAnswerUnreadable(
-                unreadable.error_message(), None, CodeVersion.from_installation()
-            )
-
-    def stopped_run(
-        self, queued: str, waited: float
-    ) -> UpstreamReviewsUnavailable | None:
-        """
-        :param queued: The notes branch's commit queuing the request.
-        :param waited: How long the answer was waited for so far.
-        :return: That no run answering the request started within
-            :attr:`start_seconds`, or that it failed; ``None`` while one may still
-            answer.
-        """
-        runs = [
-            run
-            for run in self.workflows.branch_runs(self.notes.branch.name)
-            if run.commit == queued
-            and run.path == str(NotesFile.UPSTREAM_REVIEW_WORKFLOW)
-        ]
-        if not runs:
-            started_late = waited >= self.start_seconds
-            return (
-                UpstreamReadNotStarted(self.fork, self.start_seconds)
-                if started_late
-                else None
-            )
-        conclusion = runs[0].conclusion
-        if conclusion in (None, WorkflowRunConclusion.SUCCESS):
-            return None
-        return UpstreamReadFailed(runs[0].url, conclusion)
-
-    def queue(self, request: UpstreamReviewRequest) -> str:
-        """
-        :param request: The request to write, with the workflow answering it.
-        :return: The notes branch's commit queuing it.
-        """
-        workflow = NotesBranchWorkflow.UPSTREAM_REVIEWS.files(
-            self.notes.branch.name,
-            {
-                UpstreamReviewPlaceholder.REQUESTS_DIRECTORY: str(
-                    NotesFile.UPSTREAM_REVIEW_REQUESTS
-                ),
-                UpstreamReviewPlaceholder.ANSWERS_DIRECTORY: str(
-                    NotesFile.UPSTREAM_REVIEW_ANSWERS
-                ),
-                **ActionRequirement.placeholder_values(__name__),
-            },
-        )
-        self.notes.fetch()
-        self.notes.write(
-            TextFiles(
-                {NotesFile.UPSTREAM_REVIEW_REQUESTS / request.name: request.to_json()}
-            ).combine(workflow),
-            f"Ask for the upstream reviews of {request.branch}",
-        )
-        self.notes.fetch()
-        return self.notes.branch.tracking_branch.commit().hash
 
 
 # %% answering them, on the runner
-
-
-@dataclass(frozen=True)
-class UpstreamReviewAnswering:
-    """
-    Answers every waiting request: reads its pull request upstream, saves GitHub's
-    answers under the request's name, and removes the request.
-    """
-
-    requests: Path
-    """
-    The directory holding the requests.
-    """
-
-    answers: Path
-    """
-    The directory the answers are saved in; answers of earlier runs are removed.
-    """
-
-    client: GitHubReader
-    """
-    How the reads reach GitHub.
-    """
-
-    def run(self) -> list[str]:
-        """
-        :return: The name of every request answered.
-        :raises UpstreamPullRequestNotFound: If a request's branch has no pull request
-            upstream.
-        """
-        for earlier in self.answers.glob("*.json"):
-            earlier.unlink()
-        self.answers.mkdir(parents=True, exist_ok=True)
-        answered = []
-        for path in sorted(self.requests.glob("*.json")):
-            request = UpstreamReviewRequest.from_file(path)
-            recording = RecordingClient(self.client)
-            request.snapshot(recording)
-            (self.answers / request.name).write_text(recording.recording.to_json())
-            path.unlink()
-            answered.append(request.name)
-        return answered
 
 
 def main() -> None:
     """
     Answer the requests waiting in the directory the command line names.
     """
-    parser = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
-    parser.add_argument("requests", type=Path, help="the directory of the requests")
-    parser.add_argument("answers", type=Path, help="the directory of the answers")
-    arguments = parser.parse_args()
-    answered = UpstreamReviewAnswering(
-        arguments.requests, arguments.answers, GitHubApi.from_environment()
-    ).run()
-    print(f"answered {', '.join(answered) or 'nothing'}")
+    ForwardedReadAnswering.answer_command_line(UpstreamReviewRequest)
 
 
 if __name__ == "__main__":

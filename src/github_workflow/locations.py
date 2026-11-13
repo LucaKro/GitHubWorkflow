@@ -110,6 +110,28 @@ class NotesFile(PathEnumeration):
     The Actions workflow answering the requests.
     """
 
+    TAG_REQUESTS = Path("tag-requests")
+    """
+    The directory holding a session's requests for the comments the person tagged,
+    one file each.
+    """
+
+    TAG_ANSWERS = Path("tag-answers")
+    """
+    The directory holding each answered request: GitHub's answers to the reads, as
+    recorded by the Actions workflow.
+    """
+
+    TAG_WORKFLOW = GitHubRepositoryFile.WORKFLOWS_DIRECTORY / "read-tagged-comments.yml"
+    """
+    The Actions workflow answering the requests for tagged comments.
+    """
+
+    TAG_LEDGER = Path("tagged-comments.json")
+    """
+    The tagged comments filed or dismissed, and the time before which every tag is.
+    """
+
     COMMIT_SCRIPT = SCRIPTS_DIRECTORY / "commit-notes-branch.sh"
     """
     The script every workflow on the notes branch commits and pushes its changes with.
@@ -199,10 +221,10 @@ class WorkflowTemplate(PathEnumeration):
     The mutation commenting on a discussion.
     """
 
-    UPSTREAM_REVIEW_WORKFLOW = DIRECTORY / "read_upstream_reviews.yml"
+    FORWARDED_READ_WORKFLOW = DIRECTORY / "answer_forwarded_reads.yml"
     """
-    The Actions workflow reading the reviews of pull requests opened upstream for the
-    requests queued on the notes branch.
+    The Actions workflow answering the read requests a session queued on the notes
+    branch.
     """
 
     COMMIT_SCRIPT = DIRECTORY / "commit_notes_branch.sh"

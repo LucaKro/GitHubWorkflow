@@ -1,0 +1,7 @@
+{
+  "total_count": 2,
+  "items": [
+    {"number": 5, "html_url": "https://github.com/an-upstream/a-repository/pull/5"},
+    {"number": 3, "html_url": "https://github.com/an-owner/a-fork/issues/3"}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "number": 5,
+  "title": "Speed up the planner",
+  "html_url": "https://github.com/an-upstream/a-repository/pull/5",
+  "user": {"login": "an-owner"},
+  "body": "Makes the planner faster. @an-owner: the cache needs its own issue.",
+  "created_at": "2026-11-01T09:00:00Z",
+  "pull_request": {"merged_at": null}
+}

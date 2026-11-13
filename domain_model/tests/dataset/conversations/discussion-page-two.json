@@ -1,0 +1,23 @@
+{
+  "repository": {
+    "discussion": {
+      "title": "Where should the planner live?",
+      "url": "https://github.com/an-upstream/a-repository/discussions/7",
+      "body": "Opening it.",
+      "createdAt": "2026-11-05T09:00:00Z",
+      "author": {"login": "a-reviewer"},
+      "comments": {
+        "pageInfo": {"hasNextPage": false, "endCursor": null},
+        "nodes": [
+          {
+            "url": "https://github.com/an-upstream/a-repository/discussions/7#discussioncomment-403",
+            "body": "@an-owner remember the plugin entry point.",
+            "createdAt": "2026-11-06T09:00:00Z",
+            "author": {"login": "an-owner"},
+            "replies": {"nodes": []}
+          }
+        ]
+      }
+    }
+  }
+}

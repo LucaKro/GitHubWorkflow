@@ -1,0 +1,20 @@
+[
+  {
+    "html_url": "https://github.com/an-upstream-owner/project/issues/4#issuecomment-11",
+    "user": {"login": "LucaKro"},
+    "body": "Seen it too. @LucaKro: our fork needs a test for restarts.",
+    "created_at": "2026-11-11T09:00:00Z"
+  },
+  {
+    "html_url": "https://github.com/an-upstream-owner/project/issues/4#issuecomment-12",
+    "user": {"login": "a-maintainer"},
+    "body": "@LucaKro thanks, fixing it upstream.",
+    "created_at": "2026-11-11T10:00:00Z"
+  },
+  {
+    "html_url": "https://github.com/an-upstream-owner/project/issues/4#issuecomment-13",
+    "user": {"login": "LucaKro"},
+    "body": "@LucaKro also check the goal serializer.",
+    "created_at": "2026-11-12T09:00:00Z"
+  }
+]

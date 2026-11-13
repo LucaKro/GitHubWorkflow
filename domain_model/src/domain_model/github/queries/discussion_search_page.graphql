@@ -1,0 +1,13 @@
+query DiscussionSearchPage($search: String!, $searchCursor: String) {
+  search(query: $search, type: DISCUSSION, first: 100, after: $searchCursor) {
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+    nodes {
+      ... on Discussion {
+        url
+      }
+    }
+  }
+}

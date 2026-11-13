@@ -1,0 +1,8 @@
+{
+  "search": {
+    "pageInfo": {"hasNextPage": false, "endCursor": null},
+    "nodes": [
+      {"url": "https://github.com/an-upstream/a-repository/discussions/7"}
+    ]
+  }
+}

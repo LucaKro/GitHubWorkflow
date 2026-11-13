@@ -12,9 +12,10 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Iterator
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from http import HTTPStatus
 from pathlib import Path
+from typing import Any
 
 import pytest
 from domain_model.claude_code.hooks import HookKey, HookValue
@@ -24,6 +25,8 @@ from domain_model.environment import (
     GitHubCredentialVariable,
 )
 from domain_model.git.revisions import BranchName, TextFiles
+from domain_model.github.clients import GitHubReader
+from domain_model.github.conversations import SelfMentionSearch
 from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
 from domain_model.github.repository_client import GitHubRepository, PullRequestListState
 from domain_model.github.routes import RepositoryRoute
@@ -31,6 +34,7 @@ from domain_model.github.vocabulary import (
     ClosingKeyword,
     IssueEventType,
     IssueState,
+    PullRequestJSONKey,
     PullRequestState,
     QueryParameter,
     RestJSONKey,
@@ -172,9 +176,61 @@ def github(
                 {QueryParameter.LABELS: stage, QueryParameter.STATE: IssueState.OPEN},
             )
             api.answers[("GET", f"/{findings}")] = RecordedAnswer(HTTPStatus.OK, "[]")
+        searches = SearchesFindingNothing()
+        SelfMentionSearch(searches, settings.owner, None).issue_conversations()
+        for search in searches.paths:
+            api.answers[("GET", f"/{search}")] = RecordedAnswer(
+                HTTPStatus.OK, json.dumps(SearchesFindingNothing.issue_page())
+            )
+        api.answers[("POST", "/graphql")] = RecordedAnswer(
+            HTTPStatus.OK,
+            json.dumps(
+                {PullRequestJSONKey.DATA: SearchesFindingNothing.discussion_page()}
+            ),
+        )
         monkeypatch.setenv(GitHubActionsVariable.API_URL, api.url)
         monkeypatch.setenv(GitHubCredentialVariable.GH_TOKEN, "a-token")
         yield api
+
+
+@dataclass
+class SearchesFindingNothing(GitHubReader):
+    """
+    Answers every search with nothing found, and keeps the path of each issue search.
+    """
+
+    paths: list[str] = field(default_factory=list)
+    """
+    The first page of every issue search, in order.
+    """
+
+    def get(self, path: str) -> Any:
+        return self.issue_page()
+
+    def get_pages(self, path: str) -> list[Any]:
+        self.paths.append(path)
+        return [self.issue_page()]
+
+    def execute(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        return self.discussion_page()
+
+    @staticmethod
+    def issue_page() -> dict[str, Any]:
+        """:return: A page of an issue search finding nothing."""
+        return {RestJSONKey.TOTAL_COUNT: 0, RestJSONKey.ITEMS: []}
+
+    @staticmethod
+    def discussion_page() -> dict[str, Any]:
+        """:return: The ``data`` of a discussion search finding nothing."""
+        return {
+            PullRequestJSONKey.SEARCH: {
+                PullRequestJSONKey.PAGE_INFO: {
+                    PullRequestJSONKey.HAS_NEXT_PAGE: False,
+                    PullRequestJSONKey.END_CURSOR: None,
+                },
+                PullRequestJSONKey.NODES: [],
+            }
+        }
 
 
 def actions_path(settings: WorkflowSettings) -> str:
