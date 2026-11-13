@@ -68,3 +68,20 @@ gh api graphql -f query='{repository(owner:"cram2",name:"project"){pullRequest(n
 gh api graphql -f query='query($number:Int!){repository(owner:"a",name:"b"){pullRequest(number:$number){title}}}' -F number=877 --jq '.data'
 gh api graphql --paginate -f query='{viewer{login}}'
 grep -n -i "read-only\|gh \`api\`\|gh api" REQUIREMENTS.md
+git apply --check change.patch
+git apply --check --reverse change.patch
+git apply --stat change.patch
+printf '%s\n' 'it runs `gh` for the credential' > reply.md
+echo 'see $(git push) here'
+echo $'see $(git push) here'
+stdbuf -o0 git status
+uv run git log --oneline
+grep -rn git src
+echo git push
+github-workflow commit -m "Fix git push behind a wrapper" src/a.py
+python -m pytest -k "not slow" tests
+rg "gh api" src
+sed -n 1,5p README.md
+cat .git/HEAD
+curl -X POST https://example.com/x -d "$DATA"
+source .venv/bin/activate && git status

@@ -248,7 +248,11 @@ them:
   curl or wget, every GitHub tool and every write to git's configuration, and lets
   everything else run. Only when the stand-in cannot run either is every call blocked.
 - That guard catches accidents, not intent: it reads only the command lines of git, gh,
-  curl and wget, through shells and wrappers. A push run any other way - an
+  curl and wget, through shells, wrappers and any other program given one of them,
+  except those that never run their arguments, such as `echo` or `grep`; a text in
+  single quotes it reads as text. It also denies a redirection or a program such as
+  `rm`, `cp` or `sed` writing where git reads its configuration or hooks, and any
+  builtin setting `CLAUDECODE`. A push run any other way - an
   interpreter, a build tool, a script - is caught by a `pre-push` hook the session
   start writes into the checkout, which refuses a push to anyone else's repository or
   to the default branch. It checks only pushes from a Claude Code session (where
@@ -256,7 +260,9 @@ them:
   terminal pass unchecked. A checkout with a `pre-push` hook of its own keeps it, and
   the session start says the workflow's is missing.
 - A command the guard denies only because it cannot see what it runs - a program named
-  by an expansion (`eval` among them), a shell reading its input, `xargs` - is shown to
+  by an expansion (`eval` among them), a shell reading its input, `xargs`, `source` of
+  a stream, curl or wget reading options from elsewhere or sending to an address an
+  expansion names - is shown to
   me, so I can judge how often that happens and whether the rule is worth its cost.
 - Not covered: a write to GitHub's API from an interpreter or a script (including the
   domain model's clients called from a one-off snippet), and a push that skips hooks
@@ -382,7 +388,8 @@ Everything else written to GitHub needs me to ask for it.
   one below with `sync --on`, or is left to GitHub's *Rebase stack*.
 - A merge that conflicts is left in progress, its files named. The session resolves
   them and finishes it with `sync --continue <files>`, which refuses while a conflict
-  is still marked or a file still conflicts, or undoes it with `sync --abort`. Nothing
+  is still marked or a file still conflicts, and takes a file deleted as resolved by
+  its removal, or undoes it with `sync --abort`. Nothing
   is committed or pushed on the branch meanwhile.
 - A work branch builds on another open pull request of my repository before it is
   merged with `sync --on <number>`, which merges that pull request's branch the same

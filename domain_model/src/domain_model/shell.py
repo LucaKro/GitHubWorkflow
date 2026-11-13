@@ -38,10 +38,37 @@ class Shell(StrEnum):
     The Z shell.
     """
 
+    DASH = "dash"
+    """
+    The Debian Almquist shell.
+    """
+
+    KSH = "ksh"
+    """
+    The Korn shell.
+    """
+
+    FISH = "fish"
+    """
+    The friendly interactive shell.
+    """
+
     EVAL = "eval"
     """
     The shell builtin running its arguments as a command line.
     """
+
+    SOURCE = "source"
+    """
+    The shell builtin running the commands of the file it is given.
+    """
+
+    @property
+    def reads_input(self) -> bool:
+        """
+        Whether, started without a command line, it runs what its input holds.
+        """
+        return self not in (Shell.EVAL, Shell.SOURCE)
 
 
 class Wrapper(StrEnum):
@@ -130,6 +157,256 @@ class VariableRemoval(StrEnum):
     UNSET = "unset"
     """
     Removes a variable.
+    """
+
+
+class VariableAssignment(StrEnum):
+    """
+    The shell builtins, beside those exporting or removing one, that set a variable
+    their arguments name.
+    """
+
+    READONLY = "readonly"
+    """
+    Sets a variable and keeps it from changing.
+    """
+
+    LOCAL = "local"
+    """
+    Sets a variable of the running function.
+    """
+
+    READ = "read"
+    """
+    Sets variables to what it reads from its input.
+    """
+
+    MAPFILE = "mapfile"
+    """
+    Sets an array to the lines of its input.
+    """
+
+    READARRAY = "readarray"
+    """
+    Sets an array to the lines of its input, the other spelling of ``mapfile``.
+    """
+
+    PRINTF = "printf"
+    """
+    Sets the variable ``-v`` names to what it formats.
+    """
+
+    GETOPTS = "getopts"
+    """
+    Sets a variable to the next option it parses.
+    """
+
+    LET = "let"
+    """
+    Sets variables to the arithmetic it evaluates.
+    """
+
+
+class FileWritingProgram(StrEnum):
+    """
+    Programs that change the files their arguments name.
+    """
+
+    RM = "rm"
+    """
+    Removes files.
+    """
+
+    UNLINK = "unlink"
+    """
+    Removes a file.
+    """
+
+    CHMOD = "chmod"
+    """
+    Changes files' permissions.
+    """
+
+    CHOWN = "chown"
+    """
+    Changes files' owner.
+    """
+
+    CP = "cp"
+    """
+    Copies files.
+    """
+
+    MV = "mv"
+    """
+    Moves files.
+    """
+
+    LN = "ln"
+    """
+    Links files.
+    """
+
+    INSTALL = "install"
+    """
+    Copies files and sets their permissions.
+    """
+
+    SED = "sed"
+    """
+    Edits files in place with ``-i``.
+    """
+
+    TEE = "tee"
+    """
+    Writes its input to files.
+    """
+
+    TOUCH = "touch"
+    """
+    Creates files.
+    """
+
+    TRUNCATE = "truncate"
+    """
+    Changes files' size.
+    """
+
+    DD = "dd"
+    """
+    Copies data to the file ``of=`` names.
+    """
+
+    RSYNC = "rsync"
+    """
+    Copies files.
+    """
+
+
+class InertProgram(StrEnum):
+    """
+    Programs that take their arguments as text, patterns or paths, and never run a
+    command they name.
+    """
+
+    ECHO = "echo"
+    """
+    Prints its arguments.
+    """
+
+    PRINTF = "printf"
+    """
+    Prints its arguments, formatted.
+    """
+
+    CAT = "cat"
+    """
+    Prints files.
+    """
+
+    LS = "ls"
+    """
+    Lists files.
+    """
+
+    CD = "cd"
+    """
+    Changes the directory.
+    """
+
+    GREP = "grep"
+    """
+    Searches files.
+    """
+
+    RIPGREP = "rg"
+    """
+    Searches files, faster.
+    """
+
+    WHICH = "which"
+    """
+    Finds a program on the path.
+    """
+
+    TYPE = "type"
+    """
+    Tells what a name runs.
+    """
+
+    MAN = "man"
+    """
+    Shows a manual page.
+    """
+
+    WC = "wc"
+    """
+    Counts lines, words and bytes.
+    """
+
+    HEAD = "head"
+    """
+    Prints the start of its input or files.
+    """
+
+    TAIL = "tail"
+    """
+    Prints the end of its input or files.
+    """
+
+    SORT = "sort"
+    """
+    Sorts lines.
+    """
+
+    CUT = "cut"
+    """
+    Prints parts of lines.
+    """
+
+    TR = "tr"
+    """
+    Replaces characters.
+    """
+
+    DIFF = "diff"
+    """
+    Compares files.
+    """
+
+    TEST = "test"
+    """
+    Evaluates a condition.
+    """
+
+    BRACKET = "["
+    """
+    Evaluates a condition, the other spelling of ``test``.
+    """
+
+    MKDIR = "mkdir"
+    """
+    Creates directories.
+    """
+
+    BASENAME = "basename"
+    """
+    Prints a path's last component.
+    """
+
+    DIRNAME = "dirname"
+    """
+    Prints a path's directory.
+    """
+
+    REALPATH = "realpath"
+    """
+    Prints a path resolved.
+    """
+
+    JQ = "jq"
+    """
+    Filters JSON.
     """
 
 
@@ -344,11 +621,61 @@ class Redirection(StrEnum):
     """
 
     @property
+    def writes(self) -> bool:
+        """
+        Whether the word after it names a file that is written.
+        """
+        return self not in (
+            Redirection.INPUT,
+            Redirection.DUPLICATED_INPUT,
+            Redirection.HERE_DOCUMENT,
+            Redirection.HERE_STRING,
+        )
+
+    @property
     def takes_a_descriptor(self) -> bool:
         """
         Whether a file descriptor's number may be written right before it, as in ``2>``.
         """
         return self.value[0] in "<>"
+
+
+class Quoting(StrEnum):
+    """
+    Where a character of a command line stands: the text that opens each place.
+    """
+
+    COMMAND = "("
+    """
+    In commands, at the top of the line or inside a substitution.
+    """
+
+    DOUBLE = '"'
+    """
+    Inside double quotes, where substitutions still run.
+    """
+
+    SINGLE = "'"
+    """
+    Inside single quotes, where every character is text.
+    """
+
+    ANSI_C = "$'"
+    """
+    Inside ANSI-C quotes, where every character is text and a backslash escapes one.
+    """
+
+    BACKTICK = "`"
+    """
+    Inside a backtick substitution, whose text runs as commands.
+    """
+
+    @property
+    def is_text(self) -> bool:
+        """
+        Whether nothing inside runs: no substitution, no command.
+        """
+        return self in (Quoting.SINGLE, Quoting.ANSI_C)
 
 
 @dataclass
@@ -429,9 +756,8 @@ class CommandLine:
         """
         A shell started without a command line, which runs what its input holds.
         """
-        return re.compile(
-            r"(^|[;&|(]\s*|\s)(bash|sh|zsh)(\s+-[A-Za-z]+)*\s*($|[<|;&)])"
-        )
+        shells = "|".join(shell for shell in Shell if shell.reads_input)
+        return re.compile(rf"(^|[;&|(]\s*|\s)({shells})(\s+-[A-Za-z]+)*\s*($|[<|;&)])")
 
     @classproperty
     def substitution(cls) -> re.Pattern[str]:
@@ -455,37 +781,57 @@ class CommandLine:
             unless a shell reads it.
         :raises ValueError: If its quotes do not balance.
         """
+        return self.split().commands
+
+    def written_files(self) -> list[str]:
+        """
+        :return: Every file the line's redirections write, those in command
+            substitutions included, as written on the line.
+        :raises ValueError: If its quotes do not balance.
+        """
+        return self.split().written_files
+
+    def split(self) -> SplitLine:
+        """
+        :return: The line split into its simple commands and the files its
+            redirections write.
+        :raises ValueError: If its quotes do not balance.
+        """
         text = self._without_here_documents()
-        nested = re.findall(self.substitution, text)
+        blanked = CommandLine(text).blank_quoted_text()
         inner_lines = [
-            inner
-            for dollar, process, backtick in nested
-            for inner in (dollar, process, re.sub(r"\\([`\\$])", r"\1", backtick))
+            re.sub(r"\\([`\\$])", r"\1", inner) if group == 3 else inner
+            for found in self.substitution.finditer(blanked)
+            for group in range(1, 4)
+            if found.group(group) is not None
+            for inner in [text[found.start(group) : found.end(group)]]
             if inner
         ]
+        inner_splits = [CommandLine(inner).split() for inner in inner_lines]
         commands = [
-            command.words
-            for inner in inner_lines
-            for command in CommandLine(inner).simple_commands()
+            command.words for inner in inner_splits for command in inner.commands
         ]
+        written = [file for inner in inner_splits for file in inner.written_files]
         read = ShellInput(text.replace("\n", " ; "))
         lexer = shlex.shlex(read, posix=True, punctuation_chars=True)
         lexer.whitespace_split = True
         current: list[str] = []
         descriptor_read = False
-        target_follows = False
+        target: Redirection | None = None
         for word in lexer:
             operator = word and set(word) <= set(";&|()<>")
-            if target_follows and not operator:
-                target_follows = False
+            if target is not None and not operator:
+                if target.writes:
+                    written.append(word)
+                target = None
                 continue
             if word in list(Redirection):
                 if descriptor_read and Redirection(word).takes_a_descriptor:
                     current.pop()
                 descriptor_read = False
-                target_follows = True
+                target = Redirection(word)
                 continue
-            target_follows = False
+            target = None
             if operator:
                 commands.append(current)
                 current = []
@@ -494,7 +840,61 @@ class CommandLine:
             current.append(word)
             descriptor_read = read.ends_in_a_descriptor(word)
         commands.append(current)
-        return [SimpleCommand(words) for words in commands if words]
+        return SplitLine([SimpleCommand(words) for words in commands if words], written)
+
+    def blank_quoted_text(self) -> str:
+        """
+        :return: The line with every character inside single or ANSI-C quotes made a
+            space, so only what the shell substitutes is left to search; the line's
+            length and every other character stay as they are.
+        """
+        characters = list(self.text)
+        contexts = [Quoting.COMMAND]
+        index = 0
+        while index < len(self.text):
+            character = self.text[index]
+            context = contexts[-1]
+            if context.is_text:
+                closes = character == Quoting.SINGLE
+                escapes = context is Quoting.ANSI_C and character == "\\"
+                width = 2 if escapes else 1
+                if closes:
+                    contexts.pop()
+                else:
+                    characters[index : index + width] = " " * len(
+                        characters[index : index + width]
+                    )
+                index += width
+                continue
+            if character == "\\":
+                index += 2
+                continue
+            following = self.text[index : index + 2]
+            if following == "$(":
+                contexts.append(Quoting.COMMAND)
+                index += 2
+                continue
+            if character == Quoting.BACKTICK:
+                if context is Quoting.BACKTICK:
+                    contexts.pop()
+                else:
+                    contexts.append(Quoting.BACKTICK)
+            elif context is Quoting.DOUBLE:
+                if character == Quoting.DOUBLE:
+                    contexts.pop()
+            elif character == Quoting.DOUBLE:
+                contexts.append(Quoting.DOUBLE)
+            elif following == Quoting.ANSI_C:
+                contexts.append(Quoting.ANSI_C)
+                index += 1
+            elif character == Quoting.SINGLE:
+                contexts.append(Quoting.SINGLE)
+            elif character == "(":
+                contexts.append(Quoting.COMMAND)
+            elif character == ")" and context is Quoting.COMMAND and len(contexts) > 1:
+                contexts.pop()
+            index += 1
+        return "".join(characters)
 
     def runs_input_through_a_shell(self) -> bool:
         """
@@ -519,6 +919,23 @@ class CommandLine:
             if opened and not self.shell_reading_input.search(line):
                 ending = opened.group(1)
         return "\n".join(kept)
+
+
+@dataclass(frozen=True)
+class SplitLine:
+    """
+    A command line as the shell runs it: its simple commands and the files it writes.
+    """
+
+    commands: list[SimpleCommand]
+    """
+    Every simple command it runs, those in command substitutions included.
+    """
+
+    written_files: list[str]
+    """
+    Every file its redirections write, as written on the line.
+    """
 
 
 # %% one simple command

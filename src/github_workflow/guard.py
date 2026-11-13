@@ -43,8 +43,11 @@ from domain_model.programs import Program
 from domain_model.shell import (
     CommandLine,
     EnvironmentOption,
+    FileWritingProgram,
+    InertProgram,
     Shell,
     SimpleCommand,
+    VariableAssignment,
     VariableExport,
     VariableRemoval,
     Wrapper,
@@ -534,6 +537,12 @@ class HttpClientCheck(ProgramCheck, ABC):
     def denial(self, arguments: Sequence[str]) -> Denial | None:
         if self.client.sends_to_github(arguments):
             return Denial("sending to GitHub directly writes")
+        if self.client.may_send_unseen(arguments):
+            return Denial(
+                f"{self.client.program} could send to GitHub where the call does not "
+                f"show it",
+                saw_write=False,
+            )
         return None
 
 
@@ -613,6 +622,19 @@ class CommandGuard:
     naming a program could be either.
     """
 
+    looks_through_unknown_programs: bool = True
+    """
+    Whether a program the guard does not know is judged as running the command its
+    arguments name; off inside an argument of one, which is as likely prose.
+    """
+
+    @classproperty
+    def git_mention(cls) -> re.Pattern[str]:
+        """
+        A word naming git or gh.
+        """
+        return re.compile(rf"\b({Program.GIT}|{Program.GITHUB_CLI})\b")
+
     @classproperty
     def marker_change(cls) -> Denial:
         """
@@ -630,8 +652,18 @@ class CommandGuard:
         """
         line = CommandLine(command_line)
         mentions_git = self.enclosing_line_names_git or bool(
-            re.search(r"\b(git|gh)\b", command_line)
+            self.git_mention.search(command_line)
         )
+        configuration = next(
+            (
+                file
+                for file in line.written_files()
+                if GitConfigurationLocation.holds(PurePath(file))
+            ),
+            None,
+        )
+        if configuration is not None:
+            return Denial(f"git runs programs that {configuration} names")
         if line.runs_input_through_a_shell() and mentions_git:
             return Denial(
                 "a shell reading its input could run git or gh unseen", saw_write=False
@@ -684,9 +716,13 @@ class CommandGuard:
             GitVariable.steers_git(argument) for argument in arguments
         ):
             return Denial("exporting git's environment can make it run a program")
-        changes_variables = program in VariableExport or program in VariableRemoval
+        changes_variables = (
+            program in VariableExport
+            or program in VariableRemoval
+            or program in VariableAssignment
+        )
         if changes_variables and any(
-            argument.partition("=")[0] == marker for argument in arguments
+            argument.partition("=")[0].rstrip("+") == marker for argument in arguments
         ):
             return self.marker_change
         if program in Wrapper:
@@ -694,7 +730,38 @@ class CommandGuard:
         if program in Shell:
             return self._shell_denial(Shell(program), arguments)
         check = ProgramCheck.from_program(program)
-        return None if check is None else check.denial(arguments)
+        if check is not None:
+            return check.denial(arguments)
+        if program in FileWritingProgram and any(
+            GitConfigurationLocation.holds(PurePath(path))
+            for argument in arguments
+            for path in (argument, argument.partition("=")[2])
+            if path
+        ):
+            return Denial(f"{program} changes where git reads programs to run from")
+        unknown = (
+            program not in InertProgram and WorkflowInvocation(command).words() is None
+        )
+        if not unknown or not self.looks_through_unknown_programs:
+            return None
+        return self._unknown_program_denial(arguments)
+
+    def _unknown_program_denial(self, arguments: list[str]) -> Denial | None:
+        """
+        :param arguments: The arguments of a program the guard does not know.
+        :return: Why the command they name, or a command line one of them holds, is
+            denied, ``None`` when none is.
+        """
+        judged = {*Program, *Shell, *Wrapper}
+        nested = replace(self, looks_through_unknown_programs=False)
+        for index, argument in enumerate(arguments):
+            if " " in argument:
+                reason = nested.denial(argument)
+                if reason is not None:
+                    return reason
+            if PurePath(argument).name in judged:
+                return self.command_denial(SimpleCommand(arguments[index:]))
+        return None
 
     def _wrapped_denial(self, wrapper: Wrapper, arguments: list[str]) -> Denial | None:
         """
@@ -761,6 +828,14 @@ class CommandGuard:
         """
         if shell is Shell.EVAL:
             return self.denial(" ".join(arguments))
+        if shell is Shell.SOURCE:
+            reads_unseen = not arguments or arguments[0].startswith("/dev/")
+            if reads_unseen and self.enclosing_line_names_git:
+                return Denial(
+                    "source running what it reads could run git or gh unseen",
+                    saw_write=False,
+                )
+            return None
         for index, argument in enumerate(arguments[:-1]):
             if re.fullmatch(r"-[A-Za-z]*c[A-Za-z]*", argument):
                 return self.denial(arguments[index + 1])
