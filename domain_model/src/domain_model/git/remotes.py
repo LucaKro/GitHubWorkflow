@@ -24,7 +24,13 @@ from domain_model.git.options import (
     UpdateRefOption,
 )
 from domain_model.git.references import ReferenceNamespace, SpecialReference
-from domain_model.git.revisions import BranchName, BranchTip, CommitHash, Revision
+from domain_model.git.revisions import (
+    BranchName,
+    BranchTip,
+    Commit,
+    CommitHash,
+    Revision,
+)
 from domain_model.git.subcommands import GitSubcommand
 from domain_model.repository import Repository
 
@@ -347,6 +353,20 @@ class RemoteTrackingBranch(Revision):
         self.git.attempt(
             GitSubcommand.UPDATE_REF, UpdateRefOption.DELETE, self.revision_name
         )
+
+    def recorded_commits(self) -> list[Commit]:
+        """
+        :return: Every commit its reflog says it was at, the latest first; none when it
+            has no reflog, as after a clone.
+        """
+        reflog = self.git.attempt(
+            GitSubcommand.REFLOG,
+            ReflogReadingCommand.SHOW,
+            ReflogOption.COMMITS,
+            self.revision_name,
+        )
+        hashes = reflog.output.splitlines() if reflog.succeeded else []
+        return [Commit(self.git, CommitHash(hash)) for hash in dict.fromkeys(hashes)]
 
     def was_fetched_or_pushed(self) -> bool:
         """:return: Whether a fetch, a pull or a push ever wrote it, as its reflog says."""

@@ -290,8 +290,9 @@ them:
 - close a pull request only as discarded, replaced or merged upstream, and only an open
   one from a work branch on my repository, labelled `closed by session`, with a comment
   saying why, telling me in chat. At session start, a fork's pull request labelled
-  `opened upstream` whose pull request upstream was merged - found through GitHub's
-  search, which a cloud session reaches - is closed as merged upstream, linking it, and
+  `opened upstream` whose pull request upstream was merged - the one my own "Opened
+  upstream" comment on it links, found through GitHub's search, which a cloud session
+  reaches - is closed as merged upstream, linking it, and
   the pull request stacked on it moves onto the default branch, the stack made again
   from the open ones above. One the fork merged already, as the fork sync does, still
   has what is stacked on it moved
@@ -334,9 +335,13 @@ still marks what was closed.
 The guard never asks me to confirm a workflow command, and neither does auto mode: the
 plugin's mod approves a command line that is exactly one workflow command a session
 runs on its own, through `github-workflow`, with at most `cd` before it and `head` or
-`tail` after it, once nothing refused it. What is mine to decide - a finding's stage
+`tail` filtering its output after it, once nothing refused it. A file it is given to
+read or run (`--body-file`, `--test`, `--python`) lies in the working directory or the
+temporary directory, links followed; any other line is left to my permissions. What
+is mine to decide - a finding's stage
 (`finding accept`, `shelve`, `reject`), its priority or text (`finding prioritize`,
-`edit`), another pull request's description (`describe <number>`) or its place in a
+`edit`), another pull request's description (`describe <number>`, in any spelling the
+number takes) or its place in a
 stack (`stack on`) - the mod never approves, and a session does it only when I said so
 in the conversation.
 Everything else written to GitHub needs me to ask for it.
@@ -383,7 +388,8 @@ Everything else written to GitHub needs me to ask for it.
   one below with `sync --on`, or is left to GitHub's *Rebase stack*.
 - A merge that conflicts is left in progress, its files named. The session resolves
   them and finishes it with `sync --continue <files>`, which refuses while a conflict
-  is still marked or a file still conflicts, or undoes it with `sync --abort`. Nothing
+  is still marked or a file still conflicts, and takes a file deleted as resolved by
+  its removal, or undoes it with `sync --abort`. Nothing
   is committed or pushed on the branch meanwhile.
 - A work branch builds on another open pull request of my repository before it is
   merged with `sync --on <number>`, which merges that pull request's branch the same

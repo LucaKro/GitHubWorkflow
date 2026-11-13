@@ -711,6 +711,26 @@ def test_a_branch_github_rebased_is_moved_to_github_s(
     )
 
 
+def test_a_rebased_branch_already_fetched_is_still_moved_to_github_s(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+) -> None:
+    """
+    A plain fetch moved the remote-tracking branch to the rebased commit already; its
+    reflog still holds the one pushed.
+    """
+    rebaser = repositories.clone(owned_url, "rebaser").git
+    rebaser.run("switch", "--quiet", "feature")
+    rebaser.run("commit", "--quiet", "--amend", "--message", "Rebased")
+    rebaser.run("push", "--quiet", "--force", "origin", "feature")
+    work.checkout.git.run("fetch", "--quiet", "origin")
+
+    BranchSync(work, PullRequestsFromBranchesInMemory()).run()
+
+    assert work.checkout.git.run("rev-parse", "HEAD") == rebaser.run(
+        "rev-parse", "HEAD"
+    )
+
+
 def test_a_branch_with_unpushed_commits_github_diverged_from_is_left_alone(
     work: WritePolicy,
     repositories: RepositoriesByOwner,
@@ -943,6 +963,32 @@ def test_a_resolved_merge_is_committed_as_the_person(
     )
     assert Attribution.ACKNOWLEDGEMENT in last_message(git)
     assert not Merge(WorkingTree(git)).in_progress()
+
+
+def test_a_conflict_resolved_by_deleting_the_file_is_committed(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+) -> None:
+    leave_conflicting_merge(work, repositories, owned_url)
+    (work.checkout.root / "a.txt").unlink()
+
+    MergeCompletion(work, [Path("a.txt")]).run()
+
+    git = work.checkout.git
+    assert (Merge(WorkingTree(git)).in_progress(), git.run("ls-files", "a.txt")) == (
+        False,
+        "",
+    )
+
+
+def test_a_conflict_resolved_to_binary_content_is_committed(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+) -> None:
+    leave_conflicting_merge(work, repositories, owned_url)
+    (work.checkout.root / "a.txt").write_bytes(bytes([0xFF, 0xFE, 0x00, 0x80]))
+
+    MergeCompletion(work, [Path("a.txt")]).run()
+
+    assert not Merge(WorkingTree(work.checkout.git)).in_progress()
 
 
 def test_a_file_still_marking_a_conflict_is_refused(

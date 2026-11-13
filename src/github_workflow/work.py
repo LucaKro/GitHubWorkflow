@@ -577,7 +577,8 @@ class BranchSync(WorkflowStep):
             raise BranchDeletedFromGitHubError(name)
         if not fetched.succeeded:
             return f"{name} is not on GitHub yet"
-        on_github = branch.tracking_branch.commit()
+        tracking = branch.tracking_branch
+        on_github = tracking.commit()
         local = tree.head()
         if local == on_github:
             return f"{name} is up to date"
@@ -586,7 +587,11 @@ class BranchSync(WorkflowStep):
             return f"{name} fast-forwarded to GitHub's"
         if on_github.is_contained_in(local):
             return f"{name} is ahead of GitHub's: push it"
-        if last_seen is None or not local.is_contained_in(last_seen):
+        seen = [
+            *([] if last_seen is None else [last_seen]),
+            *tracking.recorded_commits(),
+        ]
+        if not any(local.is_contained_in(commit) for commit in seen):
             raise UnpushedCommitsError(name)
         tree.reset_kept(on_github)
         return f"{name} moved to the branch GitHub rebased"
@@ -652,7 +657,8 @@ class WorkBranchMerge:
 class MergeCompletion(WorkflowStep):
     """
     The merge in progress on the work branch committed as the person, once the files it
-    left conflicting hold their resolved content.
+    left conflicting hold their resolved content; a resolved file no longer there is
+    committed as removed.
 
     :raises DefaultBranchWriteError: If the default branch is checked out.
     :raises NoMergeInProgressError: If no merge is in progress.
@@ -677,7 +683,10 @@ class MergeCompletion(WorkflowStep):
         marked = [
             str(path)
             for path in self.resolved
-            if ConflictMarker.marks_conflict((checkout.root / path).read_text())
+            if (checkout.root / path).is_file()
+            and ConflictMarker.marks_conflict(
+                (checkout.root / path).read_bytes().decode(errors="replace")
+            )
         ]
         if marked:
             raise ConflictMarkersLeftError(tuple(marked))
