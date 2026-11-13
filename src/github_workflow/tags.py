@@ -593,10 +593,35 @@ class WaitingTags:
 
 
 @dataclass(frozen=True)
+class TagRefresh:
+    """
+    Asks the repository's Actions to search for the tagged comments afresh, without
+    waiting for their answer, which the next read of the saved answers finds.
+    """
+
+    reading: ForwardedReading
+    """
+    Queues the request on the notes branch.
+    """
+
+    login: str
+    """
+    The person.
+    """
+
+    def ask(self, since: datetime | None) -> None:
+        """
+        :param since: The time before which tags are not looked for.
+        """
+        self.reading.queue(TagRequest.from_current_time(self.login, since))
+
+
+@dataclass(frozen=True)
 class TagSection(ReportSection):
     """
-    The tagged comments waiting, each a Markdown link to the comment; nothing is
-    written.
+    The tagged comments waiting, each a Markdown link to the comment; the repository's
+    Actions are asked to search afresh when a refresh is given, which pushes a request
+    to the notes branch.
     """
 
     tags: WaitingTags
@@ -604,8 +629,16 @@ class TagSection(ReportSection):
     The tagged comments waiting.
     """
 
+    refresh: TagRefresh | None = None
+    """
+    Asks the repository's Actions to search afresh; ``None`` where the session searches
+    GitHub itself.
+    """
+
     def lines(self) -> list[ReportLine]:
         status = self.tags.read()
+        if self.refresh is not None:
+            self.refresh.ask(status.ledger.cursor)
         items = [
             ReportLine(TagDescription(mention).listing_line, Tone.ACTION)
             for mention in status.ledger.waiting(status.found)

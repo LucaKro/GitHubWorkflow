@@ -50,7 +50,9 @@ the checkout. That does four things.
    - `upstream-merges`: fork pull requests whose upstream pull request was merged, which
      are closed here.
    - `tags`: the comments you tagged by mentioning yourself, not filed or dismissed yet
-     (see [section 5](#5-findings)).
+     (see [section 5](#5-findings)). In a cloud session it also queues a request on the
+     notes branch for the repository's Actions to search afresh: the one push a session
+     start makes.
 4. **Tells the model how to behave**: the notes begin with a short header listing the
    commands and the rules (file findings on your own, never run `upstream`, never get
    around a refusal).

@@ -198,10 +198,13 @@ them:
   opened, commented on or reviewed, and discussions I opened or commented on, changed
   since the ledger's cursor; of what they find, only my own texts mentioning me count.
 - The session start lists the tags waiting, each a Markdown link to the comment, and
-  files nothing. It never pushes: a cloud session, which reaches neither other
-  people's repositories nor GraphQL, lists what it reads itself - the issues and pull
-  requests on the repositories attached to it - and the newest answer the repository's
-  Actions saved, and says when there is none.
+  files nothing. A cloud session, which reaches neither other people's repositories
+  nor GraphQL, lists what it reads itself - the issues and pull requests on the
+  repositories attached to it - and the newest answer the repository's Actions saved,
+  and says when there is none. It then asks the Actions to search afresh for the next
+  session start, without waiting: the one push a session start makes, a request
+  committed to the notes branch, which the README says prominently. A local session
+  start reads everything directly and pushes nothing.
 - `tag list` reads them afresh: directly, or from a cloud session through the
   repository's Actions, the request queued on the notes branch as for upstream reviews,
   waiting for their answer.

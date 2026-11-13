@@ -379,13 +379,39 @@ def test_claude_local_md_is_excluded_from_git_once(
 
 
 def test_a_session_start_pushes_nothing(
-    repositories: RepositoriesByOwner, owned_url: str
+    monkeypatch: pytest.MonkeyPatch, repositories: RepositoriesByOwner, owned_url: str
 ) -> None:
+    monkeypatch.delenv(ClaudeCodeVariable.REMOTE, raising=False)
     before = repositories.branches(owned_url)
 
     start_session(repositories.clone(owned_url, "session"))
 
     assert repositories.branches(owned_url) == before
+
+
+def test_a_cloud_session_start_pushes_only_a_request_for_the_tagged_comments(
+    monkeypatch: pytest.MonkeyPatch,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+) -> None:
+    monkeypatch.setenv(ClaudeCodeVariable.REMOTE, "true")
+    before = repositories.branches(owned_url)
+
+    start_session(repositories.clone(owned_url, "session"))
+
+    notes = saved_notes(repositories, owned_url, settings)
+    tracking = notes.branch.tracking_branch
+    other_branches = [
+        line
+        for line in repositories.branches(owned_url).splitlines()
+        if not line.endswith(f"refs/heads/{settings.notes_branch}")
+    ]
+    assert (
+        other_branches,
+        len(tracking.file_names(NotesFile.TAG_REQUESTS.value)),
+        notes.read(NotesFile.TAG_WORKFLOW.value) is not None,
+    ) == (before.splitlines(), 1, True)
 
 
 def test_a_session_in_somebody_else_s_repository_loads_nothing(

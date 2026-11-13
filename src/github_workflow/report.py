@@ -15,6 +15,7 @@ from pathlib import Path
 
 from domain_model.class_family import ClassFamily
 from domain_model.class_property import classproperty
+from domain_model.github.readers import ReadSource
 from domain_model.github.repository_client import GitHubRepository
 
 from github_workflow.cleanup import CleanupReminder
@@ -26,7 +27,7 @@ from github_workflow.report_section import ReportSection
 from github_workflow.repository_setup import RepositorySetup
 from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
-from github_workflow.tags import TagSection, WaitingTags
+from github_workflow.tags import TagRefresh, TagSection, WaitingTags
 from github_workflow.upstream import UpstreamMergeFollowing
 
 # %% the sections
@@ -229,7 +230,11 @@ class TagsBuilder(SectionBuilder):
 
     def section(self) -> ReportSection:
         session = self.session
-        return TagSection(WaitingTags(session.tag_source, session.notes))
+        tags = WaitingTags(session.tag_source, session.notes)
+        if ReadSource.detect().reaches_graphql:
+            return TagSection(tags)
+        refresh = TagRefresh(session.forwarded_reading, session.settings.owner)
+        return TagSection(tags, refresh)
 
 
 # %% entry point

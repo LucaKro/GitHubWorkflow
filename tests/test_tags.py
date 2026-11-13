@@ -43,6 +43,7 @@ from github_workflow.tags import (
     TagFiling,
     TagLedger,
     TagListing,
+    TagRefresh,
     TagRequest,
     TagSection,
     TagShowing,
@@ -440,6 +441,21 @@ def test_the_section_says_why_tags_out_of_reach_are_missing(
     lines = TagSection(WaitingTags(FixedTagSource(found), notes)).lines()
 
     assert lines == [ReportLine(Speaker.WORKFLOW.says(missing.line()), Tone.NEWS)]
+
+
+def test_the_section_asks_the_repository_s_actions_to_search_afresh(
+    notes: NotesBranch,
+) -> None:
+    section = TagSection(
+        WaitingTags(FixedTagSource(found_directly()), notes),
+        TagRefresh(build_reading(notes), owner()),
+    )
+
+    section.lines()
+
+    notes.fetch()
+    queued = notes.branch.tracking_branch.file_names(NotesFile.TAG_REQUESTS.value)
+    assert len(queued) == 1
 
 
 # %% the newest answer and what a cloud session reaches
