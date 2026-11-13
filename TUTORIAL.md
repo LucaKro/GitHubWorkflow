@@ -213,13 +213,17 @@ Four layers, from the first to the last resort:
 
 1. **The guard** (`PreToolUse` hook) reads every Bash command line, file write and GitHub
    tool call before it runs. It looks through shells and wrappers (`bash -c`, `env`,
-   `timeout`, `eval`, subshells) for `git`, `gh`, `curl` and `wget`.
+   `timeout`, `eval`, subshells), and any other program given one of them (`stdbuf git
+   push`, `trap 'git push' EXIT`), for `git`, `gh`, `curl` and `wget`. Text in single
+   quotes is text: `echo 'run $(git push)'` only prints.
    - Git and `gh` are judged by an allowlist of reading forms: `git status`, `git log`,
      `git fetch`, `gh pr view` pass; anything else counts as writing.
    - `curl` and `wget` may read GitHub but not send to it.
-   - Writing git's configuration or hooks with a file tool is denied.
+   - Writing git's configuration or hooks with a file tool, a redirection or a program
+     such as `rm` or `sed -i` is denied.
+   - `git apply --check` and `--stat` pass; applying a patch does not.
    - A command it cannot see into (a program named by `$variable`, a shell reading its
-     input, `xargs git`) is denied and shown to you.
+     input, `xargs git`, `curl -K` or an address in `$URL`) is denied and shown to you.
    - A denial names the workflow command that does the job, when there is one.
 2. **Fallbacks.** When the runtime is broken, the guard runs from the plugin's source on
    the standard library alone. When that fails too, a coarse guard denies every call
