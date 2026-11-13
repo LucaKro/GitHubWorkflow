@@ -228,6 +228,11 @@ class ReflogOption(GitOption):
     Print each entry's subject alone: what wrote the reference.
     """
 
+    COMMITS = "--format=%H", True
+    """
+    Print each entry's commit alone: where the reference was.
+    """
+
     DATE = "--date", True
     """
     Print the entries' dates as the given format says.
