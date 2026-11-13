@@ -616,6 +616,50 @@ def test_a_branch_neither_the_fork_nor_its_upstream_has_is_refused(
         ).run()
 
 
+def give_team_remote(work: WritePolicy, repositories: RepositoriesByOwner) -> str:
+    """
+    Give a clone of the fork a third remote, ``team``, another fork of the upstream
+    whose ``main`` has a commit of its own.
+
+    :param work: The rules of a clone of the fork.
+    :param repositories: The scratch repositories.
+    :return: The commit the team's ``main`` is at.
+    """
+    give_fork_upstream(work, repositories, ahead=0, own=0)
+    team = repositories.root / "a-team" / "project.git"
+    git = work.checkout.git
+    git.run("init", "--quiet", "--bare", "--initial-branch=main", str(team))
+    writer = repositories.clone(f"file://{team}", "team-writer").git
+    writer.run("commit", "--quiet", "--allow-empty", "--message", "Team work")
+    writer.run("push", "--quiet", "origin", "HEAD:refs/heads/main")
+    git.run("remote", "add", "team", f"file://{team}")
+    return writer.run("rev-parse", "HEAD")
+
+
+def test_a_work_branch_starts_on_a_branch_of_another_remote(
+    work: WritePolicy, repositories: RepositoriesByOwner
+) -> None:
+    teams = give_team_remote(work, repositories)
+
+    BranchStart(
+        work, BranchName("team-fix"), BranchName("team/main"), ForkOfTheUpstream()
+    ).run()
+
+    assert work.checkout.git.run("rev-parse", "team-fix") == teams
+
+
+@pytest.mark.parametrize("base", ["team/missing", "nobody/main"])
+def test_a_branch_another_remote_lacks_is_refused(
+    work: WritePolicy, repositories: RepositoriesByOwner, base: str
+) -> None:
+    give_team_remote(work, repositories)
+
+    with pytest.raises(GitCommandFailed):
+        BranchStart(
+            work, BranchName("fix"), BranchName(base), ForkOfTheUpstream()
+        ).run()
+
+
 # %% following merges upstream
 
 
