@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from domain_model.git.remotes import RemoteName
 from domain_model.git.revisions import BranchName
+from domain_model.github.issue_models import IssueComment
 from domain_model.github.labels import GitHubLabel
 from domain_model.github.repository_client import (
     FollowedFork,
@@ -567,6 +568,22 @@ class OpenedUpstreamPullRequests(StackedPullRequestsInMemory, FollowedFork):
     The pull requests the fork has merged.
     """
 
+    linked_upstream: int = 9
+    """
+    The upstream pull request each one opened upstream links to in its comment.
+    """
+
+    link_author: str = ScratchGitHub.owned.owner
+    """
+    Who posted that comment.
+    """
+
+    def comments(self, number: int) -> list[IssueComment]:
+        if number not in self.opened_upstream:
+            return []
+        url = ScratchGitHub.upstream.pull_request_url(self.linked_upstream)
+        return [IssueComment(self.link_author, UpstreamProposal.comment_linking(url))]
+
     def open_pull_requests(self) -> list[RestPullRequest]:
         return [
             pull_request
@@ -597,11 +614,14 @@ def build_following(
     found: dict[str, list[SearchedPullRequest]],
     merged: frozenset[int] = frozenset(),
     opened_upstream: frozenset[int] = frozenset({1}),
+    link_author: str = ScratchGitHub.owned.owner,
 ) -> tuple[UpstreamMergeFollowing, StackedPullRequestsInMemory, RetiredInMemory]:
     """
     :param found: The upstream's pull requests, by the branch they were opened from.
     :param merged: The pull requests the fork has merged already.
-    :param opened_upstream: The pull requests labelled as opened upstream.
+    :param opened_upstream: The pull requests labelled as opened upstream, each
+        linking to the upstream's #9.
+    :param link_author: Who posted the comments linking them.
     :return: The section over a fork whose #2 is stacked on #1; the fork's pull
         requests; and what was closed.
     """
@@ -609,6 +629,7 @@ def build_following(
         {1: "main", 2: StackedPullRequestsInMemory.name_branch(1)},
         opened_upstream=opened_upstream,
         merged=merged,
+        link_author=link_author,
     )
     fork.existing_stacks.append(Stack(7, "main", True, fork.build_stack([1, 2])))
     retired = RetiredInMemory()
@@ -642,6 +663,32 @@ def test_a_pull_request_still_open_upstream_is_left_alone() -> None:
         9, ScratchGitHub.upstream.pull_request_url(9), None
     )
     section, fork, retired = build_following({"branch-1": [open_upstream]})
+
+    assert (section.lines(), retired.retired, fork.writes) == ([], [], [])
+
+
+def test_an_older_merged_pull_request_from_the_same_branch_closes_nothing() -> None:
+    """
+    A branch name used again: only the upstream pull request the fork's links to counts.
+    """
+    still_open = SearchedPullRequest(
+        9, ScratchGitHub.upstream.pull_request_url(9), None
+    )
+    older = SearchedPullRequest(
+        5, ScratchGitHub.upstream.pull_request_url(5), "2026-01-01T10:00:00Z"
+    )
+    section, fork, retired = build_following({"branch-1": [still_open, older]})
+
+    assert (section.lines(), retired.retired, fork.writes) == ([], [], [])
+
+
+def test_a_link_somebody_else_posted_is_not_followed() -> None:
+    merged = SearchedPullRequest(
+        9, ScratchGitHub.upstream.pull_request_url(9), "2026-11-07T10:00:00Z"
+    )
+    section, fork, retired = build_following(
+        {"branch-1": [merged]}, link_author="somebody-else"
+    )
 
     assert (section.lines(), retired.retired, fork.writes) == ([], [], [])
 
