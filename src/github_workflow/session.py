@@ -46,7 +46,11 @@ from github_workflow.upstream_reviews import (
     ForwardedUpstreamReviews,
     UpstreamReviews,
 )
-from github_workflow.work import OpenPullRequestBranch, PullRequestOpenedLabelling
+from github_workflow.work import (
+    CheckoutOtherForkBases,
+    OpenPullRequestBranch,
+    PullRequestOpenedLabelling,
+)
 from github_workflow.workflow_step import WorkflowStep
 
 # %% the session
@@ -108,6 +112,11 @@ class WorkflowSession(RepositoryDetails):
     def policy(self) -> WritePolicy:
         """:return: The rules the command's writes pass first."""
         return WritePolicy(self.checkout, self.remote, self)
+
+    @property
+    def other_fork_bases(self) -> CheckoutOtherForkBases:
+        """:return: The other forks' branches the checkout's work branches started from."""
+        return CheckoutOtherForkBases(self.checkout.git)
 
     @property
     def placement(self) -> StackPlacement:

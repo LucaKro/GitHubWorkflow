@@ -11,7 +11,11 @@ from dataclasses import dataclass, fields
 from enum import StrEnum
 
 from domain_model.git.commands import GitCommandResult, GitCommandRunner
-from domain_model.git.exceptions import MalformedReferenceUpdateError
+from domain_model.class_property import classproperty
+from domain_model.git.exceptions import (
+    MalformedReferenceUpdateError,
+    MalformedRepositoryBranchError,
+)
 from domain_model.git.options import (
     FetchOption,
     LsRemoteOption,
@@ -239,6 +243,51 @@ class UnconfiguredRemote(Remote):
 
 
 # %% a branch on a remote
+
+
+@dataclass(frozen=True)
+class RepositoryBranch:
+    """
+    A branch of a GitHub repository, written ``owner/name:branch``.
+    """
+
+    repository: Repository
+    """
+    The repository.
+    """
+
+    branch: BranchName
+    """
+    Its branch.
+    """
+
+    @classproperty
+    def separator(cls) -> str:
+        """
+        What stands between the repository and the branch, as GitHub writes a branch of
+        another fork.
+        """
+        return ":"
+
+    @classmethod
+    def parse(cls, text: str) -> RepositoryBranch:
+        """
+        :param text: A branch of a repository, as ``owner/name:branch``.
+        :return: It.
+        :raises MalformedRepositoryBranchError: If it names no repository or no
+            branch.
+        """
+        repository, separator, branch = text.partition(cls.separator)
+        if not separator or not branch or not Repository.is_full_name(repository):
+            raise MalformedRepositoryBranchError(text)
+        return cls(Repository.parse(repository), BranchName(branch))
+
+    @property
+    def full_name(self) -> str:
+        """
+        The branch, as ``owner/name:branch``.
+        """
+        return f"{self.repository.full_name}{self.separator}{self.branch}"
 
 
 class TrackingReferenceWrite(StrEnum):

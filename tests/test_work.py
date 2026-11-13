@@ -517,11 +517,11 @@ def test_a_draft_onto_a_pull_request_others_build_on_opens_nothing(
 @dataclass(frozen=True)
 class EndingNamingTheBranch(DescriptionEnding):
     """
-    Ends a description with its branch's name.
+    Ends a description with its branch's name and the branch it targets.
     """
 
-    def append_once(self, body: str, branch: str) -> str:
-        return f"{body} | {branch}"
+    def append_once(self, body: str, branch: str, base: str) -> str:
+        return f"{body} | {branch} onto {base}"
 
 
 def test_a_draft_onto_the_default_branch_ends_its_description(
@@ -532,7 +532,9 @@ def test_a_draft_onto_the_default_branch_ends_its_description(
 
     replace(draft(work, github, None), ending=ending).run()
 
-    assert github.bodies == {1: ending.append_once("A body", "feature")}
+    assert github.bodies == {
+        1: ending.append_once("A body", "feature", RepositoriesByOwner.default_branch)
+    }
 
 
 @dataclass(frozen=True)
@@ -627,12 +629,17 @@ def test_a_draft_whose_replaced_pull_request_stays_open_is_reported_as_opened(
     assert raised.value.number == 5
 
 
-def test_a_stacked_draft_keeps_its_description_as_given(work: WritePolicy) -> None:
+def test_a_stacked_draft_s_ending_is_given_the_branch_it_is_stacked_on(
+    work: WritePolicy,
+) -> None:
     github = DraftsAndStacksInMemory({1: RepositoriesByOwner.default_branch})
+    ending = EndingNamingTheBranch()
 
-    replace(draft(work, github, 1), ending=EndingNamingTheBranch()).run()
+    replace(draft(work, github, 1), ending=ending).run()
 
-    assert github.bodies == {2: "A body"}
+    assert github.bodies == {
+        2: ending.append_once("A body", "feature", github.name_branch(1))
+    }
 
 
 def test_a_draft_for_a_branch_github_lacks_is_refused(work: WritePolicy) -> None:
@@ -1268,17 +1275,21 @@ def test_a_new_description_onto_the_default_branch_ends_as_a_draft_s_does() -> N
 
     replace(step, ending=ending).run()
 
-    described = ending.append_once("A new body", github.name_branch(1))
+    described = ending.append_once(
+        "A new body", github.name_branch(1), RepositoriesByOwner.default_branch
+    )
     assert github.writes == [f"set_description 1 {described}"]
 
 
-def test_a_new_description_of_a_stacked_pull_request_is_kept_as_given() -> None:
+def test_a_new_description_s_ending_is_given_the_branch_it_targets() -> None:
     github = DraftsInMemory({1: RepositoriesByOwner.default_branch, 2: "branch-1"})
     step = rewrite(github, "A new body")
+    ending = EndingNamingTheBranch()
 
-    replace(step, number=2, ending=EndingNamingTheBranch()).run()
+    replace(step, number=2, ending=ending).run()
 
-    assert github.writes == ["set_description 2 A new body"]
+    described = ending.append_once("A new body", github.name_branch(2), "branch-1")
+    assert github.writes == [f"set_description 2 {described}"]
 
 
 def test_a_new_description_keeps_the_old_one_s_closing_lines() -> None:

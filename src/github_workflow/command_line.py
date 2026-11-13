@@ -21,6 +21,7 @@ from typing import Any
 
 from domain_model.class_property import classproperty
 from domain_model.git.revisions import BranchName
+from domain_model.git.remotes import RepositoryBranch
 
 import github_workflow
 from github_workflow.plugin import Launcher, LauncherInstallation, ToolRepository
@@ -464,6 +465,11 @@ class CommandOption(StrEnum):
     PRIORITY = "--priority"
     """
     How urgent a finding is.
+    """
+
+    ONTO = "--onto"
+    """
+    The branch of another fork to open a pull request onto, as ``owner/name:branch``.
     """
 
     FOLLOWS_TEMPLATE = "--follows-template"
@@ -1563,6 +1569,13 @@ class RunnableCommand(CommandSpecification, Enum):
                 "branch",
                 "the fork's branch with the pull request",
                 BranchName,
+            ),
+            CommandArgument(
+                CommandOption.ONTO,
+                "owner/name:branch",
+                "instead, the branch of another fork of the upstream to open it onto, "
+                "from the pull request onto that branch's mirror",
+                RepositoryBranch.parse,
             ),
         ),
     )

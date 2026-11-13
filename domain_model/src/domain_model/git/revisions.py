@@ -18,6 +18,7 @@ from domain_model.git.exceptions import UnresolvableReferenceError
 from domain_model.git.options import (
     CheckoutIndexOption,
     CommitTreeOption,
+    ConfigOption,
     FetchOption,
     HashObjectOption,
     LsTreeOption,
@@ -389,6 +390,30 @@ class LocalBranch(Revision):
             self.name,
             start.revision_name,
         )
+
+    def setting_key(self, key: str) -> str:
+        """
+        :param key: A setting of the branch's.
+        :return: Its key in the checkout's git configuration.
+        """
+        return f"branch.{self.name}.{key}"
+
+    def read_setting(self, key: str) -> str | None:
+        """
+        :param key: A setting of the branch's in the checkout's git configuration.
+        :return: Its value, ``None`` when it is not set.
+        """
+        read = self.git.attempt(
+            GitSubcommand.CONFIG, ConfigOption.GET, self.setting_key(key)
+        )
+        return read.output if read.succeeded else None
+
+    def write_setting(self, key: str, value: str) -> None:
+        """
+        :param key: A setting of the branch's in the checkout's git configuration.
+        :param value: What it is set to.
+        """
+        self.git.run(GitSubcommand.CONFIG, self.setting_key(key), value)
 
     def switch(self) -> None:
         """

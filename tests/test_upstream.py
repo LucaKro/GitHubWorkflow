@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 from domain_model.git.exceptions import GitCommandFailed
-from domain_model.git.remotes import RemoteName
+from domain_model.git.remotes import Remote, RemoteName, RepositoryBranch
 from domain_model.git.revisions import BranchName, BranchTip, CommitHash
 from domain_model.github.issue_models import Issue, IssueComment
 from domain_model.github.labels import GitHubLabel
@@ -60,15 +60,19 @@ from github_workflow.upstream import (
     UpstreamProposal,
     UpstreamSuggestion,
 )
-from github_workflow.work import BranchStart
+from github_workflow.work import (
+    BranchStart,
+    CheckoutOtherForkBases,
+    OtherForkBases,
+)
 
 from .issues_in_memory import IssuesInMemory
 from .pull_requests import pull_request
 from .repositories_by_owner import RepositoriesByOwner
 from .scratch_github import ForkOf, ScratchGitHub
-from .stacked_pull_requests import StackedPullRequestsInMemory
+from .stacked_pull_requests import DraftsAndStacksInMemory, StackedPullRequestsInMemory
 from .test_push_hook import in_claude_code  # noqa: F401  (a fixture)
-from .test_work import RetiredInMemory, work  # noqa: F401  (a fixture)
+from .test_work import RetiredInMemory, draft, work  # noqa: F401  (a fixture)
 
 # %% repositories in memory
 
@@ -155,6 +159,8 @@ def proposal(
     *,
     run_by_a_session: bool = False,
     repository: Repository = ScratchGitHub.owned,
+    onto: RepositoryBranch | None = None,
+    reached: list[Repository] | None = None,
 ) -> UpstreamProposal:
     """
     :param fork: The owner's fork.
@@ -162,15 +168,19 @@ def proposal(
     :param branch: The fork's branch to propose.
     :param run_by_a_session: Whether a Claude Code session runs the command.
     :param repository: The repository named on the command line.
+    :param onto: The other fork's branch to open it onto, if any.
+    :param reached: Collects each repository the proposal reaches to open it on.
     :return: The proposal.
     """
+    collected = [] if reached is None else reached
     return UpstreamProposal(
         repository,
         branch,
         fork,
-        lambda named: upstream,
+        lambda named: collected.append(named) or upstream,
         WorkflowSettings(),
         run_by_a_session,
+        onto,
     )
 
 
@@ -300,44 +310,142 @@ def test_a_pull_request_that_cannot_go_upstream_is_refused(
     assert upstream.written == []
 
 
-# %% the suggestion in a draft's description
+def test_a_pull_request_onto_another_fork_s_mirror_opens_onto_that_fork() -> None:
+    mirror = OtherForkBases.mirror_name(team_base())
+    fork = ForkInMemory([replace(pull_request(3, "feature"), base=mirror)])
+    target = ForkInMemory(forked_from=ScratchGitHub.upstream)
+    reached: list[Repository] = []
 
+    proposal(fork, target, onto=team_base(), reached=reached).run()
 
-def test_a_draft_on_a_fork_suggests_the_command_to_the_person() -> None:
-    suggestion = UpstreamSuggestion(ForkInMemory(), ScratchGitHub.owned)
-
-    described = suggestion.append_once("What the change does.", "feature")
-
-    assert described.startswith("What the change does.")
-    assert (
-        UpstreamSuggestion.opening_command(ScratchGitHub.owned, "feature") in described
+    assert (reached, target.written[0].split(":")[1]) == (
+        [team_base().repository],
+        f"feature onto {team_base().branch}",
     )
 
 
-def test_a_description_ending_with_the_suggestion_keeps_it_once() -> None:
-    suggestion = UpstreamSuggestion(ForkInMemory(), ScratchGitHub.owned)
-    described = suggestion.append_once("What the change does.", "feature")
+def test_a_pull_request_onto_the_default_branch_is_not_opened_onto_another_fork() -> (
+    None
+):
+    fork = ForkInMemory([pull_request(3, "feature")])
+    target = ForkInMemory(forked_from=ScratchGitHub.upstream)
 
-    assert suggestion.append_once(described, "feature") == described
+    with pytest.raises(PullRequestNotProposableError):
+        proposal(fork, target, onto=team_base()).run()
+
+    assert target.written == []
+
+
+# %% the suggestion in a draft's description
+
+
+@dataclass(frozen=True)
+class OtherForkBasesInMemory(OtherForkBases):
+    """
+    The other forks' branches work branches were started from, as given, recording each
+    mirror pushed.
+    """
+
+    recorded: dict[str, RepositoryBranch] = field(default_factory=dict)
+    """
+    Each work branch's base, by the work branch.
+    """
+
+    mirrored: list[RepositoryBranch] = field(default_factory=list)
+    """
+    Each base mirrored, in order.
+    """
+
+    def read(self, branch: BranchName) -> RepositoryBranch | None:
+        return self.recorded.get(branch)
+
+    def mirror(self, base: RepositoryBranch, owned: Remote) -> BranchName:
+        self.mirrored.append(base)
+        return self.mirror_name(base)
+
+
+def suggestion_on(
+    fork: ForkInMemory, bases: OtherForkBasesInMemory | None = None
+) -> UpstreamSuggestion:
+    """:param fork: The owner's repository.
+    :param bases: The other forks' branches its work branches were started from.
+    :return: The suggestion ending its drafts' descriptions."""
+    return UpstreamSuggestion(
+        fork,
+        ScratchGitHub.owned,
+        RepositoriesByOwner.default_branch,
+        OtherForkBasesInMemory() if bases is None else bases,
+    )
+
+
+def team_base() -> RepositoryBranch:
+    """:return: A team's fork's ``main``, another fork of the upstream."""
+    return RepositoryBranch(Repository("a-team", "project"), BranchName("main"))
+
+
+def test_a_draft_on_a_fork_suggests_the_command_to_the_person() -> None:
+    described = suggestion_on(ForkInMemory()).append_once(
+        "What the change does.", "feature", RepositoriesByOwner.default_branch
+    )
+
+    command = UpstreamSuggestion.opening_command(ScratchGitHub.owned, "feature", None)
+    assert described.startswith("What the change does.")
+    assert command in described
+
+
+def test_a_description_ending_with_the_suggestion_keeps_it_once() -> None:
+    suggestion = suggestion_on(ForkInMemory())
+    default = RepositoriesByOwner.default_branch
+    described = suggestion.append_once("What the change does.", "feature", default)
+
+    assert suggestion.append_once(described, "feature", default) == described
 
 
 def test_a_suggestion_amid_a_description_moves_to_its_end() -> None:
-    suggestion = UpstreamSuggestion(ForkInMemory(), ScratchGitHub.owned)
-    described = suggestion.append_once("What the change does.", "feature")
+    suggestion = suggestion_on(ForkInMemory())
+    default = RepositoriesByOwner.default_branch
+    described = suggestion.append_once("What the change does.", "feature", default)
 
-    rewritten = suggestion.append_once(f"{described}\nAfter the review.", "feature")
+    rewritten = suggestion.append_once(
+        f"{described}\nAfter the review.", "feature", default
+    )
 
-    command = UpstreamSuggestion.opening_command(ScratchGitHub.owned, "feature")
+    command = UpstreamSuggestion.opening_command(ScratchGitHub.owned, "feature", None)
     assert rewritten.count(command) == 1
     assert rewritten.index("After the review.") < rewritten.index(command)
 
 
 def test_a_draft_on_a_repository_that_is_no_fork_suggests_nothing() -> None:
-    suggestion = UpstreamSuggestion(ForkInMemory(forked_from=None), ScratchGitHub.owned)
-
-    described = suggestion.append_once("What the change does.", "feature")
+    described = suggestion_on(ForkInMemory(forked_from=None)).append_once(
+        "What the change does.", "feature", RepositoriesByOwner.default_branch
+    )
 
     assert described == "What the change does."
+
+
+def test_a_stacked_draft_suggests_nothing() -> None:
+    described = suggestion_on(ForkInMemory()).append_once(
+        "What the change does.", "feature", BranchName("below")
+    )
+
+    assert described == "What the change does."
+
+
+def test_a_draft_onto_another_fork_s_mirror_suggests_opening_it_onto_that_fork() -> (
+    None
+):
+    bases = OtherForkBasesInMemory({"feature": team_base()})
+    mirror = OtherForkBases.mirror_name(team_base())
+
+    described = suggestion_on(ForkInMemory(), bases).append_once(
+        "What the change does.", "feature", mirror
+    )
+
+    command = UpstreamSuggestion.opening_command(
+        ScratchGitHub.owned, "feature", team_base()
+    )
+    assert command in described
+    assert f"on {team_base().repository}," in described
 
 
 # %% following the upstream
@@ -618,8 +726,8 @@ def test_a_branch_neither_the_fork_nor_its_upstream_has_is_refused(
 
 def give_team_remote(work: WritePolicy, repositories: RepositoriesByOwner) -> str:
     """
-    Give a clone of the fork a third remote, ``team``, another fork of the upstream
-    whose ``main`` has a commit of its own.
+    Give a clone of the fork a third remote, ``team``, another fork of the upstream on
+    GitHub, ``a-team/project``, whose ``main`` has a commit of its own.
 
     :param work: The rules of a clone of the fork.
     :param repositories: The scratch repositories.
@@ -632,7 +740,7 @@ def give_team_remote(work: WritePolicy, repositories: RepositoriesByOwner) -> st
     writer = repositories.clone(f"file://{team}", "team-writer").git
     writer.run("commit", "--quiet", "--allow-empty", "--message", "Team work")
     writer.run("push", "--quiet", "origin", "HEAD:refs/heads/main")
-    git.run("remote", "add", "team", f"file://{team}")
+    git.run("remote", "add", "team", f"{GitHubAddress.WEB}/a-team/project.git")
     return writer.run("rev-parse", "HEAD")
 
 
@@ -646,6 +754,59 @@ def test_a_work_branch_starts_on_a_branch_of_another_remote(
     ).run()
 
     assert work.checkout.git.run("rev-parse", "team-fix") == teams
+
+
+def test_a_work_branch_started_on_another_remote_records_that_fork_s_branch(
+    work: WritePolicy, repositories: RepositoriesByOwner
+) -> None:
+    give_team_remote(work, repositories)
+
+    BranchStart(
+        work, BranchName("team-fix"), BranchName("team/main"), ForkOfTheUpstream()
+    ).run()
+
+    bases = CheckoutOtherForkBases(work.checkout.git)
+    assert bases.read(BranchName("team-fix")) == team_base()
+
+
+def test_a_work_branch_started_on_the_upstream_records_no_other_fork(
+    work: WritePolicy, repositories: RepositoriesByOwner
+) -> None:
+    release = BranchName("jazzy")
+    give_upstream_release_branch(work, repositories, release)
+
+    BranchStart(work, BranchName("jazzy-fix"), release, ForkOfTheUpstream()).run()
+
+    bases = CheckoutOtherForkBases(work.checkout.git)
+    assert bases.read(BranchName("jazzy-fix")) is None
+
+
+def test_another_fork_s_branch_is_mirrored_onto_the_owner_s_fork(
+    work: WritePolicy, repositories: RepositoriesByOwner
+) -> None:
+    teams = give_team_remote(work, repositories)
+
+    mirror = CheckoutOtherForkBases(work.checkout.git).mirror(team_base(), work.remote)
+
+    assert (mirror, work.remote.branch(mirror).tip()) == (
+        OtherForkBases.mirror_name(team_base()),
+        teams,
+    )
+
+
+def test_a_draft_of_a_branch_started_on_another_fork_targets_its_mirror(
+    work: WritePolicy,
+) -> None:
+    github = DraftsAndStacksInMemory({})
+    bases = OtherForkBasesInMemory({"feature": team_base()})
+
+    replace(draft(work, github, None), other_fork_bases=bases).run()
+
+    mirror = OtherForkBases.mirror_name(team_base())
+    assert (github.writes[0], bases.mirrored) == (
+        f"open_draft feature {mirror}",
+        [team_base()],
+    )
 
 
 @pytest.mark.parametrize("base", ["team/missing", "nobody/main"])
