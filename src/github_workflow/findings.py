@@ -28,6 +28,7 @@ from domain_model.repository import Repository
 
 from github_workflow.command_line import PriorityLevel
 from github_workflow.exceptions import (
+    AlreadyInStageError,
     AlreadyProvenError,
     FindingNotAcceptedError,
     FindingStillFailsError,
@@ -114,6 +115,14 @@ class FindingStage(FindingLabel):
     """
     Rejected by the person, and closed.
     """
+
+    @property
+    def short_name(self) -> str:
+        """
+        The stage's word, as a sentence names it: ``accepted`` for
+        :attr:`ACCEPTED`.
+        """
+        return self.partition(": ")[2]
 
     @classproperty
     def open_stages(cls) -> list[FindingStage]:
@@ -482,17 +491,21 @@ class FindingChange(FindingLabelling, ABC):
     The finding.
     """
 
-    def open_finding(self, stages: Sequence[FindingStage]) -> Issue:
+    def open_finding(
+        self, stages: Sequence[FindingStage], target: FindingStage | None = None
+    ) -> Issue:
         """
         :param stages: The stages the change applies to.
+        :param target: The stage the change moves the finding to, if any.
         :return: The finding, open in one of them.
+        :raises AlreadyInStageError: If it is open in *target* already.
         :raises NotAFindingError: If it is no open finding in one of them.
         """
         issue = self.issues.issue(self.number)
-        if (
-            issue.state is not IssueState.OPEN
-            or FindingStage.from_issue(issue) not in stages
-        ):
+        stage = FindingStage.from_issue(issue)
+        if issue.state is IssueState.OPEN and stage is not None and stage is target:
+            raise AlreadyInStageError(self.number, stage)
+        if issue.state is not IssueState.OPEN or stage not in stages:
             raise NotAFindingError(self.number)
         return issue
 
@@ -507,7 +520,9 @@ class FindingAcceptance(FindingChange):
     """
 
     def run(self) -> str:
-        issue = self.open_finding([FindingStage.UNREVIEWED, FindingStage.SHELVED])
+        issue = self.open_finding(
+            [FindingStage.UNREVIEWED, FindingStage.SHELVED], FindingStage.ACCEPTED
+        )
         self.relabel(issue, [FindingStage.ACCEPTED])
         return f"accepted finding #{self.number}"
 
@@ -519,7 +534,9 @@ class FindingShelving(FindingChange):
     """
 
     def run(self) -> str:
-        issue = self.open_finding([FindingStage.UNREVIEWED, FindingStage.ACCEPTED])
+        issue = self.open_finding(
+            [FindingStage.UNREVIEWED, FindingStage.ACCEPTED], FindingStage.SHELVED
+        )
         self.relabel(issue, [FindingStage.SHELVED])
         return f"shelved finding #{self.number}"
 

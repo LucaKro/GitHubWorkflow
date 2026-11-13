@@ -23,6 +23,7 @@ from domain_model.github.vocabulary import (
 )
 
 from github_workflow.exceptions import (
+    AlreadyInStageError,
     AlreadyProvenError,
     BrokenTestError,
     FindingNotAcceptedError,
@@ -39,6 +40,7 @@ from github_workflow.findings import (
     ClosedBy,
     Evidence,
     FindingAcceptance,
+    FindingChange,
     FindingClosing,
     FindingComment,
     FindingDraftOpening,
@@ -390,6 +392,25 @@ def test_a_shelved_finding_stays_open_with_its_priority() -> None:
         f"add_labels 1 {[FindingStage.SHELVED]}",
         f"remove_label 1 {FindingStage.ACCEPTED}",
     ]
+
+
+@pytest.mark.parametrize(
+    "change, stage",
+    [
+        (FindingAcceptance, FindingStage.ACCEPTED),
+        (FindingShelving, FindingStage.SHELVED),
+    ],
+    ids=["accepting", "shelving"],
+)
+def test_a_finding_in_the_stage_asked_for_is_refused_as_there_already(
+    change: type[FindingChange], stage: FindingStage
+) -> None:
+    board = labelled_board(build_finding(94, stage, Priority.LOW))
+
+    with pytest.raises(AlreadyInStageError) as refusal:
+        change(board, 94).run()
+
+    assert (refusal.value.stage, board.writes) == (stage, [])
 
 
 def test_shelving_what_is_no_finding_is_refused() -> None:

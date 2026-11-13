@@ -845,6 +845,11 @@ class QueryParameter(StrEnum):
     The search query.
     """
 
+    PROTECTED = "protected"
+    """
+    Whether to list only the branches GitHub protects, as ``true``.
+    """
+
 
 class StackAction(StrEnum):
     """

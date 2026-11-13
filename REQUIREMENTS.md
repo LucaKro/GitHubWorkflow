@@ -158,7 +158,8 @@ them:
   ahead of any the interpreter has installed from the working checkout.
 - The code runs the test and decides whether it proves the finding; the agent's word
   is not taken for it. A proof counts only when posted by me or by the account the
-  workflow writes as.
+  workflow writes as, and only with its test inside the repository; no text a session
+  gives a command for GitHub carries the comment marking one of the workflow's records.
 - A session works on a finding only when I ask it to, never because it found one easy
   to prove. Working on an *accepted* finding starts with proving it; when no failing
   test can be written, the session marks it *unproven* with the reason, and leaves it
@@ -252,10 +253,12 @@ them:
   except those that never run their arguments, such as `echo` or `grep`; a text in
   single quotes it reads as text. It also denies a redirection or a program such as
   `rm`, `cp` or `sed` writing where git reads its configuration or hooks, and any
-  builtin setting `CLAUDECODE`. A push run any other way - an
+  builtin setting `CLAUDECODE`. It lets a detached worktree through (`git worktree add
+  --detach`, `remove`, `prune`), a copy at a commit to read and test in. A push run
+  any other way - an
   interpreter, a build tool, a script - is caught by a `pre-push` hook the session
-  start writes into the checkout, which refuses a push to anyone else's repository or
-  to the default branch. It checks only pushes from a Claude Code session (where
+  start writes into the checkout, which refuses a push to anyone else's repository,
+  to the default branch, or one dropping commits the remote's branch has. It checks only pushes from a Claude Code session (where
   `CLAUDECODE` is set, which the guard refuses to change), so my own pushes from a
   terminal pass unchecked. A checkout with a `pre-push` hook of its own keeps it, and
   the session start says the workflow's is missing.
@@ -284,7 +287,8 @@ them:
   cannot be done this way - a conflict, uncommitted changes, a fork's own commits - is
   reported instead, for the session to settle with `sync`
 - save notes and progress
-- mark its own throwaway branches as discarded, closing their open pull requests
+- mark its own throwaway branch, the checked-out one, as discarded, closing its open
+  pull requests; naming another branch is mine to decide
 - open a draft replacing one of its own (`draft --replaces <number>`), closing the old
   one; a stack the old one held is made again with the new one in its place
 - close a pull request only as discarded, replaced or merged upstream, and only an open
@@ -314,12 +318,13 @@ them:
   threads, which it always lists, with the link to turn them on or to the run's log. The workflow lives only on
   the notes branch, never on the default branch or upstream. Nothing is ever
   written upstream: having changed something for an upstream comment, the session says
-  so on the own pull request with `review addressed <address> --body-file <what
+  so on the own pull request with `review addressed <number or address> --body-file <what
   changed>`, which links the comment
 - add a comment to a finding (`finding comment`), a closed one too, such as a correction
   after the fix landed, and on another of my repositories with `--repository`
 - delete branches that are merged or marked discarded, still at the commit they were
-  marked at (`cleanup`)
+  marked at (`cleanup`), never the default branch, the notes branch or one GitHub
+  protects
 - in a cloud session, attach `LucaKro/GitHubWorkflow` or `LucaKro/basstler_domain_model`
   to the session, with push access, to list or file a finding there; never another
   account's copy of either
@@ -341,8 +346,11 @@ temporary directory, links followed; any other line is left to my permissions. W
 is mine to decide - a finding's stage
 (`finding accept`, `shelve`, `reject`), its priority or text (`finding prioritize`,
 `edit`), another pull request's description (`describe <number>`, in any spelling the
-number takes) or its place in a
-stack (`stack on`) - the mod never approves, and a session does it only when I said so
+number takes, and only one opened from my repository) or its place in a stack (`stack
+on`), another branch than the checked-out one to discard (`branch discard <name>`),
+and a comment on a pull request of my repository, open or closed (`comment <number>`)
+- the mod never approves, and a
+session does it only when I said so
 in the conversation.
 Everything else written to GitHub needs me to ask for it.
 

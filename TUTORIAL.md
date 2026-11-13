@@ -203,7 +203,7 @@ On your machine they are read directly. A cloud session cannot reach the upstrea
 writes a request to the notes branch; an Actions workflow there reads GitHub's answers
 and saves them, and the session replays them. Nothing is ever written upstream: after
 changing something for an upstream comment, the session says so on the fork's pull
-request with `review addressed <comment address> --body-file <what changed>`.
+request with `review addressed <comment number or address> --body-file <what changed>`.
 
 `clone <owner/name>` clones any repository to read it. Somebody else's goes into the
 plugin's data directory and carries the push hook, so nothing can be pushed from it.
@@ -222,7 +222,9 @@ Four layers, from the first to the last resort:
    - `curl` and `wget` may read GitHub but not send to it.
    - Writing git's configuration or hooks with a file tool, a redirection or a program
      such as `rm` or `sed -i` is denied.
-   - `git apply --check` and `--stat` pass; applying a patch does not.
+   - `git apply --check` and `--stat` pass; applying a patch does not. `git worktree add
+     --detach <dir> <commit>` gives a second copy at a commit to read and test in, and
+     `remove` and `prune` tidy it away; a worktree on a branch is denied.
    - A command it cannot see into (a program named by `$variable`, a shell reading its
      input, `xargs git`, `curl -K` or an address in `$URL`) is denied and shown to you.
    - A denial names the workflow command that does the job, when there is one.

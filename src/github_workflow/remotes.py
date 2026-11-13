@@ -126,18 +126,22 @@ class ForkUpstream:
         :return: The checkout's remote reaching it, the one named
             :attr:`RemoteName.UPSTREAM` first; when none does, the upstream reached by
             its URL under that name.
-        :raises UpstreamRemoteNameTakenError: If none reaches it and the remote of that
-            name reaches another repository.
+        :raises UpstreamRemoteNameTakenError: If none fetches from it and the remote of
+            that name fetches from another repository.
         """
         configured = Remote.read_configured(self.git)
         reaching = [
-            remote for remote in configured if remote.repository == self.repository
+            remote
+            for remote in configured
+            if remote.fetched_repository() == self.repository
         ]
         named = [remote for remote in reaching if remote.name == RemoteName.UPSTREAM]
         if named or reaching:
             return (named or reaching)[0]
         taken = [remote for remote in configured if remote.name == RemoteName.UPSTREAM]
         if taken:
-            raise UpstreamRemoteNameTakenError(taken[0], self.repository)
+            raise UpstreamRemoteNameTakenError(
+                taken[0], self.repository, taken[0].fetched_repository()
+            )
         url = self.repository.rooted_clone_url()
         return UnconfiguredRemote(self.git, RemoteName.UPSTREAM, url, self.repository)

@@ -8,7 +8,7 @@ from __future__ import annotations
 import sys
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from domain_model.git.commands import GitCommandRunner
@@ -38,6 +38,7 @@ from github_workflow.exceptions import (
     ConflictMarkersLeftError,
     DetachedHeadError,
     DraftUnfinishedError,
+    ForeignPullRequestError,
     MergeConflictError,
     NothingToDescribeError,
     PullRequestNotOpenError,
@@ -482,6 +483,7 @@ class DescriptionRewrite(WorkflowStep):
 
     :raises NothingToDescribeError: If neither is given.
     :raises PullRequestNotOpenError: If the pull request is not open.
+    :raises ForeignPullRequestError: If it was opened from another repository.
     """
 
     pull_requests: RewritablePullRequests
@@ -511,12 +513,19 @@ class DescriptionRewrite(WorkflowStep):
     ``None`` for nothing.
     """
 
+    repository: Repository = field(kw_only=True)
+    """
+    The owner's repository, which the pull request's branch has to be on.
+    """
+
     def run(self) -> str:
         if self.body is None and self.title is None:
             raise NothingToDescribeError(self.number)
         pull_request = self.pull_requests.pull_request(self.number)
         if pull_request.state is not PullRequestState.OPEN:
             raise PullRequestNotOpenError(self.number)
+        if pull_request.head.repository != self.repository.full_name:
+            raise ForeignPullRequestError(self.number, pull_request.head.repository)
         rewritten = []
         if self.body is not None:
             kept = ClosingLines(pull_request.body or "").append_missing_lines(self.body)
@@ -532,6 +541,34 @@ class DescriptionRewrite(WorkflowStep):
             self.pull_requests.set_issue_title(self.number, self.title)
             rewritten.append("title")
         return f"rewrote the {' and '.join(rewritten)} of #{self.number}"
+
+
+@dataclass(frozen=True)
+class PullRequestComment(WorkflowStep):
+    """
+    A comment on a pull request of the owner's repository, open or closed, which the
+    person asked for.
+    """
+
+    pull_requests: RewritablePullRequests
+    """
+    Reads the pull request, and writes the comment.
+    """
+
+    number: int
+    """
+    The pull request.
+    """
+
+    body: str
+    """
+    The comment.
+    """
+
+    def run(self) -> str:
+        self.pull_requests.pull_request(self.number)
+        url = self.pull_requests.add_comment(self.number, self.body)
+        return f"commented on #{self.number}: {url}"
 
 
 # %% bringing a branch up to date

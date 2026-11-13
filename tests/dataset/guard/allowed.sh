@@ -86,3 +86,7 @@ sed -n 1,5p README.md
 cat .git/HEAD
 curl -X POST https://example.com/x -d "$DATA"
 source .venv/bin/activate && git status
+git worktree add --detach /tmp/review HEAD
+git worktree add --detach ../review origin/feature
+git worktree remove /tmp/review
+git worktree prune

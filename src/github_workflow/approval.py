@@ -141,14 +141,6 @@ class SessionCommandApproval:
         """
         return (CommandOption.BODY_FILE, CommandOption.TEST, CommandOption.PYTHON)
 
-    @classproperty
-    def interpreter_prefix(cls) -> str:
-        """
-        How the name of an interpreter on the path, given to
-        :attr:`CommandOption.PYTHON` without a directory, starts.
-        """
-        return "python"
-
     @staticmethod
     def directory_reached(changes: list[SimpleCommand]) -> Path | None:
         """
@@ -186,7 +178,9 @@ class SessionCommandApproval:
                 (CommandOption(option), file) for file in following if not joined
             )
         for option, value in given:
-            on_path = "/" not in value and value.startswith(self.interpreter_prefix)
+            on_path = "/" not in value and value.startswith(
+                WorkflowInvocation.interpreter_prefix
+            )
             if option is CommandOption.PYTHON and on_path:
                 continue
             located = (directory / Path(value).expanduser()).resolve()

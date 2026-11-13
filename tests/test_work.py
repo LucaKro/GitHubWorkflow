@@ -36,6 +36,7 @@ from github_workflow.checkout import ProjectCheckout
 from github_workflow.command_line import RunnableCommand, WorkflowCommand
 from github_workflow.environment import WorkflowVariable
 from github_workflow.exceptions import (
+    ForeignPullRequestError,
     AssistantCreditError,
     BranchDeletedFromGitHubError,
     BranchNotPushedError,
@@ -63,6 +64,7 @@ from github_workflow.remotes import OwnedRemotes
 from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
 from github_workflow.work import (
+    PullRequestComment,
     BaseMerge,
     BranchStart,
     BranchSwitch,
@@ -87,6 +89,7 @@ from github_workflow.workflow_step import SessionLog
 from .issues_in_memory import IssuesInMemory
 from .pull_requests import pull_request
 from .repositories_by_owner import RepositoriesByOwner
+from .scratch_github import ScratchGitHub
 from .stacked_pull_requests import (
     DraftsAndStacksInMemory,
     DraftsInMemory,
@@ -1217,7 +1220,28 @@ def rewrite(
     :param title: The new title, ``None`` to keep it.
     :return: The rewrite of pull request 1.
     """
-    return DescriptionRewrite(github, 1, body, title)
+    return DescriptionRewrite(github, 1, body, title, repository=ScratchGitHub.owned)
+
+
+@dataclass(frozen=True)
+class DraftsFromAnotherFork(DraftsInMemory):
+    """
+    The stand-in, every pull request opened from a branch of somebody else's fork.
+    """
+
+    def pull_request(self, number: int) -> RestPullRequest:
+        opened = super().pull_request(number)
+        foreign = f"{RepositoriesByOwner.foreign_owner}/project"
+        return replace(opened, head=replace(opened.head, repository=foreign))
+
+
+def test_a_pull_request_from_somebody_else_s_fork_is_not_rewritten() -> None:
+    github = DraftsFromAnotherFork({1: RepositoriesByOwner.default_branch})
+
+    with pytest.raises(ForeignPullRequestError):
+        rewrite(github, "A new body").run()
+
+    assert github.writes == []
 
 
 @pytest.mark.parametrize(
@@ -1305,6 +1329,31 @@ def test_a_rewrite_changing_nothing_is_refused() -> None:
         step.run()
 
     assert github.writes == []
+
+
+# %% commenting on a pull request
+
+
+def test_a_comment_is_posted_on_the_pull_request_named() -> None:
+    github = DraftsInMemory({1: "main"})
+
+    PullRequestComment(github, 1, "The plan.").run()
+
+    assert github.writes == ["add_comment 1"]
+
+
+def test_a_closed_pull_request_is_commented_on_too() -> None:
+    github = DraftsInMemory({1: "main"}, closed=frozenset({1}))
+
+    PullRequestComment(github, 1, "A correction.").run()
+
+    assert github.writes == ["add_comment 1"]
+
+
+def test_commenting_on_a_pull_request_is_the_person_s_word() -> None:
+    words = list(RunnableCommand.COMMENT.words)
+
+    assert not RunnableCommand.COMMENT.runs_unasked(words)
 
 
 # %% cloning

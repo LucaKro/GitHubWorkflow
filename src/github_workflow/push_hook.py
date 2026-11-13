@@ -17,12 +17,14 @@ from pathlib import Path
 
 from domain_model.environment import ClaudeCodeVariable
 from domain_model.git.remotes import ReferenceUpdate, Remote
+from domain_model.git.revisions import Commit
 from domain_model.locations import GitStateFile
 from domain_model.templates import Placeholder
 
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.exceptions import (
     DefaultBranchWriteError,
+    ForcedPushError,
     ForeignPushError,
     UnknownDefaultBranchError,
 )
@@ -83,6 +85,8 @@ class PushCheck:
         :raises UnknownDefaultBranchError: If the remote's default branch cannot be
             read.
         :raises DefaultBranchWriteError: If the push changes the default branch.
+        :raises ForcedPushError: If the push drops commits the remote's branch has, as
+            far as the checkout knows them.
         """
         repository = self.destination.repository
         if repository is None or not self.settings.owns(repository):
@@ -94,6 +98,18 @@ class PushCheck:
             update.remote_reference == default_branch.reference for update in updates
         ):
             raise DefaultBranchWriteError(default_branch.name)
+        git = self.destination.git
+        for update in updates:
+            if (
+                update.local_commit.names_no_commit
+                or update.remote_commit.names_no_commit
+            ):
+                continue
+            remote = Commit(git, update.remote_commit)
+            if remote.commit_or_none() is None:
+                continue
+            if not remote.is_contained_in(Commit(git, update.local_commit)):
+                raise ForcedPushError(update.remote_reference)
 
 
 # %% the hook

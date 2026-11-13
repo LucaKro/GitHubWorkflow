@@ -14,3 +14,4 @@ github-workflow describe --title "Fix 5 things" --body-file body.md
 github-workflow finding comment 7 --body-file /tmp/comment.md
 github-workflow push 2>&1 | tail -n 20
 github-workflow push 2>&1 | head -5
+github-workflow branch discard

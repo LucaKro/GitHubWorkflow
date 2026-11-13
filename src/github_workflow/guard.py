@@ -181,6 +181,11 @@ class GitHubCliWrite(StrEnum):
     Rewriting a pull request.
     """
 
+    PULL_REQUEST_COMMENT = "pr comment"
+    """
+    Commenting on a pull request.
+    """
+
 
 class GitHubToolWrite(StrEnum):
     """
@@ -210,6 +215,11 @@ class GitHubToolWrite(StrEnum):
     RESOLVE_REVIEW_THREAD = "resolve_review_thread"
     """
     Resolves a review thread.
+    """
+
+    ADD_ISSUE_COMMENT = "add_issue_comment"
+    """
+    Comments on an issue or pull request.
     """
 
 
@@ -401,6 +411,23 @@ class LabelAlternative(WorkflowAlternative):
 
 
 @dataclass(frozen=True)
+class CommentAlternative(WorkflowAlternative):
+    """
+    Commenting on a pull request, with ``comment``, which a session runs only when the
+    person asks for the comment.
+    """
+
+    @classproperty
+    def writes(cls) -> tuple[str, ...]:
+        return GitHubCliWrite.PULL_REQUEST_COMMENT, GitHubToolWrite.ADD_ISSUE_COMMENT
+
+    def command_line(self) -> str:
+        return RunnableCommand.COMMENT.usage(
+            ArgumentName.NUMBER, CommandOption.BODY_FILE
+        )
+
+
+@dataclass(frozen=True)
 class ReviewReplyAlternative(WorkflowAlternative):
     """
     Replying in a review thread of the work branch's own pull request, with
@@ -582,16 +609,39 @@ class WorkflowInvocation:
     The simple command.
     """
 
+    @classproperty
+    def interpreter_prefix(cls) -> str:
+        """
+        How the name of a Python interpreter starts.
+        """
+        return "python"
+
+    @classmethod
+    def may_run_workflow(cls, program: str) -> bool:
+        """
+        :param program: A program's name, maybe with its directory.
+        :return: Whether it is the launcher or an interpreter, either of which runs the
+            workflow's commands.
+        """
+        name = PurePath(program).name
+        return name == Launcher.COMMAND or name.startswith(cls.interpreter_prefix)
+
     def words(self) -> list[str] | None:
         """
         :return: The words it gives ``python -m github_workflow``, or the launcher,
             options left out, ``None`` when it runs neither.
         """
         arguments = self.command.arguments
+        module_option = "-m"
+        joined = f"{module_option}{github_workflow.__name__}"
         if self.command.program == Launcher.COMMAND:
             given = arguments
-        elif self.command.program.startswith("python") and "-m" in arguments[:-1]:
-            module = arguments.index("-m") + 1
+        elif not self.command.program.startswith(self.interpreter_prefix):
+            return None
+        elif joined in arguments:
+            given = arguments[arguments.index(joined) + 1 :]
+        elif module_option in arguments[:-1]:
+            module = arguments.index(module_option) + 1
             if arguments[module] != github_workflow.__name__:
                 return None
             given = arguments[module + 1 :]
@@ -670,21 +720,6 @@ class CommandGuard:
             )
         judge = replace(self, enclosing_line_names_git=mentions_git)
         for command in line.simple_commands():
-            person_only = next(
-                (
-                    workflow_command
-                    for workflow_command in RunnableCommand
-                    if not workflow_command.authority.session_may_run
-                    and WorkflowInvocation(command).runs(workflow_command)
-                ),
-                None,
-            )
-            if person_only is not None:
-                return Denial(
-                    f"only the person runs `{' '.join(person_only.words)}`, never a "
-                    f"Claude Code session: put its command line in the pull request's "
-                    f"description for them to copy"
-                )
             if mentions_git and "$" in command.program:
                 return Denial(
                     "a program named by an expansion could be git or gh",
@@ -701,6 +736,21 @@ class CommandGuard:
         :return: Why it is denied, ``None`` when it may run.
         """
         program, arguments = command.program, command.arguments
+        person_only = next(
+            (
+                workflow_command
+                for workflow_command in RunnableCommand
+                if not workflow_command.authority.session_may_run
+                and WorkflowInvocation(command).runs(workflow_command)
+            ),
+            None,
+        )
+        if person_only is not None:
+            return Denial(
+                f"only the person runs `{' '.join(person_only.words)}`, never a "
+                f"Claude Code session: put its command line in the pull request's "
+                f"description for them to copy"
+            )
         if any(
             GitVariable.steers_git(assignment) for assignment in command.assignments
         ):
@@ -759,7 +809,8 @@ class CommandGuard:
                 reason = nested.denial(argument)
                 if reason is not None:
                     return reason
-            if PurePath(argument).name in judged:
+            program = PurePath(argument).name
+            if program in judged or WorkflowInvocation.may_run_workflow(program):
                 return self.command_denial(SimpleCommand(arguments[index:]))
         return None
 
@@ -796,7 +847,7 @@ class CommandGuard:
                     f"xargs gives {program} arguments the guard cannot see",
                     saw_write=False,
                 )
-            if program in judged:
+            if program in judged or WorkflowInvocation.may_run_workflow(program):
                 return self.command_denial(SimpleCommand(arguments[index:]))
         return None
 
