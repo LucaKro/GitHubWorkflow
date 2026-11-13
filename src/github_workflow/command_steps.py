@@ -74,8 +74,8 @@ from github_workflow.tags import (
     WaitingTags,
 )
 from github_workflow.upstream import (
-    FindingUpstream,
     ForkMainSync,
+    IssueMoveSuggestion,
     IssueUpstreamMove,
     TerminalConfirmation,
     UpstreamProposal,
@@ -502,20 +502,17 @@ class FindingFileStep(CommandStep):
             if arguments.test is None
             else session.github
         )
-        upstream = FindingUpstream(
-            board.repository,
-            board,
-            GitHubRepository.from_environment,
-            tuple(arguments.not_upstream or ()),
-        )
+        suggestion = IssueMoveSuggestion(board.repository, board)
         if arguments.test is None:
-            return FindingFiling(board, self.title, self.body, self.priority, upstream)
+            return FindingFiling(
+                board, self.title, self.body, self.priority, suggestion
+            )
         return ProvenFindingFiling(
             board,
             self.title,
             self.body,
             self.priority,
-            upstream,
+            suggestion,
             FindingTest.read(session.checkout, arguments.test),
             session.proof_runner(arguments.python, session.default_branch()),
         )
@@ -645,11 +642,12 @@ class FindingEditStep(CommandStep):
 
     def step(self) -> WorkflowStep:
         board = self.session.findings_board(self.arguments.repository)
-        upstream = FindingUpstream(
-            board.repository, board, GitHubRepository.from_environment
-        )
         return FindingEdit(
-            board, self.arguments.number, self.title, self.body, upstream
+            board,
+            self.arguments.number,
+            self.title,
+            self.body,
+            IssueMoveSuggestion(board.repository, board),
         )
 
 
@@ -819,12 +817,7 @@ class TagFileStep(CommandStep):
             WaitingTags(session.tag_source, session.notes),
             arguments.tag,
             board,
-            FindingUpstream(
-                board.repository,
-                board,
-                GitHubRepository.from_environment,
-                tuple(arguments.not_upstream or ()),
-            ),
+            IssueMoveSuggestion(board.repository, board),
             arguments.title,
             self.body,
             self.priority,

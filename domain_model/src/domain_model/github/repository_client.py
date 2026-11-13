@@ -31,7 +31,6 @@ from domain_model.github.rest_models import (
 from domain_model.github.routes import RepositoryRoute
 from domain_model.github.stack_models import Stack
 from domain_model.github.vocabulary import (
-    IssueListingState,
     IssueState,
     IssueStateReason,
     PullRequestState,
@@ -478,21 +477,6 @@ class IssueOpener(ABC):
 
 
 @dataclass(frozen=True)
-class RecentIssues(ABC):
-    """
-    Reads the issues most recently filed on a repository.
-    """
-
-    @abstractmethod
-    def recent_issues(self) -> list[Issue] | None:
-        """
-        :return: The first page of the repository's issues, open and closed, the newest
-            first and pull requests left out; ``None`` when the credential may not read
-            them.
-        """
-
-
-@dataclass(frozen=True)
 class IssueTemplateSource(ABC):
     """
     Finds the templates a repository has issues filed through.
@@ -808,7 +792,6 @@ class GitHubRepository(
     ProposingFork,
     RewritablePullRequests,
     UpstreamIssueTracker,
-    RecentIssues,
 ):
     """
     Every pull-request, stack and label call this tooling makes, against one repository.
@@ -1107,20 +1090,6 @@ class GitHubRepository(
         return [
             Issue.from_json(entry)
             for entry in self._every_entry(listing)
-            if not Issue.is_pull_request(entry)
-        ]
-
-    def recent_issues(self) -> list[Issue] | None:
-        listing = self.route.listing(
-            self.route.issues(), {QueryParameter.STATE: IssueListingState.ALL}
-        )
-        answer = self.api.attempt("GET", listing)
-        if answer.refused:
-            return None
-        answer.raise_if_failed("GET", listing)
-        return [
-            Issue.from_json(entry)
-            for entry in answer.body
             if not Issue.is_pull_request(entry)
         ]
 

@@ -26,7 +26,6 @@ from domain_model.locations import IssueTemplateLocation
 from domain_model.github.vocabulary import (
     ClosingKeyword,
     IssueEventType,
-    IssueListingState,
     IssueState,
     IssueStateReason,
     PullRequestState,
@@ -629,36 +628,17 @@ def test_a_closing_reference_is_the_keyword_before_the_issue_s_number():
     assert ClosingKeyword.FIXES.reference(3) == f"{ClosingKeyword.FIXES} #3"
 
 
-# %% recent issues and issue templates
+# %% an issue's text and issue templates
 
 
-def test_the_recent_issues_are_read_open_and_closed_with_their_text():
-    listing = ROUTE.listing(
-        ROUTE.issues(), {QueryParameter.STATE: IssueListingState.ALL}
-    )
-    closed = {
-        **issue_entry(3, []),
-        RestJSONKey.STATE: IssueState.CLOSED.value,
-        RestJSONKey.BODY: "What happens.",
-    }
-    pull_request = {**issue_entry(2, []), RestJSONKey.PULL_REQUEST: {}}
-    answers = {
-        ("GET", f"/{listing}"): RecordedAnswer(
-            HTTPStatus.OK, json.dumps([closed, pull_request])
-        )
-    }
+def test_an_issue_is_read_with_its_text():
+    entry = {**issue_entry(3, []), RestJSONKey.BODY: "What happens."}
+    answers = {("GET", f"/{ROUTE.issue(3)}"): answer(HTTPStatus.OK, entry)}
 
     with ReplayedApi(answers) as api:
-        issues = client(api).recent_issues()
+        issue = client(api).issue(3)
 
-    assert issues == [Issue(3, "Issue 3", (), IssueState.CLOSED, "What happens.")]
-
-
-def test_recent_issues_the_credential_may_not_read_are_none():
-    with ReplayedApi({}) as api:
-        issues = client(api).recent_issues()
-
-    assert issues is None
+    assert issue == Issue(3, "Issue 3", (), IssueState.OPEN, "What happens.")
 
 
 def content_entry(path: Path, kind: RepositoryContentKind) -> dict[str, object]:

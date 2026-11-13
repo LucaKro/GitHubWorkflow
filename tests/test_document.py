@@ -120,6 +120,14 @@ def test_the_header_tells_a_session_to_file_findings_without_asking() -> None:
     assert "file it there without asking first" in RefusalAdvice.hint()
 
 
+def test_the_header_tells_a_session_to_search_the_upstream_before_filing() -> None:
+    """
+    Nothing compares a finding with the upstream's issues once it is filed; a session
+    that skips the search files duplicates that end up upstream.
+    """
+    assert "first search the upstream's issues, open and closed" in block().render()
+
+
 # %% commands named in the header
 
 

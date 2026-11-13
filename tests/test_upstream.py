@@ -52,11 +52,9 @@ from github_workflow.settings import WorkflowSettings
 from github_workflow.findings import FindingStage, Priority
 from github_workflow.proofs import FindingTest, Proof
 from github_workflow.upstream import (
-    CommonWord,
     Confirmation,
     ForkMainSync,
     IssueUpstreamMove,
-    TitleWords,
     UpstreamLabel,
     UpstreamMergeFollowing,
     UpstreamProposal,
@@ -1077,18 +1075,3 @@ def test_an_issue_without_closing_pull_requests_asks_nothing() -> None:
     issue_move(fork_issues(), IssueIntakeInMemory(), answer).run()
 
     assert answer.questions == []
-
-
-# %% titles alike
-
-
-def test_common_words_and_single_letters_leave_a_title_s_words() -> None:
-    title = f"{CommonWord.THE} review's thread {CommonWord.OF} a pending review"
-
-    assert TitleWords.from_title(title).words == {"review", "thread", "pending"}
-
-
-def test_a_title_s_share_counts_the_words_the_other_has_too() -> None:
-    words = TitleWords(frozenset({"review", "thread"}))
-
-    assert words.shared_share(TitleWords(frozenset({"review", "list"}))) == 0.5

@@ -515,17 +515,6 @@ class RepositoryContentKind(StrEnum):
     """
 
 
-class IssueListingState(StrEnum):
-    """
-    The ``state`` the issue list API filters on beyond :class:`IssueState`.
-    """
-
-    ALL = "all"
-    """
-    Open and closed issues alike.
-    """
-
-
 class IssueState(StrEnum):
     """
     The ``state`` REST reads and writes on an issue or a pull request: the

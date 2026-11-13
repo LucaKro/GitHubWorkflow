@@ -158,12 +158,9 @@ github-workflow finding file ... --test tests/test_shows_it.py   # filed already
 github-workflow finding list
 ```
 
-On a fork, `finding file` first reads the titles of the upstream's most recent issues,
-open and closed. When one shares at least half of the finding title's words, common
-words left out, nothing is filed: the refusal links the upstream issues titled like it.
-Once each is checked and found not to cover the finding, `--not-upstream <number>`
-(once for each) files it anyway and names them in its text. A finding filed on a fork
-ends with the command line that moves it upstream (see [section 6](#6-forks-and-their-upstream)).
+On a fork, a session first searches the upstream's issues, open and closed, and files
+the finding only when none of them covers it. A finding filed on a fork ends with the
+command line that moves it upstream (see [section 6](#6-forks-and-their-upstream)).
 
 Its life is carried by labels:
 

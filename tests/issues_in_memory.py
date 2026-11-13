@@ -10,7 +10,7 @@ from dataclasses import dataclass, field, replace
 
 from domain_model.github.issue_models import Issue, IssueComment
 from domain_model.github.labels import GitHubLabel
-from domain_model.github.repository_client import ClosablePullRequests, RecentIssues
+from domain_model.github.repository_client import ClosablePullRequests
 from domain_model.github.rest_models import RestPullRequest
 from domain_model.github.vocabulary import IssueState, IssueStateReason
 from domain_model.repository import Repository
@@ -18,7 +18,7 @@ from domain_model.repository import Repository
 from github_workflow.findings import FindingLabel, FindingStage, Priority
 from github_workflow.proofs import FindingTest, ProofAttempt, ProofRunner
 from github_workflow.settings import WorkflowSettings
-from github_workflow.upstream import FindingUpstream
+from github_workflow.upstream import IssueMoveSuggestion
 
 from .scratch_github import ForkOf, ScratchGitHub
 
@@ -139,38 +139,11 @@ class IssuesInMemory(ClosablePullRequests):
         self.writes.append(f"set_issue_description {number} {body}")
 
 
-@dataclass(frozen=True)
-class RecentIssuesInMemory(RecentIssues):
-    """
-    The issues most recently filed on a repository, as given.
-    """
-
-    recent: list[Issue] | None = field(default_factory=list)
-    """
-    The issues, ``None`` for issues the credential may not read.
-    """
-
-    def recent_issues(self) -> list[Issue] | None:
-        return self.recent
-
-
-def finding_upstream(
-    forked_from: Repository | None = None,
-    *recent: Issue,
-    checked: tuple[int, ...] = (),
-) -> FindingUpstream:
+def move_suggestion(forked_from: Repository | None = None) -> IssueMoveSuggestion:
     """:param forked_from: The repository the owner's was forked from, ``None`` for
         none.
-    :param recent: The issues most recently filed there.
-    :param checked: Those checked and found not to cover the finding.
-    :return: The owner's repository, as filing a finding on it goes."""
-    upstream_issues = RecentIssuesInMemory(list(recent))
-    return FindingUpstream(
-        ScratchGitHub.owned,
-        ForkOf(forked_from),
-        lambda repository: upstream_issues,
-        checked,
-    )
+    :return: The command line moving an issue of the owner's repository upstream."""
+    return IssueMoveSuggestion(ScratchGitHub.owned, ForkOf(forked_from))
 
 
 def build_finding(number: int, stage: FindingStage, priority: Priority) -> Issue:

@@ -47,7 +47,6 @@ import github_workflow.session_start
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.command_line import (
     BranchSubcommand,
-    CommandOption,
     FindingSubcommand,
     NotesSubcommand,
     RunnableCommand,
@@ -85,7 +84,7 @@ from github_workflow.remotes import OwnedRemotes
 from github_workflow.report_lines import Speaker, Tone
 from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
-from github_workflow.upstream import FindingUpstream, UpstreamSuggestion
+from github_workflow.upstream import IssueMoveSuggestion, UpstreamSuggestion
 
 from .repositories_by_owner import RepositoriesByOwner
 from .test_proofs import ProofDataset
@@ -794,30 +793,10 @@ def test_a_finding_filed_without_a_test_runs_none(
     )
 
 
-def test_upstream_issues_checked_are_passed_on(
-    finding_checkout: ProjectCheckout, settings: WorkflowSettings
-) -> None:
-    step = build_step(
-        finding_checkout,
-        WorkflowCommand.FINDING,
-        FindingSubcommand.FILE,
-        "--title=A title",
-        "--body-file=finding.md",
-        f"--priority={Priority.HIGH.level}",
-        f"{CommandOption.NOT_UPSTREAM}=5",
-        f"{CommandOption.NOT_UPSTREAM}=7",
-    )
-
-    assert step.upstream == filed_on(owner_s_github(settings), (5, 7))
-
-
-def filed_on(board: GitHubRepository, checked: tuple[int, ...] = ()) -> FindingUpstream:
+def filed_on(board: GitHubRepository) -> IssueMoveSuggestion:
     """:param board: The repository a finding is filed on.
-    :param checked: The upstream issues checked.
-    :return: It, as filing a finding on it goes."""
-    return FindingUpstream(
-        board.repository, board, GitHubRepository.from_environment, checked
-    )
+    :return: The command line moving a finding upstream from it."""
+    return IssueMoveSuggestion(board.repository, board)
 
 
 def test_proving_runs_the_test_on_the_default_branch(

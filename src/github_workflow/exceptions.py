@@ -1002,34 +1002,6 @@ class IssueTemplatesRequiredError(DataclassException, ValueError):
 
 
 @dataclass
-class UpstreamIssueMatchError(DataclassException, ValueError):
-    """
-    Raised when a finding to be filed on a fork is titled like an issue of the
-    repository the fork was forked from.
-    """
-
-    upstream: Repository
-    """
-    The repository the fork was forked from.
-    """
-
-    matches: tuple[int, ...]
-    """
-    Its issues titled like the finding, not checked yet.
-    """
-
-    def error_message(self) -> str:
-        links = ", ".join(self.upstream.issue_link(number) for number in self.matches)
-        return f"{self.upstream} has issues titled like it: {links}"
-
-    def suggest_correction(self) -> str:
-        return (
-            f"Read them; file it only if none covers it, naming each with "
-            f"{CommandOption.NOT_UPSTREAM} <number>."
-        )
-
-
-@dataclass
 class PullRequestNotProposableError(DataclassException, ValueError):
     """
     Raised when a fork's branch has no pull request that can be opened upstream.

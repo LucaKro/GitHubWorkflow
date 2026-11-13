@@ -466,11 +466,6 @@ class CommandOption(StrEnum):
     How urgent a finding is.
     """
 
-    NOT_UPSTREAM = "--not-upstream"
-    """
-    An issue of the upstream repository checked and found not to cover the finding.
-    """
-
     FOLLOWS_TEMPLATE = "--follows-template"
     """
     The issue was rewritten to follow the upstream repository's issue templates.
@@ -807,21 +802,6 @@ class CommandArgument:
             "another of the owner's repositories, as owner/name, no checkout needed; "
             "the checkout's when left out",
             alternative=alternative,
-        )
-
-    @classmethod
-    def checked_upstream_issue(cls) -> CommandArgument:
-        """
-        An issue of the upstream titled like a finding, checked and found not to cover
-        it.
-        """
-        return cls(
-            CommandOption.NOT_UPSTREAM,
-            "number",
-            "an issue of the fork's upstream titled like it, checked and found not to "
-            "cover it; once for each",
-            int,
-            count=ArgumentCount.REPEATED,
         )
 
     @classmethod
@@ -1190,7 +1170,6 @@ class RunnableCommand(CommandSpecification, Enum):
             ),
             CommandArgument.other_repository(alternative=True),
             CommandArgument.interpreter(),
-            CommandArgument.checked_upstream_issue(),
         ),
     )
     """
@@ -1554,7 +1533,6 @@ class RunnableCommand(CommandSpecification, Enum):
             CommandArgument(CommandOption.TITLE, "title", required=True),
             CommandArgument.body_file("the issue's text, summing up the conversation"),
             CommandArgument.other_repository(),
-            CommandArgument.checked_upstream_issue(),
         ),
     )
     """

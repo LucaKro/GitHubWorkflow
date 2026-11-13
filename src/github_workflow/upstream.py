@@ -1,12 +1,11 @@
 """
 The repository the owner's fork was forked from: opening a pull request or moving an
 issue of the fork there, commands only the person runs, which the description suggests
-to them; checking a finding against the upstream's issues; following the upstream.
+to them; following the upstream.
 """
 
 from __future__ import annotations
 
-import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Collection
 from dataclasses import dataclass, field
@@ -24,7 +23,6 @@ from domain_model.github.repository_client import (
     ForkDetails,
     ProposingFork,
     PullRequestSearch,
-    RecentIssues,
     UpstreamIssueTracker,
     UpstreamRepository,
 )
@@ -46,7 +44,6 @@ from github_workflow.exceptions import (
     NotAForkError,
     PersonOnlyCommandError,
     PullRequestNotProposableError,
-    UpstreamIssueMatchError,
 )
 from github_workflow.labels import UpstreamLabel
 from github_workflow.plugin import Launcher
@@ -426,94 +423,16 @@ class UpstreamSuggestion(DescriptionEnding):
 # %% findings filed on a fork
 
 
-class CommonWord(StrEnum):
-    """
-    The words too many titles share to tell what one is about, besides single letters.
-    """
-
-    A = "a"
-    AN = "an"
-    AND = "and"
-    ARE = "are"
-    AS = "as"
-    AT = "at"
-    BE = "be"
-    BUT = "but"
-    BY = "by"
-    CAN = "can"
-    DOES = "does"
-    FOR = "for"
-    FROM = "from"
-    HAS = "has"
-    IF = "if"
-    IN = "in"
-    INTO = "into"
-    IS = "is"
-    IT = "it"
-    ITS = "its"
-    NO = "no"
-    NOT = "not"
-    OF = "of"
-    ON = "on"
-    OR = "or"
-    SHOULD = "should"
-    SO = "so"
-    SUCH = "such"
-    THAT = "that"
-    THE = "the"
-    THIS = "this"
-    TO = "to"
-    WHEN = "when"
-    WITH = "with"
-    WITHOUT = "without"
-
-
 @dataclass(frozen=True)
-class TitleWords:
+class IssueMoveSuggestion:
     """
-    The words of an issue's title that tell what it is about, in lower case.
-    """
-
-    words: frozenset[str]
-    """
-    The words.
-    """
-
-    @classmethod
-    def from_title(cls, title: str) -> TitleWords:
-        """
-        :param title: An issue's title.
-        :return: Its words, common words and single letters left out.
-        """
-        return cls(
-            frozenset(
-                word
-                for word in re.findall(r"[a-z0-9]+", title.casefold())
-                if len(word) > 1 and word not in set(CommonWord)
-            )
-        )
-
-    def shared_share(self, other: TitleWords) -> float:
-        """
-        :param other: Another title's words.
-        :return: The share of these words the other title has too; none of no words.
-        """
-        if not self.words:
-            return 0.0
-        return len(self.words & other.words) / len(self.words)
-
-
-@dataclass(frozen=True)
-class FindingUpstream:
-    """
-    What filing a finding on a repository has to do with the repository it was forked
-    from: a finding titled like one of the upstream's recent issues is refused unless
-    that issue was checked, and one filed on a fork ends with the command moving it.
+    The command line moving an issue of the owner's fork upstream, ending the issue's
+    text for the person to copy; nothing on a repository that is no fork.
     """
 
     repository: Repository
     """
-    The repository the finding is filed on.
+    The repository the issue is on.
     """
 
     fork_details: ForkDetails
@@ -521,59 +440,15 @@ class FindingUpstream:
     Reads which repository it was forked from.
     """
 
-    upstream_issues: Callable[[Repository], RecentIssues]
-    """
-    Reaches the repository it was forked from.
-    """
-
-    checked: tuple[int, ...] = ()
-    """
-    The upstream's issues titled like the finding that were checked and found not to
-    cover it.
-    """
-
-    least_shared_share: float = 0.5
-    """
-    The share of the finding title's words an upstream issue's title has to share to
-    count as titled like it.
-    """
-
-    def check_title(self, title: str, body: str) -> str:
+    def append_once(self, body: str, number: int) -> str:
         """
-        :param title: The finding's title.
-        :param body: Its text.
-        :return: The text, ending with the upstream issues checked, when any were.
-        :raises UpstreamIssueMatchError: If one of the upstream's recent issues not
-            checked is titled like the finding.
+        :param body: The issue's text, which may end with the command line already.
+        :param number: The issue.
+        :return: The text, ending with the command line once.
         """
         upstream = self.fork_details.upstream()
         if upstream is None:
             return body
-        words = TitleWords.from_title(title)
-        unchecked = tuple(
-            issue.number
-            for issue in self.upstream_issues(upstream).recent_issues() or []
-            if issue.number not in self.checked
-            and words.shared_share(TitleWords.from_title(issue.title))
-            >= self.least_shared_share
-        )
-        if unchecked:
-            raise UpstreamIssueMatchError(upstream, unchecked)
-        if not self.checked:
-            return body
-        links = ", ".join(upstream.issue_link(number) for number in self.checked)
-        return f"{body}\n\nChecked against {upstream} {links}, which do not cover it."
-
-    def suggest_move(self, body: str, number: int) -> str | None:
-        """
-        :param body: The text of the finding filed.
-        :param number: Its issue.
-        :return: The text, ending with the command line moving it upstream for the
-            person to run; ``None`` on a repository that is no fork.
-        """
-        upstream = self.fork_details.upstream()
-        if upstream is None:
-            return None
         ending = IssueUpstreamMove.ending(self.repository, number, upstream)
         return ending.append_once(body)
 
