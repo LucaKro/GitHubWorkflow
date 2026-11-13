@@ -19,6 +19,7 @@ from domain_model.git.working_tree import WorkingTree
 from domain_model.github.closing_lines import ClosingLines
 from domain_model.github.repository_client import (
     BranchStacks,
+    ForkDetails,
     IssueTracker,
     PullRequestOpener,
     PullRequestReader,
@@ -52,24 +53,9 @@ from github_workflow.labels import IssueLabel
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
 from github_workflow.push_hook import PushHook
+from github_workflow.remotes import ForkUpstream
 from github_workflow.settings import WorkflowSettings
-
-# %% one step
-
-
-class WorkflowStep(ABC):
-    """
-    One write a session asks the workflow for.
-    """
-
-    @abstractmethod
-    def run(self) -> str:
-        """
-        Make the write.
-
-        :return: What was done, in one line.
-        """
-
+from github_workflow.workflow_step import WorkflowStep
 
 # %% branches
 
@@ -110,10 +96,12 @@ class LocalBranchFollowing:
 @dataclass(frozen=True)
 class BranchStart(WorkflowStep):
     """
-    A new work branch, started from GitHub's copy of the default branch or of another
-    branch - or from the local branch, when GitHub has none of that name - and checked
-    out. Started from GitHub's default branch, it also fast-forwards the local default
-    branch to it.
+    A new work branch, checked out.
+
+    It starts from GitHub's copy of the default branch or of another branch, from the
+    repository the fork was forked from when only that has the branch, or from the local
+    branch when GitHub has none. When it starts from GitHub's default branch, the local
+    default branch is fast-forwarded to it as well.
     """
 
     policy: WritePolicy
@@ -131,7 +119,17 @@ class BranchStart(WorkflowStep):
     The branch to start from, the default branch when ``None``.
     """
 
+    fork: ForkDetails | None = None
+    """
+    Reads which repository the owner's was forked from; ``None`` starts only from the
+    owner's repository or the checkout.
+    """
+
     def run(self) -> str:
+        """
+        :raises UpstreamRemoteNameTakenError: If only the upstream can have the branch,
+            and the remote named for it reaches another repository.
+        """
         base = self.policy.remote.branch(self.base or self.policy.default_branch)
         checkout = self.policy.checkout
         started = LocalBranch(checkout.git, self.name)
@@ -142,11 +140,32 @@ class BranchStart(WorkflowStep):
             if base.name != self.policy.default_branch:
                 return line
             return f"{line}{LocalBranchFollowing(checkout.working_tree).follow(base)}"
+        upstream_base = self.upstream_branch(base.name)
+        if upstream_base is not None:
+            started.create(upstream_base.tracking_branch)
+            return (
+                f"on {self.name}, started from "
+                f"{upstream_base.remote.name}/{upstream_base.name}"
+            )
         local_base = LocalBranch(checkout.git, base.name)
         if local_base.commit_or_none() is None:
             fetched.raise_if_failed()
         started.create(local_base)
         return f"on {self.name}, started from the local {base.name}"
+
+    def upstream_branch(self, name: BranchName) -> RemoteBranch | None:
+        """
+        :param name: A branch the owner's repository lacks.
+        :return: The branch of the repository the owner's was forked from, as just
+            fetched; ``None`` when it is no fork, or that repository lacks it too.
+        :raises UpstreamRemoteNameTakenError: If the remote named for the upstream
+            reaches another repository.
+        """
+        upstream = None if self.fork is None else self.fork.upstream()
+        if upstream is None:
+            return None
+        branch = ForkUpstream(self.policy.checkout.git, upstream).remote().branch(name)
+        return branch if branch.fetch().succeeded else None
 
 
 @dataclass(frozen=True)
@@ -261,20 +280,6 @@ class PullRequestRetirement(ABC):
         """
         :param number: The pull request.
         :param reason: Why it is closed, commented on it.
-        """
-
-
-class SessionLog(ABC):
-    """
-    Where what a session does without asking is entered, for the person to read in one
-    place.
-    """
-
-    @abstractmethod
-    def enter(self, action: str) -> None:
-        """
-        :param action: What the session did, in one line, naming the issues, pull
-            requests and branches it touched.
         """
 
 

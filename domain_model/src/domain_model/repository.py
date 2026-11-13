@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 
 from domain_model.class_property import classproperty
 from domain_model.exceptions import MalformedRepositoryError
-from domain_model.github.number_links import HasNumberLink
+from domain_model.number_links import HasNumberLink
 
 # %% addresses
 

@@ -18,7 +18,8 @@ from github_workflow.freshness import BranchFreshening, FreshenedStep
 from github_workflow.policy import WritePolicy
 from github_workflow.report_lines import Tone
 from github_workflow.settings import WorkflowSettings
-from github_workflow.work import BranchSwitch, WorkflowStep
+from github_workflow.work import BranchSwitch
+from github_workflow.workflow_step import WorkflowStep
 
 from .pull_requests import pull_request
 from .repositories_by_owner import RepositoriesByOwner

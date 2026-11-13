@@ -84,8 +84,8 @@ from github_workflow.work import (
     Replacement,
     RepositoryCloning,
     StackPlacing,
-    WorkflowStep,
 )
+from github_workflow.workflow_step import WorkflowStep
 
 if TYPE_CHECKING:
     from github_workflow.session import WorkflowSession
@@ -230,7 +230,10 @@ class BranchStartStep(CommandStep):
         return RunnableCommand.BRANCH_START
 
     def step(self) -> WorkflowStep:
-        return BranchStart(self.session.policy, self.arguments.name, self.arguments.on)
+        session = self.session
+        return BranchStart(
+            session.policy, self.arguments.name, self.arguments.on, session.github
+        )
 
 
 @dataclass(frozen=True)

@@ -13,12 +13,12 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from domain_model.git.revisions import BranchName
-from domain_model.github.number_links import HasNumberLink
 from domain_model.github.pull_request_models import UpstreamPullRequestSnapshot
 from domain_model.github.readers import PullRequestSource
 from domain_model.github.repository_client import PullRequestReader, PullRequestTracker
 from domain_model.github.rest_models import RestPullRequest
 from domain_model.github.vocabulary import MergeableState
+from domain_model.number_links import HasNumberLink
 
 from github_workflow.labels import PullRequestLabel, UpstreamLabel
 from github_workflow.report_lines import (
@@ -30,7 +30,7 @@ from github_workflow.report_lines import (
     Tone,
 )
 from github_workflow.report_section import ReportGroup, ReportSection
-from github_workflow.work import WorkflowStep
+from github_workflow.workflow_step import WorkflowStep
 
 # %% one pull request
 

@@ -9,13 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from domain_model.class_property import classproperty
-from domain_model.git.remotes import (
-    ProposedPush,
-    Remote,
-    RemoteBranch,
-    RemoteName,
-    UnconfiguredRemote,
-)
+from domain_model.git.remotes import ProposedPush, RemoteBranch
 from domain_model.git.revisions import BranchName, BranchTip, Commit
 from domain_model.github.labels import LabelWrite
 from domain_model.github.repository_client import (
@@ -37,11 +31,11 @@ from github_workflow.exceptions import (
     NotAForkError,
     PersonOnlyCommandError,
     PullRequestNotProposableError,
-    UpstreamRemoteNameTakenError,
 )
 from github_workflow.labels import UpstreamLabel
 from github_workflow.plugin import Launcher
 from github_workflow.policy import WritePolicy
+from github_workflow.remotes import ForkUpstream
 from github_workflow.report_lines import CountedThing, ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportSection
 from github_workflow.settings import WorkflowSettings
@@ -49,8 +43,8 @@ from github_workflow.work import (
     DescriptionEnding,
     LocalBranchFollowing,
     PullRequestRetirement,
-    WorkflowStep,
 )
+from github_workflow.workflow_step import WorkflowStep
 
 # %% proposing
 
@@ -254,31 +248,6 @@ class ForkMainSync(WorkflowStep):
         """:return: The fork's default branch, on the owner's remote."""
         return self.policy.remote.branch(self.policy.default_branch)
 
-    def upstream_remote(self, upstream: Repository) -> Remote:
-        """
-        :param upstream: The repository the fork was forked from.
-        :return: The checkout's remote reaching it, the one named
-            :attr:`RemoteName.UPSTREAM` first; when none does, the upstream reached by
-            its URL under that name.
-        :raises UpstreamRemoteNameTakenError: If none fetches from it and the remote of
-            that name fetches from another repository.
-        """
-        git = self.policy.checkout.git
-        configured = Remote.read_configured(git)
-        reaching = [
-            remote for remote in configured if remote.fetched_repository() == upstream
-        ]
-        named = [remote for remote in reaching if remote.name == RemoteName.UPSTREAM]
-        if named or reaching:
-            return (named or reaching)[0]
-        taken = [remote for remote in configured if remote.name == RemoteName.UPSTREAM]
-        if taken:
-            raise UpstreamRemoteNameTakenError(
-                taken[0], upstream, taken[0].fetched_repository()
-            )
-        url = upstream.rooted_clone_url()
-        return UnconfiguredRemote(git, RemoteName.UPSTREAM, url, upstream)
-
     def tips(self, upstream: Repository) -> ForkTips:
         """
         :param upstream: The repository the fork was forked from.
@@ -286,7 +255,7 @@ class ForkMainSync(WorkflowStep):
         :raises UpstreamRemoteNameTakenError: If the upstream cannot be fetched under
             its remote's name.
         """
-        remote = self.upstream_remote(upstream)
+        remote = ForkUpstream(self.policy.checkout.git, upstream).remote()
         fork = self.fork_branch
         theirs = remote.branch(self.policy.default_branch)
         fork.fetch().raise_if_failed()

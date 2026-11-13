@@ -34,7 +34,7 @@ from github_workflow.exceptions import (
 from github_workflow.labels import PullRequestLabel, UpstreamLabel
 from github_workflow.policy import WritePolicy
 from github_workflow.upstream_reviews import UpstreamReviews
-from github_workflow.work import WorkflowStep
+from github_workflow.workflow_step import WorkflowStep
 
 # %% the work branch's pull request
 

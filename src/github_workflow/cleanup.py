@@ -38,7 +38,8 @@ from github_workflow.policy import WritePolicy
 from github_workflow.remotes import OwnedRemote
 from github_workflow.report_lines import CountedThing, ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportSection
-from github_workflow.work import PullRequestRetirement, SessionLog, WorkflowStep
+from github_workflow.work import PullRequestRetirement
+from github_workflow.workflow_step import SessionLog, WorkflowStep
 from github_workflow.workflow_templates import DeletionPlaceholder, NotesBranchWorkflow
 
 # %% branches listed with their commits
