@@ -697,6 +697,11 @@ class GitHubCliReading(StrEnum):
     Shows the issues relevant to the signed-in account.
     """
 
+    LABEL_LIST = "label list"
+    """
+    Lists a repository's labels.
+    """
+
     RUN_VIEW = "run view"
     """
     Shows an Actions run.

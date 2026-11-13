@@ -21,6 +21,7 @@ grep -rn "git push" src
 gh pr view 9
 gh pr checks 10
 gh issue list --state open
+gh label list --repo LucaKro/rviz --limit 30 --json name --jq '.[].name'
 gh run view 123 --log
 gh api repos/LucaKro/GitHubWorkflow/pulls
 gh api -X GET repos/LucaKro/GitHubWorkflow
