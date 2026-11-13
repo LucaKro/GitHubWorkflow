@@ -926,6 +926,57 @@ class SubmoduleOption(GitOption):
     """
 
 
+class ApplyOption(GitOption):
+    """
+    The options of ``git apply``.
+    """
+
+    CHECK = "--check", True
+    """
+    Report whether the patch applies, applying nothing.
+    """
+
+    STAT = "--stat", True
+    """
+    Report how many lines the patch changes in each file, applying nothing.
+    """
+
+    NUMSTAT = "--numstat", True
+    """
+    Report the counts of :attr:`STAT` in a form meant for programs.
+    """
+
+    SUMMARY = "--summary", True
+    """
+    Report the files the patch creates, deletes, renames or changes the mode of.
+    """
+
+    REVERSE = "--reverse", True
+    """
+    Take the patch the other way round.
+    """
+
+    REVERSE_SHORT = "-R", True
+    """
+    Take the patch the other way round, short form.
+    """
+
+    VERBOSE = "--verbose", True
+    """
+    Report more about the patch.
+    """
+
+    VERBOSE_SHORT = "-v", True
+    """
+    Report more about the patch, short form.
+    """
+
+    APPLY = "--apply", False
+    """
+    Apply the patch even after an option that only reports.
+    """
+
+
 class ArchiveOption(GitOption):
     """
     The options of ``git archive``.

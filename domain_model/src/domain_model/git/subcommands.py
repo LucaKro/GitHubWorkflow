@@ -184,6 +184,12 @@ class GitSubcommand(StrEnum):
     them or writes the archive where git reads its configuration or hooks.
     """
 
+    APPLY = "apply"
+    """
+    Applies a patch; reads when it only checks whether the patch applies or reports what
+    it changes.
+    """
+
     PUSH = "push"
     """
     Updates a remote's references.
