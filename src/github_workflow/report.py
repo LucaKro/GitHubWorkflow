@@ -15,6 +15,7 @@ from pathlib import Path
 
 from domain_model.class_family import ClassFamily
 from domain_model.class_property import classproperty
+from domain_model.github.readers import ReadSource
 from domain_model.github.repository_client import GitHubRepository
 
 from github_workflow.cleanup import CleanupReminder
@@ -26,6 +27,7 @@ from github_workflow.report_section import ReportSection
 from github_workflow.repository_setup import RepositorySetup
 from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
+from github_workflow.tags import TagRefresh, TagSection, WaitingTags
 from github_workflow.upstream import UpstreamMergeFollowing
 
 # %% the sections
@@ -64,6 +66,11 @@ class SectionName(StrEnum):
     UPSTREAM_MERGES = "upstream-merges"
     """
     The fork's pull requests merged upstream, closed, and their stacks moved on.
+    """
+
+    TAGS = "tags"
+    """
+    The comments the person tagged by mentioning themselves, not filed or dismissed yet.
     """
 
 
@@ -209,6 +216,25 @@ class UpstreamMergesBuilder(SectionBuilder):
             self.session.session_closing,
             self.session.placement,
         )
+
+
+@dataclass(frozen=True)
+class TagsBuilder(SectionBuilder):
+    """
+    Builds the section over the comments the person tagged.
+    """
+
+    @classproperty
+    def section_name(cls) -> SectionName:
+        return SectionName.TAGS
+
+    def section(self) -> ReportSection:
+        session = self.session
+        tags = WaitingTags(session.tag_source, session.notes)
+        if ReadSource.detect().reaches_graphql:
+            return TagSection(tags)
+        refresh = TagRefresh(session.forwarded_reading, session.settings.owner)
+        return TagSection(tags, refresh)
 
 
 # %% entry point

@@ -15,6 +15,7 @@ from domain_model.git.revisions import BranchName, TextFiles
 from domain_model.repository import Repository
 from domain_model.templates import Placeholder
 
+from github_workflow.command_line import RunnableCommand
 from github_workflow.locations import NotesFile, WorkflowTemplate
 from github_workflow.plugin import Distribution, PluginSource, ToolRepository
 
@@ -84,15 +85,20 @@ class PostingPlaceholder(Placeholder):
     """
 
 
-class UpstreamReviewPlaceholder(Placeholder):
+class ForwardedReadPlaceholder(Placeholder):
     """
-    The names the upstream reviews workflow leaves to be filled in, besides the notes
-    branch's.
+    The names a workflow answering read requests leaves to be filled in, besides the
+    notes branch's.
+    """
+
+    SUBJECT = auto()
+    """
+    What the requests ask to be read, in a few words.
     """
 
     REQUESTS_DIRECTORY = auto()
     """
-    The directory holding the requests for upstream reviews.
+    The directory holding the requests.
     """
 
     ANSWERS_DIRECTORY = auto()
@@ -235,12 +241,21 @@ class NotesBranchWorkflow(Enum):
     """
 
     UPSTREAM_REVIEWS = (
-        WorkflowTemplate.UPSTREAM_REVIEW_WORKFLOW,
+        WorkflowTemplate.FORWARDED_READ_WORKFLOW,
         NotesFile.UPSTREAM_REVIEW_WORKFLOW,
         (),
     )
     """
     Reads the reviews of the pull requests opened upstream that are asked for.
+    """
+
+    TAGGED_COMMENTS = (
+        WorkflowTemplate.FORWARDED_READ_WORKFLOW,
+        NotesFile.TAG_WORKFLOW,
+        (),
+    )
+    """
+    Reads the comments the person tagged by mentioning themselves.
     """
 
     def __init__(
@@ -290,4 +305,73 @@ class NotesBranchWorkflow(Enum):
                     for companion in self.companions
                 },
             }
+        )
+
+
+# %% what a session has the notes branch's workflows read
+
+
+class ForwardedSubject(Enum):
+    """
+    What a session has the repository's Actions read for it, through requests queued on
+    the notes branch, each with where its requests and answers are kept.
+    """
+
+    UPSTREAM_REVIEWS = (
+        "upstream reviews",
+        NotesFile.UPSTREAM_REVIEW_REQUESTS,
+        NotesFile.UPSTREAM_REVIEW_ANSWERS,
+        NotesBranchWorkflow.UPSTREAM_REVIEWS,
+        RunnableCommand.REVIEW_LIST,
+    )
+    """
+    The reviews of the pull request a fork's branch has open upstream.
+    """
+
+    TAGGED_COMMENTS = (
+        "tagged comments",
+        NotesFile.TAG_REQUESTS,
+        NotesFile.TAG_ANSWERS,
+        NotesBranchWorkflow.TAGGED_COMMENTS,
+        RunnableCommand.TAG_LIST,
+    )
+    """
+    The comments the person tagged by mentioning themselves, anywhere on GitHub.
+    """
+
+    def __init__(
+        self,
+        described: str,
+        requests: NotesFile,
+        answers: NotesFile,
+        workflow: NotesBranchWorkflow,
+        reading_command: RunnableCommand,
+    ) -> None:
+        """
+        :param described: What is read, in a few words.
+        :param requests: The directory on the notes branch holding the requests.
+        :param answers: The directory on the notes branch holding the answers.
+        :param workflow: The workflow answering the requests.
+        :param reading_command: The command reading it again.
+        """
+        self.described = described
+        self.requests = requests
+        self.answers = answers
+        self.workflow = workflow
+        self.reading_command = reading_command
+
+    def workflow_files(self, notes_branch: BranchName, module: str) -> TextFiles:
+        """
+        :param notes_branch: The notes branch's name.
+        :param module: The module answering the requests on the runner.
+        :return: The workflow answering the requests, filled in, with the files it runs.
+        """
+        return self.workflow.files(
+            notes_branch,
+            {
+                ForwardedReadPlaceholder.SUBJECT: self.described,
+                ForwardedReadPlaceholder.REQUESTS_DIRECTORY: str(self.requests),
+                ForwardedReadPlaceholder.ANSWERS_DIRECTORY: str(self.answers),
+                **ActionRequirement.placeholder_values(module),
+            },
         )

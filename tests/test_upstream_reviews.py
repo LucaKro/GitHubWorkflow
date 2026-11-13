@@ -30,23 +30,30 @@ from domain_model.github.vocabulary import (
 from domain_model.locations import PathEnumeration
 from domain_model.repository import Repository
 
+from github_workflow.exceptions import (
+    ForwardedAnswerUnreadable,
+    ForwardedReadFailed,
+    ForwardedReadNotStarted,
+    ForwardedReadUnanswered,
+)
+from github_workflow.forwarded_reads import (
+    ForwardedAnswer,
+    ForwardedAnswerKey,
+    ForwardedReadAnswering,
+)
 from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.settings import WorkflowSettings
 from github_workflow.upstream_reviews import (
     DirectUpstreamReviews,
     ForwardedUpstreamReviews,
-    UpstreamAnswerUnreadable,
-    UpstreamReadFailed,
-    UpstreamReadNotStarted,
-    UpstreamReadUnanswered,
-    UpstreamReviewAnswering,
     UpstreamReviewRequest,
 )
 from github_workflow.workflow_templates import (
     ActionPlaceholder,
+    ForwardedReadPlaceholder,
+    ForwardedSubject,
     NotesBranchPlaceholder,
-    UpstreamReviewPlaceholder,
 )
 
 from .repositories_by_owner import RepositoriesByOwner
@@ -133,7 +140,7 @@ class UpstreamAnswers(GitHubReader):
 def recorded_answers() -> AnswerRecording:
     """:return: GitHub's answers to the reads of :func:`request`, recorded."""
     recording = RecordingClient(UpstreamAnswers())
-    request().snapshot(recording)
+    request().read(recording)
     return recording.recording
 
 
@@ -144,7 +151,7 @@ def request(name: str = "1.json") -> UpstreamReviewRequest:
         Repository.parse("an-upstream-owner/project"),
         "LucaKro",
         BranchName("feature"),
-        name,
+        name=name,
     )
 
 
@@ -152,7 +159,7 @@ def request(name: str = "1.json") -> UpstreamReviewRequest:
 
 
 def test_a_direct_read_finds_the_branch_s_pull_request_upstream() -> None:
-    snapshot = DirectUpstreamReviews(UpstreamAnswers()).snapshot(request())
+    snapshot = DirectUpstreamReviews(UpstreamAnswers()).read(request())
 
     assert (snapshot.number, [thread.identifier for thread in snapshot.threads]) == (
         9,
@@ -168,16 +175,22 @@ def test_a_request_is_answered_with_github_s_answers_and_removed(
 ) -> None:
     requests, answers = tmp_path / "requests", tmp_path / "answers"
     requests.mkdir()
-    (requests / "1.json").write_text(request().to_json())
+    (requests / "1.json").write_text(json.dumps(request().to_json()))
 
-    answered = UpstreamReviewAnswering(requests, answers, UpstreamAnswers()).run()
+    answered = ForwardedReadAnswering(
+        UpstreamReviewRequest, requests, answers, UpstreamAnswers()
+    ).run()
 
-    saved = AnswerRecording.from_json((answers / "1.json").read_text())
-    assert (answered, saved, list(requests.iterdir())) == (
-        ["1.json"],
-        recorded_answers(),
-        [],
+    saved = json.loads((answers / "1.json").read_text())
+    recording = AnswerRecording.from_json(
+        json.dumps(saved[ForwardedAnswerKey.RECORDING])
     )
+    assert (
+        answered,
+        saved[ForwardedAnswerKey.REQUEST],
+        recording,
+        list(requests.iterdir()),
+    ) == (["1.json"], request().to_json(), recorded_answers(), [])
 
 
 def test_the_answers_of_an_earlier_run_are_removed(tmp_path: Path) -> None:
@@ -186,24 +199,26 @@ def test_the_answers_of_an_earlier_run_are_removed(tmp_path: Path) -> None:
     answers.mkdir()
     (answers / "0.json").write_text("{}")
 
-    UpstreamReviewAnswering(requests, answers, UpstreamAnswers()).run()
+    ForwardedReadAnswering(
+        UpstreamReviewRequest, requests, answers, UpstreamAnswers()
+    ).run()
 
     assert list(answers.iterdir()) == []
 
 
 def test_an_answer_read_again_gives_what_github_answered() -> None:
-    replayed = request().snapshot(ReplayingClient(recorded_answers()))
+    replayed = request().read(ReplayingClient(recorded_answers()))
 
-    assert replayed == request().snapshot(UpstreamAnswers())
+    assert replayed == request().read(UpstreamAnswers())
 
 
 def test_an_answer_lacking_a_read_is_unavailable_with_both_versions() -> None:
     recorder = CodeVersion("0.2.0", CommitHash("1" * 40))
-    lacking = AnswerRecording(recorder).to_json()
+    lacking = ForwardedAnswer(request(), AnswerRecording(recorder)).to_json()
 
-    unavailable = ForwardedUpstreamReviews.replay(request(), lacking)
+    unavailable = ForwardedAnswer.replay(lacking, UpstreamReviewRequest, "1.json")
 
-    assert isinstance(unavailable, UpstreamAnswerUnreadable)
+    assert isinstance(unavailable, ForwardedAnswerUnreadable)
     assert (unavailable.recorder, unavailable.replayer) == (
         recorder,
         CodeVersion.from_installation(),
@@ -211,11 +226,11 @@ def test_an_answer_lacking_a_read_is_unavailable_with_both_versions() -> None:
 
 
 def test_an_answer_saved_in_the_old_form_is_unavailable() -> None:
-    unavailable = ForwardedUpstreamReviews.replay(
-        request(), json.dumps({"answers": []})
+    unavailable = ForwardedAnswer.replay(
+        json.dumps({"answers": []}), UpstreamReviewRequest, "1.json"
     )
 
-    assert isinstance(unavailable, UpstreamAnswerUnreadable)
+    assert isinstance(unavailable, ForwardedAnswerUnreadable)
     assert unavailable.recorder is None
 
 
@@ -294,7 +309,7 @@ def save_answers(notes: NotesBranch, name: str) -> None:
         TextFiles(
             {
                 NotesFile.UPSTREAM_REVIEW_ANSWERS.value
-                / name: recorded_answers().to_json()
+                / name: ForwardedAnswer(request(name), recorded_answers()).to_json()
             }
         ),
         "Answer",
@@ -307,7 +322,7 @@ def test_a_forwarded_request_is_queued_with_its_workflow(
     notes = clone_notes_branch(repositories, owned_url, settings)
     save_answers(notes, request().name)
 
-    build_forwarded_reviews(notes).snapshot(request())
+    build_forwarded_reviews(notes).read(request())
 
     notes.fetch()
     queued = notes.read(NotesFile.UPSTREAM_REVIEW_REQUESTS.value / request().name)
@@ -318,14 +333,14 @@ def test_a_forwarded_request_is_queued_with_its_workflow(
             placeholder
             for kind in (
                 NotesBranchPlaceholder,
-                UpstreamReviewPlaceholder,
+                ForwardedReadPlaceholder,
                 ActionPlaceholder,
             )
             for placeholder in kind
             if placeholder in workflow
         ],
     ) == (
-        request().to_json(),
+        json.dumps(request().to_json(), indent=2),
         [],
     )
 
@@ -336,9 +351,9 @@ def test_a_forwarded_request_reads_the_saved_answer(
     notes = clone_notes_branch(repositories, owned_url, settings)
     save_answers(notes, request().name)
 
-    snapshot = build_forwarded_reviews(notes).snapshot(request())
+    snapshot = build_forwarded_reviews(notes).read(request())
 
-    assert snapshot == request().snapshot(UpstreamAnswers())
+    assert snapshot == request().read(UpstreamAnswers())
 
 
 def queued_requests(notes: NotesBranch) -> list[str]:
@@ -358,10 +373,12 @@ def test_a_request_no_run_started_for_is_asked_again_then_given_up_on(
 ) -> None:
     notes = clone_notes_branch(repositories, owned_url, settings)
 
-    unavailable = build_forwarded_reviews(notes).snapshot(request())
+    unavailable = build_forwarded_reviews(notes).read(request())
 
     assert (unavailable, len(queued_requests(notes))) == (
-        UpstreamReadNotStarted(ScratchGitHub.owned, 0),
+        ForwardedReadNotStarted(
+            ForwardedSubject.UPSTREAM_REVIEWS, ScratchGitHub.owned, 0
+        ),
         2,
     )
 
@@ -374,10 +391,12 @@ def test_a_request_whose_run_failed_is_given_up_on(
         notes, WorkflowRunStatus.COMPLETED, WorkflowRunConclusion.FAILURE
     )
 
-    unavailable = build_forwarded_reviews(notes, failed).snapshot(request())
+    unavailable = build_forwarded_reviews(notes, failed).read(request())
 
-    assert unavailable == UpstreamReadFailed(
-        ScratchGitHub.owned.workflow_run_url(1), WorkflowRunConclusion.FAILURE
+    assert unavailable == ForwardedReadFailed(
+        ForwardedSubject.UPSTREAM_REVIEWS,
+        ScratchGitHub.owned.workflow_run_url(1),
+        WorkflowRunConclusion.FAILURE,
     )
 
 
@@ -387,6 +406,8 @@ def test_a_request_whose_run_is_still_going_is_left_unanswered_in_time(
     notes = clone_notes_branch(repositories, owned_url, settings)
     going = RunsOfTheQueuedRequest(notes, WorkflowRunStatus.IN_PROGRESS)
 
-    unavailable = build_forwarded_reviews(notes, going).snapshot(request())
+    unavailable = build_forwarded_reviews(notes, going).read(request())
 
-    assert unavailable == UpstreamReadUnanswered(request().upstream, 0)
+    assert unavailable == ForwardedReadUnanswered(
+        ForwardedSubject.UPSTREAM_REVIEWS, ScratchGitHub.owned, 0
+    )

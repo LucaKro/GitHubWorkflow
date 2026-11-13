@@ -113,6 +113,27 @@ def test_a_file_is_read_back_exactly_as_written(remote: Path, tmp_path: Path) ->
     assert branch.read(Path("file.md")) == text
 
 
+def test_the_files_of_a_directory_are_named_as_last_fetched(
+    remote: Path, tmp_path: Path
+) -> None:
+    branch = storage(remote, tmp_path, "writer")
+    files = TextFiles({Path("queue/2.json"): "{}", Path("queue/1.json"): "{}"})
+
+    branch.write(files, "Write")
+
+    tracking = branch.branch.tracking_branch
+    assert tracking.file_names(Path("queue")) == ["1.json", "2.json"]
+
+
+def test_a_directory_the_branch_lacks_has_no_files(
+    remote: Path, tmp_path: Path
+) -> None:
+    branch = storage(remote, tmp_path, "writer")
+    branch.write(TextFiles({Path("file.md"): "text\n"}), "Write")
+
+    assert branch.branch.tracking_branch.file_names(Path("queue")) == []
+
+
 def test_a_writer_behind_another_on_the_same_file_is_refused(
     remote: Path, tmp_path: Path
 ) -> None:

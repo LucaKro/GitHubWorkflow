@@ -1,0 +1,42 @@
+query DiscussionCommentsPage(
+  $owner: String!
+  $name: String!
+  $number: Int!
+  $commentCursor: String
+) {
+  repository(owner: $owner, name: $name) {
+    discussion(number: $number) {
+      title
+      url
+      body
+      createdAt
+      author {
+        login
+      }
+      comments(first: 100, after: $commentCursor) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          url
+          body
+          createdAt
+          author {
+            login
+          }
+          replies(first: 100) {
+            nodes {
+              url
+              body
+              createdAt
+              author {
+                login
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

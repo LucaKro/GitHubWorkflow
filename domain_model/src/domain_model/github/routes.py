@@ -246,6 +246,16 @@ class RepositoryRoute:
         terms = f"is:pr repo:{self.repository.full_name} head:{branch} author:{author}"
         return f"search/issues?{urlencode({QueryParameter.SEARCH: terms})}"
 
+    @classmethod
+    def issue_search(cls, terms: str) -> str:
+        """
+        :param terms: The search query.
+        :return: The first page of the issues and pull requests it finds, on any
+            repository, as large as GitHub hands out.
+        """
+        query = {QueryParameter.SEARCH: terms, QueryParameter.PAGE_SIZE: cls.page_size}
+        return f"search/issues?{urlencode(query)}"
+
     def review_requests(self) -> str:
         """
         :return: The search for the repository's open pull requests waiting on the

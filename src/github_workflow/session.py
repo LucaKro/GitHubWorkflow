@@ -24,6 +24,7 @@ from github_workflow.discussions import DiscussionSessionLog
 from github_workflow.environment import WorkflowVariable
 from github_workflow.exceptions import ForeignRepositoryError, UnknownPluginDataError
 from github_workflow.findings import SessionPullRequestClosing
+from github_workflow.forwarded_reads import ForwardedReading
 from github_workflow.freshness import BranchFreshening
 from github_workflow.label_events import PickedLabelCompletion
 from github_workflow.locations import PluginDataDirectory
@@ -33,6 +34,13 @@ from github_workflow.policy import WritePolicy
 from github_workflow.proofs import BranchProofRunner
 from github_workflow.remotes import OwnedRemote, OwnedRemotes
 from github_workflow.settings import WorkflowSettings
+from github_workflow.tags import (
+    ApiRepositoryReach,
+    DirectTagSource,
+    ForwardedTagSource,
+    SavedTagSource,
+    TagSource,
+)
 from github_workflow.upstream_reviews import (
     DirectUpstreamReviews,
     ForwardedUpstreamReviews,
@@ -230,6 +238,38 @@ class WorkflowSession(RepositoryDetails):
         if ReadSource.detect().reaches_graphql:
             return DirectUpstreamReviews(self.github.api)
         return ForwardedUpstreamReviews(self.notes, self.remote.repository, self.github)
+
+    @property
+    def forwarded_reading(self) -> ForwardedReading:
+        """:return: Has the owner's repository's Actions read for the session."""
+        return ForwardedReading(self.notes, self.remote.repository, self.github)
+
+    @property
+    def tag_source(self) -> TagSource:
+        """
+        Finds the comments the person tagged without waiting: by searching GitHub
+        directly where GitHub's GraphQL is reached, else from the newest answer the
+        repository's Actions saved and what this session reaches itself.
+        """
+        login = self.settings.owner
+        if ReadSource.detect().reaches_graphql:
+            return DirectTagSource(self.github.api, login)
+        api = self.github.api
+        return SavedTagSource(
+            self.forwarded_reading, api, ApiRepositoryReach(api), login
+        )
+
+    @property
+    def fresh_tag_source(self) -> TagSource:
+        """
+        Finds the comments the person tagged as they are now: by searching GitHub
+        directly where GitHub's GraphQL is reached, else through the repository's
+        Actions, waiting for their answer.
+        """
+        login = self.settings.owner
+        if ReadSource.detect().reaches_graphql:
+            return DirectTagSource(self.github.api, login)
+        return ForwardedTagSource(self.forwarded_reading, login)
 
     @property
     def thread_source(self) -> PullRequestSource:

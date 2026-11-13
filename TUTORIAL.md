@@ -49,6 +49,10 @@ the checkout. That does four things.
    - `freshness`: what was brought up to date (see [section 4](#4-keeping-branches-up-to-date)).
    - `upstream-merges`: fork pull requests whose upstream pull request was merged, which
      are closed here.
+   - `tags`: the comments you tagged by mentioning yourself, not filed or dismissed yet
+     (see [section 5](#5-findings)). In a cloud session it also queues a request on the
+     notes branch for the repository's Actions to search afresh: the one push a session
+     start makes.
 4. **Tells the model how to behave**: the notes begin with a short header listing the
    commands and the rules (file findings on your own, never run `upstream`, never get
    around a refusal).
@@ -183,6 +187,20 @@ github-workflow finding close 12 --fixed-by 34     # closes only if the proof no
 What the workflow itself refused unnecessarily is filed the same way on this repository,
 from any session, with `--repository LucaKro/GitHubWorkflow`.
 
+A **tag** is a comment you mentioned yourself in, anywhere on GitHub. The session start
+lists the tags waiting; a session files them only when you say so:
+
+```bash
+github-workflow tag list                         # read afresh; through Actions in a cloud session
+github-workflow tag show <comment page>          # the whole conversation, to sum it up
+github-workflow tag file <comment page> --repository LucaKro/<repo> --priority medium \
+  --title "..." --body-file /tmp/finding.md      # an unreviewed finding linking the comment
+github-workflow tag dismiss <comment page>
+```
+
+Nothing is written where the comment is. The ledger on the notes branch records what was
+filed or dismissed, and a cursor before which every tag is handled.
+
 An **idea** is not a finding. `idea file` queues it on the notes branch, and the
 repository's Actions post it to Discussions. A session files one only when you ask.
 
@@ -261,6 +279,8 @@ that cannot do it itself:
 | `ready-for-deletion.md` | Deletes each listed branch while it is still at the listed commit |
 | `discussion-posts/` | Posts queued ideas and session-log entries to Discussions |
 | `upstream-review-requests/` | Reads an upstream pull request's reviews and saves the answers |
+| `tag-requests/` | Searches for the comments you tagged and saves the answers |
+| `tagged-comments.json` | Nothing: the ledger of tags filed or dismissed |
 
 These workflows live only on the notes branch, never on the default branch or upstream.
 
@@ -280,7 +300,7 @@ them on the notes branch for the Actions workflow.
 | start, switch and discard branches; commit; push | accept, shelve, reject, edit or prioritize a finding | open a pull request upstream (`upstream`) |
 | open drafts; describe, label and answer reviews on its own pull request | describe another pull request | change repository settings |
 | sync and merge its branch; fast-forward a fork's default branch | change a stack (`stack on`) | merge pull requests |
-| file, prove, recheck and comment on findings; close a fixed one | post an idea | set `pull request: shelved` |
+| file, prove, recheck and comment on findings; close a fixed one | post an idea; file or dismiss a tag | set `pull request: shelved` |
 | clone to read; clean up branches; save notes | set up the label workflow (`finding automate`) | unresolve a thread |
 
 ## 11. Finding your way in the code
@@ -294,6 +314,8 @@ them on the notes branch for the Actions workflow.
 | Findings and proofs | `findings.py`, `proofs.py`, `label_events.py` |
 | The own pull request: labels and review threads | `own_pull_request.py` |
 | Forks: upstream proposals, following merges, upstream reviews | `upstream.py`, `upstream_reviews.py`, `freshness.py` |
+| Reads a cloud session has the repository's Actions make | `forwarded_reads.py` |
+| Tagged comments | `tags.py`; the searches in `domain_model/github/conversations.py` |
 | Cleanup and discarded branches | `cleanup.py` |
 | The session start report | `session_start.py`, `report.py`, `report_lines.py`, `pull_request_overview.py` |
 | Notes | `notes/` |

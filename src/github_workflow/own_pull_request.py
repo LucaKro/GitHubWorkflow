@@ -22,6 +22,7 @@ from domain_model.repository import Repository
 
 from github_workflow.exceptions import (
     ForeignReviewAddressError,
+    ForwardedReadUnavailable,
     NoOpenPullRequestError,
     NothingToLabelError,
     PersonOnlyLabelError,
@@ -29,7 +30,6 @@ from github_workflow.exceptions import (
     UnknownLabelError,
     UnknownUpstreamCommentError,
     UnpushedWorkError,
-    UpstreamReviewsUnavailable,
 )
 from github_workflow.labels import PullRequestLabel, UpstreamLabel
 from github_workflow.policy import WritePolicy
@@ -248,7 +248,7 @@ class ReviewThreadListing(WorkflowStep):
         snapshot = self.upstream_reviews.read_work_branch_snapshot(
             upstream, self.pull_request.policy
         )
-        if isinstance(snapshot, UpstreamReviewsUnavailable):
+        if isinstance(snapshot, ForwardedReadUnavailable):
             lines.append(snapshot.line())
             return "\n".join(lines)
         lines.append(f"upstream {upstream}#{snapshot.number} {snapshot.url}:")
@@ -370,7 +370,7 @@ class ReviewAddressing(WorkflowStep):
         repository the owner's was forked from.
     :raises UnknownUpstreamCommentError: If a comment's number is given, and the pull
         request opened upstream has no review comment of that number.
-    :raises UpstreamReviewsUnavailable: If a comment's number is given, and the pull
+    :raises ForwardedReadUnavailable: If a comment's number is given, and the pull
         request opened upstream could not be read.
     """
 
@@ -421,12 +421,12 @@ class ReviewAddressing(WorkflowStep):
         :param number: A review comment's number on the pull request opened upstream.
         :return: The comment's address.
         :raises UnknownUpstreamCommentError: If no review comment has that number.
-        :raises UpstreamReviewsUnavailable: If the pull request could not be read.
+        :raises ForwardedReadUnavailable: If the pull request could not be read.
         """
         snapshot = self.upstream_reviews.read_work_branch_snapshot(
             upstream, self.pull_request.policy
         )
-        if isinstance(snapshot, UpstreamReviewsUnavailable):
+        if isinstance(snapshot, ForwardedReadUnavailable):
             raise snapshot
         addresses = [
             comment.url

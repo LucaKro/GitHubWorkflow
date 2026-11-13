@@ -85,6 +85,10 @@ class PullRequestJSONKey(StrEnum):
     REVIEW_THREADS = "reviewThreads"
     QUERY = "query"
     VARIABLES = "variables"
+    SEARCH = "search"
+    TITLE = "title"
+    DISCUSSION = "discussion"
+    REPLIES = "replies"
 
     def read_list(
         self, data: dict[str, Any], model: type[ParsedItem]
@@ -114,6 +118,9 @@ class QueryVariable(StrEnum):
     NUMBER = "number"
     THREAD_CURSOR = "threadCursor"
     THREAD_ID = "threadId"
+    SEARCH = "search"
+    SEARCH_CURSOR = "searchCursor"
+    COMMENT_CURSOR = "commentCursor"
 
 
 class GraphQLDocument(StrEnum):
@@ -123,6 +130,8 @@ class GraphQLDocument(StrEnum):
 
     REVIEW_THREADS_PAGE = "review_threads_page"
     RESOLVE_REVIEW_THREAD = "resolve_review_thread"
+    DISCUSSION_SEARCH_PAGE = "discussion_search_page"
+    DISCUSSION_COMMENTS_PAGE = "discussion_comments_page"
 
     def read(self) -> str:
         """:return: The document's text."""
@@ -848,6 +857,66 @@ class QueryParameter(StrEnum):
     PROTECTED = "protected"
     """
     Whether to list only the branches GitHub protects, as ``true``.
+    """
+
+
+class SearchQualifier(StrEnum):
+    """
+    The qualifiers a search of issues, pull requests and discussions narrows by, each
+    written ``<qualifier>:<value>``.
+    """
+
+    TYPE = "is"
+    """
+    Whether issues or pull requests are searched; an issue search needs one.
+    """
+
+    MENTIONS = "mentions"
+    """
+    An account mentioned in it.
+    """
+
+    AUTHOR = "author"
+    """
+    The account that opened it.
+    """
+
+    COMMENTER = "commenter"
+    """
+    An account that commented on it.
+    """
+
+    REVIEWED_BY = "reviewed-by"
+    """
+    An account that reviewed the pull request.
+    """
+
+    UPDATED = "updated"
+    """
+    When it last changed, compared with ``>=`` and a timestamp.
+    """
+
+    def narrowing(self, value: str) -> str:
+        """
+        :param value: What the qualifier is compared with.
+        :return: The qualifier, as a search query writes it.
+        """
+        return f"{self}:{value}"
+
+
+class IssueSearchType(StrEnum):
+    """
+    What an issue search searches, as :attr:`SearchQualifier.TYPE` names it.
+    """
+
+    ISSUE = "issue"
+    """
+    Issues alone.
+    """
+
+    PULL_REQUEST = "pull-request"
+    """
+    Pull requests alone.
     """
 
 

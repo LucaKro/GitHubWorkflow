@@ -12,9 +12,10 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Iterator
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from http import HTTPStatus
 from pathlib import Path
+from typing import Any
 
 import pytest
 from domain_model.claude_code.hooks import HookKey, HookValue
@@ -24,6 +25,8 @@ from domain_model.environment import (
     GitHubCredentialVariable,
 )
 from domain_model.git.revisions import BranchName, TextFiles
+from domain_model.github.clients import GitHubReader
+from domain_model.github.conversations import SelfMentionSearch
 from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
 from domain_model.github.repository_client import GitHubRepository, PullRequestListState
 from domain_model.github.routes import RepositoryRoute
@@ -31,6 +34,7 @@ from domain_model.github.vocabulary import (
     ClosingKeyword,
     IssueEventType,
     IssueState,
+    PullRequestJSONKey,
     PullRequestState,
     QueryParameter,
     RestJSONKey,
@@ -174,9 +178,61 @@ def github(
                 {QueryParameter.LABELS: stage, QueryParameter.STATE: IssueState.OPEN},
             )
             api.answers[("GET", f"/{findings}")] = RecordedAnswer(HTTPStatus.OK, "[]")
+        searches = SearchesFindingNothing()
+        SelfMentionSearch(searches, settings.owner, None).issue_conversations()
+        for search in searches.paths:
+            api.answers[("GET", f"/{search}")] = RecordedAnswer(
+                HTTPStatus.OK, json.dumps(SearchesFindingNothing.issue_page())
+            )
+        api.answers[("POST", "/graphql")] = RecordedAnswer(
+            HTTPStatus.OK,
+            json.dumps(
+                {PullRequestJSONKey.DATA: SearchesFindingNothing.discussion_page()}
+            ),
+        )
         monkeypatch.setenv(GitHubActionsVariable.API_URL, api.url)
         monkeypatch.setenv(GitHubCredentialVariable.GH_TOKEN, "a-token")
         yield api
+
+
+@dataclass
+class SearchesFindingNothing(GitHubReader):
+    """
+    Answers every search with nothing found, and keeps the path of each issue search.
+    """
+
+    paths: list[str] = field(default_factory=list)
+    """
+    The first page of every issue search, in order.
+    """
+
+    def get(self, path: str) -> Any:
+        return self.issue_page()
+
+    def get_pages(self, path: str) -> list[Any]:
+        self.paths.append(path)
+        return [self.issue_page()]
+
+    def execute(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        return self.discussion_page()
+
+    @staticmethod
+    def issue_page() -> dict[str, Any]:
+        """:return: A page of an issue search finding nothing."""
+        return {RestJSONKey.TOTAL_COUNT: 0, RestJSONKey.ITEMS: []}
+
+    @staticmethod
+    def discussion_page() -> dict[str, Any]:
+        """:return: The ``data`` of a discussion search finding nothing."""
+        return {
+            PullRequestJSONKey.SEARCH: {
+                PullRequestJSONKey.PAGE_INFO: {
+                    PullRequestJSONKey.HAS_NEXT_PAGE: False,
+                    PullRequestJSONKey.END_CURSOR: None,
+                },
+                PullRequestJSONKey.NODES: [],
+            }
+        }
 
 
 def actions_path(settings: WorkflowSettings) -> str:
@@ -323,13 +379,39 @@ def test_claude_local_md_is_excluded_from_git_once(
 
 
 def test_a_session_start_pushes_nothing(
-    repositories: RepositoriesByOwner, owned_url: str
+    monkeypatch: pytest.MonkeyPatch, repositories: RepositoriesByOwner, owned_url: str
 ) -> None:
+    monkeypatch.delenv(ClaudeCodeVariable.REMOTE, raising=False)
     before = repositories.branches(owned_url)
 
     start_session(repositories.clone(owned_url, "session"))
 
     assert repositories.branches(owned_url) == before
+
+
+def test_a_cloud_session_start_pushes_only_a_request_for_the_tagged_comments(
+    monkeypatch: pytest.MonkeyPatch,
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+) -> None:
+    monkeypatch.setenv(ClaudeCodeVariable.REMOTE, "true")
+    before = repositories.branches(owned_url)
+
+    start_session(repositories.clone(owned_url, "session"))
+
+    notes = saved_notes(repositories, owned_url, settings)
+    tracking = notes.branch.tracking_branch
+    other_branches = [
+        line
+        for line in repositories.branches(owned_url).splitlines()
+        if not line.endswith(f"refs/heads/{settings.notes_branch}")
+    ]
+    assert (
+        other_branches,
+        len(tracking.file_names(NotesFile.TAG_REQUESTS.value)),
+        notes.read(NotesFile.TAG_WORKFLOW.value) is not None,
+    ) == (before.splitlines(), 1, True)
 
 
 def test_a_session_in_somebody_else_s_repository_loads_nothing(

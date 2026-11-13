@@ -8,6 +8,16 @@ workflow's own commands. It is built on the domain model of git and GitHub in
 [TUTORIAL.md](TUTORIAL.md) walks through how the parts work together;
 [REQUIREMENTS.md](REQUIREMENTS.md) says what the workflow has to do.
 
+> [!IMPORTANT]
+> **A cloud session start pushes to the notes branch.** Every session start in a
+> Claude Code cloud session commits a request for the comments you tagged (by
+> mentioning yourself) to `github-workflow/notes` - a file under `tag-requests/`, and
+> the first time the workflow `.github/workflows/read-tagged-comments.yml` - and so
+> starts a run of the repository's Actions, which saves the answer under
+> `tag-answers/` for the next session start. Nothing else is pushed, and a local
+> session start pushes nothing. The run costs Actions minutes on a private repository;
+> see [Tagged comments](REQUIREMENTS.md#tagged-comments).
+
 ## Licence
 
 This project is licensed under the [Apache License 2.0](LICENSE), except for

@@ -267,6 +267,48 @@ class DatasetLocation(PathEnumeration):
     A test file whose one test fails.
     """
 
+    CONVERSATION_PULL_REQUEST = DIRECTORY / "conversations" / "pull-request.json"
+    """
+    A pull request as the issues API reads it, its author mentioning itself in its
+    description.
+    """
+
+    CONVERSATION_ISSUE_COMMENTS = DIRECTORY / "conversations" / "issue-comments.json"
+    """
+    The comments on it: a mention by someone else, one by its author, one by a deleted
+    account, and one naming lookalikes of its author but not it.
+    """
+
+    CONVERSATION_REVIEWS = DIRECTORY / "conversations" / "reviews.json"
+    """
+    Its reviews: one submitted mentioning its author in another case, one pending.
+    """
+
+    CONVERSATION_REVIEW_COMMENTS = DIRECTORY / "conversations" / "review-comments.json"
+    """
+    The comments on its changes, one by its author mentioning itself in capitals.
+    """
+
+    DISCUSSION_PAGE_ONE = DIRECTORY / "conversations" / "discussion-page-one.json"
+    """
+    The first page of a discussion's comments, one with a reply mentioning its writer.
+    """
+
+    DISCUSSION_PAGE_TWO = DIRECTORY / "conversations" / "discussion-page-two.json"
+    """
+    The second and last page, a comment mentioning its writer.
+    """
+
+    ISSUE_SEARCH = DIRECTORY / "conversations" / "issue-search.json"
+    """
+    One page of an issue search, finding a pull request and an issue.
+    """
+
+    DISCUSSION_SEARCH = DIRECTORY / "conversations" / "discussion-search.json"
+    """
+    The one page of a discussion search, finding one discussion.
+    """
+
     LOADED_MODULES_SCRIPT = DIRECTORY / "imports" / "loaded_modules.py"
     """
     A Python script importing the module its argument names, printing every module that

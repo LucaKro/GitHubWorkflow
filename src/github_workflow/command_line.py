@@ -126,6 +126,12 @@ class WorkflowCommand(StrEnum):
     List, reply to or resolve the review threads of the work branch's pull request.
     """
 
+    TAG = "tag"
+    """
+    List the comments the person tagged by mentioning themselves, show one's
+    conversation, or file or dismiss one on the person's word.
+    """
+
     @classmethod
     def command_line(cls, *arguments: str) -> str:
         """
@@ -278,6 +284,32 @@ class IdeaSubcommand(StrEnum):
     """
 
 
+class TagSubcommand(StrEnum):
+    """
+    What ``tag`` does.
+    """
+
+    LIST = "list"
+    """
+    List the tagged comments not yet filed or dismissed, read afresh.
+    """
+
+    SHOW = "show"
+    """
+    Show the whole conversation a tagged comment was written in.
+    """
+
+    FILE = "file"
+    """
+    File a tagged comment as an unreviewed finding on one of the owner's repositories.
+    """
+
+    DISMISS = "dismiss"
+    """
+    Record a tagged comment as handled without filing it.
+    """
+
+
 class StackSubcommand(StrEnum):
     """
     What ``stack`` does.
@@ -348,6 +380,11 @@ class ArgumentName(StrEnum):
     REPOSITORY = "repository"
     """
     A repository, as ``owner/name``.
+    """
+
+    TAG = "tag"
+    """
+    The page of a comment the person tagged by mentioning themselves.
     """
 
 
@@ -766,6 +803,17 @@ class CommandArgument:
         :return: The file holding a text the command writes.
         """
         return cls(CommandOption.BODY_FILE, "file", description, Path, required)
+
+    @classmethod
+    def tag(cls) -> CommandArgument:
+        """
+        The page of a comment the person tagged, as the tag listing links it.
+        """
+        return cls(
+            ArgumentName.TAG,
+            "comment page",
+            "the tagged comment's page, as the tag listing links it",
+        )
 
     @classmethod
     def number(cls, description: str | None = None) -> CommandArgument:
@@ -1430,6 +1478,52 @@ class RunnableCommand(CommandSpecification, Enum):
     )
     """
     ``review addressed``.
+    """
+
+    TAG_LIST = (
+        (WorkflowCommand.TAG, TagSubcommand.LIST),
+        "list the comments the person tagged by mentioning themselves, read afresh",
+        SessionRuns(),
+    )
+    """
+    ``tag list``.
+    """
+
+    TAG_SHOW = (
+        (WorkflowCommand.TAG, TagSubcommand.SHOW),
+        "show the whole conversation a tagged comment was written in",
+        SessionRuns(),
+        (CommandArgument.tag(),),
+    )
+    """
+    ``tag show``.
+    """
+
+    TAG_FILE = (
+        (WorkflowCommand.TAG, TagSubcommand.FILE),
+        "file a tagged comment as a finding on one of the owner's repositories, on the "
+        "person's word; nothing is written where it was tagged",
+        SessionRunsOnPersonsWord(),
+        (
+            CommandArgument.tag(),
+            CommandArgument.priority(),
+            CommandArgument(CommandOption.TITLE, "title", required=True),
+            CommandArgument.body_file("the issue's text, summing up the conversation"),
+            CommandArgument.other_repository(),
+        ),
+    )
+    """
+    ``tag file``.
+    """
+
+    TAG_DISMISS = (
+        (WorkflowCommand.TAG, TagSubcommand.DISMISS),
+        "record a tagged comment as handled without filing it, on the person's word",
+        SessionRunsOnPersonsWord(),
+        (CommandArgument.tag(),),
+    )
+    """
+    ``tag dismiss``.
     """
 
     UPSTREAM = (

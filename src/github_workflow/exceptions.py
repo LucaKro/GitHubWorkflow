@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from domain_model.repository import Repository
 
     from github_workflow.findings import FindingStage
+    from github_workflow.workflow_templates import ForwardedSubject
 
 # %% whose repository
 
@@ -1339,34 +1340,44 @@ class UnknownUpstreamCommentError(DataclassException, LookupError):
         )
 
 
-# %% why the upstream reviews could not be read
+# %% why a read the repository's Actions make could not be had
 
 
 @dataclass
-class UpstreamReviewsUnavailable(DataclassException, ABC):
+class ForwardedReadUnavailable(DataclassException, ABC):
     """
-    Why the pull request opened upstream could not be read; returned in place of its
-    reviews rather than raised.
+    Why what a session had the repository's Actions read could not be had; returned in
+    place of what was read rather than raised.
+    """
+
+    subject: ForwardedSubject
+    """
+    What was to be read.
     """
 
     def line(self) -> str:
         """:return: What kept it from being read and what to do about it, in one line."""
         return (
-            f"upstream reviews not read: {self.error_message()}. "
+            f"{self.subject.described} not read: {self.error_message()}. "
             f"{self.suggest_correction()}"
         )
 
+    @property
+    def reading_command_line(self) -> str:
+        """:return: The command line reading it again."""
+        return self.subject.reading_command.usage()
+
 
 @dataclass
-class UpstreamReadNotStarted(UpstreamReviewsUnavailable):
+class ForwardedReadNotStarted(ForwardedReadUnavailable):
     """
-    The fork's Actions started no run answering the request: Actions are off on the
-    fork, or its workflows are, or GitHub dropped the push.
+    The repository's Actions started no run answering the request: Actions are off on
+    it, or its workflows are, or GitHub dropped the push.
     """
 
-    fork: Repository
+    repository: Repository
     """
-    The fork.
+    The repository whose Actions answer the request.
     """
 
     start_seconds: float
@@ -1376,22 +1387,40 @@ class UpstreamReadNotStarted(UpstreamReviewsUnavailable):
 
     def error_message(self) -> str:
         return (
-            f"{self.fork}'s Actions started no run reading them within "
+            f"{self.repository}'s Actions started no run reading them within "
             f"{self.start_seconds:.0f} seconds of each request"
         )
 
     def suggest_correction(self) -> str:
         return (
-            f"Ask the person to check that Actions and the fork's workflows are on at "
-            f"{self.fork.url}/actions, then list the reviews again"
+            f"Ask the person to check that Actions and the repository's workflows are "
+            f"on at {self.repository.url}/actions, then run `{self.reading_command_line}` again"
         )
 
 
 @dataclass
-class UpstreamAnswerUnreadable(UpstreamReviewsUnavailable):
+class ForwardedAnswerMissing(ForwardedReadUnavailable):
     """
-    The fork's Actions answered the request, but this session's code cannot read the
-    answer back.
+    The repository's Actions have saved no answer yet.
+    """
+
+    repository: Repository
+    """
+    The repository whose Actions answer the requests.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.repository}'s Actions have saved no answer yet"
+
+    def suggest_correction(self) -> str:
+        return f"`{self.reading_command_line}` asks for one and waits for it"
+
+
+@dataclass
+class ForwardedAnswerUnreadable(ForwardedReadUnavailable):
+    """
+    The repository's Actions answered the request, but this session's code cannot read
+    the answer back.
     """
 
     problem: str
@@ -1410,12 +1439,13 @@ class UpstreamAnswerUnreadable(UpstreamReviewsUnavailable):
     """
 
     def error_message(self) -> str:
-        return f"the fork's Actions answered, but {self.problem}"
+        return f"the repository's Actions answered, but {self.problem}"
 
     def suggest_correction(self) -> str:
         if self.recorder is None:
             return (
-                "Ask again: the answer was saved by an older version of the workflow."
+                f"Run `{self.reading_command_line}` again: the answer was saved by an older version "
+                f"of the workflow."
             )
         if self.recorder != self.replayer:
             return (
@@ -1423,13 +1453,13 @@ class UpstreamAnswerUnreadable(UpstreamReviewsUnavailable):
                 f"{self.recorder.described}, this session runs "
                 f"{self.replayer.described}."
             )
-        return "Ask for the upstream reviews again."
+        return f"Run `{self.reading_command_line}` again."
 
 
 @dataclass
-class UpstreamReadFailed(UpstreamReviewsUnavailable):
+class ForwardedReadFailed(ForwardedReadUnavailable):
     """
-    The fork's Actions run answering the request failed.
+    The repository's Actions run answering the request failed.
     """
 
     run: str
@@ -1450,14 +1480,14 @@ class UpstreamReadFailed(UpstreamReviewsUnavailable):
 
 
 @dataclass
-class UpstreamReadUnanswered(UpstreamReviewsUnavailable):
+class ForwardedReadUnanswered(ForwardedReadUnavailable):
     """
-    The fork's Actions did not answer the request in time.
+    The repository's Actions did not answer the request in time.
     """
 
-    upstream: Repository
+    repository: Repository
     """
-    The repository the pull request is open on.
+    The repository whose Actions answer the request.
     """
 
     timeout_seconds: float
@@ -1467,12 +1497,35 @@ class UpstreamReadUnanswered(UpstreamReviewsUnavailable):
 
     def error_message(self) -> str:
         return (
-            f"the fork's Actions did not read them on {self.upstream} within "
+            f"{self.repository}'s Actions did not read them within "
             f"{self.timeout_seconds:.0f} seconds"
         )
 
     def suggest_correction(self) -> str:
-        return "List the reviews again; the run reading them may still be going"
+        return f"Run `{self.reading_command_line}` again; the run reading them may still be going"
+
+
+# %% tagged comments
+
+
+@dataclass
+class UnknownTagError(DataclassException, LookupError):
+    """
+    Raised when a comment named is none of the tagged comments waiting: not tagged,
+    filed or dismissed already, or not read yet.
+    """
+
+    comment: str
+    """
+    The comment's page, as given.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.comment} is none of the tagged comments waiting"
+
+    def suggest_correction(self) -> str:
+        listing = RunnableCommand.TAG_LIST.usage()
+        return f"Give a comment's page as `{listing}` links it."
 
 
 # %% installing the runtime

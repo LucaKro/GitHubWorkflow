@@ -1,0 +1,18 @@
+[
+  {
+    "id": 201,
+    "html_url": "https://github.com/an-upstream/a-repository/pull/5#pullrequestreview-201",
+    "user": {"login": "an-owner"},
+    "body": "Answered everything. @An-Owner: the review tooling needs a finding.",
+    "state": "COMMENTED",
+    "submitted_at": "2026-11-04T09:00:00Z"
+  },
+  {
+    "id": 202,
+    "html_url": "https://github.com/an-upstream/a-repository/pull/5#pullrequestreview-202",
+    "user": {"login": "an-owner"},
+    "body": "@an-owner draft not sent",
+    "state": "PENDING",
+    "submitted_at": null
+  }
+]

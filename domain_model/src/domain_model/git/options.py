@@ -374,6 +374,17 @@ class RevListOption(GitOption):
     """
 
 
+class LsTreeOption(GitOption):
+    """
+    The options of ``git ls-tree``.
+    """
+
+    NAME_ONLY = "--name-only", True
+    """
+    List each entry's name alone.
+    """
+
+
 class MergeTreeOption(GitOption):
     """
     The options of ``git merge-tree``.

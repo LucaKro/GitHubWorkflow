@@ -25,6 +25,8 @@ from domain_model.repository import Repository
 
 from github_workflow.exceptions import (
     ForeignReviewAddressError,
+    ForwardedReadNotStarted,
+    ForwardedReadUnavailable,
     NoOpenPullRequestError,
     NothingToLabelError,
     PersonOnlyLabelError,
@@ -44,12 +46,8 @@ from github_workflow.own_pull_request import (
 from github_workflow.policy import WritePolicy
 from github_workflow.pull_request_overview import PullRequestLabel
 from github_workflow.upstream import UpstreamLabel
-from github_workflow.upstream_reviews import (
-    UpstreamReadNotStarted,
-    UpstreamReviewRequest,
-    UpstreamReviews,
-    UpstreamReviewsUnavailable,
-)
+from github_workflow.upstream_reviews import UpstreamReviewRequest, UpstreamReviews
+from github_workflow.workflow_templates import ForwardedSubject
 
 from .issues_in_memory import IssuesInMemory
 from .pull_requests import pull_request
@@ -269,7 +267,7 @@ class UpstreamReviewsInMemory(UpstreamReviews):
     Every request, in order.
     """
 
-    def snapshot(self, request: UpstreamReviewRequest) -> UpstreamPullRequestSnapshot:
+    def read(self, request: UpstreamReviewRequest) -> UpstreamPullRequestSnapshot:
         self.requests.append(request)
         return UpstreamPullRequestSnapshot(
             9,
@@ -341,21 +339,23 @@ class UpstreamUnreadable(UpstreamReviews):
     Can never read the pull request opened upstream, for the reason given.
     """
 
-    unavailable: UpstreamReviewsUnavailable
+    unavailable: ForwardedReadUnavailable
     """
     Why.
     """
 
-    def snapshot(
+    def read(
         self, request: UpstreamReviewRequest
-    ) -> UpstreamPullRequestSnapshot | UpstreamReviewsUnavailable:
+    ) -> UpstreamPullRequestSnapshot | ForwardedReadUnavailable:
         return self.unavailable
 
 
 def test_the_own_threads_are_listed_with_why_upstream_was_not_read(
     work: WritePolicy,  # noqa: F811
 ) -> None:
-    unavailable = UpstreamReadNotStarted(ScratchGitHub.upstream, 90.0)
+    unavailable = ForwardedReadNotStarted(
+        ForwardedSubject.UPSTREAM_REVIEWS, ScratchGitHub.owned, 90.0
+    )
     listing = ReviewThreadListing(
         own(work, opened_upstream(3)),
         threads(thread(8)),
