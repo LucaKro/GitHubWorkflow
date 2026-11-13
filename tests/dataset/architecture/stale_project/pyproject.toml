@@ -1,0 +1,11 @@
+[project]
+name = "sketch"
+
+[tool.architecture-diagrams]
+readme = "README.md"
+package = "sketch"
+
+[[tool.architecture-diagrams.diagrams]]
+key = "imports"
+kind = "imports"
+package = "sketch"

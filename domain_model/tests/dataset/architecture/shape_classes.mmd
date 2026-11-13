@@ -1,0 +1,9 @@
+classDiagram
+    direction LR
+    class Canvas
+    class Point
+    class Shape
+    class Circle
+    Shape <|-- Circle
+    Canvas --> Shape : shapes
+    Circle --> Point : centre

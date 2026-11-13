@@ -1,0 +1,20 @@
+[project]
+name = "drawn-package"
+
+[tool.architecture-diagrams]
+readme = "README.md"
+package = "drawn_package"
+
+[[tool.architecture-diagrams.groups]]
+title = "figures"
+modules = ["drawn_package.canvas", "drawn_package.shapes"]
+
+[[tool.architecture-diagrams.diagrams]]
+key = "imports"
+kind = "imports"
+package = "drawn_package"
+
+[[tool.architecture-diagrams.diagrams]]
+key = "classes"
+kind = "classes"
+group = "figures"

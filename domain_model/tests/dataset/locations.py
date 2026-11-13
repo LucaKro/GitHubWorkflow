@@ -266,3 +266,67 @@ class DatasetLocation(PathEnumeration):
     """
     A test file whose one test fails.
     """
+
+
+class ArchitectureLocation(PathEnumeration):
+    """
+    The project the architecture tests draw, and the diagrams and READMEs expected of
+    it.
+    """
+
+    DIRECTORY = DatasetLocation.DIRECTORY / "architecture"
+    """
+    The directory holding them.
+    """
+
+    PROJECT = DIRECTORY / "project"
+    """
+    The project: its settings declaring an import and a class diagram, its README
+    holding stale text where they go, and its package.
+    """
+
+    PACKAGE = PROJECT / "drawn_package"
+    """
+    The package: shapes, a canvas holding them, and a subpackage of pens drawing it.
+    """
+
+    PACKAGE_IMPORTS = DIRECTORY / "package_imports.mmd"
+    """
+    Which of the package's modules and subpackages imports which.
+    """
+
+    GROUPED_IMPORTS = DIRECTORY / "grouped_imports.mmd"
+    """
+    The same, with the canvas and the shapes drawn as one group.
+    """
+
+    SHAPE_CLASSES = DIRECTORY / "shape_classes.mmd"
+    """
+    The classes of the canvas and the shapes, without the enumeration and the error.
+    """
+
+    CONCEPTS = DIRECTORY / "concepts.mmd"
+    """
+    The package's three most extended and held classes, and the fields linking them.
+    """
+
+    SUBPACKAGES = DIRECTORY / "subpackages.mmd"
+    """
+    The package's modules and subpackages, each with its most central class, and which
+    uses a class of which.
+    """
+
+    README_DRAWN = DIRECTORY / "readme_drawn.md"
+    """
+    The project's README with both diagrams drawn in.
+    """
+
+    README_WITHOUT_MARKERS = DIRECTORY / "readme_without_markers.md"
+    """
+    A README marking no diagram.
+    """
+
+    UNKNOWN_GROUP = DIRECTORY / "unknown_group.toml"
+    """
+    A class diagram's settings naming a group no project declares.
+    """

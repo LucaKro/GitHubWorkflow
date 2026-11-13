@@ -317,6 +317,26 @@ class PluginDataDirectory(PathEnumeration):
     """
 
 
+# %% the package's own files
+
+
+class PackageLocation(PathEnumeration):
+    """
+    The workflow package's own directory and the project around it, as absolute paths.
+    """
+
+    DIRECTORY = Path(__file__).parent
+    """
+    The package's own directory.
+    """
+
+    PROJECT = DIRECTORY.parent.parent
+    """
+    The workflow's project, holding its ``pyproject.toml`` and README when the package
+    runs from its source.
+    """
+
+
 # %% the plugin and its runtime
 
 

@@ -291,4 +291,60 @@ them on the notes branch for the Actions workflow.
 | Notes | `notes/` |
 | What the guard allows | `guard.py` here; the reading forms in `domain_model/git/reading.py` and `domain_model/github/reading_calls.py` |
 | The Actions workflows on the notes branch | `workflow_templates.py`, `templates/` |
+| The architecture diagrams in the READMEs | `architecture.py` here; drawing them in `domain_model/architecture/` |
 | The runtime install and the launcher | `install.py`, `plugin.py`, `hooks/runtime.sh` |
+
+## 12. Architecture diagrams in a README
+
+Any project with the workflow installed can keep Mermaid diagrams of its architecture
+in its README, drawn from the source. It declares them in its `pyproject.toml`:
+
+```toml
+[tool.architecture-diagrams]
+readme = "README.md"
+package = "src/my_package"     # the package's directory
+# left-out-bases = [...]       # classes the class diagrams leave out; enumerations and errors by default
+
+[[tool.architecture-diagrams.groups]]
+title = "storage"
+modules = ["my_package.database", "my_package.files"]   # a package stands for every module under it
+
+[[tool.architecture-diagrams.diagrams]]
+key = "overview"
+kind = "imports"               # which modules import which
+package = "my_package"
+groups = ["storage"]           # drawn as one node each
+
+[[tool.architecture-diagrams.diagrams]]
+key = "storage classes"
+kind = "classes"               # which classes extend and hold which
+group = "storage"
+
+[[tool.architecture-diagrams.diagrams]]
+key = "concepts"
+kind = "concepts"              # the classes most extended directly and held, with how many descend from each
+package = "my_package"
+concept-count = 25             # how many it shows at most; 25 by default
+
+[[tool.architecture-diagrams.diagrams]]
+key = "subpackages"
+kind = "subpackages"           # each module or subpackage with its central classes, and which uses whose classes
+package = "my_package"
+classes-per-node = 3           # how many classes each names at most; 3 by default
+```
+
+An `imports` diagram whose groups are the project's layers gives the highest-level view;
+`concepts` and `subpackages` sit between it and the full `classes` diagrams.
+
+Each diagram goes between two comments in the README, which it replaces only the text
+between:
+
+```markdown
+<!-- diagram: overview -->
+<!-- end of diagram: overview -->
+```
+
+`python -m github_workflow.architecture` draws them, in the current directory or in the
+projects it is given; `--check` only reports a README that no longer matches the
+source, for a test, a pre-commit hook or CI. A diagram naming a module that does not
+exist is refused, so a rename cannot leave a diagram silently empty.

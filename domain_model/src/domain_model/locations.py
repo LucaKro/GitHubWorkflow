@@ -66,6 +66,12 @@ class PackageLocation(PathEnumeration):
     The GraphQL documents the readers send.
     """
 
+    PROJECT = DIRECTORY.parent.parent
+    """
+    The domain model's project, holding its ``pyproject.toml`` and README when the
+    package runs from its source.
+    """
+
 
 # %% git's state
 

@@ -11,3 +11,9 @@ repos:
         language: python
         additional_dependencies: ["black==25.11.0", "docformatter==1.7.8"]
         files: \.py$
+      - id: draw-architecture
+        name: Draw the architecture diagrams into both READMEs
+        entry: env PYTHONPATH=domain_model/src:src python -m github_workflow.architecture . domain_model
+        language: python
+        pass_filenames: false
+        files: (\.py|README\.md|pyproject\.toml)$

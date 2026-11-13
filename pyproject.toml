@@ -31,3 +31,145 @@ fallback-version = "0.0.0"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/github_workflow"]
+
+# The diagrams of the architecture in README.md, drawn by `python -m github_workflow.architecture`.
+[tool.architecture-diagrams]
+readme = "README.md"
+package = "src/github_workflow"
+
+[[tool.architecture-diagrams.groups]]
+title = "entry points"
+modules = [
+    "github_workflow.__main__",
+    "github_workflow.architecture",
+    "github_workflow.command_steps",
+    "github_workflow.report",
+    "github_workflow.runtime_check",
+    "github_workflow.session",
+    "github_workflow.session_start",
+]
+
+[[tool.architecture-diagrams.groups]]
+title = "vocabulary"
+modules = [
+    "github_workflow.checkout",
+    "github_workflow.command_line",
+    "github_workflow.environment",
+    "github_workflow.exceptions",
+    "github_workflow.labels",
+    "github_workflow.locations",
+    "github_workflow.markers",
+    "github_workflow.plugin",
+    "github_workflow.report_lines",
+    "github_workflow.report_section",
+    "github_workflow.settings",
+]
+
+[[tool.architecture-diagrams.groups]]
+title = "work"
+modules = [
+    "github_workflow.cleanup",
+    "github_workflow.work",
+]
+
+[[tool.architecture-diagrams.groups]]
+title = "rules"
+modules = [
+    "github_workflow.policy",
+    "github_workflow.push_hook",
+    "github_workflow.remotes",
+]
+
+[[tool.architecture-diagrams.groups]]
+title = "guard"
+modules = [
+    "github_workflow.approval",
+    "github_workflow.coarse_guard",
+    "github_workflow.guard",
+]
+
+[[tool.architecture-diagrams.groups]]
+title = "findings"
+modules = [
+    "github_workflow.findings",
+    "github_workflow.label_events",
+    "github_workflow.proofs",
+]
+
+[[tool.architecture-diagrams.groups]]
+title = "pull requests"
+modules = [
+    "github_workflow.freshness",
+    "github_workflow.own_pull_request",
+    "github_workflow.pull_request_overview",
+    "github_workflow.upstream",
+    "github_workflow.upstream_reviews",
+]
+
+[[tool.architecture-diagrams.groups]]
+title = "notes"
+modules = [
+    "github_workflow.discussions",
+    "github_workflow.notes",
+    "github_workflow.repository_setup",
+    "github_workflow.workflow_templates",
+]
+
+[[tool.architecture-diagrams.groups]]
+title = "runtime"
+modules = [
+    "github_workflow.install",
+    "github_workflow.probe",
+    "github_workflow.project_tooling",
+]
+
+[[tool.architecture-diagrams.diagrams]]
+key = "overview"
+kind = "imports"
+package = "github_workflow"
+groups = ["entry points", "vocabulary", "work", "rules", "guard", "findings", "pull requests", "notes", "runtime"]
+
+[[tool.architecture-diagrams.diagrams]]
+key = "entry points"
+kind = "classes"
+group = "entry points"
+
+[[tool.architecture-diagrams.diagrams]]
+key = "vocabulary"
+kind = "classes"
+group = "vocabulary"
+
+[[tool.architecture-diagrams.diagrams]]
+key = "work"
+kind = "classes"
+group = "work"
+
+[[tool.architecture-diagrams.diagrams]]
+key = "rules"
+kind = "classes"
+group = "rules"
+
+[[tool.architecture-diagrams.diagrams]]
+key = "guard"
+kind = "classes"
+group = "guard"
+
+[[tool.architecture-diagrams.diagrams]]
+key = "findings"
+kind = "classes"
+group = "findings"
+
+[[tool.architecture-diagrams.diagrams]]
+key = "pull requests"
+kind = "classes"
+group = "pull requests"
+
+[[tool.architecture-diagrams.diagrams]]
+key = "notes"
+kind = "classes"
+group = "notes"
+
+[[tool.architecture-diagrams.diagrams]]
+key = "runtime"
+kind = "classes"
+group = "runtime"

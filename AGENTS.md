@@ -157,5 +157,8 @@
 - `github_workflow.guard`, `github_workflow.coarse_guard`, `github_workflow.approval` and `github_workflow.install`, and every module they import, run on the standard library and the plugin's own source alone - the workflow's and the domain model's - so the hooks can run them when the runtime cannot, and the installer can build the runtime
 - `domain_model` depends on nothing but the standard library, so the guard can import it from the plugin's source
 
+## Architecture Diagrams
+- The diagrams in each package's README are generated from its source, as `[tool.architecture-diagrams]` in that package's `pyproject.toml` declares them; never edit them by hand. When one is wrong or unreadable, change what draws it - the diagram or the grouping of modules declared there - never its output
+
 ## Releases
 - No file carries the version: `hatch-vcs` reads it from the latest git tag

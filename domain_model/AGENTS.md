@@ -150,5 +150,8 @@
 - Name every file and directory once, in `domain_model.locations`; every environment variable once, in `domain_model.environment`
 - The package depends only on the libraries `pyproject.toml` lists, and knows nothing of the tools built on it: no command lines, exit statuses, skills or workflow conventions
 
+## Architecture Diagrams
+- The diagrams in `README.md` are generated from the source, as `[tool.architecture-diagrams]` in `pyproject.toml` declares them; never edit them by hand. When one is wrong or unreadable, change what draws it - the diagram or the grouping of modules declared there - never its output
+
 ## Releases
 - No file carries the version: `hatch-vcs` reads it from the latest git tag
