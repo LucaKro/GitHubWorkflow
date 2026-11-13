@@ -110,6 +110,33 @@ class GitHubRepositoryFile(PathEnumeration):
     """
 
 
+class IssueTemplateLocation(PathEnumeration):
+    """
+    The places in a repository GitHub files issues through templates from, relative to
+    its root; GitHub matches their names in any case.
+    """
+
+    TEMPLATE_DIRECTORY = Path(".github/ISSUE_TEMPLATE")
+    """
+    The issue templates and forms, and their configuration, each a file of its own.
+    """
+
+    ROOT_TEMPLATE = Path("ISSUE_TEMPLATE.md")
+    """
+    A single template, in the repository's root.
+    """
+
+    GITHUB_DIRECTORY_TEMPLATE = Path(".github/ISSUE_TEMPLATE.md")
+    """
+    A single template, beside the repository's workflows.
+    """
+
+    DOCUMENTATION_TEMPLATE = Path("docs/ISSUE_TEMPLATE.md")
+    """
+    A single template, among the repository's documentation.
+    """
+
+
 # %% a Python project's files
 
 

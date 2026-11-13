@@ -13,10 +13,14 @@ from domain_model.github.labels import GitHubLabel
 from domain_model.github.repository_client import ClosablePullRequests
 from domain_model.github.rest_models import RestPullRequest
 from domain_model.github.vocabulary import IssueState, IssueStateReason
+from domain_model.repository import Repository
 
 from github_workflow.findings import FindingLabel, FindingStage, Priority
 from github_workflow.proofs import FindingTest, ProofAttempt, ProofRunner
 from github_workflow.settings import WorkflowSettings
+from github_workflow.upstream import IssueMoveSuggestion
+
+from .scratch_github import ForkOf, ScratchGitHub
 
 # %% an issue board in memory
 
@@ -133,6 +137,13 @@ class IssuesInMemory(ClosablePullRequests):
 
     def set_issue_description(self, number: int, body: str) -> None:
         self.writes.append(f"set_issue_description {number} {body}")
+
+
+def move_suggestion(forked_from: Repository | None = None) -> IssueMoveSuggestion:
+    """:param forked_from: The repository the owner's was forked from, ``None`` for
+        none.
+    :return: The command line moving an issue of the owner's repository upstream."""
+    return IssueMoveSuggestion(ScratchGitHub.owned, ForkOf(forked_from))
 
 
 def build_finding(number: int, stage: FindingStage, priority: Priority) -> Issue:

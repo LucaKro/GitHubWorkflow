@@ -84,7 +84,7 @@ from github_workflow.remotes import OwnedRemotes
 from github_workflow.report_lines import Speaker, Tone
 from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
-from github_workflow.upstream import UpstreamSuggestion
+from github_workflow.upstream import IssueMoveSuggestion, UpstreamSuggestion
 
 from .repositories_by_owner import RepositoriesByOwner
 from .test_proofs import ProofDataset
@@ -769,6 +769,7 @@ def test_a_finding_filed_with_a_test_is_proven_on_the_default_branch(
         "A title",
         "What was found.\n",
         Priority.HIGH,
+        filed_on(github),
         read_finding_test(finding_checkout),
         build_proof_runner(finding_checkout),
     )
@@ -787,7 +788,15 @@ def test_a_finding_filed_without_a_test_runs_none(
     )
 
     github = owner_s_github(settings)
-    assert step == FindingFiling(github, "A title", "What was found.\n", Priority.HIGH)
+    assert step == FindingFiling(
+        github, "A title", "What was found.\n", Priority.HIGH, filed_on(github)
+    )
+
+
+def filed_on(board: GitHubRepository) -> IssueMoveSuggestion:
+    """:param board: The repository a finding is filed on.
+    :return: The command line moving a finding upstream from it."""
+    return IssueMoveSuggestion(board.repository, board)
 
 
 def test_proving_runs_the_test_on_the_default_branch(
@@ -1430,6 +1439,7 @@ def test_a_finding_is_filed_on_the_workflow_from_outside_any_checkout(
         "A read was refused",
         (tmp_path / "finding.md").read_text(),
         Priority.MEDIUM,
+        filed_on(board),
     )
 
 

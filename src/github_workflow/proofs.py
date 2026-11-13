@@ -404,10 +404,28 @@ class Proof:
         :param authors: The logins whose proofs count, in any case.
         :return: The latest proof one of them posted, ``None`` when none did.
         """
+        comment = cls.latest_posted_comment(comments, authors)
+        if comment is None:
+            return None
+        return cls.from_json(json.loads(cls.marker.read(comment.body)))
+
+    @classmethod
+    def latest_posted_comment(
+        cls, comments: Sequence[IssueComment], authors: Collection[str]
+    ) -> IssueComment | None:
+        """
+        :param comments: An issue's comments, oldest first.
+        :param authors: The logins whose proofs count, in any case.
+        :return: The comment holding the latest proof one of them posted, ``None``
+            when none did.
+        """
         trusted = {author.casefold() for author in authors}
-        for comment in reversed(comments):
-            record = cls.marker.read(comment.body)
-            if comment.author.casefold() not in trusted or record is None:
-                continue
-            return cls.from_json(json.loads(record))
-        return None
+        return next(
+            (
+                comment
+                for comment in reversed(comments)
+                if comment.author.casefold() in trusted
+                and cls.marker.read(comment.body) is not None
+            ),
+            None,
+        )

@@ -10,7 +10,7 @@ from dataclasses import dataclass, field, replace
 import pytest
 from domain_model.github.pull_request_models import UpstreamPullRequestSnapshot
 from domain_model.github.readers import PullRequestSource
-from domain_model.github.repository_client import ForkCommenter, ForkDetails
+from domain_model.github.repository_client import ForkCommenter
 from domain_model.github.rest_models import RestPullRequest
 from domain_model.github.review_models import (
     Author,
@@ -51,7 +51,7 @@ from github_workflow.workflow_templates import ForwardedSubject
 
 from .issues_in_memory import IssuesInMemory
 from .pull_requests import pull_request
-from .scratch_github import ScratchGitHub
+from .scratch_github import ForkOf, ScratchGitHub
 from .test_work import PullRequestsFromBranchesInMemory, work  # noqa: F401
 
 # %% the work branch's pull request
@@ -232,21 +232,6 @@ The repository the owner's was forked from.
 
 
 @dataclass(frozen=True)
-class ForkOf(ForkDetails):
-    """
-    The owner's repository, forked from the repository given.
-    """
-
-    forked_from: Repository | None
-    """
-    The upstream, ``None`` for a repository that is no fork.
-    """
-
-    def upstream(self) -> Repository | None:
-        return self.forked_from
-
-
-@dataclass(frozen=True)
 class UpstreamReviewsInMemory(UpstreamReviews):
     """
     Answers every request with the threads and reviews given, keeping the requests.
@@ -300,6 +285,37 @@ def test_unresolved_threads_are_listed_first_by_their_first_comment(
     listed = listing.run().splitlines()
 
     assert [line.split()[0] for line in listed] == ["9", "8"]
+
+
+def test_a_thread_without_visible_comments_is_listed_beside_the_others(
+    work: WritePolicy,  # noqa: F811
+) -> None:
+    visible, hidden = thread(9), replace(thread(8), comments=[])
+    listing = ReviewThreadListing(
+        own(work, pull_request(3, "feature")),
+        threads(visible, hidden),
+        ForkOf(None),
+        UpstreamReviewsInMemory(),
+    )
+
+    assert listing.run().splitlines() == [
+        ReviewThreadListing.describe_thread(visible),
+        ReviewThreadListing.describe_thread(hidden),
+    ]
+
+
+def test_an_upstream_thread_without_visible_comments_is_listed_without_address(
+    work: WritePolicy,  # noqa: F811
+) -> None:
+    hidden = replace(thread(77), comments=[])
+    listing = ReviewThreadListing(
+        own(work, opened_upstream(3)),
+        threads(),
+        ForkOf(ScratchGitHub.upstream),
+        UpstreamReviewsInMemory([hidden]),
+    )
+
+    assert listing.run().splitlines()[-1] == ReviewThreadListing.describe_thread(hidden)
 
 
 def test_the_upstream_pull_request_s_reviews_and_threads_follow_with_addresses(

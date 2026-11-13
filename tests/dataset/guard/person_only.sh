@@ -7,3 +7,5 @@ env github-workflow upstream LucaKro/project feature
 uv run github-workflow upstream LucaKro/project feature
 python3 -mgithub_workflow upstream LucaKro/project feature
 env python3 -m github_workflow upstream LucaKro/project feature
+github-workflow issue upstream LucaKro/project 4
+python -m github_workflow issue upstream LucaKro/project 4 --follows-template

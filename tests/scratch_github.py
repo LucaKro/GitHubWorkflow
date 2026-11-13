@@ -1,5 +1,6 @@
 """
-The repositories on GitHub the tests' stand-ins name, never reached.
+The repositories on GitHub the tests' stand-ins name, never reached, and which of them
+one was forked from.
 """
 
 from __future__ import annotations
@@ -7,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from domain_model.class_property import classproperty
+from domain_model.github.repository_client import ForkDetails
 from domain_model.repository import Repository
 
 from github_workflow.settings import WorkflowSettings
@@ -35,3 +37,18 @@ class ScratchGitHub:
         The repository the owner's was forked from.
         """
         return Repository("an-upstream-owner", RepositoriesByOwner.repository_name)
+
+
+@dataclass(frozen=True)
+class ForkOf(ForkDetails):
+    """
+    The owner's repository, forked from the repository given.
+    """
+
+    forked_from: Repository | None
+    """
+    The upstream, ``None`` for a repository that is no fork.
+    """
+
+    def upstream(self) -> Repository | None:
+        return self.forked_from

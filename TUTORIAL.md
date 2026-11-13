@@ -158,6 +158,10 @@ github-workflow finding file ... --test tests/test_shows_it.py   # filed already
 github-workflow finding list
 ```
 
+On a fork, a session first searches the upstream's issues, open and closed, and files
+the finding only when none of them covers it. A finding filed on a fork ends with the
+command line that moves it upstream (see [section 6](#6-forks-and-their-upstream)).
+
 Its life is carried by labels:
 
 | Label | Meaning | Who sets it |
@@ -222,6 +226,24 @@ writes a request to the notes branch; an Actions workflow there reads GitHub's a
 and saves them, and the session replays them. Nothing is ever written upstream: after
 changing something for an upstream comment, the session says so on the fork's pull
 request with `review addressed <comment number or address> --body-file <what changed>`.
+
+An issue of the fork, such as a finding, moves upstream the same way. Its text ends
+with the command line:
+
+```bash
+github-workflow issue upstream LucaKro/<fork> <number>
+```
+
+Only you run that too. It opens the issue upstream as you, with its title and its text
+without that command line and without its labels, and posts its latest proof there. It
+then closes the fork's issue with a link to the new one. Before anything is written:
+
+- When the upstream files issues through templates or issue forms (its own, or those of
+  its owner's `.github` repository), it refuses. The fork's issue is labelled
+  `upstream: issue template` and gets a comment linking the templates. Have the issue
+  rewritten to follow them, then run it again with `--follows-template`.
+- When open pull requests of the fork close the issue, it asks whether to close them.
+  They are closed only if you answer yes; otherwise nothing is moved.
 
 `clone <owner/name>` clones any repository to read it. Somebody else's goes into the
 plugin's data directory and carries the push hook, so nothing can be pushed from it.
@@ -297,7 +319,7 @@ them on the notes branch for the Actions workflow.
 
 | A session, on its own | A session, when you say so | Only you |
 |---|---|---|
-| start, switch and discard branches; commit; push | accept, shelve, reject, edit or prioritize a finding | open a pull request upstream (`upstream`) |
+| start, switch and discard branches; commit; push | accept, shelve, reject, edit or prioritize a finding | open a pull request upstream (`upstream`); move an issue upstream (`issue upstream`) |
 | open drafts; describe, label and answer reviews on its own pull request | describe another pull request | change repository settings |
 | sync and merge its branch; fast-forward a fork's default branch | change a stack (`stack on`) | merge pull requests |
 | file, prove, recheck and comment on findings; close a fixed one | post an idea; file or dismiss a tag | set `pull request: shelved` |

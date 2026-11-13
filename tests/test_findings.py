@@ -77,6 +77,7 @@ from .issues_in_memory import (
     IssuesInMemory,
     PresetOutcomeRunner,
     build_finding,
+    move_suggestion,
     labelled_board,
 )
 from .pull_requests import pull_request
@@ -138,7 +139,7 @@ def test_a_finding_is_filed_unreviewed_with_its_priority_and_every_label_created
 ):
     board = IssuesInMemory()
 
-    FindingFiling(board, "A title", "A body", Priority.HIGH).run()
+    FindingFiling(board, "A title", "A body", Priority.HIGH, move_suggestion()).run()
 
     created = [f"create_label {label}" for label in FindingLabel.every_label]
     assert board.writes == created + [
@@ -149,7 +150,7 @@ def test_a_finding_is_filed_unreviewed_with_its_priority_and_every_label_created
 def test_labels_the_repository_has_are_not_created_again() -> None:
     board = IssuesInMemory(present_labels=set(FindingLabel.every_label))
 
-    FindingFiling(board, "A title", "A body", Priority.LOW).run()
+    FindingFiling(board, "A title", "A body", Priority.LOW, move_suggestion()).run()
 
     assert board.writes == [f"open_issue 1 {[FindingStage.UNREVIEWED, Priority.LOW]}"]
 
@@ -161,7 +162,13 @@ def test_a_proven_finding_is_filed_unreviewed_and_proven_with_its_proof_posted()
     failing = runner(ProofOutcome.FAILS)
 
     ProvenFindingFiling(
-        board, "A title", "A body", Priority.HIGH, finding_test(), failing
+        board,
+        "A title",
+        "A body",
+        Priority.HIGH,
+        move_suggestion(),
+        finding_test(),
+        failing,
     ).run()
 
     assert board.writes == [
@@ -181,10 +188,49 @@ def test_a_finding_whose_test_does_not_fail_is_not_filed(
 
     with pytest.raises(error):
         ProvenFindingFiling(
-            board, "A title", "A body", Priority.HIGH, finding_test(), runner(outcome)
+            board,
+            "A title",
+            "A body",
+            Priority.HIGH,
+            move_suggestion(),
+            finding_test(),
+            runner(outcome),
         ).run()
 
     assert board.writes == []
+
+
+# %% filing on a fork
+
+
+def test_a_finding_filed_on_a_fork_ends_with_the_move_command() -> None:
+    board = labelled_board()
+    suggestion = move_suggestion(ScratchGitHub.upstream)
+
+    FindingFiling(board, "A title", "A body", Priority.LOW, suggestion).run()
+
+    assert board.writes[-1] == (
+        f"set_issue_description 1 {suggestion.append_once('A body', 1)}"
+    )
+
+
+def test_a_finding_on_a_repository_that_is_no_fork_has_no_move_command() -> None:
+    board = labelled_board()
+
+    FindingFiling(board, "A title", "A body", Priority.LOW, move_suggestion()).run()
+
+    assert board.descriptions[1] == "A body"
+
+
+def test_a_new_text_of_a_finding_on_a_fork_ends_with_the_move_command() -> None:
+    board = IssuesInMemory({1: build_finding(1, FindingStage.UNREVIEWED, Priority.LOW)})
+    suggestion = move_suggestion(ScratchGitHub.upstream)
+
+    FindingEdit(board, 1, None, "Corrected.", suggestion).run()
+
+    assert board.writes == [
+        f"set_issue_description 1 {suggestion.append_once('Corrected.', 1)}"
+    ]
 
 
 # %% prioritizing
@@ -664,7 +710,9 @@ def test_a_finding_is_commented_on() -> None:
 def test_a_finding_s_title_and_text_are_rewritten() -> None:
     board = IssuesInMemory({1: build_finding(1, FindingStage.UNREVIEWED, Priority.LOW)})
 
-    FindingEdit(board, 1, "A sharper title", "What was found, corrected.").run()
+    FindingEdit(
+        board, 1, "A sharper title", "What was found, corrected.", move_suggestion()
+    ).run()
 
     assert board.writes == [
         "set_issue_title 1 A sharper title",
@@ -675,7 +723,7 @@ def test_a_finding_s_title_and_text_are_rewritten() -> None:
 def test_only_what_is_given_is_rewritten() -> None:
     board = IssuesInMemory({1: build_finding(1, FindingStage.UNREVIEWED, Priority.LOW)})
 
-    FindingEdit(board, 1, None, "What was found, corrected.").run()
+    FindingEdit(board, 1, None, "What was found, corrected.", move_suggestion()).run()
 
     assert board.writes == ["set_issue_description 1 What was found, corrected."]
 
@@ -684,7 +732,7 @@ def test_an_edit_changing_nothing_is_refused() -> None:
     board = IssuesInMemory({1: build_finding(1, FindingStage.UNREVIEWED, Priority.LOW)})
 
     with pytest.raises(NothingToEditError):
-        FindingEdit(board, 1, None, None).run()
+        FindingEdit(board, 1, None, None, move_suggestion()).run()
 
     assert board.writes == []
 
@@ -695,7 +743,7 @@ def test_a_closed_finding_is_not_edited() -> None:
     )
 
     with pytest.raises(NotAFindingError):
-        FindingEdit(board, 1, "A title", None).run()
+        FindingEdit(board, 1, "A title", None, move_suggestion()).run()
 
     assert board.writes == []
 

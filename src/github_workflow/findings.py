@@ -48,6 +48,7 @@ from github_workflow.report_lines import (
     Tone,
 )
 from github_workflow.report_section import ReportGroup, ReportSection
+from github_workflow.upstream import IssueMoveSuggestion
 from github_workflow.work import (
     DraftOpening,
     PullRequestOpenedLabelling,
@@ -326,7 +327,8 @@ class FindingLabelling(WorkflowStep, ABC):
 @dataclass(frozen=True)
 class FindingFiling(FindingLabelling):
     """
-    A finding filed as an unreviewed issue with its priority.
+    A finding filed as an unreviewed issue with its priority; on a fork, its text ends
+    with the command line moving it upstream.
     """
 
     title: str
@@ -344,6 +346,11 @@ class FindingFiling(FindingLabelling):
     How urgent it is.
     """
 
+    suggestion: IssueMoveSuggestion
+    """
+    Ends its text with the command line moving it upstream.
+    """
+
     def run(self) -> str:
         number = self.file([])
         return f"filed finding #{number} ({self.priority.level})"
@@ -354,9 +361,13 @@ class FindingFiling(FindingLabelling):
         :return: The number of the issue filed.
         """
         self.create_missing_labels()
-        return self.issues.open_issue(
+        number = self.issues.open_issue(
             self.title, self.body, [FindingStage.UNREVIEWED, self.priority, *evidence]
         )
+        suggested = self.suggestion.append_once(self.body, number)
+        if suggested != self.body:
+            self.issues.set_issue_description(number, suggested)
+        return number
 
 
 @dataclass(frozen=True)
@@ -703,7 +714,8 @@ class FindingComment(FindingChange):
 @dataclass(frozen=True)
 class FindingEdit(FindingChange):
     """
-    An open finding's title, text or both rewritten, the rest left as it is.
+    An open finding's title, text or both rewritten, the rest left as it is; on a fork,
+    a new text ends with the command line moving it upstream.
 
     :raises NothingToEditError: If neither is given.
     """
@@ -718,6 +730,11 @@ class FindingEdit(FindingChange):
     The new text, ``None`` to keep the old one.
     """
 
+    suggestion: IssueMoveSuggestion
+    """
+    Ends a new text with the command line moving the finding upstream.
+    """
+
     def run(self) -> str:
         if self.title is None and self.body is None:
             raise NothingToEditError(self.number)
@@ -725,7 +742,8 @@ class FindingEdit(FindingChange):
         if self.title is not None:
             self.issues.set_issue_title(self.number, self.title)
         if self.body is not None:
-            self.issues.set_issue_description(self.number, self.body)
+            body = self.suggestion.append_once(self.body, self.number)
+            self.issues.set_issue_description(self.number, body)
         return f"edited finding #{self.number}"
 
 

@@ -944,6 +944,64 @@ class NotAForkError(DataclassException, LookupError):
 
 
 @dataclass
+class IssueNotMovableError(DataclassException, ValueError):
+    """
+    Raised when an issue of a fork cannot be moved to the repository it was forked from.
+    """
+
+    number: int
+    """
+    The fork's issue.
+    """
+
+    reason: str
+    """
+    Why it cannot be moved.
+    """
+
+    def error_message(self) -> str:
+        return f"#{self.number} cannot be moved upstream: {self.reason}"
+
+    def suggest_correction(self) -> str:
+        return "Fix what the reason names, then run the command again."
+
+
+@dataclass
+class IssueTemplatesRequiredError(DataclassException, ValueError):
+    """
+    Raised when an issue of a fork is to be moved to a repository that files issues
+    through templates, before it was rewritten to follow them.
+    """
+
+    number: int
+    """
+    The fork's issue.
+    """
+
+    upstream: Repository
+    """
+    The repository it was to be moved to.
+    """
+
+    templates: tuple[str, ...]
+    """
+    The pages of the upstream's issue templates, issue forms and their configuration.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"{self.upstream} files issues through templates, which a comment on "
+            f"#{self.number} links: {', '.join(self.templates)}"
+        )
+
+    def suggest_correction(self) -> str:
+        return (
+            f"Have #{self.number} rewritten to follow them, then run the command again "
+            f"with {CommandOption.FOLLOWS_TEMPLATE}."
+        )
+
+
+@dataclass
 class PullRequestNotProposableError(DataclassException, ValueError):
     """
     Raised when a fork's branch has no pull request that can be opened upstream.
