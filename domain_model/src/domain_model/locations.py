@@ -66,6 +66,11 @@ class PackageLocation(PathEnumeration):
     The GraphQL documents the readers send.
     """
 
+    README = DIRECTORY.parent.parent / "README.md"
+    """
+    The domain model's README, there only when the package runs from its source.
+    """
+
 
 # %% git's state
 

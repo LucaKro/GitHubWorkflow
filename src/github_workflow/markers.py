@@ -6,27 +6,12 @@ and read back by the workflow.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
+
+from domain_model.markdown import CommentDelimiter
 
 from github_workflow.plugin import Distribution
 
 # %% a marker
-
-
-class CommentDelimiter(StrEnum):
-    """
-    The text opening and closing a comment in Markdown.
-    """
-
-    OPEN = "<!-- "
-    """
-    Opens the comment.
-    """
-
-    CLOSE = " -->"
-    """
-    Closes the comment.
-    """
 
 
 @dataclass(eq=False)

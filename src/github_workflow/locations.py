@@ -317,6 +317,26 @@ class PluginDataDirectory(PathEnumeration):
     """
 
 
+# %% the package's own files
+
+
+class PackageLocation(PathEnumeration):
+    """
+    The workflow package's own directory and the files around it in its source, as
+    absolute paths.
+    """
+
+    DIRECTORY = Path(__file__).parent
+    """
+    The package's own directory.
+    """
+
+    README = DIRECTORY.parent.parent / "README.md"
+    """
+    The workflow's README, there only when the package runs from its source.
+    """
+
+
 # %% the plugin and its runtime
 
 

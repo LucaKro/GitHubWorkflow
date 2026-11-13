@@ -266,3 +266,50 @@ class DatasetLocation(PathEnumeration):
     """
     A test file whose one test fails.
     """
+
+
+class ArchitectureLocation(PathEnumeration):
+    """
+    The package the architecture tests draw, the diagrams expected of it, and the
+    READMEs they are written into.
+    """
+
+    DIRECTORY = DatasetLocation.DIRECTORY / "architecture"
+    """
+    The directory holding them.
+    """
+
+    PACKAGE = DIRECTORY / "drawn_package"
+    """
+    The package: shapes, a canvas holding them, and a subpackage of pens drawing it.
+    """
+
+    PACKAGE_IMPORTS = DIRECTORY / "package_imports.mmd"
+    """
+    Which of the package's modules and subpackages imports which.
+    """
+
+    GROUPED_IMPORTS = DIRECTORY / "grouped_imports.mmd"
+    """
+    The same, with the canvas and the shapes drawn as one group.
+    """
+
+    SHAPE_CLASSES = DIRECTORY / "shape_classes.mmd"
+    """
+    The classes of the canvas and the shapes, without the enumeration and the error.
+    """
+
+    README_WITH_MARKERS = DIRECTORY / "readme_with_markers.md"
+    """
+    A README marking where the import diagram goes, holding stale text there.
+    """
+
+    README_DRAWN = DIRECTORY / "readme_drawn.md"
+    """
+    The same README with the import diagram drawn in.
+    """
+
+    README_WITHOUT_MARKERS = DIRECTORY / "readme_without_markers.md"
+    """
+    A README marking no diagram.
+    """
