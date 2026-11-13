@@ -308,3 +308,9 @@ class DatasetLocation(PathEnumeration):
     """
     The one page of a discussion search, finding one discussion.
     """
+
+    LOADED_MODULES_SCRIPT = DIRECTORY / "imports" / "loaded_modules.py"
+    """
+    A Python script importing the module its argument names, printing every module that
+    loaded.
+    """

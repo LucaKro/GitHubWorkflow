@@ -8,7 +8,7 @@ from __future__ import annotations
 import sys
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from domain_model.git.commands import GitCommandRunner
@@ -19,6 +19,7 @@ from domain_model.git.working_tree import WorkingTree
 from domain_model.github.closing_lines import ClosingLines
 from domain_model.github.repository_client import (
     BranchStacks,
+    ForkDetails,
     IssueTracker,
     PullRequestOpener,
     PullRequestReader,
@@ -37,6 +38,7 @@ from github_workflow.exceptions import (
     ConflictMarkersLeftError,
     DetachedHeadError,
     DraftUnfinishedError,
+    ForeignPullRequestError,
     MergeConflictError,
     NothingToDescribeError,
     PullRequestNotOpenError,
@@ -51,24 +53,9 @@ from github_workflow.labels import IssueLabel
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
 from github_workflow.push_hook import PushHook
+from github_workflow.remotes import ForkUpstream
 from github_workflow.settings import WorkflowSettings
-
-# %% one step
-
-
-class WorkflowStep(ABC):
-    """
-    One write a session asks the workflow for.
-    """
-
-    @abstractmethod
-    def run(self) -> str:
-        """
-        Make the write.
-
-        :return: What was done, in one line.
-        """
-
+from github_workflow.workflow_step import WorkflowStep
 
 # %% branches
 
@@ -109,10 +96,12 @@ class LocalBranchFollowing:
 @dataclass(frozen=True)
 class BranchStart(WorkflowStep):
     """
-    A new work branch, started from GitHub's copy of the default branch or of another
-    branch - or from the local branch, when GitHub has none of that name - and checked
-    out. Started from GitHub's default branch, it also fast-forwards the local default
-    branch to it.
+    A new work branch, checked out.
+
+    It starts from GitHub's copy of the default branch or of another branch, from the
+    repository the fork was forked from when only that has the branch, or from the local
+    branch when GitHub has none. When it starts from GitHub's default branch, the local
+    default branch is fast-forwarded to it as well.
     """
 
     policy: WritePolicy
@@ -130,7 +119,17 @@ class BranchStart(WorkflowStep):
     The branch to start from, the default branch when ``None``.
     """
 
+    fork: ForkDetails | None = None
+    """
+    Reads which repository the owner's was forked from; ``None`` starts only from the
+    owner's repository or the checkout.
+    """
+
     def run(self) -> str:
+        """
+        :raises UpstreamRemoteNameTakenError: If only the upstream can have the branch,
+            and the remote named for it reaches another repository.
+        """
         base = self.policy.remote.branch(self.base or self.policy.default_branch)
         checkout = self.policy.checkout
         started = LocalBranch(checkout.git, self.name)
@@ -141,11 +140,32 @@ class BranchStart(WorkflowStep):
             if base.name != self.policy.default_branch:
                 return line
             return f"{line}{LocalBranchFollowing(checkout.working_tree).follow(base)}"
+        upstream_base = self.upstream_branch(base.name)
+        if upstream_base is not None:
+            started.create(upstream_base.tracking_branch)
+            return (
+                f"on {self.name}, started from "
+                f"{upstream_base.remote.name}/{upstream_base.name}"
+            )
         local_base = LocalBranch(checkout.git, base.name)
         if local_base.commit_or_none() is None:
             fetched.raise_if_failed()
         started.create(local_base)
         return f"on {self.name}, started from the local {base.name}"
+
+    def upstream_branch(self, name: BranchName) -> RemoteBranch | None:
+        """
+        :param name: A branch the owner's repository lacks.
+        :return: The branch of the repository the owner's was forked from, as just
+            fetched; ``None`` when it is no fork, or that repository lacks it too.
+        :raises UpstreamRemoteNameTakenError: If the remote named for the upstream
+            reaches another repository.
+        """
+        upstream = None if self.fork is None else self.fork.upstream()
+        if upstream is None:
+            return None
+        branch = ForkUpstream(self.policy.checkout.git, upstream).remote().branch(name)
+        return branch if branch.fetch().succeeded else None
 
 
 @dataclass(frozen=True)
@@ -260,20 +280,6 @@ class PullRequestRetirement(ABC):
         """
         :param number: The pull request.
         :param reason: Why it is closed, commented on it.
-        """
-
-
-class SessionLog(ABC):
-    """
-    Where what a session does without asking is entered, for the person to read in one
-    place.
-    """
-
-    @abstractmethod
-    def enter(self, action: str) -> None:
-        """
-        :param action: What the session did, in one line, naming the issues, pull
-            requests and branches it touched.
         """
 
 
@@ -478,6 +484,7 @@ class DescriptionRewrite(WorkflowStep):
 
     :raises NothingToDescribeError: If neither is given.
     :raises PullRequestNotOpenError: If the pull request is not open.
+    :raises ForeignPullRequestError: If it was opened from another repository.
     """
 
     pull_requests: RewritablePullRequests
@@ -507,12 +514,19 @@ class DescriptionRewrite(WorkflowStep):
     ``None`` for nothing.
     """
 
+    repository: Repository = field(kw_only=True)
+    """
+    The owner's repository, which the pull request's branch has to be on.
+    """
+
     def run(self) -> str:
         if self.body is None and self.title is None:
             raise NothingToDescribeError(self.number)
         pull_request = self.pull_requests.pull_request(self.number)
         if pull_request.state is not PullRequestState.OPEN:
             raise PullRequestNotOpenError(self.number)
+        if pull_request.head.repository != self.repository.full_name:
+            raise ForeignPullRequestError(self.number, pull_request.head.repository)
         rewritten = []
         if self.body is not None:
             kept = ClosingLines(pull_request.body or "").append_missing_lines(self.body)
@@ -528,6 +542,34 @@ class DescriptionRewrite(WorkflowStep):
             self.pull_requests.set_issue_title(self.number, self.title)
             rewritten.append("title")
         return f"rewrote the {' and '.join(rewritten)} of #{self.number}"
+
+
+@dataclass(frozen=True)
+class PullRequestComment(WorkflowStep):
+    """
+    A comment on a pull request of the owner's repository, open or closed, which the
+    person asked for.
+    """
+
+    pull_requests: RewritablePullRequests
+    """
+    Reads the pull request, and writes the comment.
+    """
+
+    number: int
+    """
+    The pull request.
+    """
+
+    body: str
+    """
+    The comment.
+    """
+
+    def run(self) -> str:
+        self.pull_requests.pull_request(self.number)
+        url = self.pull_requests.add_comment(self.number, self.body)
+        return f"commented on #{self.number}: {url}"
 
 
 # %% bringing a branch up to date
@@ -573,7 +615,8 @@ class BranchSync(WorkflowStep):
             raise BranchDeletedFromGitHubError(name)
         if not fetched.succeeded:
             return f"{name} is not on GitHub yet"
-        on_github = branch.tracking_branch.commit()
+        tracking = branch.tracking_branch
+        on_github = tracking.commit()
         local = tree.head()
         if local == on_github:
             return f"{name} is up to date"
@@ -582,7 +625,11 @@ class BranchSync(WorkflowStep):
             return f"{name} fast-forwarded to GitHub's"
         if on_github.is_contained_in(local):
             return f"{name} is ahead of GitHub's: push it"
-        if last_seen is None or not local.is_contained_in(last_seen):
+        seen = [
+            *([] if last_seen is None else [last_seen]),
+            *tracking.recorded_commits(),
+        ]
+        if not any(local.is_contained_in(commit) for commit in seen):
             raise UnpushedCommitsError(name)
         tree.reset_kept(on_github)
         return f"{name} moved to the branch GitHub rebased"
@@ -648,7 +695,8 @@ class WorkBranchMerge:
 class MergeCompletion(WorkflowStep):
     """
     The merge in progress on the work branch committed as the person, once the files it
-    left conflicting hold their resolved content.
+    left conflicting hold their resolved content; a resolved file no longer there is
+    committed as removed.
 
     :raises DefaultBranchWriteError: If the default branch is checked out.
     :raises NoMergeInProgressError: If no merge is in progress.
@@ -673,7 +721,10 @@ class MergeCompletion(WorkflowStep):
         marked = [
             str(path)
             for path in self.resolved
-            if ConflictMarker.marks_conflict((checkout.root / path).read_text())
+            if (checkout.root / path).is_file()
+            and ConflictMarker.marks_conflict(
+                (checkout.root / path).read_bytes().decode(errors="replace")
+            )
         ]
         if marked:
             raise ConflictMarkersLeftError(tuple(marked))

@@ -443,7 +443,20 @@ class IssueTitleWriter(ABC):
 
 
 @dataclass(frozen=True)
-class IssueBoard(LabelWriter, Commenter, IssueTitleWriter, ABC):
+class CommentReader(ABC):
+    """
+    Reads the comments on a repository's issues and pull requests.
+    """
+
+    @abstractmethod
+    def comments(self, number: int) -> list[IssueComment]:
+        """
+        :param number: The issue or pull request to read.
+        :return: Its comments, oldest first.
+        """
+
+
+class IssueBoard(LabelWriter, Commenter, IssueTitleWriter, CommentReader, ABC):
     """
     Filing, listing, labelling, rewriting and closing a repository's issues.
     """
@@ -489,13 +502,6 @@ class IssueBoard(LabelWriter, Commenter, IssueTitleWriter, ABC):
 
         :param number: The issue or pull request to write.
         :param label: A label it carries.
-        """
-
-    @abstractmethod
-    def comments(self, number: int) -> list[IssueComment]:
-        """
-        :param number: The issue or pull request to read.
-        :return: Its comments, oldest first.
         """
 
     @abstractmethod
@@ -681,10 +687,13 @@ class RepositoryFeatures(
 
 
 @dataclass(frozen=True)
-class FollowedFork(PullRequestReader, RepositoryDetails, ForkDetails, StackReader, ABC):
+class FollowedFork(
+    PullRequestReader, RepositoryDetails, ForkDetails, StackReader, CommentReader, ABC
+):
     """
-    A fork, as far as following its pull requests upstream goes: its pull requests and
-    the stacks holding them, its default branch and what it was forked from.
+    A fork, as far as following its pull requests upstream goes: its pull requests, their
+    comments and the stacks holding them, its default branch and what it was forked
+    from.
     """
 
 
@@ -783,6 +792,15 @@ class GitHubRepository(
     def all_pull_requests(self) -> list[RestPullRequest]:
         """:return: Every pull request on the repository, open or closed."""
         return self._pull_requests_in_state(PullRequestListState.ALL)
+
+    def protected_branches(self) -> frozenset[BranchName]:
+        """:return: The branches GitHub protects on the repository."""
+        listing = self.route.listing(
+            self.route.branches, {QueryParameter.PROTECTED: "true"}
+        )
+        return frozenset(
+            BranchName(entry[RestJSONKey.NAME]) for entry in self._every_entry(listing)
+        )
 
     def issue(self, number: int) -> Issue:
         entry = self.api.get(self.route.issue(number))

@@ -13,7 +13,6 @@ from domain_model.github.exceptions import (
     MissingPullRequestFieldError,
     ReviewThreadWithoutCommentsError,
 )
-from domain_model.github.number_links import HasNumberLink
 from domain_model.github.pull_request_models import CheckResult
 from domain_model.github.review_models import (
     Author,
@@ -30,6 +29,7 @@ from domain_model.github.vocabulary import (
     WorkflowRunStatus,
     WorkflowState,
 )
+from domain_model.number_links import HasNumberLink
 from domain_model.repository import Repository
 
 # %% a pull request

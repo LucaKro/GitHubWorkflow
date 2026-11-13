@@ -9,6 +9,7 @@ Runs on the standard library alone, like :mod:`github_workflow.guard`, which rea
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import sys
 from abc import ABC, abstractmethod
@@ -96,6 +97,11 @@ class WorkflowCommand(StrEnum):
     """
     Rewrite the description, the title or both of an open pull request, a draft or
     ready for review.
+    """
+
+    COMMENT = "comment"
+    """
+    Comment on a pull request of the owner's repository.
     """
 
     CLONE = "clone"
@@ -571,8 +577,27 @@ class SessionRunsOnOwnPullRequest(CommandAuthority):
     naming no number; naming another's is the person's word.
     """
 
+    @classproperty
+    def number_spelling(cls) -> re.Pattern[str]:
+        """
+        Every spelling the parser reads as a number: with a sign, spaces around it or
+        underscores between its digits.
+        """
+        return re.compile(r"\s*[+-]?\d+(?:_\d+)*\s*")
+
     def runs_unasked(self, arguments: Sequence[str]) -> bool:
-        return not any(word.isdigit() for word in arguments)
+        return not any(self.number_spelling.fullmatch(word) for word in arguments)
+
+
+@dataclass(frozen=True)
+class SessionRunsOnCheckedOutBranch(CommandAuthority):
+    """
+    A session runs the command on its own on the checked-out branch, naming no branch;
+    naming one is the person's word.
+    """
+
+    def runs_unasked(self, arguments: Sequence[str]) -> bool:
+        return not arguments
 
 
 @dataclass(frozen=True)
@@ -943,7 +968,10 @@ class RunnableCommand(CommandSpecification, Enum):
         (
             CommandArgument(ArgumentName.NAME, "name", value_type=BranchName),
             CommandArgument(
-                CommandOption.ON, "branch", "the branch to start from", BranchName
+                CommandOption.ON,
+                "branch",
+                "the branch to start from, the upstream's when the fork lacks it",
+                BranchName,
             ),
         ),
     )
@@ -964,7 +992,7 @@ class RunnableCommand(CommandSpecification, Enum):
     BRANCH_DISCARD = (
         (WorkflowCommand.BRANCH, BranchSubcommand.DISCARD),
         "mark a pushed branch as thrown away, for the cleanup to delete",
-        SessionRuns(),
+        SessionRunsOnCheckedOutBranch(),
         (
             CommandArgument(
                 ArgumentName.NAME,
@@ -1345,6 +1373,19 @@ class RunnableCommand(CommandSpecification, Enum):
     ``describe``.
     """
 
+    COMMENT = (
+        (WorkflowCommand.COMMENT,),
+        "comment on a pull request of the owner's repository, on the person's word",
+        SessionRunsOnPersonsWord(),
+        (
+            CommandArgument.number("the pull request, open or closed"),
+            CommandArgument.body_file("the comment"),
+        ),
+    )
+    """
+    ``comment``.
+    """
+
     CLONE = (
         (WorkflowCommand.CLONE,),
         "clone a repository: the owner's to work in, anyone's to read",
@@ -1429,7 +1470,8 @@ class RunnableCommand(CommandSpecification, Enum):
             CommandArgument(
                 ArgumentName.ADDRESS,
                 "its address",
-                "the upstream comment's address, as `review list` shows it",
+                "the upstream comment's number or address, as `review list` shows "
+                "them",
             ),
             CommandArgument.body_file("what was changed for it"),
         ),

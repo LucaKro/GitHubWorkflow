@@ -74,8 +74,9 @@ github-workflow draft --title "Fix the parser" --body-file /tmp/description.md
 What each step checks:
 
 - **`branch start <name> [--on <branch>]`** fetches the base from your remote, creates the
-  branch from it and checks it out. Started from the default branch, it also
-  fast-forwards your local default branch.
+  branch from it and checks it out. A base your fork lacks, such as an upstream release
+  branch, is fetched from the repository it was forked from. Started from the default
+  branch, it also fast-forwards your local default branch.
 - **`commit -m <message> <paths>`** stages exactly the paths given and commits them as
   you. It refuses on the default branch, on a detached `HEAD`, during a merge, and when
   the author, committer or a `Co-authored-by:` trailer names an assistant. It adds the
@@ -134,7 +135,7 @@ settle with `sync`:
 
 | Command | What it does |
 |---|---|
-| `sync` | Follows GitHub's copy of the checked-out branch: fast-forward, or move to the branch GitHub rebased when every local commit had been pushed |
+| `sync` | Follows GitHub's copy of the checked-out branch: fast-forward, or move to the branch GitHub rebased when every local commit had been pushed, even after a plain `git fetch` |
 | `sync --base` | Merges GitHub's default branch into the work branch |
 | `sync --on <number>` | Merges another open pull request's branch, to build on it |
 | `sync --upstream` | Fast-forwards a fork's default branch to its upstream's |
@@ -218,7 +219,7 @@ On your machine they are read directly. A cloud session cannot reach the upstrea
 writes a request to the notes branch; an Actions workflow there reads GitHub's answers
 and saves them, and the session replays them. Nothing is ever written upstream: after
 changing something for an upstream comment, the session says so on the fork's pull
-request with `review addressed <comment address> --body-file <what changed>`.
+request with `review addressed <comment number or address> --body-file <what changed>`.
 
 `clone <owner/name>` clones any repository to read it. Somebody else's goes into the
 plugin's data directory and carries the push hook, so nothing can be pushed from it.
@@ -237,7 +238,9 @@ Four layers, from the first to the last resort:
    - `curl` and `wget` may read GitHub but not send to it.
    - Writing git's configuration or hooks with a file tool, a redirection or a program
      such as `rm` or `sed -i` is denied.
-   - `git apply --check` and `--stat` pass; applying a patch does not.
+   - `git apply --check` and `--stat` pass; applying a patch does not. `git worktree add
+     --detach <dir> <commit>` gives a second copy at a commit to read and test in, and
+     `remove` and `prune` tidy it away; a worktree on a branch is denied.
    - A command it cannot see into (a program named by `$variable`, a shell reading its
      input, `xargs git`, `curl -K` or an address in `$URL`) is denied and shown to you.
    - A denial names the workflow command that does the job, when there is one.
@@ -254,7 +257,8 @@ seen by any layer; only a token scoped to your repositories stops that, at GitHu
 
 **Permission prompts.** The plugin's mod (`hooks/approval.ts`) approves a Bash call that
 is exactly one workflow command a session may run on its own, with at most `cd` before it
-and `head` or `tail` after it. Commands that are your decision (`finding accept`,
+and `head` or `tail` filtering its output after it, and every file it is given inside the
+working or the temporary directory. Commands that are your decision (`finding accept`,
 `describe <number>`, `stack on`) are never approved this way, so Claude Code asks you.
 
 ## 8. Notes, progress and the notes branch

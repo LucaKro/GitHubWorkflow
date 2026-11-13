@@ -42,7 +42,7 @@ from github_workflow.locations import NotesFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.report_lines import ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportGroup, ReportSection
-from github_workflow.work import WorkflowStep
+from github_workflow.workflow_step import WorkflowStep
 from github_workflow.workflow_templates import ForwardedSubject
 
 # %% what a search found

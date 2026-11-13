@@ -45,6 +45,15 @@ class WorkflowMarker:
     What tells the workflow's comments apart from any other.
     """
 
+    @classmethod
+    def appears_in(cls, text: str, namespace: str = Distribution.WORKFLOW) -> bool:
+        """
+        :param text: Markdown.
+        :return: Whether it holds a comment in the form the workflow marks its own
+            records with, whatever it marks.
+        """
+        return f"{CommentDelimiter.OPEN}{namespace}:" in text
+
     @property
     def prefix(self) -> str:
         """:return: The comment up to the value it records."""

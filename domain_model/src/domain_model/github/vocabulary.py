@@ -706,6 +706,11 @@ class GitHubCliReading(StrEnum):
     Shows the issues relevant to the signed-in account.
     """
 
+    LABEL_LIST = "label list"
+    """
+    Lists a repository's labels.
+    """
+
     RUN_VIEW = "run view"
     """
     Shows an Actions run.
@@ -847,6 +852,11 @@ class QueryParameter(StrEnum):
     SEARCH = "q"
     """
     The search query.
+    """
+
+    PROTECTED = "protected"
+    """
+    Whether to list only the branches GitHub protects, as ``true``.
     """
 
 

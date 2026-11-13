@@ -36,6 +36,7 @@ from github_workflow.checkout import ProjectCheckout
 from github_workflow.command_line import RunnableCommand, WorkflowCommand
 from github_workflow.environment import WorkflowVariable
 from github_workflow.exceptions import (
+    ForeignPullRequestError,
     AssistantCreditError,
     BranchDeletedFromGitHubError,
     BranchNotPushedError,
@@ -63,6 +64,7 @@ from github_workflow.remotes import OwnedRemotes
 from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
 from github_workflow.work import (
+    PullRequestComment,
     BaseMerge,
     BranchStart,
     BranchSwitch,
@@ -81,12 +83,13 @@ from github_workflow.work import (
     PushWork,
     Replacement,
     RepositoryCloning,
-    SessionLog,
 )
+from github_workflow.workflow_step import SessionLog
 
 from .issues_in_memory import IssuesInMemory
 from .pull_requests import pull_request
 from .repositories_by_owner import RepositoriesByOwner
+from .scratch_github import ScratchGitHub
 from .stacked_pull_requests import (
     DraftsAndStacksInMemory,
     DraftsInMemory,
@@ -711,6 +714,26 @@ def test_a_branch_github_rebased_is_moved_to_github_s(
     )
 
 
+def test_a_rebased_branch_already_fetched_is_still_moved_to_github_s(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+) -> None:
+    """
+    A plain fetch moved the remote-tracking branch to the rebased commit already; its
+    reflog still holds the one pushed.
+    """
+    rebaser = repositories.clone(owned_url, "rebaser").git
+    rebaser.run("switch", "--quiet", "feature")
+    rebaser.run("commit", "--quiet", "--amend", "--message", "Rebased")
+    rebaser.run("push", "--quiet", "--force", "origin", "feature")
+    work.checkout.git.run("fetch", "--quiet", "origin")
+
+    BranchSync(work, PullRequestsFromBranchesInMemory()).run()
+
+    assert work.checkout.git.run("rev-parse", "HEAD") == rebaser.run(
+        "rev-parse", "HEAD"
+    )
+
+
 def test_a_branch_with_unpushed_commits_github_diverged_from_is_left_alone(
     work: WritePolicy,
     repositories: RepositoriesByOwner,
@@ -945,6 +968,32 @@ def test_a_resolved_merge_is_committed_as_the_person(
     assert not Merge(WorkingTree(git)).in_progress()
 
 
+def test_a_conflict_resolved_by_deleting_the_file_is_committed(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+) -> None:
+    leave_conflicting_merge(work, repositories, owned_url)
+    (work.checkout.root / "a.txt").unlink()
+
+    MergeCompletion(work, [Path("a.txt")]).run()
+
+    git = work.checkout.git
+    assert (Merge(WorkingTree(git)).in_progress(), git.run("ls-files", "a.txt")) == (
+        False,
+        "",
+    )
+
+
+def test_a_conflict_resolved_to_binary_content_is_committed(
+    work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
+) -> None:
+    leave_conflicting_merge(work, repositories, owned_url)
+    (work.checkout.root / "a.txt").write_bytes(bytes([0xFF, 0xFE, 0x00, 0x80]))
+
+    MergeCompletion(work, [Path("a.txt")]).run()
+
+    assert not Merge(WorkingTree(work.checkout.git)).in_progress()
+
+
 def test_a_file_still_marking_a_conflict_is_refused(
     work: WritePolicy, repositories: RepositoriesByOwner, owned_url: str
 ) -> None:
@@ -1171,7 +1220,28 @@ def rewrite(
     :param title: The new title, ``None`` to keep it.
     :return: The rewrite of pull request 1.
     """
-    return DescriptionRewrite(github, 1, body, title)
+    return DescriptionRewrite(github, 1, body, title, repository=ScratchGitHub.owned)
+
+
+@dataclass(frozen=True)
+class DraftsFromAnotherFork(DraftsInMemory):
+    """
+    The stand-in, every pull request opened from a branch of somebody else's fork.
+    """
+
+    def pull_request(self, number: int) -> RestPullRequest:
+        opened = super().pull_request(number)
+        foreign = f"{RepositoriesByOwner.foreign_owner}/project"
+        return replace(opened, head=replace(opened.head, repository=foreign))
+
+
+def test_a_pull_request_from_somebody_else_s_fork_is_not_rewritten() -> None:
+    github = DraftsFromAnotherFork({1: RepositoriesByOwner.default_branch})
+
+    with pytest.raises(ForeignPullRequestError):
+        rewrite(github, "A new body").run()
+
+    assert github.writes == []
 
 
 @pytest.mark.parametrize(
@@ -1259,6 +1329,31 @@ def test_a_rewrite_changing_nothing_is_refused() -> None:
         step.run()
 
     assert github.writes == []
+
+
+# %% commenting on a pull request
+
+
+def test_a_comment_is_posted_on_the_pull_request_named() -> None:
+    github = DraftsInMemory({1: "main"})
+
+    PullRequestComment(github, 1, "The plan.").run()
+
+    assert github.writes == ["add_comment 1"]
+
+
+def test_a_closed_pull_request_is_commented_on_too() -> None:
+    github = DraftsInMemory({1: "main"}, closed=frozenset({1}))
+
+    PullRequestComment(github, 1, "A correction.").run()
+
+    assert github.writes == ["add_comment 1"]
+
+
+def test_commenting_on_a_pull_request_is_the_person_s_word() -> None:
+    words = list(RunnableCommand.COMMENT.words)
+
+    assert not RunnableCommand.COMMENT.runs_unasked(words)
 
 
 # %% cloning

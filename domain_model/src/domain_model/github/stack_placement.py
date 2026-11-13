@@ -31,29 +31,58 @@ class StackPlacement:
         """
         :param below: The pull request to build on.
         :param above: The pull request to put on top of it.
-        :return: The stack holding both, *above* right on top of *below*. A stack in
-            which only closed or merged pull requests sit on *below* is made again from
-            its open ones and *above*.
+        :return: The stack holding both, *above* right on top of *below*, and what was
+            stacked on *above* still on top of it. A stack in which only closed or
+            merged pull requests sit on *below* is made again from its open ones and
+            *above*.
         :raises StackContinuesAboveError: If other open pull requests already sit on
             *below*.
+
+        .. note:: A stack holding *above* elsewhere is dissolved first, and what was
+           below *above* in it made again: GitHub refuses to change the base of a pull
+           request in a stack.
         """
         below_branch = self.host.pull_request(below).head.branch
-        above_base = self.host.pull_request(above).base
-        if above_base != below_branch:
-            self.host.set_base(above, below_branch)
         stack = self.host.containing_stack(below)
-        if stack is None:
-            return self.host.create_stack([below, above])
-        position = stack.numbers.index(below)
-        on_top = stack.numbers[position + 1 :]
-        if on_top[:1] == [above]:
+        on_top = (
+            [] if stack is None else stack.numbers[stack.numbers.index(below) + 1 :]
+        )
+        if stack is not None and on_top[:1] == [above]:
             return stack
+        if stack is not None:
+            self.refuse_open_on_top(below, on_top)
+        carried = self.take_out_of_stack(above)
+        if self.host.pull_request(above).base != below_branch:
+            self.host.set_base(above, below_branch)
+        if stack is None:
+            return self.host.create_stack([below, above, *carried])
         if not on_top:
-            return self.host.add_to_stack(stack, [above])
-        self.refuse_open_on_top(below, on_top)
+            return self.host.add_to_stack(stack, [above, *carried])
         self.host.unstack(stack)
+        position = stack.numbers.index(below)
         kept = [number for number in stack.numbers[:position] if self.is_open(number)]
-        return self.host.create_stack([*kept, below, above])
+        return self.host.create_stack([*kept, below, above, *carried])
+
+    def take_out_of_stack(self, moved: int) -> list[int]:
+        """
+        Dissolve the stack holding a pull request about to be stacked elsewhere, making
+        again the stack of the open pull requests below it.
+
+        :param moved: The pull request.
+        :return: The open pull requests that were stacked on it, bottom first.
+        """
+        stack = self.host.containing_stack(moved)
+        if stack is None:
+            return []
+        position = stack.numbers.index(moved)
+        below = [number for number in stack.numbers[:position] if self.is_open(number)]
+        above = [
+            number for number in stack.numbers[position + 1 :] if self.is_open(number)
+        ]
+        self.host.unstack(stack)
+        if len(below) > 1:
+            self.host.create_stack(below)
+        return above
 
     def check_placeable(self, below: int) -> None:
         """

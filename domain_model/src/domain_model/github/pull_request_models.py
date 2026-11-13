@@ -13,7 +13,6 @@ from domain_model.github.exceptions import (
     GraphQLDataMissingError,
     GraphQLErrorsReturned,
 )
-from domain_model.github.number_links import HasNumberLink
 from domain_model.github.review_models import Review, ReviewThread
 from domain_model.github.vocabulary import (
     CheckOutcome,
@@ -21,6 +20,7 @@ from domain_model.github.vocabulary import (
     RestJSONKey,
     RollupState,
 )
+from domain_model.number_links import HasNumberLink
 
 # %% models mirroring the pull request
 

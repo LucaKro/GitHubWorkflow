@@ -431,6 +431,21 @@ def test_an_issue_is_filed_with_its_labels():
     }
 
 
+def test_the_protected_branches_are_read_by_name():
+    listing = ROUTE.listing(ROUTE.branches, {QueryParameter.PROTECTED: "true"})
+    answers = {
+        ("GET", f"/{listing}"): RecordedAnswer(
+            HTTPStatus.OK,
+            json.dumps([{RestJSONKey.NAME: "main"}, {RestJSONKey.NAME: "develop"}]),
+        )
+    }
+
+    with ReplayedApi(answers) as api:
+        protected = client(api).protected_branches()
+
+    assert protected == frozenset({"main", "develop"})
+
+
 def test_listed_issues_leave_the_pull_requests_out():
     listing = ROUTE.listing(
         ROUTE.issues(),

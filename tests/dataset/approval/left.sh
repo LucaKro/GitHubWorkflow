@@ -18,3 +18,16 @@ github-workflow commit -m "$(cat message.txt)" a.py
 github-workflow push & github-workflow sync
 git push
 ls
+github-workflow describe +5 --title x
+github-workflow describe 5_0 --title x
+github-workflow describe " 5" --title x
+github-workflow finding file --priority low --title t --body-file ~/.ssh/id_rsa
+github-workflow finding file --priority low --title t --body-file /etc/passwd
+github-workflow finding comment 7 --body-file ../outside.md
+github-workflow finding comment 7 --body-file=/etc/passwd
+cd / && github-workflow finding comment 7 --body-file etc/passwd
+github-workflow finding recheck 7 --python /bin/sh
+github-workflow finding prove 7 --test /etc/test_x.py
+github-workflow push ; cd / ; tail -f /etc/passwd
+github-workflow push | head -n 5 /etc/passwd
+github-workflow branch discard develop

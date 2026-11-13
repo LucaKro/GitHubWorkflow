@@ -11,8 +11,10 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
+from domain_model.git.exceptions import GitCommandFailed
 from domain_model.git.remotes import RemoteName
 from domain_model.git.revisions import BranchName
+from domain_model.github.issue_models import IssueComment
 from domain_model.github.labels import GitHubLabel
 from domain_model.github.repository_client import (
     FollowedFork,
@@ -45,6 +47,7 @@ from github_workflow.upstream import (
     UpstreamProposal,
     UpstreamSuggestion,
 )
+from github_workflow.work import BranchStart
 
 from .pull_requests import pull_request
 from .repositories_by_owner import RepositoriesByOwner
@@ -342,6 +345,18 @@ class ForkOfTheUpstream(ForkDetails):
         return self.forked_from
 
 
+def upstream_bare_repository(repositories: RepositoriesByOwner) -> Path:
+    """
+    :param repositories: The scratch repositories.
+    :return: Where the repository the fork was forked from lives among them.
+    """
+    return (
+        repositories.root
+        / ScratchGitHub.upstream.owner
+        / f"{ScratchGitHub.upstream.name}.git"
+    )
+
+
 def give_fork_upstream(
     work: WritePolicy, repositories: RepositoriesByOwner, *, ahead: int, own: int
 ) -> None:
@@ -355,11 +370,7 @@ def give_fork_upstream(
     :param ahead: The commits the upstream's branch gains.
     :param own: The commits the fork's branch gains.
     """
-    upstream = (
-        repositories.root
-        / ScratchGitHub.upstream.owner
-        / f"{ScratchGitHub.upstream.name}.git"
-    )
+    upstream = upstream_bare_repository(repositories)
     default = RepositoriesByOwner.default_branch
     git = work.checkout.git
     git.run("init", "--quiet", "--bare", f"--initial-branch={default}", str(upstream))
@@ -393,11 +404,7 @@ def default_branch_tips(
     :return: Where the fork's default branch is on GitHub, and where the upstream's is.
     """
     default = RepositoriesByOwner.default_branch
-    upstream = (
-        repositories.root
-        / ScratchGitHub.upstream.owner
-        / f"{ScratchGitHub.upstream.name}.git"
-    )
+    upstream = upstream_bare_repository(repositories)
     git = work.checkout.git
     return (
         git.run("ls-remote", work.remote.push_url, default).split()[0],
@@ -525,9 +532,74 @@ def test_a_remote_named_upstream_reaching_another_repository_is_refused(
     assert tracked_tip(work, RemoteName.UPSTREAM) is None
 
 
+def test_a_remote_named_upstream_whose_pushes_are_turned_off_is_fetched(
+    work: WritePolicy, repositories: RepositoriesByOwner
+) -> None:
+    """
+    A common guard against pushing upstream by accident: a push URL that reaches
+    nothing.
+    """
+    give_fork_upstream(work, repositories, ahead=1, own=0)
+    git = work.checkout.git
+    git.run(
+        "remote", "add", RemoteName.UPSTREAM, ScratchGitHub.upstream.rooted_clone_url()
+    )
+    git.run("remote", "set-url", "--push", RemoteName.UPSTREAM, "no-push")
+
+    ForkMainSync(work, ForkOfTheUpstream()).run()
+
+    _, theirs = default_branch_tips(work, repositories)
+    assert tracked_tip(work, RemoteName.UPSTREAM) == theirs
+
+
 def test_a_repository_that_is_no_fork_follows_no_upstream(work: WritePolicy) -> None:
     with pytest.raises(NotAForkError):
         ForkMainSync(work, ForkOfTheUpstream(forked_from=None)).run()
+
+
+# %% starting from the upstream's branch
+
+
+def give_upstream_release_branch(
+    work: WritePolicy, repositories: RepositoriesByOwner, release: BranchName
+) -> str:
+    """
+    Give the fork of a clone an upstream with a branch the fork lacks, as a release
+    branch made after the fork was.
+
+    :param work: The rules of a clone of the fork.
+    :param repositories: The scratch repositories.
+    :param release: The branch only the upstream has.
+    :return: The commit the upstream's branch is at.
+    """
+    give_fork_upstream(work, repositories, ahead=0, own=0)
+    upstream = upstream_bare_repository(repositories)
+    writer = repositories.clone(f"file://{upstream}", "release-writer").git
+    writer.run("commit", "--quiet", "--allow-empty", "--message", "Release")
+    writer.run("push", "--quiet", "origin", f"HEAD:{release.reference}")
+    return writer.run("rev-parse", "HEAD")
+
+
+def test_a_work_branch_starts_on_a_branch_only_the_upstream_has(
+    work: WritePolicy, repositories: RepositoriesByOwner
+) -> None:
+    release = BranchName("jazzy")
+    released = give_upstream_release_branch(work, repositories, release)
+
+    BranchStart(work, BranchName("jazzy-fix"), release, ForkOfTheUpstream()).run()
+
+    assert work.checkout.git.run("rev-parse", "jazzy-fix") == released
+
+
+def test_a_branch_neither_the_fork_nor_its_upstream_has_is_refused(
+    work: WritePolicy, repositories: RepositoriesByOwner
+) -> None:
+    give_fork_upstream(work, repositories, ahead=0, own=0)
+
+    with pytest.raises(GitCommandFailed):
+        BranchStart(
+            work, BranchName("fix"), BranchName("missing"), ForkOfTheUpstream()
+        ).run()
 
 
 # %% following merges upstream
@@ -567,6 +639,22 @@ class OpenedUpstreamPullRequests(StackedPullRequestsInMemory, FollowedFork):
     The pull requests the fork has merged.
     """
 
+    linked_upstream: int = 9
+    """
+    The upstream pull request each one opened upstream links to in its comment.
+    """
+
+    link_author: str = ScratchGitHub.owned.owner
+    """
+    Who posted that comment.
+    """
+
+    def comments(self, number: int) -> list[IssueComment]:
+        if number not in self.opened_upstream:
+            return []
+        url = ScratchGitHub.upstream.pull_request_url(self.linked_upstream)
+        return [IssueComment(self.link_author, UpstreamProposal.comment_linking(url))]
+
     def open_pull_requests(self) -> list[RestPullRequest]:
         return [
             pull_request
@@ -597,11 +685,14 @@ def build_following(
     found: dict[str, list[SearchedPullRequest]],
     merged: frozenset[int] = frozenset(),
     opened_upstream: frozenset[int] = frozenset({1}),
+    link_author: str = ScratchGitHub.owned.owner,
 ) -> tuple[UpstreamMergeFollowing, StackedPullRequestsInMemory, RetiredInMemory]:
     """
     :param found: The upstream's pull requests, by the branch they were opened from.
     :param merged: The pull requests the fork has merged already.
-    :param opened_upstream: The pull requests labelled as opened upstream.
+    :param opened_upstream: The pull requests labelled as opened upstream, each
+        linking to the upstream's #9.
+    :param link_author: Who posted the comments linking them.
     :return: The section over a fork whose #2 is stacked on #1; the fork's pull
         requests; and what was closed.
     """
@@ -609,6 +700,7 @@ def build_following(
         {1: "main", 2: StackedPullRequestsInMemory.name_branch(1)},
         opened_upstream=opened_upstream,
         merged=merged,
+        link_author=link_author,
     )
     fork.existing_stacks.append(Stack(7, "main", True, fork.build_stack([1, 2])))
     retired = RetiredInMemory()
@@ -642,6 +734,32 @@ def test_a_pull_request_still_open_upstream_is_left_alone() -> None:
         9, ScratchGitHub.upstream.pull_request_url(9), None
     )
     section, fork, retired = build_following({"branch-1": [open_upstream]})
+
+    assert (section.lines(), retired.retired, fork.writes) == ([], [], [])
+
+
+def test_an_older_merged_pull_request_from_the_same_branch_closes_nothing() -> None:
+    """
+    A branch name used again: only the upstream pull request the fork's links to counts.
+    """
+    still_open = SearchedPullRequest(
+        9, ScratchGitHub.upstream.pull_request_url(9), None
+    )
+    older = SearchedPullRequest(
+        5, ScratchGitHub.upstream.pull_request_url(5), "2026-01-01T10:00:00Z"
+    )
+    section, fork, retired = build_following({"branch-1": [still_open, older]})
+
+    assert (section.lines(), retired.retired, fork.writes) == ([], [], [])
+
+
+def test_a_link_somebody_else_posted_is_not_followed() -> None:
+    merged = SearchedPullRequest(
+        9, ScratchGitHub.upstream.pull_request_url(9), "2026-11-07T10:00:00Z"
+    )
+    section, fork, retired = build_following(
+        {"branch-1": [merged]}, link_author="somebody-else"
+    )
 
     assert (section.lines(), retired.retired, fork.writes) == ([], [], [])
 

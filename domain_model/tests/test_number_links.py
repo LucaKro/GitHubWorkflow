@@ -1,5 +1,5 @@
 """
-Tests for :mod:`domain_model.github.number_links`, and for the same link built from a
+Tests for :mod:`domain_model.number_links`, and for the same link built from a
 repository.
 """
 

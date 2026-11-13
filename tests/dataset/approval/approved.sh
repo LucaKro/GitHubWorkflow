@@ -10,3 +10,8 @@ github-workflow review reply 123 --body-file reply.md
 github-workflow review addressed https://github.com/an-upstream-owner/project/pull/9#discussion_r77 --body-file changed.md
 github-workflow push 2>&1 | tail -1
 cd /some/checkout && github-workflow sync
+github-workflow describe --title "Fix 5 things" --body-file body.md
+github-workflow finding comment 7 --body-file /tmp/comment.md
+github-workflow push 2>&1 | tail -n 20
+github-workflow push 2>&1 | head -5
+github-workflow branch discard

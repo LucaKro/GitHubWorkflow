@@ -17,7 +17,8 @@ from github_workflow.policy import WritePolicy
 from github_workflow.report_lines import CountedThing, ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportSection
 from github_workflow.upstream import ForkMainSync
-from github_workflow.work import WorkBranchMerge, WorkflowStep
+from github_workflow.work import WorkBranchMerge
+from github_workflow.workflow_step import WorkflowStep
 
 # %% bringing branches up to date
 

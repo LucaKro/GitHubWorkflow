@@ -18,6 +18,7 @@ from domain_model.git.revisions import CommitHash
 
 from github_workflow.exceptions import (
     DefaultBranchWriteError,
+    ForcedPushError,
     ForeignPushError,
     UnknownDefaultBranchError,
 )
@@ -93,6 +94,44 @@ def test_a_push_of_a_work_branch_to_the_owner_is_allowed(
     check = PushCheck(Remote.from_push_url(git, "origin", owned_url), settings)
 
     assert check.raise_if_forbidden([build_update("work")]) is None
+
+
+def test_a_push_overwriting_commits_the_branch_has_is_refused(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+) -> None:
+    git = repositories.clone(owned_url, "owned").git
+    pushed = git.run("rev-parse", "HEAD")
+    git.run("commit", "--quiet", "--amend", "--allow-empty", "--message", "Rewritten")
+    rewritten = git.run("rev-parse", "HEAD")
+    reference = f"{ReferenceNamespace.BRANCHES}work"
+    check = PushCheck(Remote.from_push_url(git, "origin", owned_url), settings)
+
+    with pytest.raises(ForcedPushError):
+        check.raise_if_forbidden(
+            [
+                ReferenceUpdate(
+                    reference, CommitHash(rewritten), reference, CommitHash(pushed)
+                )
+            ]
+        )
+
+
+def test_a_push_building_on_the_branch_is_allowed(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+) -> None:
+    git = repositories.clone(owned_url, "owned").git
+    pushed = git.run("rev-parse", "HEAD")
+    git.run("commit", "--quiet", "--allow-empty", "--message", "More work")
+    reference = f"{ReferenceNamespace.BRANCHES}work"
+    check = PushCheck(Remote.from_push_url(git, "origin", owned_url), settings)
+    update = ReferenceUpdate(
+        reference,
+        CommitHash(git.run("rev-parse", "HEAD")),
+        reference,
+        CommitHash(pushed),
+    )
+
+    assert check.raise_if_forbidden([update]) is None
 
 
 def test_a_push_to_a_remote_whose_default_branch_cannot_be_read_is_refused(

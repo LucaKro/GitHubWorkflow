@@ -7,18 +7,26 @@ refused.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import time
+from http import HTTPStatus
 from pathlib import Path
 
 import pytest
 from domain_model.git.commands import GitCommandRunner
 from domain_model.git.remotes import RemoteName
 from domain_model.git.revisions import BranchName, BranchTip, CommitHash
-from domain_model.github.replayed_api import ReplayedApi
+from domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
 from domain_model.github.rest_models import RestPullRequest
-from domain_model.github.vocabulary import PullRequestState
+from domain_model.github.routes import RepositoryRoute
+from domain_model.github.vocabulary import (
+    PullRequestState,
+    QueryParameter,
+    RestJSONKey,
+)
+from domain_model.repository import Repository
 
 import github_workflow
 from github_workflow.cleanup import (
@@ -475,6 +483,26 @@ def foreign_clone(directory: Path, foreign_url: str) -> Path:
     )
     GitCommandRunner.clone(foreign_url, clone)
     return clone
+
+
+def test_a_branch_github_protects_is_never_deleted(
+    github: ReplayedApi,  # noqa: F811
+    repositories: RepositoriesByOwner,
+    owned_url: str,
+    settings: WorkflowSettings,
+) -> None:
+    route = RepositoryRoute(
+        Repository(settings.owner, RepositoriesByOwner.repository_name)
+    )
+    protected = route.listing(route.branches, {QueryParameter.PROTECTED: "true"})
+    github.answers[("GET", f"/{protected}")] = RecordedAnswer(
+        HTTPStatus.OK, json.dumps([{RestJSONKey.NAME: "develop"}])
+    )
+    checkout = repositories.clone(owned_url, "session")
+
+    kept = WorkflowSession(checkout.root, settings).kept_branches
+
+    assert BranchName("develop") in kept.protected
 
 
 def test_a_clone_no_session_used_for_a_month_is_removed(

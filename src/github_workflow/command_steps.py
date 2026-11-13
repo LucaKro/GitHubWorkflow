@@ -26,7 +26,8 @@ from github_workflow.cleanup import (
     Cleanup,
     UnusedCloneRemoval,
 )
-from github_workflow.command_line import PriorityLevel, RunnableCommand
+from github_workflow.command_line import CommandOption, PriorityLevel, RunnableCommand
+from github_workflow.exceptions import WorkflowMarkerError
 from github_workflow.discussions import DiscussionPost, DiscussionPosting, IdeaFiling
 from github_workflow.findings import (
     FindingAcceptance,
@@ -51,6 +52,7 @@ from github_workflow.label_events import (
     LabelsCompletedStep,
     PickedLabelCompletion,
 )
+from github_workflow.markers import WorkflowMarker
 from github_workflow.notes.saving import NotesSave
 from github_workflow.own_pull_request import (
     PullRequestLabelling,
@@ -83,13 +85,14 @@ from github_workflow.work import (
     MergeAbort,
     MergeCompletion,
     NotesSaving,
+    PullRequestComment,
     PullRequestMerge,
     PushWork,
     Replacement,
     RepositoryCloning,
     StackPlacing,
-    WorkflowStep,
 )
+from github_workflow.workflow_step import WorkflowStep
 
 if TYPE_CHECKING:
     from github_workflow.session import WorkflowSession
@@ -153,9 +156,50 @@ class CommandStep(ClassFamily, ABC):
 
     @property
     def body(self) -> str | None:
-        """:return: The text of the file ``--body-file`` names, ``None`` without one."""
+        """
+        :return: The text of the file ``--body-file`` names, ``None`` without one.
+        :raises WorkflowMarkerError: If it carries a workflow marker.
+        """
         file = self.arguments.body_file
-        return None if file is None else file.read_text()
+        text = None if file is None else file.read_text()
+        return self.refuse_markers(text, CommandOption.BODY_FILE)
+
+    @property
+    def title(self) -> str | None:
+        """
+        :return: The text ``--title`` gives, ``None`` without one.
+        :raises WorkflowMarkerError: If it carries a workflow marker.
+        """
+        return self.refuse_markers(self.arguments.title, CommandOption.TITLE)
+
+    @property
+    def reason(self) -> str | None:
+        """
+        :return: The text ``--reason`` gives, ``None`` without one.
+        :raises WorkflowMarkerError: If it carries a workflow marker.
+        """
+        return self.refuse_markers(self.arguments.reason, CommandOption.REASON)
+
+    @property
+    def message(self) -> str | None:
+        """
+        :return: The commit message ``--message`` gives, ``None`` without one.
+        :raises WorkflowMarkerError: If it carries a workflow marker.
+        """
+        return self.refuse_markers(self.arguments.message, CommandOption.MESSAGE)
+
+    @staticmethod
+    def refuse_markers(text: str | None, argument: CommandOption) -> str | None:
+        """
+        :param text: Text a session gives for GitHub, ``None`` for none.
+        :param argument: The argument giving it.
+        :return: The text.
+        :raises WorkflowMarkerError: If it carries a workflow marker, which would pass
+            for one of the workflow's own records.
+        """
+        if text is not None and WorkflowMarker.appears_in(text):
+            raise WorkflowMarkerError(argument)
+        return text
 
     @property
     def priority(self) -> Priority:
@@ -193,7 +237,10 @@ class BranchStartStep(CommandStep):
         return RunnableCommand.BRANCH_START
 
     def step(self) -> WorkflowStep:
-        return BranchStart(self.session.policy, self.arguments.name, self.arguments.on)
+        session = self.session
+        return BranchStart(
+            session.policy, self.arguments.name, self.arguments.on, session.github
+        )
 
 
 @dataclass(frozen=True)
@@ -245,9 +292,7 @@ class CommitStep(CommandStep):
         return RunnableCommand.COMMIT
 
     def step(self) -> WorkflowStep:
-        return CommitWork(
-            self.session.policy, self.arguments.message, self.arguments.paths
-        )
+        return CommitWork(self.session.policy, self.message, self.arguments.paths)
 
 
 @dataclass(frozen=True)
@@ -286,7 +331,7 @@ class DraftStep(FreshenedCommandStep):
             session.github,
             session.placement,
             session.issue_labels,
-            arguments.title,
+            self.title,
             self.body,
             arguments.on,
             UpstreamSuggestion(session.github, session.remote.repository),
@@ -379,8 +424,9 @@ class DescribeStep(FreshenedCommandStep):
             session.github,
             number,
             self.body,
-            self.arguments.title,
+            self.title,
             UpstreamSuggestion(session.github, session.remote.repository),
+            repository=session.remote.repository,
         )
 
     def prepare_step(self) -> WorkflowStep:
@@ -446,10 +492,10 @@ class FindingFileStep(CommandStep):
         session, arguments = self.session, self.arguments
         if arguments.test is None:
             board = session.findings_board(arguments.repository)
-            return FindingFiling(board, arguments.title, self.body, self.priority)
+            return FindingFiling(board, self.title, self.body, self.priority)
         return ProvenFindingFiling(
             session.github,
-            arguments.title,
+            self.title,
             self.body,
             self.priority,
             FindingTest.read(session.checkout, arguments.test),
@@ -537,7 +583,21 @@ class FindingRejectStep(CommandStep):
 
     def step(self) -> WorkflowStep:
         github = self.session.github
-        return FindingRejection(github, self.arguments.number, self.arguments.reason)
+        return FindingRejection(github, self.arguments.number, self.reason)
+
+
+@dataclass(frozen=True)
+class CommentStep(CommandStep):
+    """
+    Builds the step ``comment`` asks for.
+    """
+
+    @classproperty
+    def command(cls) -> RunnableCommand:
+        return RunnableCommand.COMMENT
+
+    def step(self) -> WorkflowStep:
+        return PullRequestComment(self.session.github, self.arguments.number, self.body)
 
 
 @dataclass(frozen=True)
@@ -567,9 +627,7 @@ class FindingEditStep(CommandStep):
 
     def step(self) -> WorkflowStep:
         board = self.session.findings_board(self.arguments.repository)
-        return FindingEdit(
-            board, self.arguments.number, self.arguments.title, self.body
-        )
+        return FindingEdit(board, self.arguments.number, self.title, self.body)
 
 
 @dataclass(frozen=True)
@@ -604,7 +662,7 @@ class FindingMarkUnprovenStep(CommandStep):
 
     def step(self) -> WorkflowStep:
         github = self.session.github
-        return FindingUnproving(github, self.arguments.number, self.arguments.reason)
+        return FindingUnproving(github, self.arguments.number, self.reason)
 
 
 @dataclass(frozen=True)
@@ -682,7 +740,7 @@ class IdeaFileStep(CommandStep):
             session.github,
             DiscussionPosting(session.notes),
             session.remote.repository,
-            DiscussionPost(DiscussionCategory(category), arguments.title, self.body),
+            DiscussionPost(DiscussionCategory(category), self.title, self.body),
         )
 
 
@@ -872,6 +930,7 @@ class ReviewAddressedStep(CommandStep):
             session.github,
             self.arguments.address,
             self.body,
+            session.upstream_reviews,
         )
 
 

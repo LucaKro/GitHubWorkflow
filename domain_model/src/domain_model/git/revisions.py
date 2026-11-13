@@ -52,6 +52,14 @@ class CommitHash(str):
         """:return: The hash, as a report names it."""
         return self[: self.abbreviation_length]
 
+    @property
+    def names_no_commit(self) -> bool:
+        """
+        Whether it is git's name of all zeros, standing for no commit: the remote's side
+        of a reference a push creates, or the local side of one it deletes.
+        """
+        return not self.strip("0")
+
 
 # %% a branch's name, and where it was
 

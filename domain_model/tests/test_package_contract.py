@@ -15,8 +15,13 @@ from types import ModuleType
 import pytest
 
 import domain_model
+import domain_model.git
+import domain_model.github
+import domain_model.repository
 from domain_model.exceptions import DataclassException
 from domain_model.locations import PackageLocation
+
+from .dataset.locations import DatasetLocation
 
 
 def module_names() -> list[str]:
@@ -68,6 +73,40 @@ def test_every_module_imports_on_its_own(module: str):
     )
 
     assert result.returncode == 0, result.stderr
+
+
+# %% the parts build on each other in one direction
+
+
+def loaded_modules(module: str) -> list[str]:
+    """
+    :param module: A module's import path.
+    :return: Every module importing it loads in an interpreter that has imported nothing
+        else.
+    """
+    result = subprocess.run(
+        [sys.executable, str(DatasetLocation.LOADED_MODULES_SCRIPT), module],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout.splitlines()
+
+
+@pytest.mark.parametrize(
+    "part", [domain_model.git, domain_model.github], ids=lambda part: part.__name__
+)
+def test_a_repository_is_identified_without_git_or_github(part: ModuleType) -> None:
+    """
+    Both build on :mod:`domain_model.repository`, which therefore imports neither.
+    """
+    loaded = loaded_modules(domain_model.repository.__name__)
+
+    assert [
+        module
+        for module in loaded
+        if module == part.__name__ or module.startswith(f"{part.__name__}.")
+    ] == []
 
 
 # %% errors

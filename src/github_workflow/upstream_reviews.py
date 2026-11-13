@@ -12,7 +12,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Self
+from typing import TYPE_CHECKING, Any, Self
 
 from domain_model.class_property import classproperty
 from domain_model.git.revisions import BranchName
@@ -28,6 +28,9 @@ from github_workflow.forwarded_reads import (
     ForwardedRequest,
 )
 from github_workflow.workflow_templates import ForwardedSubject
+
+if TYPE_CHECKING:
+    from github_workflow.policy import WritePolicy
 
 # %% requests
 
@@ -122,6 +125,21 @@ class UpstreamReviews(ABC):
         :param request: Which pull request.
         :return: Its reviews, threads and checks, or why they could not be read.
         """
+
+    def read_work_branch_snapshot(
+        self, upstream: Repository, policy: WritePolicy
+    ) -> UpstreamPullRequestSnapshot | ForwardedReadUnavailable:
+        """
+        :param upstream: The repository the owner's was forked from.
+        :param policy: The checkout and its work branch.
+        :return: The reviews, threads and checks of the pull request the work branch
+            has open upstream, or why they could not be read.
+        """
+        return self.read(
+            UpstreamReviewRequest(
+                upstream, policy.remote.repository.owner, policy.work_branch()
+            )
+        )
 
 
 @dataclass(frozen=True)

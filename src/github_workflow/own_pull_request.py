@@ -18,6 +18,7 @@ from domain_model.github.repository_client import (
 from domain_model.github.rest_models import RestPullRequest
 from domain_model.github.review_models import ReviewThread
 from domain_model.github.review_writers import ReviewThreadWriter
+from domain_model.repository import Repository
 
 from github_workflow.exceptions import (
     ForeignReviewAddressError,
@@ -27,12 +28,13 @@ from github_workflow.exceptions import (
     PersonOnlyLabelError,
     ReviewThreadNotFoundError,
     UnknownLabelError,
+    UnknownUpstreamCommentError,
     UnpushedWorkError,
 )
 from github_workflow.labels import PullRequestLabel, UpstreamLabel
 from github_workflow.policy import WritePolicy
-from github_workflow.upstream_reviews import UpstreamReviewRequest, UpstreamReviews
-from github_workflow.work import WorkflowStep
+from github_workflow.upstream_reviews import UpstreamReviews
+from github_workflow.workflow_step import WorkflowStep
 
 # %% the work branch's pull request
 
@@ -243,13 +245,8 @@ class ReviewThreadListing(WorkflowStep):
         upstream = self.fork.upstream()
         if upstream is None:
             return "\n".join(lines)
-        policy = self.pull_request.policy
-        snapshot = self.upstream_reviews.read(
-            UpstreamReviewRequest(
-                upstream,
-                policy.remote.repository.owner,
-                policy.work_branch(),
-            )
+        snapshot = self.upstream_reviews.read_work_branch_snapshot(
+            upstream, self.pull_request.policy
         )
         if isinstance(snapshot, ForwardedReadUnavailable):
             lines.append(snapshot.line())
@@ -371,6 +368,10 @@ class ReviewAddressing(WorkflowStep):
 
     :raises ForeignReviewAddressError: If the address is not on a pull request of the
         repository the owner's was forked from.
+    :raises UnknownUpstreamCommentError: If a comment's number is given, and the pull
+        request opened upstream has no review comment of that number.
+    :raises ForwardedReadUnavailable: If a comment's number is given, and the pull
+        request opened upstream could not be read.
     """
 
     pull_request: WorkBranchPullRequest
@@ -385,7 +386,8 @@ class ReviewAddressing(WorkflowStep):
 
     address: str
     """
-    The address of the review comment upstream.
+    The address of the review comment upstream, or its number as
+    :class:`ReviewThreadListing` shows it.
     """
 
     body: str
@@ -393,12 +395,45 @@ class ReviewAddressing(WorkflowStep):
     What was changed for it.
     """
 
+    upstream_reviews: UpstreamReviews
+    """
+    Reads the pull request opened upstream, to find a comment given by its number.
+    """
+
     def run(self) -> str:
         upstream = self.fork.upstream()
-        if upstream is None or not upstream.is_pull_request_page(self.address):
+        if upstream is None:
             raise ForeignReviewAddressError(self.address, upstream)
+        address = self.address
+        if address.isdigit():
+            address = self.comment_address(upstream, int(address))
+        if not upstream.is_pull_request_page(address):
+            raise ForeignReviewAddressError(address, upstream)
         found = self.pull_request.find()
         url = self.fork.add_comment(
-            found.number, f"Addressed upstream: {self.address}\n\n{self.body}"
+            found.number, f"Addressed upstream: {address}\n\n{self.body}"
         )
         return f"commented on #{found.number}: {url}"
+
+    def comment_address(self, upstream: Repository, number: int) -> str:
+        """
+        :param upstream: The repository the owner's was forked from.
+        :param number: A review comment's number on the pull request opened upstream.
+        :return: The comment's address.
+        :raises UnknownUpstreamCommentError: If no review comment has that number.
+        :raises ForwardedReadUnavailable: If the pull request could not be read.
+        """
+        snapshot = self.upstream_reviews.read_work_branch_snapshot(
+            upstream, self.pull_request.policy
+        )
+        if isinstance(snapshot, ForwardedReadUnavailable):
+            raise snapshot
+        addresses = [
+            comment.url
+            for thread in snapshot.threads
+            for comment in thread.comments
+            if comment.database_identifier == number
+        ]
+        if not addresses:
+            raise UnknownUpstreamCommentError(number, snapshot.url)
+        return addresses[0]

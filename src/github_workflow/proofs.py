@@ -33,6 +33,7 @@ from github_workflow.exceptions import (
     BrokenTestError,
     FileOutsideCheckoutError,
     PassingTestError,
+    ProofPathOutsideCopyError,
 )
 from github_workflow.locations import ProofFile, WorkflowTemplate
 from github_workflow.markers import WorkflowMarker
@@ -359,9 +360,14 @@ class Proof:
         """
         :param data: The record a proof comment carries.
         :return: The proof.
+        :raises ProofPathOutsideCopyError: If its test's path is absolute or climbs out
+            of the repository.
         """
+        path = Path(data[ProofKey.PATH])
+        if path.is_absolute() or ".." in path.parts:
+            raise ProofPathOutsideCopyError(str(path))
         return cls(
-            FindingTest(Path(data[ProofKey.PATH]), data[ProofKey.SOURCE]),
+            FindingTest(path, data[ProofKey.SOURCE]),
             BranchTip(
                 BranchName(data[ProofKey.BRANCH]), CommitHash(data[ProofKey.COMMIT])
             ),

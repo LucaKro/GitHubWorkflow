@@ -32,6 +32,7 @@ from github_workflow.exceptions import (
     PersonOnlyLabelError,
     ReviewThreadNotFoundError,
     UnknownLabelError,
+    UnknownUpstreamCommentError,
     UnpushedWorkError,
 )
 from github_workflow.own_pull_request import (
@@ -421,9 +422,56 @@ def test_an_addressed_upstream_comment_is_linked_on_the_own_pull_request(
         comments,
         address,
         "Renamed it.",
+        UpstreamReviewsInMemory(),
     ).run()
 
     assert comments.comments == [(3, f"Addressed upstream: {address}\n\nRenamed it.")]
+
+
+def upstream_thread(first: int) -> ReviewThread:
+    """
+    :param first: The identifier of its first comment.
+    :return: A thread on the upstream's pull request #9.
+    """
+    found = thread(first)
+    url = f"{ScratchGitHub.upstream.pull_request_url(9)}#discussion_r{first}"
+    return replace(found, comments=[replace(found.comments[0], url=url)])
+
+
+def test_an_upstream_comment_is_addressed_by_the_number_review_list_shows(
+    work: WritePolicy,  # noqa: F811
+) -> None:
+    comments = ForkCommentsInMemory(ScratchGitHub.upstream)
+    commented = upstream_thread(77)
+
+    ReviewAddressing(
+        own(work, opened_upstream(3)),
+        comments,
+        str(commented.comments[0].database_identifier),
+        "Renamed it.",
+        UpstreamReviewsInMemory([commented]),
+    ).run()
+
+    assert comments.comments == [
+        (3, f"Addressed upstream: {commented.comments[0].url}\n\nRenamed it.")
+    ]
+
+
+def test_a_number_no_upstream_comment_has_is_refused(
+    work: WritePolicy,  # noqa: F811
+) -> None:
+    comments = ForkCommentsInMemory(ScratchGitHub.upstream)
+
+    with pytest.raises(UnknownUpstreamCommentError):
+        ReviewAddressing(
+            own(work, opened_upstream(3)),
+            comments,
+            "78",
+            "x",
+            UpstreamReviewsInMemory([upstream_thread(77)]),
+        ).run()
+
+    assert comments.comments == []
 
 
 @pytest.mark.parametrize(
@@ -443,7 +491,13 @@ def test_an_address_not_upstream_is_refused(
     comments = ForkCommentsInMemory(forked_from)
 
     with pytest.raises(ForeignReviewAddressError):
-        ReviewAddressing(own(work, opened_upstream(3)), comments, address, "x").run()
+        ReviewAddressing(
+            own(work, opened_upstream(3)),
+            comments,
+            address,
+            "x",
+            UpstreamReviewsInMemory(),
+        ).run()
 
     assert comments.comments == []
 
