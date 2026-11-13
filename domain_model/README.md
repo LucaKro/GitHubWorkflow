@@ -5,8 +5,8 @@ labels, and of the git operations built around them.
 
 ## Architecture
 
-The diagrams in this section are drawn from the source by
-`domain_model.architecture.domain_model_readme`: the pre-commit hook draws them anew,
+The diagrams in this section are drawn from the source as `[tool.architecture-diagrams]`
+in [pyproject.toml](pyproject.toml) declares them: the pre-commit hook draws them anew,
 and a test fails when they no longer match the source. Never edit them by hand.
 
 An arrow from one node to another means the first imports the second; a node with
@@ -39,11 +39,11 @@ flowchart LR
     repository["repository"]
     shell["shell"]
     templates["templates"]
+    architecture --> class_family
+    architecture --> class_property
     architecture --> exceptions
-    architecture --> git
-    architecture --> github
-    architecture --> locations
     architecture --> markdown
+    architecture --> python_project
     code_version --> class_property
     code_version --> git
     git --> call_effects

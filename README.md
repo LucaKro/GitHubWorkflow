@@ -10,90 +10,55 @@ workflow's own commands. It is built on the domain model of git and GitHub in
 
 ## Architecture
 
-The diagrams in this section are drawn from the source by `github_workflow.architecture`:
-the pre-commit hook draws them anew, and a test fails when they no longer match the
-source. Never edit them by hand. The domain model's own are in its
-[README](domain_model/README.md#architecture).
+The diagrams in this section are drawn from the source as `[tool.architecture-diagrams]`
+in [pyproject.toml](pyproject.toml) declares them: the pre-commit hook draws them anew,
+and a test fails when they no longer match the source. Never edit them by hand. The
+domain model's own are in its [README](domain_model/README.md#architecture).
 
 ### Overview
 
-The parts of the workflow, each a group of its modules, and the modules in none. An arrow from one node to another means the first imports the second; a node with
-double side bars stands for a subpackage or a group of modules.
+The parts of the workflow, each a group of its modules, from the entry points down to
+the vocabulary every part uses. An arrow from one node to another means the first
+imports the second; a node with double side bars stands for a subpackage or a group of
+modules.
 
 <!-- diagram: overview -->
 ```mermaid
 flowchart LR
-    architecture["architecture"]
-    commands[["commands"]]
+    entry_points[["entry points"]]
     findings[["findings"]]
+    guard[["guard"]]
     notes[["notes"]]
     pull_requests[["pull requests"]]
     rules[["rules"]]
     runtime[["runtime"]]
-    session_start[["session start"]]
-    shared[["shared"]]
+    vocabulary[["vocabulary"]]
     work[["work"]]
-    architecture --> commands
-    architecture --> findings
-    architecture --> notes
-    architecture --> pull_requests
-    architecture --> rules
-    architecture --> runtime
-    architecture --> session_start
-    architecture --> shared
-    architecture --> work
-    commands --> findings
-    commands --> notes
-    commands --> pull_requests
-    commands --> rules
-    commands --> runtime
-    commands --> session_start
-    commands --> work
-    findings --> commands
+    entry_points --> findings
+    entry_points --> guard
+    entry_points --> notes
+    entry_points --> pull_requests
+    entry_points --> rules
+    entry_points --> runtime
+    entry_points --> vocabulary
+    entry_points --> work
     findings --> notes
-    findings --> session_start
-    findings --> shared
+    findings --> vocabulary
     findings --> work
-    notes --> commands
+    guard --> vocabulary
     notes --> rules
-    notes --> runtime
-    notes --> session_start
-    notes --> shared
+    notes --> vocabulary
     notes --> work
-    pull_requests --> commands
     pull_requests --> notes
     pull_requests --> rules
-    pull_requests --> runtime
-    pull_requests --> session_start
-    pull_requests --> shared
+    pull_requests --> vocabulary
     pull_requests --> work
-    rules --> commands
-    rules --> runtime
-    rules --> session_start
-    rules --> shared
-    rules --> work
-    runtime --> commands
+    rules --> vocabulary
     runtime --> rules
-    runtime --> session_start
-    runtime --> shared
-    runtime --> work
-    session_start --> commands
-    session_start --> findings
-    session_start --> notes
-    session_start --> pull_requests
-    session_start --> rules
-    session_start --> runtime
-    session_start --> shared
-    session_start --> work
-    shared --> commands
-    shared --> runtime
-    work --> commands
-    work --> findings
+    runtime --> vocabulary
     work --> notes
-    work --> pull_requests
     work --> rules
-    work --> session_start
-    work --> shared
+    work --> vocabulary
 ```
 <!-- end of diagram: overview -->
 
@@ -101,23 +66,15 @@ A hollow arrow points from a class to the class it extends, a plain arrow to a c
 it holds in the field the arrow is labelled with. Enumerations and errors are left
 out.
 
-### Commands
+### Entry points
 
-The commands a session runs, their arguments, and what each builds from the session.
+The commands a session or a hook runs, and what each builds from the session.
 
-<!-- diagram: commands -->
+<!-- diagram: entry points -->
 ```mermaid
 classDiagram
     direction LR
-    class CommandAuthority
-    class SessionRuns
-    class SessionRunsOnOwnPullRequest
-    class SessionRunsOnPersonsWord
-    class PersonRuns
-    class ValueCountParsing
-    class CommandArgument
-    class CommandSpecification
-    class RefusalAdvice
+    class ArchitectureDrawing
     class CommandStep
     class FreshenedCommandStep
     class BranchStartStep
@@ -153,10 +110,16 @@ classDiagram
     class ReviewAddressedStep
     class ReviewReplyStep
     class ReviewResolveStep
-    CommandAuthority <|-- SessionRuns
-    CommandAuthority <|-- SessionRunsOnOwnPullRequest
-    CommandAuthority <|-- SessionRunsOnPersonsWord
-    CommandAuthority <|-- PersonRuns
+    class SectionBuilder
+    class SetupBuilder
+    class PullRequestsBuilder
+    class FindingsBuilder
+    class CleanupBuilder
+    class FreshnessBuilder
+    class UpstreamMergesBuilder
+    class RuntimeCheck
+    class WorkflowSession
+    class SessionStart
     CommandStep <|-- FreshenedCommandStep
     CommandStep <|-- BranchStartStep
     CommandStep <|-- BranchSwitchStep
@@ -191,10 +154,55 @@ classDiagram
     CommandStep <|-- ReviewAddressedStep
     CommandStep <|-- ReviewReplyStep
     CommandStep <|-- ReviewResolveStep
+    SectionBuilder <|-- SetupBuilder
+    SectionBuilder <|-- PullRequestsBuilder
+    SectionBuilder <|-- FindingsBuilder
+    SectionBuilder <|-- CleanupBuilder
+    SectionBuilder <|-- FreshnessBuilder
+    SectionBuilder <|-- UpstreamMergesBuilder
+    CommandStep --> WorkflowSession : session
+    SectionBuilder --> WorkflowSession : session
+```
+<!-- end of diagram: entry points -->
+
+### Vocabulary
+
+The words every part uses: commands and their arguments, the report's lines, files, environment variables, errors, labels and settings.
+
+<!-- diagram: vocabulary -->
+```mermaid
+classDiagram
+    direction LR
+    class ProjectCheckout
+    class CommandAuthority
+    class SessionRuns
+    class SessionRunsOnOwnPullRequest
+    class SessionRunsOnPersonsWord
+    class PersonRuns
+    class ValueCountParsing
+    class CommandArgument
+    class CommandSpecification
+    class RefusalAdvice
+    class WorkflowMarker
+    class LauncherInstallation
+    class FailureReport
+    class Emphasis
+    class ReportLine
+    class SessionStartReport
+    class ReportSection
+    class ReportGroup
+    class WorkflowSettings
+    CommandAuthority <|-- SessionRuns
+    CommandAuthority <|-- SessionRunsOnOwnPullRequest
+    CommandAuthority <|-- SessionRunsOnPersonsWord
+    CommandAuthority <|-- PersonRuns
     CommandSpecification --> CommandAuthority : authority
     CommandSpecification --> CommandArgument : arguments
+    ReportLine --> Emphasis : emphases
+    SessionStartReport --> ReportLine : lines
+    ReportGroup --> ReportLine : items
 ```
-<!-- end of diagram: commands -->
+<!-- end of diagram: vocabulary -->
 
 ### Work
 
@@ -204,7 +212,6 @@ Branches, commits, pushes, drafts, sync and the cleanup of branches.
 ```mermaid
 classDiagram
     direction LR
-    class ProjectCheckout
     class BranchTips
     class DiscardedBranches
     class BranchDiscard
@@ -213,7 +220,6 @@ classDiagram
     class BranchCleanup
     class UnusedCloneRemoval
     class Cleanup
-    class WorkflowSession
     class WorkflowStep
     class LocalBranchFollowing
     class BranchStart
@@ -273,9 +279,27 @@ classDiagram
 
 ### Rules
 
-The rules every write passes, and the guard judging every command a session runs.
+The rules every write passes.
 
 <!-- diagram: rules -->
+```mermaid
+classDiagram
+    direction LR
+    class WritePolicy
+    class PushCheck
+    class PushHook
+    class OwnedRemote
+    class OwnedRemotes
+    WritePolicy --> OwnedRemote : remote
+    OwnedRemotes --> OwnedRemote : owned
+```
+<!-- end of diagram: rules -->
+
+### Guard
+
+The guard judging every command a session runs.
+
+<!-- diagram: guard -->
 ```mermaid
 classDiagram
     direction LR
@@ -305,12 +329,6 @@ classDiagram
     class WorkflowInvocation
     class CommandGuard
     class ToolGuard
-    class WritePolicy
-    class PushCheck
-    class PushHook
-    class OwnedRemote
-    class OwnedRemotes
-    class WorkflowSettings
     WorkflowAlternative <|-- PushAlternative
     WorkflowAlternative <|-- CommitAlternative
     WorkflowAlternative <|-- BranchSwitchAlternative
@@ -329,11 +347,8 @@ classDiagram
     ProgramCheck <|-- HttpClientCheck
     HttpClientCheck <|-- CurlCheck
     HttpClientCheck <|-- WgetCheck
-    WritePolicy --> OwnedRemote : remote
-    PushCheck --> WorkflowSettings : settings
-    OwnedRemotes --> OwnedRemote : owned
 ```
-<!-- end of diagram: rules -->
+<!-- end of diagram: guard -->
 
 ### Findings
 
@@ -421,6 +436,10 @@ classDiagram
     class ReviewReply
     class ReviewResolution
     class ReviewAddressing
+    class PullRequestSignals
+    class PullRequestSignalReader
+    class PullRequestOverview
+    class PullRequestDetails
     class UpstreamProposal
     class ForkMainSync
     class ForkTips
@@ -443,90 +462,13 @@ classDiagram
     ReviewThreadListing --> UpstreamReviews : upstream_reviews
     ReviewThreadWrite --> WorkBranchPullRequest : pull_request
     ReviewAddressing --> WorkBranchPullRequest : pull_request
+    PullRequestDetails --> PullRequestSignalReader : reader
 ```
 <!-- end of diagram: pull requests -->
 
-### Session start
-
-The report a session starts with.
-
-<!-- diagram: session start -->
-```mermaid
-classDiagram
-    direction LR
-    class ProjectTooling
-    class PullRequestSignals
-    class PullRequestSignalReader
-    class PullRequestOverview
-    class PullRequestDetails
-    class SectionBuilder
-    class SetupBuilder
-    class PullRequestsBuilder
-    class FindingsBuilder
-    class CleanupBuilder
-    class FreshnessBuilder
-    class UpstreamMergesBuilder
-    class FailureReport
-    class Emphasis
-    class ReportLine
-    class SessionStartReport
-    class ReportSection
-    class ReportGroup
-    class SwitchedOffFeature
-    class RepositorySetup
-    class SessionStart
-    ReportSection <|-- PullRequestOverview
-    SectionBuilder <|-- SetupBuilder
-    SectionBuilder <|-- PullRequestsBuilder
-    SectionBuilder <|-- FindingsBuilder
-    SectionBuilder <|-- CleanupBuilder
-    SectionBuilder <|-- FreshnessBuilder
-    SectionBuilder <|-- UpstreamMergesBuilder
-    ReportSection <|-- RepositorySetup
-    PullRequestDetails --> PullRequestSignalReader : reader
-    ReportLine --> Emphasis : emphases
-    SessionStartReport --> ReportLine : lines
-    ReportGroup --> ReportLine : items
-```
-<!-- end of diagram: session start -->
-
-### Runtime
-
-The runtime the plugin installs, and the probe of what a cloud session can reach.
-
-<!-- diagram: runtime -->
-```mermaid
-classDiagram
-    direction LR
-    class RuntimeSwitch
-    class DirectoryLock
-    class RuntimeInstallation
-    class LauncherInstallation
-    class LibraryCall
-    class AuthenticatedLoginCall
-    class LabelsCall
-    class OpenPullRequestsCall
-    class CheckStateCall
-    class PullRequestReviewStateCall
-    class ResultsPublication
-    class ProbeCheckOutcome
-    class ProbeReport
-    class TimedAnswer
-    class Probe
-    class RuntimeCheck
-    LibraryCall <|-- AuthenticatedLoginCall
-    LibraryCall <|-- LabelsCall
-    LibraryCall <|-- OpenPullRequestsCall
-    LibraryCall <|-- CheckStateCall
-    LibraryCall <|-- PullRequestReviewStateCall
-    ProbeReport --> ProbeCheckOutcome : outcomes
-    Probe --> ProbeReport : report
-```
-<!-- end of diagram: runtime -->
-
 ### Notes
 
-The notes branch, the Discussions posted through it and its Actions workflows.
+The notes branch, the Discussions posted through it, its Actions workflows and the repository's features.
 
 <!-- diagram: notes -->
 ```mermaid
@@ -545,6 +487,8 @@ classDiagram
     class NotesBlock
     class NotesSave
     class UnsavedNotes
+    class SwitchedOffFeature
+    class RepositorySetup
     class CarriedFile
     DiscussionPost <|-- DiscussionComment
     CommandReference <|-- CommandLineReference
@@ -558,17 +502,38 @@ classDiagram
 ```
 <!-- end of diagram: notes -->
 
-### Shared
+### Runtime
 
-The files, environment variables, errors and markers every part names.
+The runtime the plugin installs, the probe of what a cloud session can reach, and the project's tooling.
 
-<!-- diagram: shared -->
+<!-- diagram: runtime -->
 ```mermaid
 classDiagram
     direction LR
-    class WorkflowMarker
+    class RuntimeSwitch
+    class DirectoryLock
+    class RuntimeInstallation
+    class LibraryCall
+    class AuthenticatedLoginCall
+    class LabelsCall
+    class OpenPullRequestsCall
+    class CheckStateCall
+    class PullRequestReviewStateCall
+    class ResultsPublication
+    class ProbeCheckOutcome
+    class ProbeReport
+    class TimedAnswer
+    class Probe
+    class ProjectTooling
+    LibraryCall <|-- AuthenticatedLoginCall
+    LibraryCall <|-- LabelsCall
+    LibraryCall <|-- OpenPullRequestsCall
+    LibraryCall <|-- CheckStateCall
+    LibraryCall <|-- PullRequestReviewStateCall
+    ProbeReport --> ProbeCheckOutcome : outcomes
+    Probe --> ProbeReport : report
 ```
-<!-- end of diagram: shared -->
+<!-- end of diagram: runtime -->
 
 ## Licence
 

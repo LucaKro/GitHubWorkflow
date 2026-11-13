@@ -9,16 +9,22 @@ import re
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
-from types import ModuleType
+from typing import Any, Self
 
-from domain_model.architecture.exceptions import ClassNameCollisionError
+from domain_model.architecture.exceptions import (
+    ClassNameCollisionError,
+    UnknownGroupError,
+)
+from domain_model.architecture.keys import ArchitectureKey, DiagramKind
 from domain_model.architecture.source import PythonClass, PythonPackage
+from domain_model.class_family import ClassFamily
+from domain_model.class_property import classproperty
 
 # %% a diagram
 
 
 @dataclass(frozen=True)
-class Diagram(ABC):
+class Diagram(ClassFamily, ABC):
     """
     One diagram of a package, drawn from its source.
     """
@@ -27,6 +33,36 @@ class Diagram(ABC):
     """
     The name the comments marking the diagram's place in a README carry.
     """
+
+    @classproperty
+    @abstractmethod
+    def kind(cls) -> DiagramKind:
+        """
+        The kind of diagram a project's settings declare it as.
+        """
+
+    @classmethod
+    @abstractmethod
+    def from_json(
+        cls,
+        data: dict[str, Any],
+        *,
+        groups: ModuleGroups,
+        left_out_bases: tuple[type, ...],
+    ) -> Self:
+        """
+        :param data: The diagram's table in a project's settings.
+        :param groups: The groups of modules the settings declare.
+        :param left_out_bases: The classes class diagrams leave out.
+        :return: The diagram.
+        :raises UnknownGroupError: If the table names a group the settings lack.
+        """
+
+    @abstractmethod
+    def module_names(self) -> set[str]:
+        """
+        :return: The import paths of the modules and packages the diagram names.
+        """
 
     @abstractmethod
     def to_mermaid(self, package: PythonPackage) -> str:
@@ -57,14 +93,14 @@ class ModuleGroup:
     """
 
     @classmethod
-    def from_modules(cls, *, title: str, modules: list[ModuleType]) -> ModuleGroup:
+    def from_json(cls, data: dict[str, Any]) -> ModuleGroup:
         """
-        :param title: What the modules are about.
-        :param modules: The modules, packages standing for every module under them.
-        :return: The group of the modules.
+        :param data: The group's table in a project's settings.
+        :return: The group.
         """
         return cls(
-            title=title, module_names=tuple(module.__name__ for module in modules)
+            title=data[ArchitectureKey.TITLE],
+            module_names=tuple(data[ArchitectureKey.MODULES]),
         )
 
     @property
@@ -81,6 +117,37 @@ class ModuleGroup:
             module_name == member or module_name.startswith(f"{member}.")
             for member in self.module_names
         )
+
+
+@dataclass(frozen=True)
+class ModuleGroups:
+    """
+    The groups of modules a project's settings declare, by title.
+    """
+
+    by_title: dict[str, ModuleGroup]
+    """
+    Each group, under its title.
+    """
+
+    @classmethod
+    def from_json(cls, data: list[dict[str, Any]]) -> ModuleGroups:
+        """
+        :param data: The groups' tables in a project's settings.
+        :return: The groups.
+        """
+        groups = map(ModuleGroup.from_json, data)
+        return cls(by_title={group.title: group for group in groups})
+
+    def group_titled(self, title: str) -> ModuleGroup:
+        """
+        :param title: A group's title.
+        :return: The group.
+        :raises UnknownGroupError: If no group has the title.
+        """
+        if title not in self.by_title:
+            raise UnknownGroupError(title, sorted(self.by_title))
+        return self.by_title[title]
 
 
 # %% which modules import which
@@ -103,6 +170,29 @@ class ImportDiagram(Diagram):
     """
     The modules drawn as one node each, those of no group drawn on their own.
     """
+
+    @classproperty
+    def kind(cls) -> DiagramKind:
+        return DiagramKind.IMPORTS
+
+    @classmethod
+    def from_json(
+        cls,
+        data: dict[str, Any],
+        *,
+        groups: ModuleGroups,
+        left_out_bases: tuple[type, ...],
+    ) -> Self:
+        titles = data.get(ArchitectureKey.GROUPS, [])
+        return cls(
+            key=data[ArchitectureKey.KEY],
+            package_name=data[ArchitectureKey.PACKAGE],
+            groups=tuple(map(groups.group_titled, titles)),
+        )
+
+    def module_names(self) -> set[str]:
+        grouped = (group.module_names for group in self.groups)
+        return {self.package_name}.union(*grouped)
 
     def containing_node(self, module_name: str) -> ModuleGroup | None:
         """
@@ -166,6 +256,27 @@ class ClassDiagram(Diagram):
     """
     The classes it leaves out, along with every class descending from one.
     """
+
+    @classproperty
+    def kind(cls) -> DiagramKind:
+        return DiagramKind.CLASSES
+
+    @classmethod
+    def from_json(
+        cls,
+        data: dict[str, Any],
+        *,
+        groups: ModuleGroups,
+        left_out_bases: tuple[type, ...],
+    ) -> Self:
+        return cls(
+            key=data[ArchitectureKey.KEY],
+            modules=groups.group_titled(data[ArchitectureKey.GROUP]),
+            left_out_bases=left_out_bases,
+        )
+
+    def module_names(self) -> set[str]:
+        return set(self.modules.module_names)
 
     def shown_classes(self, package: PythonPackage) -> list[PythonClass]:
         """

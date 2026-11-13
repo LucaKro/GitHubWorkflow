@@ -158,7 +158,7 @@
 - `domain_model` depends on nothing but the standard library, so the guard can import it from the plugin's source
 
 ## Architecture Diagrams
-- The diagrams in each package's README are generated from its source by `domain_model.architecture`; never edit them by hand. When one is wrong or unreadable, change the rule that draws it - the diagram or the grouping of modules declared in `github_workflow.architecture` or `domain_model.architecture.domain_model_readme` - never its output
+- The diagrams in each package's README are generated from its source, as `[tool.architecture-diagrams]` in that package's `pyproject.toml` declares them; never edit them by hand. When one is wrong or unreadable, change what draws it - the diagram or the grouping of modules declared there - never its output
 
 ## Releases
 - No file carries the version: `hatch-vcs` reads it from the latest git tag

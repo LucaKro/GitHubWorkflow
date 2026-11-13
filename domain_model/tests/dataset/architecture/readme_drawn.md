@@ -15,3 +15,17 @@ flowchart LR
 <!-- end of diagram: imports -->
 
 Also written by hand.
+
+<!-- diagram: classes -->
+```mermaid
+classDiagram
+    direction LR
+    class Canvas
+    class Point
+    class Shape
+    class Circle
+    Shape <|-- Circle
+    Canvas --> Shape : shapes
+    Circle --> Point : centre
+```
+<!-- end of diagram: classes -->

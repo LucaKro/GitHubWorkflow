@@ -322,8 +322,7 @@ class PluginDataDirectory(PathEnumeration):
 
 class PackageLocation(PathEnumeration):
     """
-    The workflow package's own directory and the files around it in its source, as
-    absolute paths.
+    The workflow package's own directory and the project around it, as absolute paths.
     """
 
     DIRECTORY = Path(__file__).parent
@@ -331,9 +330,10 @@ class PackageLocation(PathEnumeration):
     The package's own directory.
     """
 
-    README = DIRECTORY.parent.parent / "README.md"
+    PROJECT = DIRECTORY.parent.parent
     """
-    The workflow's README, there only when the package runs from its source.
+    The workflow's project, holding its ``pyproject.toml`` and README when the package
+    runs from its source.
     """
 
 

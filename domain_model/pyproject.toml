@@ -37,3 +37,78 @@ make-summary-multi-line = true
 pre-summary-newline = true
 close-quotes-on-newline = true
 black = true
+
+# The diagrams of the architecture in README.md, drawn by `python -m github_workflow.architecture`.
+[tool.architecture-diagrams]
+readme = "README.md"
+package = "src/domain_model"
+left-out-bases = ["enum.Enum", "builtins.BaseException", "domain_model.github.vocabulary.JSONModel"]
+
+[[tool.architecture-diagrams.groups]]
+title = "git"
+modules = ["domain_model.git"]
+
+[[tool.architecture-diagrams.groups]]
+title = "github clients"
+modules = [
+    "domain_model.github.answer_recording",
+    "domain_model.github.clients",
+    "domain_model.github.credential",
+    "domain_model.github.reading_calls",
+    "domain_model.github.replayed_api",
+    "domain_model.github.routes",
+]
+
+[[tool.architecture-diagrams.groups]]
+title = "github readers"
+modules = [
+    "domain_model.github.closing_lines",
+    "domain_model.github.commit_checks",
+    "domain_model.github.discussions",
+    "domain_model.github.labels",
+    "domain_model.github.number_links",
+    "domain_model.github.pull_request_models",
+    "domain_model.github.readers",
+    "domain_model.github.review_models",
+    "domain_model.github.review_writers",
+    "domain_model.github.stack_placement",
+]
+
+[[tool.architecture-diagrams.groups]]
+title = "github repository"
+modules = ["domain_model.github.repository_client"]
+
+[[tool.architecture-diagrams.diagrams]]
+key = "overview"
+kind = "imports"
+package = "domain_model"
+
+[[tool.architecture-diagrams.diagrams]]
+key = "git modules"
+kind = "imports"
+package = "domain_model.git"
+
+[[tool.architecture-diagrams.diagrams]]
+key = "github modules"
+kind = "imports"
+package = "domain_model.github"
+
+[[tool.architecture-diagrams.diagrams]]
+key = "git classes"
+kind = "classes"
+group = "git"
+
+[[tool.architecture-diagrams.diagrams]]
+key = "github client classes"
+kind = "classes"
+group = "github clients"
+
+[[tool.architecture-diagrams.diagrams]]
+key = "github reader classes"
+kind = "classes"
+group = "github readers"
+
+[[tool.architecture-diagrams.diagrams]]
+key = "github repository classes"
+kind = "classes"
+group = "github repository"
