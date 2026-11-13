@@ -15,6 +15,7 @@ from domain_model.git.remotes import Remote, RemoteName
 from domain_model.git.revisions import CommitHash
 from domain_model.github.issue_models import IssueComment
 from domain_model.locations import PathEnumeration, PythonProjectFile
+from domain_model.python_project import PackageDirectories
 
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.exceptions import (
@@ -22,6 +23,7 @@ from github_workflow.exceptions import (
     FileOutsideCheckoutError,
     PassingTestError,
 )
+from github_workflow.locations import PluginDirectory
 from github_workflow.proofs import (
     BranchProofRunner,
     BranchTip,
@@ -388,6 +390,21 @@ def workspace(root: Path, *members: Path) -> None:
     )
     for member in members:
         (root / member).mkdir(parents=True)
+
+
+# %% this repository
+
+
+def test_every_package_of_this_repository_is_imported_from_its_copy() -> None:
+    """
+    A proof run on a copy of this repository imports the domain model from the copy
+    too, not from wherever the interpreter installed it.
+    """
+    repository = Path(__file__).parents[1]
+
+    assert PackageDirectories(repository).search_path() == [
+        str(repository / directory) for directory in PluginDirectory
+    ]
 
 
 # %% the test file
