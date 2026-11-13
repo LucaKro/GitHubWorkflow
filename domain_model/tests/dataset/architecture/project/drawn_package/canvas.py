@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from drawn_package.shapes import Shape
 
 if TYPE_CHECKING:
-    from drawn_package.rendering import pens
+    from drawn_package.rendering import pens, strokes
 
 # %% the canvas
 
@@ -29,4 +29,9 @@ class Canvas:
     pen: pens.Pen | None
     """
     What draws it.
+    """
+
+    latest_stroke: strokes.Point | None
+    """
+    The stroke drawn last.
     """

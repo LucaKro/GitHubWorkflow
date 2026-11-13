@@ -319,7 +319,22 @@ groups = ["storage"]           # drawn as one node each
 key = "storage classes"
 kind = "classes"               # which classes extend and hold which
 group = "storage"
+
+[[tool.architecture-diagrams.diagrams]]
+key = "concepts"
+kind = "concepts"              # the classes most extended directly and held, with how many descend from each
+package = "my_package"
+concept-count = 25             # how many it shows at most; 25 by default
+
+[[tool.architecture-diagrams.diagrams]]
+key = "subpackages"
+kind = "subpackages"           # each module or subpackage with its central classes, and which uses whose classes
+package = "my_package"
+classes-per-node = 3           # how many classes each names at most; 3 by default
 ```
+
+An `imports` diagram whose groups are the project's layers gives the highest-level view;
+`concepts` and `subpackages` sit between it and the full `classes` diagrams.
 
 Each diagram goes between two comments in the README, which it replaces only the text
 between:

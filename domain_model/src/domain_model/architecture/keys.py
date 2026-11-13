@@ -79,6 +79,16 @@ class ArchitectureKey(StrEnum):
     The kind of a diagram.
     """
 
+    CONCEPT_COUNT = "concept-count"
+    """
+    How many classes a concept diagram shows at most.
+    """
+
+    CLASSES_PER_NODE = "classes-per-node"
+    """
+    How many of a node's central classes a subpackage diagram names at most.
+    """
+
 
 # %% the kinds of diagram
 
@@ -96,4 +106,15 @@ class DiagramKind(StrEnum):
     CLASSES = "classes"
     """
     Which classes of a group of modules extend and hold which.
+    """
+
+    CONCEPTS = "concepts"
+    """
+    The central classes of a package, each standing for its descendants.
+    """
+
+    SUBPACKAGES = "subpackages"
+    """
+    The modules and subpackages of a package with their central classes, and which uses
+    a class of which.
     """

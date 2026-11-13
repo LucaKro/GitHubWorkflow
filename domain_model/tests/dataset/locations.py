@@ -305,6 +305,17 @@ class ArchitectureLocation(PathEnumeration):
     The classes of the canvas and the shapes, without the enumeration and the error.
     """
 
+    CONCEPTS = DIRECTORY / "concepts.mmd"
+    """
+    The package's three most extended and held classes, and the fields linking them.
+    """
+
+    SUBPACKAGES = DIRECTORY / "subpackages.mmd"
+    """
+    The package's modules and subpackages, each with its most central class, and which
+    uses a class of which.
+    """
+
     README_DRAWN = DIRECTORY / "readme_drawn.md"
     """
     The project's README with both diagrams drawn in.

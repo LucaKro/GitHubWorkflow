@@ -14,9 +14,11 @@ import pytest
 
 from domain_model.architecture.diagrams import (
     ClassDiagram,
+    ConceptDiagram,
     ImportDiagram,
     ModuleGroup,
     ModuleGroups,
+    SubpackageDiagram,
 )
 from domain_model.architecture.exceptions import (
     ClassNameCollisionError,
@@ -120,6 +122,57 @@ def test_class_diagram_refuses_two_classes_of_one_name(package: PythonPackage):
 
     with pytest.raises(ClassNameCollisionError):
         diagram.to_mermaid(package)
+
+
+# %% the central classes
+
+
+def test_concept_diagram_shows_the_most_extended_and_held_classes(
+    package: PythonPackage,
+):
+    """
+    A concept diagram shows the classes most extended directly and held, how many
+    classes descend from each, and the fields of one holding another.
+    """
+    diagram = ConceptDiagram(
+        key="concepts",
+        package_name=package.name,
+        left_out_bases=ArchitectureReadme.default_left_out_bases,
+        concept_count=3,
+    )
+
+    assert diagram.to_mermaid(package) == ArchitectureLocation.CONCEPTS.read_text()
+
+
+def test_concept_diagram_refuses_two_shown_classes_of_one_name(package: PythonPackage):
+    """
+    Showing every class shows both classes named ``Point``, which the diagram could not
+    tell apart.
+    """
+    diagram = ConceptDiagram(
+        key="concepts",
+        package_name=package.name,
+        left_out_bases=ArchitectureReadme.default_left_out_bases,
+        concept_count=len(package.classes),
+    )
+
+    with pytest.raises(ClassNameCollisionError):
+        diagram.to_mermaid(package)
+
+
+def test_subpackage_diagram_names_each_node_s_central_classes(package: PythonPackage):
+    """
+    A subpackage diagram names the central classes of each module or subpackage, and
+    draws which of them extends or holds a class of which.
+    """
+    diagram = SubpackageDiagram(
+        key="subpackages",
+        package_name=package.name,
+        left_out_bases=ArchitectureReadme.default_left_out_bases,
+        classes_per_node=1,
+    )
+
+    assert diagram.to_mermaid(package) == ArchitectureLocation.SUBPACKAGES.read_text()
 
 
 # %% the settings declaring the diagrams
