@@ -383,7 +383,8 @@ Everything else written to GitHub needs me to ask for it.
   one below with `sync --on`, or is left to GitHub's *Rebase stack*.
 - A merge that conflicts is left in progress, its files named. The session resolves
   them and finishes it with `sync --continue <files>`, which refuses while a conflict
-  is still marked or a file still conflicts, or undoes it with `sync --abort`. Nothing
+  is still marked or a file still conflicts, and takes a file deleted as resolved by
+  its removal, or undoes it with `sync --abort`. Nothing
   is committed or pushed on the branch meanwhile.
 - A work branch builds on another open pull request of my repository before it is
   merged with `sync --on <number>`, which merges that pull request's branch the same

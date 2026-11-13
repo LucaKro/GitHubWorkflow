@@ -132,7 +132,7 @@ settle with `sync`:
 
 | Command | What it does |
 |---|---|
-| `sync` | Follows GitHub's copy of the checked-out branch: fast-forward, or move to the branch GitHub rebased when every local commit had been pushed |
+| `sync` | Follows GitHub's copy of the checked-out branch: fast-forward, or move to the branch GitHub rebased when every local commit had been pushed, even after a plain `git fetch` |
 | `sync --base` | Merges GitHub's default branch into the work branch |
 | `sync --on <number>` | Merges another open pull request's branch, to build on it |
 | `sync --upstream` | Fast-forwards a fork's default branch to its upstream's |
