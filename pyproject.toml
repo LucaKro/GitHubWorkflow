@@ -31,3 +31,11 @@ fallback-version = "0.0.0"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/github_workflow"]
+
+# The domain model is a member of the workspace, so a copy of the repository provides it from
+# its own files.
+[tool.uv.workspace]
+members = ["domain_model"]
+
+[tool.uv.sources]
+github-workflow-domain-model = { workspace = true }
