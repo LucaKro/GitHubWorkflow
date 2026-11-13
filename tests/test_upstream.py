@@ -11,6 +11,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
+from domain_model.git.exceptions import GitCommandFailed
 from domain_model.git.remotes import RemoteName
 from domain_model.git.revisions import BranchName
 from domain_model.github.labels import GitHubLabel
@@ -45,6 +46,7 @@ from github_workflow.upstream import (
     UpstreamProposal,
     UpstreamSuggestion,
 )
+from github_workflow.work import BranchStart
 
 from .pull_requests import pull_request
 from .repositories_by_owner import RepositoriesByOwner
@@ -342,6 +344,18 @@ class ForkOfTheUpstream(ForkDetails):
         return self.forked_from
 
 
+def upstream_bare_repository(repositories: RepositoriesByOwner) -> Path:
+    """
+    :param repositories: The scratch repositories.
+    :return: Where the repository the fork was forked from lives among them.
+    """
+    return (
+        repositories.root
+        / ScratchGitHub.upstream.owner
+        / f"{ScratchGitHub.upstream.name}.git"
+    )
+
+
 def give_fork_upstream(
     work: WritePolicy, repositories: RepositoriesByOwner, *, ahead: int, own: int
 ) -> None:
@@ -355,11 +369,7 @@ def give_fork_upstream(
     :param ahead: The commits the upstream's branch gains.
     :param own: The commits the fork's branch gains.
     """
-    upstream = (
-        repositories.root
-        / ScratchGitHub.upstream.owner
-        / f"{ScratchGitHub.upstream.name}.git"
-    )
+    upstream = upstream_bare_repository(repositories)
     default = RepositoriesByOwner.default_branch
     git = work.checkout.git
     git.run("init", "--quiet", "--bare", f"--initial-branch={default}", str(upstream))
@@ -393,11 +403,7 @@ def default_branch_tips(
     :return: Where the fork's default branch is on GitHub, and where the upstream's is.
     """
     default = RepositoriesByOwner.default_branch
-    upstream = (
-        repositories.root
-        / ScratchGitHub.upstream.owner
-        / f"{ScratchGitHub.upstream.name}.git"
-    )
+    upstream = upstream_bare_repository(repositories)
     git = work.checkout.git
     return (
         git.run("ls-remote", work.remote.push_url, default).split()[0],
@@ -528,6 +534,51 @@ def test_a_remote_named_upstream_reaching_another_repository_is_refused(
 def test_a_repository_that_is_no_fork_follows_no_upstream(work: WritePolicy) -> None:
     with pytest.raises(NotAForkError):
         ForkMainSync(work, ForkOfTheUpstream(forked_from=None)).run()
+
+
+# %% starting from the upstream's branch
+
+
+def give_upstream_release_branch(
+    work: WritePolicy, repositories: RepositoriesByOwner, release: BranchName
+) -> str:
+    """
+    Give the fork of a clone an upstream with a branch the fork lacks, as a release
+    branch made after the fork was.
+
+    :param work: The rules of a clone of the fork.
+    :param repositories: The scratch repositories.
+    :param release: The branch only the upstream has.
+    :return: The commit the upstream's branch is at.
+    """
+    give_fork_upstream(work, repositories, ahead=0, own=0)
+    upstream = upstream_bare_repository(repositories)
+    writer = repositories.clone(f"file://{upstream}", "release-writer").git
+    writer.run("commit", "--quiet", "--allow-empty", "--message", "Release")
+    writer.run("push", "--quiet", "origin", f"HEAD:{release.reference}")
+    return writer.run("rev-parse", "HEAD")
+
+
+def test_a_work_branch_starts_on_a_branch_only_the_upstream_has(
+    work: WritePolicy, repositories: RepositoriesByOwner
+) -> None:
+    release = BranchName("jazzy")
+    released = give_upstream_release_branch(work, repositories, release)
+
+    BranchStart(work, BranchName("jazzy-fix"), release, ForkOfTheUpstream()).run()
+
+    assert work.checkout.git.run("rev-parse", "jazzy-fix") == released
+
+
+def test_a_branch_neither_the_fork_nor_its_upstream_has_is_refused(
+    work: WritePolicy, repositories: RepositoriesByOwner
+) -> None:
+    give_fork_upstream(work, repositories, ahead=0, own=0)
+
+    with pytest.raises(GitCommandFailed):
+        BranchStart(
+            work, BranchName("fix"), BranchName("missing"), ForkOfTheUpstream()
+        ).run()
 
 
 # %% following merges upstream

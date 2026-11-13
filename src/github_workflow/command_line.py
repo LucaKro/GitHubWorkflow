@@ -895,7 +895,10 @@ class RunnableCommand(CommandSpecification, Enum):
         (
             CommandArgument(ArgumentName.NAME, "name", value_type=BranchName),
             CommandArgument(
-                CommandOption.ON, "branch", "the branch to start from", BranchName
+                CommandOption.ON,
+                "branch",
+                "the branch to start from, the upstream's when the fork lacks it",
+                BranchName,
             ),
         ),
     )

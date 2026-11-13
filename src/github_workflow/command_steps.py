@@ -186,7 +186,10 @@ class BranchStartStep(CommandStep):
         return RunnableCommand.BRANCH_START
 
     def step(self) -> WorkflowStep:
-        return BranchStart(self.session.policy, self.arguments.name, self.arguments.on)
+        session = self.session
+        return BranchStart(
+            session.policy, self.arguments.name, self.arguments.on, session.github
+        )
 
 
 @dataclass(frozen=True)

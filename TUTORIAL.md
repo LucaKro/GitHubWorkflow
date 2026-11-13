@@ -72,8 +72,9 @@ github-workflow draft --title "Fix the parser" --body-file /tmp/description.md
 What each step checks:
 
 - **`branch start <name> [--on <branch>]`** fetches the base from your remote, creates the
-  branch from it and checks it out. Started from the default branch, it also
-  fast-forwards your local default branch.
+  branch from it and checks it out. A base your fork lacks, such as an upstream release
+  branch, is fetched from the repository it was forked from. Started from the default
+  branch, it also fast-forwards your local default branch.
 - **`commit -m <message> <paths>`** stages exactly the paths given and commits them as
   you. It refuses on the default branch, on a detached `HEAD`, during a merge, and when
   the author, committer or a `Co-authored-by:` trailer names an assistant. It adds the
