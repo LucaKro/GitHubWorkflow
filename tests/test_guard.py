@@ -71,6 +71,14 @@ class GuardDataset(PathEnumeration):
     A here-document mentioning a push, read by a program that is no shell.
     """
 
+    HERE_DOCUMENT_NAMING_A_SHELL = (
+        Path(__file__).parent / "dataset" / "guard" / "here_document_naming_a_shell.sh"
+    )
+    """
+    A here-document whose text names a shell reading its input, read by a program that
+    is no shell.
+    """
+
     HERE_DOCUMENT_RUN_BY_A_SHELL = (
         Path(__file__).parent / "dataset" / "guard" / "here_document_run_by_a_shell.sh"
     )
@@ -162,6 +170,12 @@ def test_a_here_document_a_program_reads_is_data() -> None:
         CommandGuard().denial(GuardDataset.HERE_DOCUMENT_AS_DATA.value.read_text())
         is None
     )
+
+
+def test_a_shell_named_in_a_here_document_s_text_reads_nothing() -> None:
+    text = GuardDataset.HERE_DOCUMENT_NAMING_A_SHELL.value.read_text()
+
+    assert CommandGuard().denial(text) is None
 
 
 @pytest.mark.parametrize(

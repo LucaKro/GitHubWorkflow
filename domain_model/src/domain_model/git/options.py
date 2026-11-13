@@ -904,6 +904,16 @@ class WorktreeOption(GitOption):
     List each worktree with why it is locked or prunable, short form.
     """
 
+    DETACH = "--detach", True
+    """
+    Add the worktree at a commit, on no branch.
+    """
+
+    QUIET = "--quiet", True
+    """
+    Print only errors.
+    """
+
 
 class SubmoduleOption(GitOption):
     """
@@ -1093,6 +1103,28 @@ class WorktreeReadingCommand(StrEnum):
     LIST = "list"
     """
     List the worktrees.
+    """
+
+
+class DetachedWorktreeCommand(StrEnum):
+    """
+    The commands of ``git worktree`` that, on a worktree at a commit and with no option
+    forcing them, move no branch and leave the checkout's own index and files alone.
+    """
+
+    ADD = "add"
+    """
+    Add a worktree; on no branch only with :attr:`WorktreeOption.DETACH`.
+    """
+
+    REMOVE = "remove"
+    """
+    Remove a worktree holding no changes.
+    """
+
+    PRUNE = "prune"
+    """
+    Forget worktrees whose directory is gone.
     """
 
 

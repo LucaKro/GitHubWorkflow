@@ -899,9 +899,10 @@ class CommandLine:
     def runs_input_through_a_shell(self) -> bool:
         """
         :return: Whether a shell runs whatever reaches its input, which the command
-            line itself does not show.
+            line itself does not show; the text of a here-document no shell reads is
+            not looked at.
         """
-        return bool(self.shell_reading_input.search(self.text))
+        return bool(self.shell_reading_input.search(self._without_here_documents()))
 
     def _without_here_documents(self) -> str:
         """

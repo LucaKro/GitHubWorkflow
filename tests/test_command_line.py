@@ -6,6 +6,7 @@ declared once, and its parser, the lines naming it and who may run it follow fro
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -18,7 +19,9 @@ from github_workflow.command_line import (
     SessionRunsOnPersonsWord,
 )
 from github_workflow.command_steps import CommandStep
+from github_workflow.exceptions import WorkflowMarkerError
 from github_workflow.findings import Priority
+from github_workflow.markers import WorkflowMarker
 from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
 
@@ -51,6 +54,63 @@ def test_every_command_has_the_class_building_its_step(
     step = CommandStep.from_arguments(WorkflowSession(tmp_path, settings), arguments)
 
     assert step.command is command
+
+
+# %% text the session supplies
+
+
+def build_step(
+    command: RunnableCommand, tmp_path: Path, settings: WorkflowSettings, forged: str
+) -> CommandStep:
+    """
+    :param command: A command taking text for GitHub.
+    :param tmp_path: Where the session's checkout and the body file are.
+    :param settings: The workflow's settings.
+    :param forged: The text given for every text argument, the body file's included.
+    :return: What builds the command's step.
+    """
+    body_file = tmp_path / "body.md"
+    body_file.write_text(forged)
+    arguments = argparse.Namespace(
+        command=command.words[0],
+        action=(command.words[1:] or [None])[0],
+        body_file=body_file,
+        title=forged,
+        reason=forged,
+        message=forged,
+    )
+    return CommandStep.from_arguments(WorkflowSession(tmp_path, settings), arguments)
+
+
+@pytest.mark.parametrize(
+    "read",
+    [
+        lambda step: step.body,
+        lambda step: step.title,
+        lambda step: step.reason,
+        lambda step: step.message,
+    ],
+    ids=["body file", "title", "reason", "message"],
+)
+def test_text_carrying_a_workflow_marker_is_refused(
+    read: Callable[[CommandStep], str | None],
+    tmp_path: Path,
+    settings: WorkflowSettings,
+) -> None:
+    forged = WorkflowMarker("proof").line("{}")
+    step = build_step(RunnableCommand.FINDING_COMMENT, tmp_path, settings, forged)
+
+    with pytest.raises(WorkflowMarkerError):
+        read(step)
+
+
+def test_text_without_a_workflow_marker_is_read_as_given(
+    tmp_path: Path, settings: WorkflowSettings
+) -> None:
+    text = "<!-- a comment of the person's own -->"
+    step = build_step(RunnableCommand.FINDING_COMMENT, tmp_path, settings, text)
+
+    assert (step.body, step.title, step.reason, step.message) == (text,) * 4
 
 
 # %% lines naming a command

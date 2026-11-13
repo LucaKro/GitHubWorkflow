@@ -77,6 +77,30 @@ class AmbiguousOwnedRemoteError(DataclassException, LookupError):
 
 
 @dataclass
+class ForcedPushError(DataclassException, PermissionError):
+    """
+    Raised when a push from a Claude Code session would drop commits the remote's branch
+    has.
+    """
+
+    reference: str
+    """
+    The remote's reference the push overwrites.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"the push overwrites commits {self.reference} has: nothing is force-pushed"
+        )
+
+    def suggest_correction(self) -> str:
+        return (
+            f"Bring the branch up to date with `{RunnableCommand.SYNC.usage()}`, then "
+            f"push with `{RunnableCommand.PUSH.usage()}`."
+        )
+
+
+@dataclass
 class ForeignPushError(DataclassException, PermissionError):
     """
     Raised when a push from a Claude Code session goes to a repository the owner does
@@ -526,6 +550,33 @@ class PullRequestNotOpenError(DataclassException, RuntimeError):
 
 
 @dataclass
+class ForeignPullRequestError(DataclassException, PermissionError):
+    """
+    Raised when a pull request to be rewritten was opened from somebody else's
+    repository.
+    """
+
+    number: int
+    """
+    The pull request.
+    """
+
+    head_repository: str | None
+    """
+    The repository its branch lives in, ``None`` once that was deleted.
+    """
+
+    def error_message(self) -> str:
+        source = self.head_repository or "a deleted repository"
+        return f"#{self.number} was opened from {source}, not from the owner's"
+
+    def suggest_correction(self) -> str:
+        return (
+            "Rewrite only a pull request of the owner's; ask its author for this one."
+        )
+
+
+@dataclass
 class NoOpenPullRequestError(DataclassException, LookupError):
     """
     Raised when the work branch has no open pull request to write to.
@@ -701,6 +752,30 @@ class NothingToDiscardError(DataclassException, LookupError):
         return "Only a branch on GitHub is discarded; leave this one as it is."
 
 
+# %% text for GitHub
+
+
+@dataclass
+class WorkflowMarkerError(DataclassException, ValueError):
+    """
+    Raised when text a session gives a command for GitHub carries a comment in the form
+    the workflow marks its own records with, such as a proof.
+    """
+
+    argument: str
+    """
+    The argument carrying it.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"{self.argument} carries a comment marking one of the workflow's records"
+        )
+
+    def suggest_correction(self) -> str:
+        return "Leave the comment out; only the workflow writes its records."
+
+
 # %% findings
 
 
@@ -816,8 +891,8 @@ class ForkBranchDivergedError(DataclassException, ValueError):
 @dataclass
 class UpstreamRemoteNameTakenError(DataclassException, ValueError):
     """
-    Raised when the checkout configures no remote reaching the repository a fork was
-    forked from, and the remote named for that repository reaches another.
+    Raised when the checkout configures no remote fetching from the repository a fork
+    was forked from, and the remote named for that repository fetches from another.
     """
 
     remote: Remote
@@ -830,10 +905,15 @@ class UpstreamRemoteNameTakenError(DataclassException, ValueError):
     The repository the fork was forked from.
     """
 
+    fetched: Repository | None
+    """
+    The repository the remote fetches from, ``None`` when its URL names none.
+    """
+
     def error_message(self) -> str:
-        reached = self.remote.repository or self.remote.push_url
+        reached = self.fetched or "no repository"
         return (
-            f"the checkout's remote {self.remote.name} reaches {reached}, not "
+            f"the checkout's remote {self.remote.name} fetches from {reached}, not "
             f"{self.upstream}, which the fork was forked from"
         )
 
@@ -943,6 +1023,25 @@ class AlreadyProvenError(DataclassException, ValueError):
 
 
 # %% proofs
+
+
+@dataclass
+class ProofPathOutsideCopyError(DataclassException, ValueError):
+    """
+    Raised when a posted proof places its test outside the copy of the repository it
+    runs in.
+    """
+
+    path: str
+    """
+    The test's path, as the proof records it.
+    """
+
+    def error_message(self) -> str:
+        return f"the proof's test {self.path} lies outside the repository"
+
+    def suggest_correction(self) -> str:
+        return "Prove the finding again with a test inside the repository."
 
 
 @dataclass

@@ -160,6 +160,8 @@ def github(
             api.answers[("GET", f"/{pull_requests}")] = RecordedAnswer(
                 HTTPStatus.OK, "[]"
             )
+        protected = route.listing(route.branches, {QueryParameter.PROTECTED: "true"})
+        api.answers[("GET", f"/{protected}")] = RecordedAnswer(HTTPStatus.OK, "[]")
         api.answers[("GET", f"/{route.review_requests()}")] = RecordedAnswer(
             HTTPStatus.OK, json.dumps({RestJSONKey.TOTAL_COUNT: 0})
         )

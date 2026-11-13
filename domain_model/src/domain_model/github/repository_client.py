@@ -793,6 +793,15 @@ class GitHubRepository(
         """:return: Every pull request on the repository, open or closed."""
         return self._pull_requests_in_state(PullRequestListState.ALL)
 
+    def protected_branches(self) -> frozenset[BranchName]:
+        """:return: The branches GitHub protects on the repository."""
+        listing = self.route.listing(
+            self.route.branches, {QueryParameter.PROTECTED: "true"}
+        )
+        return frozenset(
+            BranchName(entry[RestJSONKey.NAME]) for entry in self._every_entry(listing)
+        )
+
     def issue(self, number: int) -> Issue:
         entry = self.api.get(self.route.issue(number))
         if Issue.is_pull_request(entry):

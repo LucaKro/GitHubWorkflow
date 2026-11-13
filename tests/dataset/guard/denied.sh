@@ -136,3 +136,9 @@ printf -v CLAUDECODE ''
 read CLAUDECODE < /dev/null
 let CLAUDECODE=0
 curl -X POST https://API.GITHUB.COM/x
+git worktree add /tmp/review feature
+git worktree add -b review /tmp/review
+git worktree add --detach -B review /tmp/review
+git worktree remove --force /tmp/review
+git worktree move /tmp/review /tmp/elsewhere
+git worktree lock /tmp/review

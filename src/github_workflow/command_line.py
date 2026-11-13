@@ -553,6 +553,17 @@ class SessionRunsOnOwnPullRequest(CommandAuthority):
 
 
 @dataclass(frozen=True)
+class SessionRunsOnCheckedOutBranch(CommandAuthority):
+    """
+    A session runs the command on its own on the checked-out branch, naming no branch;
+    naming one is the person's word.
+    """
+
+    def runs_unasked(self, arguments: Sequence[str]) -> bool:
+        return not arguments
+
+
+@dataclass(frozen=True)
 class SessionRunsOnPersonsWord(CommandAuthority):
     """
     A session runs the command only on the person's word.
@@ -930,7 +941,7 @@ class RunnableCommand(CommandSpecification, Enum):
     BRANCH_DISCARD = (
         (WorkflowCommand.BRANCH, BranchSubcommand.DISCARD),
         "mark a pushed branch as thrown away, for the cleanup to delete",
-        SessionRuns(),
+        SessionRunsOnCheckedOutBranch(),
         (
             CommandArgument(
                 ArgumentName.NAME,

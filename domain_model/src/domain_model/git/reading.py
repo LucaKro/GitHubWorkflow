@@ -20,6 +20,7 @@ from domain_model.git.options import (
     BranchOption,
     ConfigOption,
     ConfigReadingCommand,
+    DetachedWorktreeCommand,
     FetchOption,
     GitGlobalOption,
     GitOption,
@@ -529,8 +530,19 @@ class StashReadingForms(FirstWordReadingForms):
 @dataclass(frozen=True)
 class WorktreeReadingForms(FirstWordReadingForms):
     """
-    Worktree, which reads when it lists worktrees.
+    Worktree, which reads when it lists worktrees, and leaves every branch and the
+    checkout's own files alone when it adds a worktree at a commit, removes one holding
+    no changes or prunes those gone.
     """
+
+    def form_reads(self, arguments: GitSubcommandArguments) -> bool:
+        first = arguments.positional[0] if arguments.positional else None
+        if first == DetachedWorktreeCommand.ADD:
+            options = {self.options.look_up(option) for option in arguments.options}
+            return WorktreeOption.DETACH in options
+        if first in DetachedWorktreeCommand:
+            return True
+        return super().form_reads(arguments)
 
     @classproperty
     def subcommand(cls) -> GitSubcommand:

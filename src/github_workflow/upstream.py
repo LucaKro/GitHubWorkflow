@@ -260,18 +260,22 @@ class ForkMainSync(WorkflowStep):
         :return: The checkout's remote reaching it, the one named
             :attr:`RemoteName.UPSTREAM` first; when none does, the upstream reached by
             its URL under that name.
-        :raises UpstreamRemoteNameTakenError: If none reaches it and the remote of that
-            name reaches another repository.
+        :raises UpstreamRemoteNameTakenError: If none fetches from it and the remote of
+            that name fetches from another repository.
         """
         git = self.policy.checkout.git
         configured = Remote.read_configured(git)
-        reaching = [remote for remote in configured if remote.repository == upstream]
+        reaching = [
+            remote for remote in configured if remote.fetched_repository() == upstream
+        ]
         named = [remote for remote in reaching if remote.name == RemoteName.UPSTREAM]
         if named or reaching:
             return (named or reaching)[0]
         taken = [remote for remote in configured if remote.name == RemoteName.UPSTREAM]
         if taken:
-            raise UpstreamRemoteNameTakenError(taken[0], upstream)
+            raise UpstreamRemoteNameTakenError(
+                taken[0], upstream, taken[0].fetched_repository()
+            )
         url = upstream.rooted_clone_url()
         return UnconfiguredRemote(git, RemoteName.UPSTREAM, url, upstream)
 

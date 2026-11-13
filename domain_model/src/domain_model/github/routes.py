@@ -57,6 +57,11 @@ class RepositoryRoute:
         return f"{self.root}/pulls"
 
     @property
+    def branches(self) -> str:
+        """:return: The repository's branches."""
+        return f"{self.root}/branches"
+
+    @property
     def merge_upstream(self) -> str:
         """:return: The bringing of a fork's branch up to its upstream's."""
         return f"{self.root}/merge-upstream"
