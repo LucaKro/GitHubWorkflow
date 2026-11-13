@@ -17,6 +17,7 @@ from domain_model.git.revisions import BranchName, BranchTip, Commit
 from domain_model.github.labels import LabelWrite
 from domain_model.github.closing_lines import ClosingLines
 from domain_model.github.issue_models import Issue
+from domain_model.github.issue_references import IssueReferences
 from domain_model.github.repository_client import (
     ClosablePullRequests,
     FollowedFork,
@@ -501,8 +502,9 @@ class IssueUpstreamMove(WorkflowStep):
     """
     An open issue of the owner's fork opened on the repository it was forked from, as
     the person, with its title and text but none of its labels or the command moving
-    it, and its latest proof; then closed on the fork, linking the new one, with the
-    fork's open pull requests closing it, once the person agrees.
+    it, and its latest proof, each bare issue number in them naming the fork's issue;
+    then closed on the fork, linking the new one, with the fork's open pull requests
+    closing it, once the person agrees.
 
     :raises PersonOnlyCommandError: If a Claude Code session runs it.
     :raises ForeignRepositoryError: If the repository is somebody else's.
@@ -580,14 +582,16 @@ class IssueUpstreamMove(WorkflowStep):
         if not self.follows_template:
             self.check_templates(issue, upstream, target.issue_templates())
         closing = self.agreed_closing_pull_requests()
-        body = self.ending(self.repository, self.number, upstream).remove(issue.body)
+        ending = self.ending(self.repository, self.number, upstream)
+        body = IssueReferences(ending.remove(issue.body)).qualify(self.repository)
         opened = target.open_issue(issue.title, body, [])
         url = upstream.issue_url(opened)
         comments = self.fork.comments(self.number)
         proof = Proof.latest_posted_comment(comments, self.proof_authors)
         if proof is not None:
             origin = self.repository.issue_url(self.number)
-            target.add_comment(opened, f"Proven on {origin}:\n\n{proof.body}")
+            moved = IssueReferences(proof.body).qualify(self.repository)
+            target.add_comment(opened, f"Proven on {origin}:\n\n{moved}")
         for pull_request in closing:
             self.fork.add_comment(pull_request.number, f"Its issue moved to {url}.")
             self.fork.close_pull_request(pull_request.number)

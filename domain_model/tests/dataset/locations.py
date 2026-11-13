@@ -31,6 +31,18 @@ class DatasetLocation(PathEnumeration):
     A pull request as REST describes it once closed without merging.
     """
 
+    RELATIVE_REFERENCES = DIRECTORY / "issue_references" / "relative.md"
+    """
+    Markdown naming issues of its own repository by bare number, in text, links, code
+    and an HTML comment.
+    """
+
+    QUALIFIED_REFERENCES = DIRECTORY / "issue_references" / "qualified.md"
+    """
+    The same Markdown with each bare number in its text and links naming the repository
+    too.
+    """
+
     ISSUE_LABELLED = DIRECTORY / "events" / "issue_labelled.json"
     """
     The ``issues`` event of a label added to an issue.
