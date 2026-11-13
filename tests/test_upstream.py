@@ -949,6 +949,26 @@ def test_an_issue_is_opened_upstream_without_its_labels_or_move_command() -> Non
     assert intake.opened == [("A title", "What happens.", [])]
 
 
+def test_a_bare_issue_number_keeps_naming_the_fork_s_issue_upstream() -> None:
+    fork = fork_issues("Fails as in #3.")
+    intake = IssueIntakeInMemory()
+
+    issue_move(fork, intake).run()
+
+    assert intake.opened[0][1] == f"Fails as in {ScratchGitHub.owned.full_name}#3."
+
+
+def test_a_bare_issue_number_in_the_proof_keeps_naming_the_fork_s_issue() -> None:
+    fork = proven_issues(WorkflowSettings().owner)
+    proof = fork.posted[4][1]
+    fork.posted[4][1] = replace(proof, body=f"{proof.body}\nSeen in #3.")
+    intake = IssueIntakeInMemory()
+
+    issue_move(fork, intake).run()
+
+    assert intake.comments[0][1].endswith(f"Seen in {ScratchGitHub.owned.full_name}#3.")
+
+
 def test_the_moved_issue_is_closed_on_the_fork_linking_the_new_one() -> None:
     fork = fork_issues()
 
