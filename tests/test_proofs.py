@@ -22,6 +22,7 @@ from github_workflow.exceptions import (
     BrokenTestError,
     FileOutsideCheckoutError,
     PassingTestError,
+    ProofPathOutsideCopyError,
 )
 from github_workflow.locations import PluginDirectory
 from github_workflow.proofs import (
@@ -484,6 +485,21 @@ def test_a_proof_by_an_untrusted_author_is_ignored(settings: WorkflowSettings) -
     ]
 
     assert Proof.latest_posted(posted, [settings.owner]) == trusted
+
+
+@pytest.mark.parametrize(
+    "path", [Path("/etc/cron.d/test_x.py"), Path("tests/../../test_x.py")]
+)
+def test_a_proof_whose_test_lies_outside_the_copy_is_refused(
+    path: Path, settings: WorkflowSettings
+) -> None:
+    proof = build_proof(ProofDataset.DOUBLING_SHOWN_WRONG.read_text())
+    outside = Proof(FindingTest(path, proof.test.source), proof.tip, proof.failure)
+
+    posted = [IssueComment(settings.owner, outside.comment())]
+
+    with pytest.raises(ProofPathOutsideCopyError):
+        Proof.latest_posted(posted, [settings.owner])
 
 
 def test_an_issue_without_a_proof_has_none(settings: WorkflowSettings) -> None:
