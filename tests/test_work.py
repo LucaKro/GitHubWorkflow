@@ -13,6 +13,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
+from domain_model.class_property import classproperty
 from domain_model.environment import GitIdentityVariable
 from domain_model.git.commands import GitCommandRunner
 from domain_model.git.exceptions import GitCommandFailed
@@ -24,6 +25,7 @@ from domain_model.github.repository_client import (
     PullRequestReader,
     PullRequestsFromForks,
     RepositoryDetails,
+    Reviewer,
 )
 from domain_model.github.rest_models import RestPullRequest
 from domain_model.github.stack_models import Stack
@@ -65,6 +67,7 @@ from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
 from github_workflow.work import (
     PullRequestComment,
+    PullRequestReview,
     BaseMerge,
     BranchStart,
     BranchSwitch,
@@ -1365,6 +1368,52 @@ def test_commenting_on_a_pull_request_is_the_person_s_word() -> None:
     words = list(RunnableCommand.COMMENT.words)
 
     assert not RunnableCommand.COMMENT.runs_unasked(words)
+
+
+# %% reviewing a pull request
+
+
+@dataclass(frozen=True)
+class ReviewsInMemory(Reviewer):
+    """
+    The stand-in keeping the reviews submitted.
+    """
+
+    submitted: list[tuple[int, str]] = field(default_factory=list)
+    """
+    Each review submitted: the pull request and the review's text.
+    """
+
+    @classproperty
+    def review_page(cls) -> str:
+        """
+        The URL every submitted review is given.
+        """
+        return "https://github.com/an-owner/a-repository/pull/1#pullrequestreview-1"
+
+    def submit_review(self, number: int, body: str) -> str:
+        self.submitted.append((number, body))
+        return self.review_page
+
+
+def test_a_review_is_submitted_on_the_pull_request_named() -> None:
+    github = ReviewsInMemory()
+
+    PullRequestReview(github, 1, "Reads well.").run()
+
+    assert github.submitted == [(1, "Reads well.")]
+
+
+def test_a_submitted_review_is_reported_with_its_page() -> None:
+    reported = PullRequestReview(ReviewsInMemory(), 1, "Reads well.").run()
+
+    assert reported == f"reviewed #1: {ReviewsInMemory.review_page}"
+
+
+def test_reviewing_a_pull_request_is_the_person_s_word() -> None:
+    words = list(RunnableCommand.REVIEW_SUBMIT.words)
+
+    assert not RunnableCommand.REVIEW_SUBMIT.runs_unasked(words)
 
 
 # %% cloning

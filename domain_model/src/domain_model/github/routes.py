@@ -90,7 +90,14 @@ class RepositoryRoute:
         :param number: The pull request's number.
         :return: Its submitted reviews.
         """
-        return self.listing(f"{self.pull_request(number)}/reviews")
+        return self.listing(self.review_submission(number))
+
+    def review_submission(self, number: int) -> str:
+        """
+        :param number: The pull request's number.
+        :return: Where a review of it is submitted.
+        """
+        return f"{self.pull_request(number)}/reviews"
 
     def review_comments(self, number: int) -> str:
         """

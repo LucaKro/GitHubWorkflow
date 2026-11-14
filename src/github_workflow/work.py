@@ -31,6 +31,7 @@ from domain_model.github.repository_client import (
     PullRequestOpener,
     PullRequestReader,
     PullRequestsFromForks,
+    Reviewer,
     RewritablePullRequests,
 )
 from domain_model.github.stack_placement import StackPlacement
@@ -731,6 +732,33 @@ class PullRequestComment(WorkflowStep):
         self.pull_requests.pull_request(self.number)
         url = self.pull_requests.add_comment(self.number, self.body)
         return f"commented on #{self.number}: {url}"
+
+
+@dataclass(frozen=True)
+class PullRequestReview(WorkflowStep):
+    """
+    A review, as comments without a verdict, of a pull request of the owner's
+    repository, which the person asked for.
+    """
+
+    reviewer: Reviewer
+    """
+    Submits the review.
+    """
+
+    number: int
+    """
+    The pull request.
+    """
+
+    body: str
+    """
+    The review's text.
+    """
+
+    def run(self) -> str:
+        url = self.reviewer.submit_review(self.number, self.body)
+        return f"reviewed #{self.number}: {url}"
 
 
 # %% bringing a branch up to date

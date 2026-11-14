@@ -402,6 +402,17 @@ class ThreadMarker(StrEnum):
 # %% REST vocabulary
 
 
+class ReviewEvent(StrEnum):
+    """
+    What submitting a review does with it, as REST takes it.
+    """
+
+    COMMENT = "COMMENT"
+    """
+    The review is submitted as comments, without a verdict.
+    """
+
+
 class RestJSONKey(StrEnum):
     """
     Every field name read out of a REST response.

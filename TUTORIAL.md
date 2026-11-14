@@ -102,8 +102,11 @@ github-workflow review reply <comment id> --body-file /tmp/reply.md
 github-workflow review resolve <comment id>      # only once the fix is pushed
 ```
 
-`describe <number>` rewrites another pull request, and `stack on <below> <above>` moves
-one in a stack. Both are your decisions: a session runs them only when you said so.
+`describe <number>` rewrites another pull request, `stack on <below> <above>` moves
+one in a stack, and `comment <number> --body-file <file>` and `review submit <number>
+--body-file <file>` post a comment or a review, as comments without a verdict, on a
+pull request of your repository. All are your decisions: a session runs them only when
+you said so.
 
 Every command prints one line saying what it did. A refusal says why and what to run
 instead, never a traceback.
@@ -334,7 +337,7 @@ them on the notes branch for the Actions workflow.
 | A session, on its own | A session, when you say so | Only you |
 |---|---|---|
 | start, switch and discard branches; commit; push | accept, shelve, reject, edit or prioritize a finding | open a pull request upstream (`upstream`); move an issue upstream (`issue upstream`) |
-| open drafts; describe, label and answer reviews on its own pull request | describe another pull request | change repository settings |
+| open drafts; describe, label and answer reviews on its own pull request | describe, comment on or review another pull request | change repository settings |
 | sync and merge its branch; fast-forward a fork's default branch | change a stack (`stack on`) | merge pull requests |
 | file, prove, recheck and comment on findings; close a fixed one | post an idea; file or dismiss a tag | set `pull request: shelved` |
 | clone to read; clean up branches; save notes | set up the label workflow (`finding automate`) | unresolve a thread |

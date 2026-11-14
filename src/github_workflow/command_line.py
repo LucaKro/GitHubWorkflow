@@ -130,7 +130,8 @@ class WorkflowCommand(StrEnum):
 
     REVIEW = "review"
     """
-    List, reply to or resolve the review threads of the work branch's pull request.
+    List, reply to or resolve the review threads of the work branch's pull request, or
+    submit a review of a pull request of the owner's repository.
     """
 
     TAG = "tag"
@@ -289,6 +290,11 @@ class ReviewSubcommand(StrEnum):
     ADDRESSED = "addressed"
     """
     Say on the pull request what was changed for a review comment upstream, linking it.
+    """
+
+    SUBMIT = "submit"
+    """
+    Submit a review of a pull request, as comments without a verdict.
     """
 
 
@@ -1508,6 +1514,20 @@ class RunnableCommand(CommandSpecification, Enum):
     )
     """
     ``review addressed``.
+    """
+
+    REVIEW_SUBMIT = (
+        (WorkflowCommand.REVIEW, ReviewSubcommand.SUBMIT),
+        "submit a review, as comments without a verdict, of a pull request of the "
+        "owner's repository, on the person's word",
+        SessionRunsOnPersonsWord(),
+        (
+            CommandArgument.number("the pull request"),
+            CommandArgument.body_file("the review"),
+        ),
+    )
+    """
+    ``review submit``.
     """
 
     TAG_LIST = (
