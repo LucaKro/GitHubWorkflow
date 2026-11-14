@@ -32,6 +32,7 @@ from domain_model.github.vocabulary import (
     QueryParameter,
     RepositoryContentKind,
     RestJSONKey,
+    ReviewEvent,
     WorkflowRunConclusion,
     WorkflowRunStatus,
     WorkflowState,
@@ -621,6 +622,28 @@ def test_an_issue_s_comments_are_read_with_their_authors():
     assert comments == [
         IssueComment("an-owner", "First"),
         IssueComment("someone", "Second"),
+    ]
+
+
+def test_a_review_is_submitted_as_comments_without_a_verdict():
+    submission = f"/{ROUTE.review_submission(9)}"
+    review_page = "https://review"
+    answers = {
+        ("POST", submission): RecordedAnswer(
+            HTTPStatus.OK, json.dumps({RestJSONKey.HTML_URL: review_page})
+        )
+    }
+
+    with ReplayedApi(answers) as api:
+        url = client(api).submit_review(9, "Reads well.")
+
+    assert url == review_page
+    assert [(sent.method, sent.path, sent.payload) for sent in api.sent] == [
+        (
+            "POST",
+            submission,
+            {RestJSONKey.BODY: "Reads well.", RestJSONKey.EVENT: ReviewEvent.COMMENT},
+        )
     ]
 
 

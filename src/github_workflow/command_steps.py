@@ -93,6 +93,7 @@ from github_workflow.work import (
     MergeCompletion,
     NotesSaving,
     PullRequestComment,
+    PullRequestReview,
     PullRequestMerge,
     PushWork,
     Replacement,
@@ -624,6 +625,20 @@ class CommentStep(CommandStep):
 
     def step(self) -> WorkflowStep:
         return PullRequestComment(self.session.github, self.arguments.number, self.body)
+
+
+@dataclass(frozen=True)
+class ReviewSubmitStep(CommandStep):
+    """
+    Builds the step ``review submit`` asks for.
+    """
+
+    @classproperty
+    def command(cls) -> RunnableCommand:
+        return RunnableCommand.REVIEW_SUBMIT
+
+    def step(self) -> WorkflowStep:
+        return PullRequestReview(self.session.github, self.arguments.number, self.body)
 
 
 @dataclass(frozen=True)

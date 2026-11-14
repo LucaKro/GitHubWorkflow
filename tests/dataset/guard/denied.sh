@@ -34,6 +34,7 @@ eval "git push"
 gh pr create --title Change
 gh pr merge 9
 gh pr comment 9 --body Thanks
+gh pr review 9 --comment --body Fine
 gh issue close 3
 gh repo edit --delete-branch-on-merge
 gh api -X DELETE repos/LucaKro/GitHubWorkflow/git/refs/heads/feature

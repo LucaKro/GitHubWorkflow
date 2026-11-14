@@ -37,6 +37,7 @@ from domain_model.github.vocabulary import (
     QueryParameter,
     RepositoryContentKind,
     RestJSONKey,
+    ReviewEvent,
     RollupState,
     StackAction,
 )
@@ -91,6 +92,23 @@ class Commenter(ABC):
         :param number: The issue or pull request to comment on.
         :param body: The comment.
         :return: The comment's URL.
+        """
+
+
+@dataclass(frozen=True)
+class Reviewer(ABC):
+    """
+    Reviewing a pull request.
+    """
+
+    @abstractmethod
+    def submit_review(self, number: int, body: str) -> str:
+        """
+        Submit a review of comments alone, without a verdict.
+
+        :param number: The pull request to review.
+        :param body: The review's text.
+        :return: The review's URL.
         """
 
 
@@ -792,6 +810,7 @@ class GitHubRepository(
     ProposingFork,
     RewritablePullRequests,
     UpstreamIssueTracker,
+    Reviewer,
 ):
     """
     Every pull-request, stack and label call this tooling makes, against one repository.
@@ -917,6 +936,14 @@ class GitHubRepository(
             "POST", self.route.issue_comments(number), {RestJSONKey.BODY: body}
         )
         return str(created[RestJSONKey.HTML_URL])
+
+    def submit_review(self, number: int, body: str) -> str:
+        submitted = self.api.request(
+            "POST",
+            self.route.review_submission(number),
+            {RestJSONKey.BODY: body, RestJSONKey.EVENT: ReviewEvent.COMMENT},
+        )
+        return str(submitted[RestJSONKey.HTML_URL])
 
     def label_events(self, number: int) -> list[LabelEvent]:
         return [

@@ -186,6 +186,11 @@ class GitHubCliWrite(StrEnum):
     Commenting on a pull request.
     """
 
+    PULL_REQUEST_REVIEW = "pr review"
+    """
+    Submitting a review of a pull request.
+    """
+
 
 class GitHubToolWrite(StrEnum):
     """
@@ -220,6 +225,11 @@ class GitHubToolWrite(StrEnum):
     ADD_ISSUE_COMMENT = "add_issue_comment"
     """
     Comments on an issue or pull request.
+    """
+
+    PULL_REQUEST_REVIEW_WRITE = "pull_request_review_write"
+    """
+    Writes a review of a pull request.
     """
 
 
@@ -423,6 +433,26 @@ class CommentAlternative(WorkflowAlternative):
 
     def command_line(self) -> str:
         return RunnableCommand.COMMENT.usage(
+            ArgumentName.NUMBER, CommandOption.BODY_FILE
+        )
+
+
+@dataclass(frozen=True)
+class ReviewSubmitAlternative(WorkflowAlternative):
+    """
+    Submitting a review of a pull request, with ``review submit``, which a session runs
+    only when the person asks for the review.
+    """
+
+    @classproperty
+    def writes(cls) -> tuple[str, ...]:
+        return (
+            GitHubCliWrite.PULL_REQUEST_REVIEW,
+            GitHubToolWrite.PULL_REQUEST_REVIEW_WRITE,
+        )
+
+    def command_line(self) -> str:
+        return RunnableCommand.REVIEW_SUBMIT.usage(
             ArgumentName.NUMBER, CommandOption.BODY_FILE
         )
 

@@ -119,8 +119,9 @@ them:
   `--repository`, no checkout needed: unproven, with what was run, what happened and
   what should have. The notes header says how; `finding list --repository` shows first
   whether it is filed already. Every refusal, the guard's and the commands', says only
-  why, what to run instead and never to get around it, with a script or in any other
-  way - a session asks me, or files it - and points to the notes for how to report it,
+  why, what to run instead - for a GitHub tool a workflow command covers, such as one
+  posting a comment or a review, that command - and never to get around it, with a
+  script or in any other way - a session asks me, or files it - and points to the notes for how to report it,
   so the command list and the filing hint are not repeated each time. Command lines
   the workflow prints name the launcher, `github-workflow`, where the one on the path
   runs the same interpreter, and the interpreter's full path otherwise.
@@ -378,8 +379,9 @@ is mine to decide - a finding's stage
 `edit`), another pull request's description (`describe <number>`, in any spelling the
 number takes, and only one opened from my repository) or its place in a stack (`stack
 on`), another branch than the checked-out one to discard (`branch discard <name>`),
-and a comment on a pull request of my repository, open or closed (`comment <number>`)
-- the mod never approves, and a
+a comment on a pull request of my repository, open or closed (`comment <number>`),
+and a review of one, submitted as comments without a verdict (`review submit
+<number>`) - the mod never approves, and a
 session does it only when I said so
 in the conversation.
 Everything else written to GitHub needs me to ask for it.
