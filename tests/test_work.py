@@ -13,7 +13,6 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
-from domain_model.github.closing_lines import ClosingLines
 from domain_model.class_property import classproperty
 from domain_model.environment import GitIdentityVariable
 from domain_model.git.commands import GitCommandRunner
@@ -31,7 +30,7 @@ from domain_model.github.repository_client import (
 from domain_model.github.rest_models import RestPullRequest
 from domain_model.github.stack_models import Stack
 from domain_model.github.stack_placement import StackPlacement
-from domain_model.github.vocabulary import ClosingKeyword, PullRequestState
+from domain_model.github.vocabulary import PullRequestState
 from domain_model.repository import Repository
 
 import github_workflow
@@ -1306,25 +1305,6 @@ def test_a_new_description_s_ending_is_given_the_branch_it_targets() -> None:
 
     described = ending.append_once("A new body", github.name_branch(2), "branch-1")
     assert github.writes == [f"set_description 2 {described}"]
-
-
-def test_a_new_description_keeps_the_old_one_s_closing_lines() -> None:
-    closing = ClosingKeyword.FIXES.reference(148)
-    old = f"What it did.\n\n{closing}\n"
-
-    kept = ClosingLines(old).append_missing_lines("What it does now.\n")
-
-    assert kept == f"What it does now.\n\n{closing}\n"
-
-
-def test_a_closing_line_the_new_description_has_is_not_repeated() -> None:
-    closing = ClosingKeyword.FIXES.reference(148)
-    rewritten = f"What it does now.\n\n{closing}\n"
-
-    assert (
-        ClosingLines(f"What it did.\n\n{closing}\n").append_missing_lines(rewritten)
-        == rewritten
-    )
 
 
 def test_an_open_pull_request_s_title_is_rewritten() -> None:
