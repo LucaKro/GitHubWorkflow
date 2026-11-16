@@ -26,6 +26,7 @@ from github_workflow.pull_request_description import (
     PullRequestDescription,
 )
 
+from github_workflow.why_it_matters import WhyItMattersSection
 from .issues_in_memory import IssuesInMemory, build_finding, finding_why_section
 from .scratch_github import ScratchGitHub
 
@@ -153,7 +154,8 @@ def test_a_description_saying_nowhere_why_it_matters_is_refused() -> None:
 
 def test_the_session_s_own_why_leads_the_description() -> None:
     description = replace(
-        description_fixing_three(), why_it_matters="Robots stop on restart."
+        description_fixing_three(),
+        why_it_matters=WhyItMattersSection("Robots stop on restart."),
     )
 
     markdown = description.to_markdown(ScratchGitHub.owned)
@@ -169,7 +171,7 @@ def test_the_session_s_own_why_leads_the_description() -> None:
 def test_a_written_description_is_read_back_as_it_was_given() -> None:
     description = PullRequestDescription(
         "Records the goals.",
-        "Robots stop.",
+        WhyItMattersSection("Robots stop."),
         (
             addressed_issue(3, IssueRelation.FIXES),
             addressed_issue(5, IssueRelation.FIXES_IN_PART),
@@ -207,7 +209,9 @@ def test_an_older_description_is_read_without_its_command_line() -> None:
 
 
 def test_a_change_keeps_what_it_leaves_out() -> None:
-    description = PullRequestDescription("A change.", "Robots stop.")
+    description = PullRequestDescription(
+        "A change.", WhyItMattersSection("Robots stop.")
+    )
     three = AddressedIssueNumber(3, IssueRelation.FIXES)
 
     changed = description.apply_change(

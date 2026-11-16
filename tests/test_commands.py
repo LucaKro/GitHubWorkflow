@@ -1405,7 +1405,7 @@ def test_a_rewritten_description_of_a_fork_s_pull_request_keeps_the_upstream_lin
         CheckoutOtherForkBases(checkout.git),
     )
     described = PullRequestDescription(
-        "What it does, after the review.", "Why it matters."
+        "What it does, after the review.", WhyItMattersSection("Why it matters.")
     ).to_markdown(fork)
     assert written == [
         {

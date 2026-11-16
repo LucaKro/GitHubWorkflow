@@ -162,7 +162,7 @@ class AddressedIssue:
         link = f"[{repository.full_name}#{number}]({repository.issue_url(number)})"
         partly = "Partly: " if self.relation is IssueRelation.FIXES_IN_PART else ""
         heading = f"### {partly}{self.issue.title} ({link})"
-        why = WhyItMattersSection.from_issue_text(self.issue.body)
+        why = WhyItMattersSection.from_marked_text(self.issue.body)
         return heading if why is None else f"{heading}\n\n{why.explanation}"
 
 
@@ -239,9 +239,9 @@ class PullRequestDescription:
     What the pull request changes, as Markdown: the changes, the tests and what breaks.
     """
 
-    why_it_matters: str = ""
+    why_it_matters: WhyItMattersSection | None = None
     """
-    Why it matters in the session's own words, empty when only its findings say so.
+    Why it matters in the session's own words, ``None`` when only its findings say so.
     """
 
     addressed_issues: tuple[AddressedIssue, ...] = ()
@@ -256,13 +256,6 @@ class PullRequestDescription:
         is what a copy elsewhere carries.
         """
         return WorkflowSection("description")
-
-    @classproperty
-    def why_it_matters_section(cls) -> WorkflowSection:
-        """
-        The section holding the session's own why.
-        """
-        return WorkflowSection("pull-request-why")
 
     @classproperty
     def change_details_section(cls) -> WorkflowSection:
@@ -301,7 +294,7 @@ class PullRequestDescription:
         """
         return cls(
             cls.read_change_details(text),
-            cls.why_it_matters_section.find_content(text) or "",
+            WhyItMattersSection.from_marked_text(text),
             tuple(
                 number.read_issue(issues)
                 for number in AddressedIssueNumber.from_description(text)
@@ -317,9 +310,9 @@ class PullRequestDescription:
             it matters.
         """
         whys = (
-            [self.why_it_matters_section.enclose(self.why_it_matters)]
-            if self.why_it_matters
-            else []
+            []
+            if self.why_it_matters is None
+            else [self.why_it_matters.to_description_markdown()]
         )
         whys += [issue.to_markdown(repository) for issue in self.addressed_issues]
         if not whys:
@@ -382,7 +375,7 @@ class DescriptionChange:
     What the pull request now changes, ``None`` to keep it.
     """
 
-    why_it_matters: str | None = None
+    why_it_matters: WhyItMattersSection | None = None
     """
     The session's own why, ``None`` to keep it.
     """

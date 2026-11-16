@@ -294,7 +294,7 @@ def test_a_finding_is_filed_with_its_why_after_its_text() -> None:
 
     assert board.descriptions[1].startswith("A body")
     assert (
-        WhyItMattersSection.from_issue_text(board.descriptions[1])
+        WhyItMattersSection.from_marked_text(board.descriptions[1])
         == finding_why_section()
     )
 
@@ -316,7 +316,7 @@ def test_a_why_placed_in_a_text_holding_one_replaces_it() -> None:
         WhyItMattersSection("The old reason.").place_into_issue_text("A body")
     )
 
-    assert WhyItMattersSection.from_issue_text(body) == finding_why_section()
+    assert WhyItMattersSection.from_marked_text(body) == finding_why_section()
     assert body.count(WhyItMattersSection.workflow_section.start_marker) == 1
 
 
@@ -362,7 +362,7 @@ def test_explaining_a_finding_on_a_fork_keeps_the_move_command_last() -> None:
 
     written = board.writes[0].removeprefix("set_issue_description 1 ")
     assert written.rstrip().endswith(suggestion.append_once("", 1).strip())
-    assert WhyItMattersSection.from_issue_text(written) == finding_why_section()
+    assert WhyItMattersSection.from_marked_text(written) == finding_why_section()
 
 
 def test_a_closed_finding_is_not_explained() -> None:

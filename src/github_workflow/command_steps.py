@@ -207,6 +207,10 @@ class CommandStep(ClassFamily, ABC):
             issue in a line only the workflow writes.
         """
         why = self.why_it_matters_section
+        if why is not None:
+            AddressedIssueNumber.refuse_reference_lines(
+                why.explanation, CommandOption.WHY_FILE
+            )
         added = [
             AddressedIssueNumber(number, relation)
             for numbers, relation in (
@@ -219,13 +223,7 @@ class CommandStep(ClassFamily, ABC):
             AddressedIssueNumber.refuse_reference_lines(
                 self.body, CommandOption.BODY_FILE
             ),
-            (
-                None
-                if why is None
-                else AddressedIssueNumber.refuse_reference_lines(
-                    why.explanation, CommandOption.WHY_FILE
-                )
-            ),
+            why,
             tuple(added),
         )
 

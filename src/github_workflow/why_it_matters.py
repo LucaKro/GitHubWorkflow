@@ -19,8 +19,8 @@ from github_workflow.markers import WorkflowSection
 class WhyItMattersSection:
     """
     The section of a finding's or a pull request's text saying why it matters: who runs
-    into the problem and what it costs them, under a heading of its own, so that a pull
-    request working on the finding can copy it word for word.
+    into the problem and what it costs them, so that a pull request working on the
+    finding can copy it word for word.
     """
 
     explanation: str
@@ -66,15 +66,22 @@ class WhyItMattersSection:
         return cls(stripped)
 
     @classmethod
-    def from_issue_text(cls, body: str) -> WhyItMattersSection | None:
+    def from_marked_text(cls, body: str) -> WhyItMattersSection | None:
         """
-        :param body: An issue's text.
+        :param body: An issue's text or a pull request's description.
         :return: The section it holds, ``None`` when it holds none.
         """
         content = cls.workflow_section.find_content(body)
         if content is None:
             return None
         return cls(content.removeprefix(cls.heading).strip())
+
+    def to_description_markdown(self) -> str:
+        """
+        :return: The section as a pull request's description holds it: without a
+            heading of its own, under the one every why of the description shares.
+        """
+        return self.workflow_section.enclose(self.explanation)
 
     def place_into_issue_text(self, body: str) -> str:
         """

@@ -81,6 +81,7 @@ from github_workflow.pull_request_description import (
     PullRequestDescription,
 )
 
+from github_workflow.why_it_matters import WhyItMattersSection
 from .issues_in_memory import IssuesInMemory, build_finding
 from .pull_requests import pull_request
 from .repositories_by_owner import RepositoriesByOwner
@@ -365,7 +366,7 @@ def description_fixing_three() -> str:
     board = IssuesInMemory({3: build_finding(3, FindingStage.ACCEPTED, Priority.LOW)})
     three = AddressedIssueNumber(3, IssueRelation.FIXES).read_issue(board)
     description = PullRequestDescription(
-        "Builds on #2.", "Robots stop.", (three,)
+        "Builds on #2.", WhyItMattersSection("Robots stop."), (three,)
     ).to_markdown(ScratchGitHub.owned)
     return PersonCommandEnding("open it upstream", "upstream fork branch").append_once(
         description
@@ -413,7 +414,8 @@ def test_an_older_description_rewritten_then_copied_leaves_out_the_command_line(
             ending.append_once("What it does."), IssuesInMemory()
         )
         .apply_change(
-            DescriptionChange(why_it_matters="Robots stop."), IssuesInMemory()
+            DescriptionChange(why_it_matters=WhyItMattersSection("Robots stop.")),
+            IssuesInMemory(),
         )
         .to_markdown(ScratchGitHub.owned)
     )

@@ -752,7 +752,7 @@ class FindingEdit(FindingChange):
         if self.title is not None:
             self.issues.set_issue_title(self.number, self.title)
         if self.body is not None:
-            why = WhyItMattersSection.from_issue_text(issue.body)
+            why = WhyItMattersSection.from_marked_text(issue.body)
             body = self.body if why is None else why.place_into_issue_text(self.body)
             self.issues.set_issue_description(
                 self.number, self.suggestion.append_once(body, self.number)

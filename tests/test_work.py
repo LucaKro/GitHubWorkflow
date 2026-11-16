@@ -102,6 +102,7 @@ from github_workflow.work import (
 )
 from github_workflow.workflow_step import SessionLog
 
+from github_workflow.why_it_matters import WhyItMattersSection
 from .issues_in_memory import IssuesInMemory, build_finding, finding_why_section
 from .pull_requests import pull_request
 from .repositories_by_owner import RepositoriesByOwner
@@ -1361,11 +1362,11 @@ class NeverHolds(WorkPrecondition):
 
 def test_a_draft_s_description_is_written_by_the_workflow(work: WritePolicy) -> None:
     github = DraftsAndStacksInMemory({})
-    change = DescriptionChange("A body", "Why it matters.")
+    change = DescriptionChange("A body", WhyItMattersSection("Why it matters."))
 
     DescribedDraftOpening(draft(work, github, None), change).run()
 
-    written = PullRequestDescription("A body", "Why it matters.")
+    written = PullRequestDescription("A body", WhyItMattersSection("Why it matters."))
     assert github.bodies == {1: written.to_markdown(work.remote.repository)}
 
 
@@ -1384,7 +1385,7 @@ def test_a_draft_saying_nowhere_why_it_matters_opens_nothing(
 
 def test_a_draft_whose_precondition_fails_opens_nothing(work: WritePolicy) -> None:
     github = DraftsAndStacksInMemory({})
-    change = DescriptionChange("A body", "Why it matters.")
+    change = DescriptionChange("A body", WhyItMattersSection("Why it matters."))
 
     with pytest.raises(NotHeldError):
         DescribedDraftOpening(draft(work, github, None), change, (NeverHolds(),)).run()
@@ -1454,7 +1455,9 @@ def pull_request_one_rewrite(
 
 def test_a_rewrite_keeps_what_the_change_leaves_out() -> None:
     board = findings_three_and_five()
-    old = PullRequestDescription("What it did.", "Why.", fixed_issues(board, 3))
+    old = PullRequestDescription(
+        "What it did.", WhyItMattersSection("Why."), fixed_issues(board, 3)
+    )
     step, github = pull_request_one_rewrite(
         old, board, DescriptionChange(change_details="What it does now.")
     )
@@ -1500,7 +1503,7 @@ def test_a_newly_fixed_issue_is_labelled_as_having_a_pull_request() -> None:
 
 def test_a_new_title_alone_leaves_the_description_as_it_is() -> None:
     board = findings_three_and_five()
-    old = PullRequestDescription("What it does.", "Why.")
+    old = PullRequestDescription("What it does.", WhyItMattersSection("Why."))
     step, github = pull_request_one_rewrite(old, board, DescriptionChange())
 
     replace(step, rewrite=replace(step.rewrite, title="A sharper title")).run()
@@ -1540,7 +1543,7 @@ def test_a_rewrite_ends_with_the_command_suggested_to_the_person(
     change: DescriptionChange,
 ) -> None:
     board = findings_three_and_five()
-    old = PullRequestDescription("What it did.", "Why.")
+    old = PullRequestDescription("What it did.", WhyItMattersSection("Why."))
     step, github = pull_request_one_rewrite(old, board, change)
     suggestion = SuggestionInMemory()
 
