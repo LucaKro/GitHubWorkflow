@@ -139,7 +139,12 @@ class SessionCommandApproval:
         """
         The options of workflow commands naming a file the command reads or runs.
         """
-        return (CommandOption.BODY_FILE, CommandOption.TEST, CommandOption.PYTHON)
+        return (
+            CommandOption.BODY_FILE,
+            CommandOption.WHY_FILE,
+            CommandOption.TEST,
+            CommandOption.PYTHON,
+        )
 
     @staticmethod
     def directory_reached(changes: list[SimpleCommand]) -> Path | None:

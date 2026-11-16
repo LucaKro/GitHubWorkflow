@@ -10,7 +10,10 @@ from enum import StrEnum
 from urllib.parse import urlsplit
 
 from domain_model.class_property import classproperty
-from domain_model.exceptions import MalformedRepositoryError
+from domain_model.exceptions import (
+    MalformedPullRequestAddressError,
+    MalformedRepositoryError,
+)
 from domain_model.number_links import HasNumberLink
 
 # %% names GitHub gives a meaning
@@ -328,6 +331,24 @@ class PullRequestReference:
     """
     The pull request's number.
     """
+
+    @classmethod
+    def from_url(cls, address: str) -> PullRequestReference:
+        """
+        :param address: A pull request's page on GitHub.
+        :return: The pull request.
+        :raises MalformedPullRequestAddressError: If it is no pull request's page.
+        """
+        parts = urlsplit(address)
+        owner, name, kind, number = (parts.path.strip("/").split("/") + [""] * 4)[:4]
+        if (
+            f"{parts.scheme}://{parts.netloc}" != GitHubAddress.WEB
+            or kind != "pull"
+            or not number.isdigit()
+            or not Repository.is_full_name(f"{owner}/{name}")
+        ):
+            raise MalformedPullRequestAddressError(address)
+        return cls(Repository(owner, name), int(number))
 
     @property
     def url(self) -> str:

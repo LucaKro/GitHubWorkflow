@@ -75,6 +75,7 @@ def build_step(
         command=command.words[0],
         action=(command.words[1:] or [None])[0],
         body_file=body_file,
+        why_file=body_file,
         title=forged,
         reason=forged,
         message=forged,
@@ -89,8 +90,9 @@ def build_step(
         lambda step: step.title,
         lambda step: step.reason,
         lambda step: step.message,
+        lambda step: step.why,
     ],
-    ids=["body file", "title", "reason", "message"],
+    ids=["body file", "title", "reason", "message", "why file"],
 )
 def test_text_carrying_a_workflow_marker_is_refused(
     read: Callable[[CommandStep], str | None],

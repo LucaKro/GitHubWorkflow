@@ -8,7 +8,7 @@ from __future__ import annotations
 import sys
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 
@@ -23,7 +23,6 @@ from domain_model.git.remotes import (
 )
 from domain_model.git.revisions import BranchName, LocalBranch
 from domain_model.git.working_tree import WorkingTree
-from domain_model.github.closing_lines import ClosingLines
 from domain_model.github.repository_client import (
     BranchStacks,
     ForkDetails,
@@ -56,10 +55,16 @@ from github_workflow.exceptions import (
     UnpushedCommitsError,
     UnreplaceablePullRequestError,
     UnresolvedConflictError,
+    UpstreamCopyFailedError,
 )
 from github_workflow.labels import IssueLabel
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
+from github_workflow.pull_request_description import (
+    AddressedIssues,
+    DescriptionChange,
+    PullRequestDescription,
+)
 from github_workflow.push_hook import PushHook
 from github_workflow.remotes import ForkUpstream
 from github_workflow.settings import WorkflowSettings
@@ -599,7 +604,7 @@ class DraftOpening(WorkflowStep):
 class PullRequestOpenedLabelling:
     """
     :attr:`IssueLabel.PULL_REQUEST_OPENED` on the issues a pull request's description
-    closes, put on when it opens and taken off when it is closed unmerged.
+    addresses, put on when it opens and taken off when it is closed unmerged.
     """
 
     issues: IssueTracker
@@ -610,9 +615,9 @@ class PullRequestOpenedLabelling:
     def label(self, description: str) -> list[int]:
         """
         :param description: The opened pull request's description.
-        :return: The issues it closes, now labelled.
+        :return: The issues it addresses, now labelled.
         """
-        issues = ClosingLines(description).issues()
+        issues = AddressedIssues.from_description(description).numbers
         if not issues:
             return []
         self.issues.create_missing_labels([IssueLabel.PULL_REQUEST_OPENED])
@@ -623,11 +628,11 @@ class PullRequestOpenedLabelling:
     def unlabel(self, description: str) -> list[int]:
         """
         :param description: The description of a pull request closed unmerged.
-        :return: The issues it closes that carried the label, no longer labelled.
+        :return: The issues it addresses that carried the label, no longer labelled.
         """
         carrying = [
             issue
-            for issue in ClosingLines(description).issues()
+            for issue in AddressedIssues.from_description(description).numbers
             if IssueLabel.PULL_REQUEST_OPENED in self.issues.issue(issue).labels
         ]
         for issue in carrying:
@@ -640,8 +645,7 @@ class DescriptionRewrite(WorkflowStep):
     """
     A new description, title or both for an open pull request on the owner's repository,
     a draft or ready for review, so it follows the pushed commits; a closed or merged
-    one keeps its own. A new description keeps the lines of the old one that close an
-    issue, and it ends as a draft onto the same base does.
+    one keeps its own. A new description ends as a draft onto the same base does.
 
     :raises NothingToDescribeError: If neither is given.
     :raises PullRequestNotOpenError: If the pull request is not open.
@@ -690,12 +694,11 @@ class DescriptionRewrite(WorkflowStep):
             raise ForeignPullRequestError(self.number, pull_request.head.repository)
         rewritten = []
         if self.body is not None:
-            kept = ClosingLines(pull_request.body or "").append_missing_lines(self.body)
             body = (
-                kept
+                self.body
                 if self.ending is None
                 else self.ending.append_once(
-                    kept, pull_request.head.branch, pull_request.base
+                    self.body, pull_request.head.branch, pull_request.base
                 )
             )
             self.pull_requests.set_description(self.number, body)
@@ -704,6 +707,154 @@ class DescriptionRewrite(WorkflowStep):
             self.pull_requests.set_issue_title(self.number, self.title)
             rewritten.append("title")
         return f"rewrote the {' and '.join(rewritten)} of #{self.number}"
+
+
+class WorkPrecondition(ABC):
+    """
+    What has to hold before a session opens or rewrites a pull request working on
+    something, checked before anything is written.
+    """
+
+    @abstractmethod
+    def check(self) -> None:
+        """
+        Check that it holds.
+
+        :raises Exception: Of a type naming what does not hold, when it does not.
+        """
+
+
+@dataclass(frozen=True)
+class DescribedDraftOpening(WorkflowStep):
+    """
+    A draft whose description the workflow writes from the session's text and the issues
+    the draft addresses, once every precondition holds.
+    """
+
+    draft: DraftOpening
+    """
+    Opens the draft, with the description written.
+    """
+
+    description: PullRequestDescription
+    """
+    What the description says.
+    """
+
+    preconditions: tuple[WorkPrecondition, ...] = ()
+    """
+    What has to hold before the draft is opened.
+    """
+
+    def run(self) -> str:
+        """
+        :raises MissingWhyError: If the description would say nowhere why the draft
+            matters.
+        """
+        body = self.description.render(
+            self.draft.issue_labels.issues, self.draft.policy.remote.repository
+        )
+        for precondition in self.preconditions:
+            precondition.check()
+        return replace(self.draft, body=body).run()
+
+
+class DescriptionMirror(ABC):
+    """
+    Copies the description and title of a pull request to the pull request it was opened
+    as elsewhere.
+    """
+
+    @abstractmethod
+    def copy(self, number: int, description: str, title: str) -> str | None:
+        """
+        :param number: The pull request.
+        :param description: Its description, as it is now.
+        :param title: Its title, as it is now.
+        :return: What was done, ``None`` when it was opened nowhere else.
+        """
+
+
+@dataclass(frozen=True)
+class DescribedRewrite(WorkflowStep):
+    """
+    A rewrite of an open pull request whose new description the workflow writes from
+    what the session changes in it, the rest kept, once every precondition holds; the
+    issues it newly addresses are labelled, those it no longer addresses unlabelled, and
+    the description and title are copied to where it was opened elsewhere.
+    """
+
+    rewrite: DescriptionRewrite
+    """
+    Writes the new description and title.
+    """
+
+    change: DescriptionChange
+    """
+    What the session changes in the description.
+    """
+
+    issue_labels: PullRequestOpenedLabelling
+    """
+    Reads the issues addressed and labels them.
+    """
+
+    preconditions: tuple[WorkPrecondition, ...] = ()
+    """
+    What has to hold before the description is rewritten.
+    """
+
+    mirror: DescriptionMirror | None = None
+    """
+    Copies the result to where the pull request was opened elsewhere, ``None`` for
+    nowhere.
+    """
+
+    def run(self) -> str:
+        """
+        :raises IssueNamedTwiceError: If the change names an issue twice.
+        :raises MissingWhyError: If the description would say nowhere why the pull
+            request matters.
+        :raises UpstreamCopyFailedError: If copying fails once the pull request is
+            rewritten.
+        """
+        rewrite = self.rewrite
+        pull_request = rewrite.pull_requests.pull_request(rewrite.number)
+        old = pull_request.body or ""
+        if self.change.changes_nothing:
+            done, body = [rewrite.run()], old
+        else:
+            done, body = self.rewrite_description(old)
+        if self.mirror is None:
+            return "; ".join(done)
+        title = pull_request.title if rewrite.title is None else rewrite.title
+        try:
+            copied = self.mirror.copy(rewrite.number, body, title)
+        except Exception as raised:
+            raise UpstreamCopyFailedError(rewrite.number, str(raised)) from raised
+        return "; ".join(done if copied is None else [*done, copied])
+
+    def rewrite_description(self, old: str) -> tuple[list[str], str]:
+        """
+        :param old: The pull request's description as it is.
+        :return: What was done, and the new description.
+        """
+        rewrite = self.rewrite
+        description = PullRequestDescription.from_text(old).changed(self.change)
+        body = description.render(self.issue_labels.issues, rewrite.repository)
+        for precondition in self.preconditions:
+            precondition.check()
+        done = [replace(rewrite, body=body).run()]
+        labelled = self.issue_labels.label("\n".join(self.change.added.lines()))
+        if labelled:
+            named = ", ".join(f"#{issue}" for issue in labelled)
+            done.append(f"labelled {named} {IssueLabel.PULL_REQUEST_OPENED}")
+        dropped = AddressedIssues(self.change.dropped).lines()
+        unlabelled = self.issue_labels.unlabel("\n".join(dropped))
+        if unlabelled:
+            named = ", ".join(f"#{issue}" for issue in unlabelled)
+            done.append(f"took {IssueLabel.PULL_REQUEST_OPENED} off {named}")
+        return done, body
 
 
 @dataclass(frozen=True)

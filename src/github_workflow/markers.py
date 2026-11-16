@@ -78,3 +78,60 @@ class WorkflowMarker:
             return None
         recorded = text[start + len(self.prefix) :]
         return recorded.partition(CommentDelimiter.CLOSE)[0]
+
+
+# %% a part between two markers
+
+
+@dataclass(frozen=True)
+class MarkedPart:
+    """
+    A part of a Markdown text that only the workflow writes, between a comment starting
+    it and one ending it, read back and replaced while the rest of the text is left as
+    it is.
+    """
+
+    subject: str
+    """
+    What the part holds, such as ``why``.
+    """
+
+    @property
+    def start(self) -> str:
+        """:return: The comment the part starts after."""
+        return WorkflowMarker(f"{self.subject}:start").line()
+
+    @property
+    def end(self) -> str:
+        """:return: The comment the part ends before."""
+        return WorkflowMarker(f"{self.subject}:end").line()
+
+    def wrap(self, content: str) -> str:
+        """
+        :param content: What the part holds.
+        :return: The part, its comments included.
+        """
+        return f"{self.start}\n{content.strip()}\n{self.end}"
+
+    def read(self, text: str) -> str | None:
+        """
+        :param text: Markdown that may hold the part.
+        :return: What its first such part holds, ``None`` when it holds none.
+        """
+        start = text.find(self.start)
+        end = text.find(self.end, start)
+        if start == -1 or end == -1:
+            return None
+        return text[start + len(self.start) : end].strip()
+
+    def remove(self, text: str) -> str:
+        """
+        :param text: Markdown that may hold the part.
+        :return: The text without its first such part, comments included.
+        """
+        start = text.find(self.start)
+        end = text.find(self.end, start)
+        if start == -1 or end == -1:
+            return text
+        around = (text[:start].rstrip(), text[end + len(self.end) :].strip())
+        return "\n\n".join(piece for piece in around if piece)

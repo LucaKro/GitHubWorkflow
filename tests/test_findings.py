@@ -11,6 +11,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
+from domain_model.github.closing_lines import ClosingLines
 from domain_model.git.revisions import BranchName, BranchTip, CommitHash
 from domain_model.github.issue_models import Issue, IssueComment
 from domain_model.github.rest_models import RestPullRequest
@@ -26,6 +27,7 @@ from github_workflow.exceptions import (
     AlreadyInStageError,
     AlreadyProvenError,
     BrokenTestError,
+    EmptyWhyError,
     FindingNotAcceptedError,
     FindingStillFailsError,
     FixNotMergedError,
@@ -35,6 +37,7 @@ from github_workflow.exceptions import (
     PassingTestError,
     ProofNoLongerHoldsError,
     UnprovenFindingCloseError,
+    WhyTooLongError,
 )
 from github_workflow.findings import (
     ClosedBy,
@@ -43,8 +46,8 @@ from github_workflow.findings import (
     FindingChange,
     FindingClosing,
     FindingComment,
-    FindingDraftOpening,
     FindingEdit,
+    FindingExplanation,
     FindingFiling,
     FindingGroup,
     FindingLabel,
@@ -60,6 +63,7 @@ from github_workflow.findings import (
     Priority,
     ProvenFindingFiling,
     SessionPullRequestClosing,
+    WorkableFinding,
 )
 from github_workflow.policy import WritePolicy
 from github_workflow.proofs import FindingTest, ProofAttempt, ProofOutcome
@@ -71,12 +75,23 @@ from github_workflow.report_lines import (
 )
 from github_workflow.report_section import ReportGroup
 from github_workflow.settings import WorkflowSettings
-from github_workflow.work import DraftOpening, IssueLabel, PullRequestOpenedLabelling
+from github_workflow.pull_request_description import (
+    AddressedIssues,
+    PullRequestDescription,
+)
+from github_workflow.work import (
+    DescribedDraftOpening,
+    DraftOpening,
+    IssueLabel,
+    PullRequestOpenedLabelling,
+)
+from github_workflow.why_it_matters import WhyItMatters
 
 from .issues_in_memory import (
     IssuesInMemory,
     PresetOutcomeRunner,
     build_finding,
+    finding_why,
     move_suggestion,
     labelled_board,
 )
@@ -139,7 +154,9 @@ def test_a_finding_is_filed_unreviewed_with_its_priority_and_every_label_created
 ):
     board = IssuesInMemory()
 
-    FindingFiling(board, "A title", "A body", Priority.HIGH, move_suggestion()).run()
+    FindingFiling(
+        board, "A title", "A body", finding_why(), Priority.HIGH, move_suggestion()
+    ).run()
 
     created = [f"create_label {label}" for label in FindingLabel.every_label]
     assert board.writes == created + [
@@ -150,7 +167,9 @@ def test_a_finding_is_filed_unreviewed_with_its_priority_and_every_label_created
 def test_labels_the_repository_has_are_not_created_again() -> None:
     board = IssuesInMemory(present_labels=set(FindingLabel.every_label))
 
-    FindingFiling(board, "A title", "A body", Priority.LOW, move_suggestion()).run()
+    FindingFiling(
+        board, "A title", "A body", finding_why(), Priority.LOW, move_suggestion()
+    ).run()
 
     assert board.writes == [f"open_issue 1 {[FindingStage.UNREVIEWED, Priority.LOW]}"]
 
@@ -165,6 +184,7 @@ def test_a_proven_finding_is_filed_unreviewed_and_proven_with_its_proof_posted()
         board,
         "A title",
         "A body",
+        finding_why(),
         Priority.HIGH,
         move_suggestion(),
         finding_test(),
@@ -191,6 +211,7 @@ def test_a_finding_whose_test_does_not_fail_is_not_filed(
             board,
             "A title",
             "A body",
+            finding_why(),
             Priority.HIGH,
             move_suggestion(),
             finding_test(),
@@ -207,19 +228,24 @@ def test_a_finding_filed_on_a_fork_ends_with_the_move_command() -> None:
     board = labelled_board()
     suggestion = move_suggestion(ScratchGitHub.upstream)
 
-    FindingFiling(board, "A title", "A body", Priority.LOW, suggestion).run()
+    FindingFiling(
+        board, "A title", "A body", finding_why(), Priority.LOW, suggestion
+    ).run()
 
     assert board.writes[-1] == (
-        f"set_issue_description 1 {suggestion.append_once('A body', 1)}"
+        f"set_issue_description 1 "
+        f"{suggestion.append_once(finding_why().place('A body'), 1)}"
     )
 
 
 def test_a_finding_on_a_repository_that_is_no_fork_has_no_move_command() -> None:
     board = labelled_board()
 
-    FindingFiling(board, "A title", "A body", Priority.LOW, move_suggestion()).run()
+    FindingFiling(
+        board, "A title", "A body", finding_why(), Priority.LOW, move_suggestion()
+    ).run()
 
-    assert board.descriptions[1] == "A body"
+    assert board.descriptions[1] == finding_why().place("A body")
 
 
 def test_a_new_text_of_a_finding_on_a_fork_ends_with_the_move_command() -> None:
@@ -231,6 +257,86 @@ def test_a_new_text_of_a_finding_on_a_fork_ends_with_the_move_command() -> None:
     assert board.writes == [
         f"set_issue_description 1 {suggestion.append_once('Corrected.', 1)}"
     ]
+
+
+# %% why a finding matters
+
+
+def test_a_finding_is_filed_with_its_why_after_its_text() -> None:
+    board = labelled_board()
+
+    FindingFiling(
+        board, "A title", "A body", finding_why(), Priority.LOW, move_suggestion()
+    ).run()
+
+    assert board.descriptions[1].startswith("A body")
+    assert WhyItMatters.read(board.descriptions[1]) == finding_why()
+
+
+def test_a_why_longer_than_a_why_may_be_is_refused() -> None:
+    with pytest.raises(WhyTooLongError):
+        WhyItMatters.from_text("x" * (WhyItMatters.maximum_length + 1))
+
+
+def test_a_why_holding_no_text_is_refused() -> None:
+    with pytest.raises(EmptyWhyError):
+        WhyItMatters.from_text(" \n")
+
+
+def test_a_why_placed_in_a_text_holding_one_replaces_it() -> None:
+    body = finding_why().place(WhyItMatters("The old reason.").place("A body"))
+
+    assert WhyItMatters.read(body) == finding_why()
+    assert body.count(WhyItMatters.part.start) == 1
+
+
+def test_a_finding_s_new_text_keeps_its_why() -> None:
+    finding = build_finding(1, FindingStage.ACCEPTED, Priority.LOW)
+    board = IssuesInMemory(
+        {1: replace(finding, body=finding_why().place("The old text."))}
+    )
+
+    FindingEdit(board, 1, None, "The new text.", move_suggestion()).run()
+
+    assert board.writes == [
+        f"set_issue_description 1 {finding_why().place('The new text.')}"
+    ]
+
+
+def test_explaining_a_finding_replaces_its_why_and_keeps_its_text() -> None:
+    finding = build_finding(1, FindingStage.UNREVIEWED, Priority.LOW)
+    old = WhyItMatters("The old reason.").place("The text.")
+    board = IssuesInMemory({1: replace(finding, body=old)})
+
+    FindingExplanation(board, 1, finding_why(), move_suggestion()).run()
+
+    assert board.writes == [
+        f"set_issue_description 1 {finding_why().place('The text.')}"
+    ]
+
+
+def test_explaining_a_finding_on_a_fork_keeps_the_move_command_last() -> None:
+    suggestion = move_suggestion(ScratchGitHub.upstream)
+    finding = build_finding(1, FindingStage.UNREVIEWED, Priority.LOW)
+    old = suggestion.append_once(WhyItMatters("The old reason.").place("The text."), 1)
+    board = IssuesInMemory({1: replace(finding, body=old)})
+
+    FindingExplanation(board, 1, finding_why(), suggestion).run()
+
+    written = board.writes[0].removeprefix("set_issue_description 1 ")
+    assert written.rstrip().endswith(suggestion.append_once("", 1).strip())
+    assert WhyItMatters.read(written) == finding_why()
+
+
+def test_a_closed_finding_is_not_explained() -> None:
+    board = IssuesInMemory(
+        {1: Issue(1, "Finding 1", (FindingStage.INCORRECT,), IssueState.CLOSED)}
+    )
+
+    with pytest.raises(NotAFindingError):
+        FindingExplanation(board, 1, finding_why(), move_suggestion()).run()
+
+    assert board.writes == []
 
 
 # %% prioritizing
@@ -929,25 +1035,26 @@ def draft_for_finding(
     board: IssuesInMemory,
     outcome: ProofOutcome,
     settings: WorkflowSettings,
-) -> FindingDraftOpening:
+) -> DescribedDraftOpening:
     """
     :param work: The rules of a checkout on a pushed work branch.
     :param github: The pull requests.
     :param board: The issues, finding #7 among them.
     :param outcome: How the finding's test fares when run again.
     :param settings: Whose proofs count.
-    :return: The step opening a draft for finding #7.
+    :return: The step opening a draft fixing finding #7.
     """
-    return FindingDraftOpening(
-        FindingRecheck(board, runner(outcome), [settings.owner], 7),
+    return DescribedDraftOpening(
         DraftOpening(
             work,
             github,
             StackPlacement(github),
             PullRequestOpenedLabelling(board),
             "A title",
-            "A body",
+            "",
         ),
+        PullRequestDescription("A body", addressed=AddressedIssues((7,))),
+        (WorkableFinding(FindingRecheck(board, runner(outcome), [settings.owner], 7)),),
     )
 
 
@@ -962,23 +1069,7 @@ def test_a_draft_for_an_accepted_proven_finding_closes_it_when_merged(
 
     draft_for_finding(work, github, board, ProofOutcome.FAILS, settings).run()
 
-    assert github.descriptions == {1: f"A body\n\n{ClosingKeyword.FIXES.reference(7)}"}
-
-
-def test_a_description_closing_the_finding_already_keeps_one_closing_line(
-    work: WritePolicy, settings: WorkflowSettings
-) -> None:
-    board = labelled_board(
-        label_proven(build_finding(7, FindingStage.ACCEPTED, Priority.HIGH))
-    )
-    post_proof(board, 7, settings.owner)
-    github = DescribedDraftsInMemory({})
-    body = f"A body\n\n{ClosingKeyword.FIXES.reference(7)}"
-    opening = draft_for_finding(work, github, board, ProofOutcome.FAILS, settings)
-
-    replace(opening, draft=replace(opening.draft, body=body)).run()
-
-    assert github.descriptions == {1: body}
+    assert ClosingLines(github.descriptions[1]).issues() == [7]
 
 
 def test_the_finding_a_draft_closes_is_labelled_as_having_a_pull_request(
@@ -1013,7 +1104,7 @@ def test_a_draft_for_a_finding_accepted_on_github_is_opened(
 
     draft_for_finding(work, github, board, ProofOutcome.FAILS, settings).run()
 
-    assert github.descriptions == {1: f"A body\n\n{ClosingKeyword.FIXES.reference(7)}"}
+    assert ClosingLines(github.descriptions[1]).issues() == [7]
 
 
 def test_a_draft_for_a_finding_the_person_has_not_accepted_is_refused(

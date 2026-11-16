@@ -9,8 +9,11 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from domain_model.exceptions import MalformedRepositoryError
-from domain_model.repository import GitHubAddress, Repository
+from domain_model.exceptions import (
+    MalformedPullRequestAddressError,
+    MalformedRepositoryError,
+)
+from domain_model.repository import GitHubAddress, PullRequestReference, Repository
 
 REPOSITORY = Repository("an-owner", "a-repository")
 """
@@ -146,3 +149,26 @@ def test_a_requirement_names_the_directory_holding_the_project():
     assert repository.git_requirement("a-package", "main", "packages/one") == (
         f"{repository.git_requirement('a-package', 'main')}#subdirectory=packages/one"
     )
+
+
+# %% a pull request named by its page
+
+
+def test_a_pull_request_is_read_from_its_page() -> None:
+    reference = PullRequestReference(REPOSITORY, 12)
+
+    assert PullRequestReference.from_url(reference.url) == reference
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        REPOSITORY.issue_url(12),
+        f"{REPOSITORY.url}/pull/x",
+        "https://example.com/a/b/pull/1",
+    ],
+    ids=["an issue", "no number", "another host"],
+)
+def test_an_address_that_is_no_pull_request_s_page_is_refused(address: str) -> None:
+    with pytest.raises(MalformedPullRequestAddressError):
+        PullRequestReference.from_url(address)

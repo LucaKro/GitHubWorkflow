@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import argparse
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from domain_model.class_family import ClassFamily
@@ -33,8 +33,8 @@ from github_workflow.findings import (
     FindingAcceptance,
     FindingClosing,
     FindingComment,
-    FindingDraftOpening,
     FindingEdit,
+    FindingExplanation,
     FindingFiling,
     FindingListing,
     FindingPrioritization,
@@ -45,6 +45,7 @@ from github_workflow.findings import (
     FindingUnproving,
     Priority,
     ProvenFindingFiling,
+    WorkableFinding,
 )
 from github_workflow.freshness import FreshenedStep
 from github_workflow.label_events import (
@@ -62,6 +63,11 @@ from github_workflow.own_pull_request import (
     ReviewThreadListing,
 )
 from github_workflow.proofs import FindingTest
+from github_workflow.pull_request_description import (
+    AddressedIssues,
+    DescriptionChange,
+    PullRequestDescription,
+)
 from github_workflow.pull_request_overview import (
     PullRequestDetails,
     PullRequestSignalReader,
@@ -78,6 +84,7 @@ from github_workflow.upstream import (
     IssueMoveSuggestion,
     IssueUpstreamMove,
     TerminalConfirmation,
+    UpstreamDescriptionCopy,
     UpstreamProposal,
     UpstreamSuggestion,
 )
@@ -87,6 +94,8 @@ from github_workflow.work import (
     BranchSwitch,
     BranchSync,
     CommitWork,
+    DescribedDraftOpening,
+    DescribedRewrite,
     DescriptionRewrite,
     DraftOpening,
     MergeAbort,
@@ -100,6 +109,7 @@ from github_workflow.work import (
     RepositoryCloning,
     StackPlacing,
 )
+from github_workflow.why_it_matters import WhyItMatters
 from github_workflow.workflow_step import WorkflowStep
 
 if TYPE_CHECKING:
@@ -171,6 +181,61 @@ class CommandStep(ClassFamily, ABC):
         file = self.arguments.body_file
         text = None if file is None else file.read_text()
         return self.refuse_markers(text, CommandOption.BODY_FILE)
+
+    @property
+    def why(self) -> WhyItMatters | None:
+        """
+        :return: The why the file ``--why-file`` names holds, ``None`` without one.
+        :raises WorkflowMarkerError: If it carries a workflow marker.
+        :raises EmptyWhyError: If it holds no text.
+        :raises WhyTooLongError: If it is longer than a why may be.
+        """
+        file = self.arguments.why_file
+        if file is None:
+            return None
+        text = self.refuse_markers(file.read_text(), CommandOption.WHY_FILE)
+        return WhyItMatters.from_text(text)
+
+    @property
+    def description_change(self) -> DescriptionChange:
+        """
+        :return: What ``--body-file``, ``--why-file``, ``--finding`` and ``--partly``
+            change in a pull request's description.
+        :raises AddressedIssueLineError: If the body or the why names an addressed
+            issue in a line only the workflow writes.
+        """
+        why = self.why
+        return DescriptionChange(
+            AddressedIssues.refuse_lines(self.body, CommandOption.BODY_FILE),
+            (
+                None
+                if why is None
+                else AddressedIssues.refuse_lines(why.text, CommandOption.WHY_FILE)
+            ),
+            tuple(self.arguments.finding or ()),
+            tuple(self.arguments.partly or ()),
+        )
+
+    def workable_findings(
+        self, change: DescriptionChange, built_on: str | None
+    ) -> tuple[WorkableFinding, ...]:
+        """
+        :param change: What the session changes in a pull request's description.
+        :param built_on: The open pull request or branch the work builds on, ``None``
+            for the default branch.
+        :return: A check, rerunning its proof, for every finding the change addresses.
+        """
+        if not change.added.numbers:
+            return ()
+        session = self.session
+        runner = session.proof_runner(
+            self.arguments.python, session.named_branch(built_on)
+        )
+        authors = session.trusted_authors
+        return tuple(
+            WorkableFinding(FindingRecheck(session.github, runner, authors, number))
+            for number in change.added.numbers
+        )
 
     @property
     def title(self) -> str | None:
@@ -340,7 +405,7 @@ class DraftStep(FreshenedCommandStep):
             session.placement,
             session.issue_labels,
             self.title,
-            self.body,
+            "",
             arguments.on,
             UpstreamSuggestion(
                 session.github,
@@ -351,18 +416,14 @@ class DraftStep(FreshenedCommandStep):
             replacement,
             session.other_fork_bases,
         )
-        if arguments.finding is None:
-            return draft
-        built_on = session.named_branch(
-            None if arguments.on is None else str(arguments.on)
+        change = self.description_change
+        description = PullRequestDescription(
+            change.changes or "", change.why or "", change.added
         )
-        recheck = FindingRecheck(
-            session.github,
-            session.proof_runner(arguments.python, built_on),
-            session.trusted_authors,
-            arguments.finding,
+        built_on = None if arguments.on is None else str(arguments.on)
+        return DescribedDraftOpening(
+            draft, description, self.workable_findings(change, built_on)
         )
-        return FindingDraftOpening(recheck, draft)
 
 
 @dataclass(frozen=True)
@@ -434,10 +495,10 @@ class DescribeStep(FreshenedCommandStep):
         session, number = self.session, self.arguments.number
         if number is None:
             number = session.work_branch_pull_request.find().number
-        return DescriptionRewrite(
+        rewrite = DescriptionRewrite(
             session.github,
             number,
-            self.body,
+            None,
             self.title,
             UpstreamSuggestion(
                 session.github,
@@ -446,6 +507,20 @@ class DescribeStep(FreshenedCommandStep):
                 session.other_fork_bases,
             ),
             repository=session.remote.repository,
+        )
+        change = replace(
+            self.description_change, dropped=tuple(self.arguments.drop or ())
+        )
+        return DescribedRewrite(
+            rewrite,
+            change,
+            session.issue_labels,
+            self.workable_findings(change, None),
+            UpstreamDescriptionCopy(
+                session.github,
+                session.remote.repository,
+                GitHubRepository.from_environment,
+            ),
         )
 
     def prepare_step(self) -> WorkflowStep:
@@ -517,12 +592,13 @@ class FindingFileStep(CommandStep):
         suggestion = IssueMoveSuggestion(board.repository, board)
         if arguments.test is None:
             return FindingFiling(
-                board, self.title, self.body, self.priority, suggestion
+                board, self.title, self.body, self.why, self.priority, suggestion
             )
         return ProvenFindingFiling(
             board,
             self.title,
             self.body,
+            self.why,
             self.priority,
             suggestion,
             FindingTest.read(session.checkout, arguments.test),
@@ -673,6 +749,26 @@ class FindingEditStep(CommandStep):
             self.arguments.number,
             self.title,
             self.body,
+            IssueMoveSuggestion(board.repository, board),
+        )
+
+
+@dataclass(frozen=True)
+class FindingExplainStep(CommandStep):
+    """
+    Builds the step ``finding explain`` asks for.
+    """
+
+    @classproperty
+    def command(cls) -> RunnableCommand:
+        return RunnableCommand.FINDING_EXPLAIN
+
+    def step(self) -> WorkflowStep:
+        board = self.session.findings_board(self.arguments.repository)
+        return FindingExplanation(
+            board,
+            self.arguments.number,
+            self.why,
             IssueMoveSuggestion(board.repository, board),
         )
 
@@ -846,6 +942,7 @@ class TagFileStep(CommandStep):
             IssueMoveSuggestion(board.repository, board),
             arguments.title,
             self.body,
+            self.why,
             self.priority,
         )
 

@@ -56,6 +56,9 @@ from github_workflow.upstream import (
     ForkMainSync,
     IssueUpstreamMove,
     UpstreamLabel,
+    PersonCommandEnding,
+    UpstreamCopy,
+    UpstreamDescriptionCopy,
     UpstreamMergeFollowing,
     UpstreamProposal,
     UpstreamSuggestion,
@@ -66,13 +69,23 @@ from github_workflow.work import (
     OtherForkBases,
 )
 
-from .issues_in_memory import IssuesInMemory
+from github_workflow.pull_request_description import (
+    AddressedIssues,
+    PullRequestDescription,
+)
+
+from .issues_in_memory import IssuesInMemory, build_finding
 from .pull_requests import pull_request
 from .repositories_by_owner import RepositoriesByOwner
 from .scratch_github import ForkOf, ScratchGitHub
 from .stacked_pull_requests import DraftsAndStacksInMemory, StackedPullRequestsInMemory
 from .test_push_hook import in_claude_code  # noqa: F401  (a fixture)
-from .test_work import RetiredInMemory, draft, work  # noqa: F401  (a fixture)
+from .test_work import (  # noqa: F401  (a fixture)
+    DescribedPullRequestsInMemory,
+    RetiredInMemory,
+    draft,
+    work,
+)
 
 # %% repositories in memory
 
@@ -196,7 +209,7 @@ def test_the_fork_s_pull_request_is_opened_upstream_linking_back_to_it() -> None
 
     assert upstream.written == [
         f"open {ScratchGitHub.owned.owner}:feature onto develop: Add the thing | "
-        f"{UpstreamProposal.body_linking(local.url)}"
+        f"{UpstreamCopy.from_fork_description('', local.url, ScratchGitHub.owned).text}"
     ]
 
 
@@ -334,6 +347,167 @@ def test_a_pull_request_onto_the_default_branch_is_not_opened_onto_another_fork(
         proposal(fork, target, onto=team_base()).run()
 
     assert target.written == []
+
+
+# %% the description upstream
+
+
+def fixing_three() -> str:
+    """:return: The description of the fork's pull request fixing finding 3, ending
+    with the command line opening it upstream."""
+    board = IssuesInMemory({3: build_finding(3, FindingStage.ACCEPTED, Priority.LOW)})
+    description = PullRequestDescription(
+        "Builds on #2.", "Robots stop.", AddressedIssues((3,))
+    ).render(board, ScratchGitHub.owned)
+    return PersonCommandEnding("open it upstream", "upstream fork branch").append_once(
+        description
+    )
+
+
+def test_the_copy_upstream_leaves_out_the_lines_and_the_command_line() -> None:
+    copy = UpstreamCopy.from_fork_description(
+        fixing_three(), ScratchGitHub.owned.pull_request_url(3), ScratchGitHub.owned
+    )
+
+    assert AddressedIssues.from_description(copy.text) == AddressedIssues()
+    assert "upstream fork branch" not in copy.text
+
+
+def test_the_copy_upstream_names_the_fork_s_issues() -> None:
+    copy = UpstreamCopy.from_fork_description(
+        fixing_three(), ScratchGitHub.owned.pull_request_url(3), ScratchGitHub.owned
+    )
+
+    assert f"{ScratchGitHub.owned.full_name}#2" in copy.text
+
+
+def test_a_description_the_workflow_did_not_write_is_copied_without_its_lines() -> None:
+    ending = PersonCommandEnding("open it upstream", "upstream fork branch")
+    old = ending.append_once("Builds on #2.\n\nFixes #3")
+
+    copy = UpstreamCopy.from_fork_description(
+        old, ScratchGitHub.owned.pull_request_url(3), ScratchGitHub.owned
+    )
+
+    assert copy.content == f"Builds on {ScratchGitHub.owned.full_name}#2."
+
+
+@pytest.mark.parametrize(
+    "edit, unedited",
+    [(lambda text: text, True), (lambda text: f"{text}An edit.", False)],
+    ids=["as copied", "edited"],
+)
+def test_a_copy_tells_an_edit_made_upstream_apart(
+    edit: Callable[[str], str], unedited: bool
+) -> None:
+    url = ScratchGitHub.owned.pull_request_url(3)
+    copy = UpstreamCopy.from_fork_description(fixing_three(), url, ScratchGitHub.owned)
+
+    assert UpstreamCopy.is_unedited(edit(copy.text), url) is unedited
+
+
+def test_the_bare_link_back_an_older_workflow_opened_with_counts_as_unedited() -> None:
+    url = ScratchGitHub.owned.pull_request_url(3)
+
+    assert UpstreamCopy.is_unedited(UpstreamCopy.link_back(url), url)
+
+
+@dataclass(frozen=True)
+class CommentsLinkingUpstream(DraftsAndStacksInMemory):
+    """
+    The fork's pull requests: pull request 3's comment links upstream pull request 9.
+    """
+
+    link_author: str = ScratchGitHub.owned.owner
+    """
+    Who posted the comment.
+    """
+
+    def comments(self, number: int) -> list[IssueComment]:
+        if number != 3:
+            return []
+        url = ScratchGitHub.upstream.pull_request_url(9)
+        return [IssueComment(self.link_author, UpstreamProposal.comment_linking(url))]
+
+
+def upstream_nine(body: str, closed: bool = False) -> DescribedPullRequestsInMemory:
+    """
+    :param body: The description of pull request 9 upstream.
+    :param closed: Whether it is closed.
+    :return: The upstream's pull requests.
+    """
+    return DescribedPullRequestsInMemory(
+        {9: BranchName("main")},
+        closed=frozenset({9}) if closed else frozenset(),
+        descriptions={9: body},
+    )
+
+
+def copier(
+    upstream: DescribedPullRequestsInMemory,
+    link_author: str = ScratchGitHub.owned.owner,
+) -> UpstreamDescriptionCopy:
+    """
+    :param upstream: The upstream's pull requests.
+    :param link_author: Who posted the comment linking upstream pull request 9.
+    :return: Copies pull request 3 of the fork there.
+    """
+    return UpstreamDescriptionCopy(
+        CommentsLinkingUpstream({}, link_author=link_author),
+        ScratchGitHub.owned,
+        lambda repository: upstream,
+    )
+
+
+def test_a_rewritten_description_is_copied_upstream() -> None:
+    url = ScratchGitHub.owned.pull_request_url(3)
+    upstream = upstream_nine(UpstreamCopy.link_back(url))
+
+    copier(upstream).copy(3, fixing_three(), upstream.pull_request(9).title)
+
+    copied = UpstreamCopy.from_fork_description(
+        fixing_three(), url, ScratchGitHub.owned
+    ).text
+    assert upstream.writes == [f"set_description 9 {copied}"]
+
+
+def test_a_new_title_is_copied_upstream() -> None:
+    url = ScratchGitHub.owned.pull_request_url(3)
+    copied = UpstreamCopy.from_fork_description(
+        fixing_three(), url, ScratchGitHub.owned
+    ).text
+    upstream = upstream_nine(copied)
+
+    copier(upstream).copy(3, fixing_three(), "A sharper title")
+
+    assert upstream.writes == ["set_issue_title 9 A sharper title"]
+
+
+def test_a_description_edited_upstream_is_left_as_it_is() -> None:
+    upstream = upstream_nine("Rewritten by a maintainer.")
+
+    copier(upstream).copy(3, fixing_three(), "A sharper title")
+
+    assert upstream.writes == []
+
+
+def test_a_closed_pull_request_upstream_is_left_as_it_is() -> None:
+    url = ScratchGitHub.owned.pull_request_url(3)
+    upstream = upstream_nine(UpstreamCopy.link_back(url), closed=True)
+
+    assert copier(upstream).copy(3, fixing_three(), "A title") is None
+    assert upstream.writes == []
+
+
+def test_a_link_somebody_else_commented_is_not_followed() -> None:
+    url = ScratchGitHub.owned.pull_request_url(3)
+    upstream = upstream_nine(UpstreamCopy.link_back(url))
+
+    copied = copier(upstream, RepositoriesByOwner.foreign_owner).copy(
+        3, fixing_three(), "A title"
+    )
+
+    assert (copied, upstream.writes) == (None, [])
 
 
 # %% the suggestion in a draft's description
