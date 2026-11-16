@@ -348,14 +348,13 @@ them:
   run for it within a minute and a half, it asks once more, and when they start none
   then either, or the run fails, `review list` says so below the own pull request's
   threads, which it always lists, with the link to turn them on or to the run's log. The workflow lives only on
-  the notes branch, never on the default branch or upstream. Nothing else is ever
-  written upstream but the copy of the description below: having changed something for
-  an upstream comment, the session says so on the own pull request with `review
-  addressed <number or address> --body-file <what changed>`, which links the comment
-- keep the description and title of the pull request it opened upstream a copy of the
-  fork's: each `describe` of the fork's pull request writes them there too, while that
-  pull request is open and only when its description is still as the workflow last
-  wrote it; one a maintainer edited is left as it is, and the session tells me
+  the notes branch, never on the default branch or upstream. Nothing is ever
+  written upstream: having changed something for an upstream comment, the session says
+  so on the own pull request with `review addressed <number or address> --body-file
+  <what changed>`, which links the comment
+- name, after `describe` of a fork's pull request that is open upstream, the command
+  line copying its description there (`upstream <fork> <branch> --update`), and give it
+  to me when the change matters to the reviewers upstream
 - add a comment to a finding (`finding comment`), a closed one too, such as a correction
   after the fix landed, and on another of my repositories with `--repository`
 - delete branches that are merged or marked discarded, still at the commit they were
@@ -399,7 +398,9 @@ Everything else written to GitHub needs me to ask for it.
   its `Fixes`/`Part of` lines or the command line and every issue number naming the
   fork, linking back to the fork's pull request, which then links to it and is labelled
   `opened upstream` (blue, created on the fork when missing), so the fork's list shows
-  what has gone upstream. It
+  what has gone upstream. With `--update`, it copies the fork's description and title
+  to the pull request already open upstream again, asking me first when a maintainer
+  edited the description there since the last copy. It
   refuses a pull request that is not open, is stacked, or is open upstream already, and
   a refused run labels nothing.
 - No session runs it, not even with my go-ahead: the guard denies it, and the command

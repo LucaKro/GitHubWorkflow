@@ -85,8 +85,10 @@ from github_workflow.upstream import (
     IssueUpstreamMove,
     TerminalConfirmation,
     UpstreamDescriptionCopy,
+    UpstreamDescriptionUpdate,
     UpstreamProposal,
     UpstreamSuggestion,
+    UpstreamUpdateSuggestion,
 )
 from github_workflow.work import (
     BaseMerge,
@@ -526,11 +528,7 @@ class DescribeStep(FreshenedCommandStep):
             change,
             session.issue_labels,
             self.build_workable_findings(change, None),
-            UpstreamDescriptionCopy(
-                session.github,
-                session.remote.repository,
-                GitHubRepository.from_environment,
-            ),
+            UpstreamUpdateSuggestion(session.github, session.remote.repository),
         )
 
     def prepare_step(self) -> WorkflowStep:
@@ -1039,13 +1037,28 @@ class UpstreamStep(CommandStep):
     def step(self) -> WorkflowStep:
         fork = Repository.parse(self.arguments.repository)
         github = GitHubRepository.from_environment(fork)
+        run_by_a_session = ClaudeCodeVariable.COMMAND_MARKER.read() is not None
+        if self.arguments.update:
+            return UpstreamDescriptionUpdate(
+                fork,
+                self.arguments.branch,
+                github,
+                UpstreamDescriptionCopy(
+                    github,
+                    fork,
+                    GitHubRepository.from_environment,
+                    TerminalConfirmation(),
+                ),
+                self.session.settings,
+                run_by_a_session,
+            )
         return UpstreamProposal(
             fork,
             self.arguments.branch,
             github,
             GitHubRepository.from_environment,
             self.session.settings,
-            ClaudeCodeVariable.COMMAND_MARKER.read() is not None,
+            run_by_a_session,
             self.arguments.onto,
         )
 

@@ -59,7 +59,6 @@ from github_workflow.exceptions import (
     UnpushedCommitsError,
     UnreplaceablePullRequestError,
     UnresolvedConflictError,
-    UpstreamCopyFailedError,
 )
 from github_workflow.locations import PluginDataDirectory
 from github_workflow.findings import FindingStage, Priority
@@ -87,7 +86,7 @@ from github_workflow.work import (
     DescribedDraftOpening,
     DescribedRewrite,
     DescriptionEnding,
-    DescriptionMirror,
+    PersonCommandSuggestion,
     DescriptionRewrite,
     DraftOpening,
     LocalBranchFollowing,
@@ -1510,57 +1509,49 @@ def test_a_new_title_alone_leaves_the_description_as_it_is() -> None:
 
 
 @dataclass(frozen=True)
-class MirrorInMemory(DescriptionMirror):
+class SuggestionInMemory(PersonCommandSuggestion):
     """
-    Records every copy asked for, failing when told to.
-    """
-
-    copies: list[tuple[int, str, str]] = field(default_factory=list)
-    """
-    Each pull request, description and title asked to be copied.
+    Suggests one command line for every pull request, recording each one asked about.
     """
 
-    fails: bool = False
+    asked: list[tuple[int, BranchName]] = field(default_factory=list)
     """
-    Whether copying fails.
+    Each pull request and branch a command was asked for.
     """
 
-    def copy_description_upstream(
-        self, number: int, description: str, title: str
-    ) -> str | None:
-        if self.fails:
-            raise RuntimeError("GitHub refused the copy")
-        self.copies.append((number, description, title))
-        return None
+    @classproperty
+    def command_line(cls) -> str:
+        """
+        The command line it suggests.
+        """
+        return "run this"
+
+    def suggest_person_command(self, number: int, branch: BranchName) -> str | None:
+        self.asked.append((number, branch))
+        return self.command_line
 
 
-def test_a_new_title_alone_is_copied_with_the_description_as_it_is() -> None:
-    board = findings_three_and_five()
-    old = PullRequestDescription("What it does.", "Why.")
-    step, _ = pull_request_one_rewrite(old, board, DescriptionChange())
-    mirror = MirrorInMemory()
-
-    replace(
-        step, rewrite=replace(step.rewrite, title="A sharper title"), mirror=mirror
-    ).run()
-
-    assert mirror.copies == [
-        (1, old.to_markdown(ScratchGitHub.owned), "A sharper title")
-    ]
-
-
-def test_a_failed_copy_is_reported_once_the_pull_request_is_rewritten() -> None:
+@pytest.mark.parametrize(
+    "change",
+    [DescriptionChange(change_details="Now."), DescriptionChange()],
+    ids=["new description", "new title alone"],
+)
+def test_a_rewrite_ends_with_the_command_suggested_to_the_person(
+    change: DescriptionChange,
+) -> None:
     board = findings_three_and_five()
     old = PullRequestDescription("What it did.", "Why.")
-    step, github = pull_request_one_rewrite(
-        old, board, DescriptionChange(change_details="Now.")
-    )
+    step, github = pull_request_one_rewrite(old, board, change)
+    suggestion = SuggestionInMemory()
 
-    with pytest.raises(UpstreamCopyFailedError):
-        replace(step, mirror=MirrorInMemory(fails=True)).run()
+    done = replace(
+        step,
+        rewrite=replace(step.rewrite, title="A title"),
+        person_command_suggestion=suggestion,
+    ).run()
 
-    new = replace(old, change_details="Now.").to_markdown(ScratchGitHub.owned)
-    assert github.writes == [f"set_description 1 {new}"]
+    assert done.endswith(SuggestionInMemory.command_line)
+    assert suggestion.asked == [(1, BranchName(github.name_branch(1)))]
 
 
 # %% commenting on a pull request

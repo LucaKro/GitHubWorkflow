@@ -41,10 +41,13 @@ from github_workflow.exceptions import (
     IssueNotMovableError,
     IssueTemplatesRequiredError,
     NotAForkError,
+    NotOpenedUpstreamError,
     PersonOnlyCommandError,
     PullRequestNotProposableError,
     UpstreamRemoteNameTakenError,
 )
+from github_workflow.command_line import ArgumentName, CommandOption, RunnableCommand
+from github_workflow.plugin import Launcher
 from github_workflow.policy import WritePolicy
 from github_workflow.push_hook import PushHook
 from github_workflow.report_lines import Tone
@@ -58,9 +61,11 @@ from github_workflow.upstream import (
     UpstreamLabel,
     UpstreamCopy,
     UpstreamDescriptionCopy,
+    UpstreamDescriptionUpdate,
     UpstreamMergeFollowing,
     UpstreamProposal,
     UpstreamSuggestion,
+    UpstreamUpdateSuggestion,
 )
 from github_workflow.work import (
     BranchStart,
@@ -480,16 +485,20 @@ def upstream_pull_request_nine(
 def upstream_copier(
     upstream: DescribedPullRequestsInMemory,
     link_author: str = ScratchGitHub.owned.owner,
+    confirmation: Confirmation | None = None,
 ) -> UpstreamDescriptionCopy:
     """
     :param upstream: The upstream's pull requests.
     :param link_author: Who posted the comment linking upstream pull request 9.
+    :param confirmation: The person's answer to overwriting an edit, no when
+        ``None``.
     :return: Copies pull request 3 of the fork there.
     """
     return UpstreamDescriptionCopy(
         CommentsLinkingUpstream({}, link_author=link_author),
         ScratchGitHub.owned,
         lambda repository: upstream,
+        PresetAnswer() if confirmation is None else confirmation,
     )
 
 
@@ -521,14 +530,118 @@ def test_a_new_title_is_copied_upstream() -> None:
     assert upstream.writes == ["set_issue_title 9 A sharper title"]
 
 
-def test_a_description_edited_upstream_is_left_as_it_is() -> None:
+def test_a_description_edited_upstream_is_left_as_it_is_unless_the_person_agrees() -> (
+    None
+):
     upstream = upstream_pull_request_nine("Rewritten by a maintainer.")
+    answer = PresetAnswer()
 
-    upstream_copier(upstream).copy_description_upstream(
+    upstream_copier(upstream, confirmation=answer).copy_description_upstream(
         3, description_fixing_three(), "A sharper title"
     )
 
+    assert (len(answer.questions), upstream.writes) == (1, [])
+
+
+def test_a_description_edited_upstream_is_overwritten_when_the_person_agrees() -> None:
+    upstream = upstream_pull_request_nine("Rewritten by a maintainer.")
+    title = upstream.pull_request(9).title
+
+    upstream_copier(
+        upstream, confirmation=PresetAnswer(agrees=True)
+    ).copy_description_upstream(3, description_fixing_three(), title)
+
+    copied = UpstreamCopy.from_fork_description(
+        description_fixing_three(),
+        ScratchGitHub.owned.pull_request_url(3),
+        ScratchGitHub.owned,
+    ).markdown
+    assert upstream.writes == [f"set_description 9 {copied}"]
+
+
+# %% the person's update upstream
+
+
+def update(
+    upstream: DescribedPullRequestsInMemory,
+    fork_pull_requests: list[RestPullRequest],
+    run_by_a_session: bool = False,
+) -> UpstreamDescriptionUpdate:
+    """
+    :param upstream: The upstream's pull requests.
+    :param fork_pull_requests: The fork's pull requests.
+    :param run_by_a_session: Whether a Claude Code session runs the command.
+    :return: The update of branch ``feature``'s pull request upstream.
+    """
+    return UpstreamDescriptionUpdate(
+        ScratchGitHub.owned,
+        BranchName("feature"),
+        ForkInMemory(fork_pull_requests),
+        upstream_copier(upstream),
+        WorkflowSettings(),
+        run_by_a_session,
+    )
+
+
+def test_the_person_s_update_copies_the_branch_s_pull_request_upstream() -> None:
+    url = ScratchGitHub.owned.pull_request_url(3)
+    upstream = upstream_pull_request_nine(UpstreamCopy.compose_link_back_line(url))
+    fork_pull_request = replace(
+        pull_request(3, "feature"), body=description_fixing_three()
+    )
+
+    update(upstream, [fork_pull_request]).run()
+
+    copied = UpstreamCopy.from_fork_description(
+        description_fixing_three(), url, ScratchGitHub.owned
+    ).markdown
+    assert f"set_description 9 {copied}" in upstream.writes
+
+
+def test_a_session_s_update_upstream_is_refused() -> None:
+    upstream = upstream_pull_request_nine("")
+
+    with pytest.raises(PersonOnlyCommandError):
+        update(upstream, [pull_request(3, "feature")], run_by_a_session=True).run()
+
     assert upstream.writes == []
+
+
+def test_an_update_of_a_branch_never_opened_upstream_is_refused() -> None:
+    upstream = upstream_pull_request_nine("")
+
+    with pytest.raises(NotOpenedUpstreamError):
+        update(upstream, [pull_request(4, "feature")]).run()
+
+
+# %% the command suggested to the person
+
+
+def test_a_rewrite_of_a_pull_request_open_upstream_suggests_the_update() -> None:
+    suggestion = UpstreamUpdateSuggestion(
+        CommentsLinkingUpstream({}), ScratchGitHub.owned
+    )
+
+    suggested = suggestion.suggest_person_command(3, BranchName("feature"))
+
+    words = RunnableCommand.UPSTREAM.words_naming(
+        ArgumentName.REPOSITORY,
+        ArgumentName.BRANCH,
+        CommandOption.UPDATE,
+        values={
+            ArgumentName.REPOSITORY: ScratchGitHub.owned.full_name,
+            ArgumentName.BRANCH: "feature",
+        },
+    )
+    assert " ".join([Launcher.COMMAND, *words]) in suggested
+
+
+def test_a_rewrite_of_a_pull_request_not_open_upstream_suggests_nothing() -> None:
+    suggestion = UpstreamUpdateSuggestion(
+        CommentsLinkingUpstream({}), ScratchGitHub.owned
+    )
+
+    assert suggestion.suggest_person_command(4, BranchName("feature")) is None
 
 
 def test_a_closed_pull_request_upstream_is_left_as_it_is() -> None:

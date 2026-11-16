@@ -26,6 +26,7 @@ from domain_model.github.repository_client import (
     ForkDetails,
     ProposingFork,
     PullRequestSearch,
+    PullRequestsFromForks,
     RewritablePullRequests,
     UpstreamIssueTracker,
     UpstreamRepository,
@@ -46,6 +47,7 @@ from github_workflow.exceptions import (
     IssueNotMovableError,
     IssueTemplatesRequiredError,
     NotAForkError,
+    NotOpenedUpstreamError,
     PersonOnlyCommandError,
     PullRequestNotProposableError,
 )
@@ -64,9 +66,9 @@ from github_workflow.report_section import ReportSection
 from github_workflow.settings import WorkflowSettings
 from github_workflow.work import (
     DescriptionEnding,
-    DescriptionMirror,
     OtherForkBases,
     LocalBranchFollowing,
+    PersonCommandSuggestion,
     PullRequestRetirement,
 )
 from github_workflow.workflow_step import WorkflowStep
@@ -129,10 +131,7 @@ class UpstreamProposal(WorkflowStep):
     """
 
     def run(self) -> str:
-        if self.run_by_a_session:
-            raise PersonOnlyCommandError(" ".join(RunnableCommand.UPSTREAM.words))
-        if not self.settings.owns(self.repository):
-            raise ForeignRepositoryError(self.repository, self.settings.owner)
+        self.check_person_runs_it(self.run_by_a_session, self.settings, self.repository)
         upstream = self.fork.upstream()
         if upstream is None:
             raise NotAForkError(self.repository)
@@ -207,6 +206,22 @@ class UpstreamProposal(WorkflowStep):
                 f"onto {expected_base}: open the one below upstream first",
             )
         return onto_expected[0]
+
+    @staticmethod
+    def check_person_runs_it(
+        run_by_a_session: bool, settings: WorkflowSettings, repository: Repository
+    ) -> None:
+        """
+        :param run_by_a_session: Whether a Claude Code session runs the command.
+        :param settings: Whose forks are proposed from.
+        :param repository: The fork named.
+        :raises PersonOnlyCommandError: If a session runs it.
+        :raises ForeignRepositoryError: If the fork is somebody else's.
+        """
+        if run_by_a_session:
+            raise PersonOnlyCommandError(" ".join(RunnableCommand.UPSTREAM.words))
+        if not settings.owns(repository):
+            raise ForeignRepositoryError(repository, settings.owner)
 
     @classproperty
     def link_prefix(cls) -> str:
@@ -349,11 +364,11 @@ class UpstreamCopy:
 
 
 @dataclass(frozen=True)
-class UpstreamDescriptionCopy(DescriptionMirror):
+class UpstreamDescriptionCopy:
     """
     Copies a fork's pull request's description and title to the pull request it was
-    opened as upstream, while that one is open and nobody edited its description there
-    since the last copy.
+    opened as upstream, while that one is open; a description edited there since the
+    last copy is overwritten only when the person agrees.
     """
 
     fork: CommentReader
@@ -369,6 +384,11 @@ class UpstreamDescriptionCopy(DescriptionMirror):
     upstream_pull_requests: Callable[[Repository], RewritablePullRequests]
     """
     Reaches the pull requests of the repository a pull request was opened on upstream.
+    """
+
+    confirmation: Confirmation
+    """
+    Asks the person before a description edited upstream is overwritten.
     """
 
     def copy_description_upstream(
@@ -391,11 +411,12 @@ class UpstreamDescriptionCopy(DescriptionMirror):
         if current.state is not PullRequestState.OPEN:
             return None
         fork_url = self.fork_repository.pull_request_url(number)
-        if not UpstreamCopy.is_unedited(current.body or "", fork_url):
-            return (
-                f"left {linked} as it is: its description was edited there since the "
-                "last copy; tell the person"
-            )
+        edited = not UpstreamCopy.is_unedited(current.body or "", fork_url)
+        if edited and not self.confirmation.confirm(
+            f"The description of {linked} was edited there since the last copy. "
+            "Overwrite it with the fork's?"
+        ):
+            return f"left {linked} as it is"
         copied = UpstreamCopy.from_fork_description(
             description, fork_url, self.fork_repository
         ).markdown
@@ -404,6 +425,105 @@ class UpstreamDescriptionCopy(DescriptionMirror):
         if title != current.title:
             upstream.set_issue_title(reference.number, title)
         return f"copied the description to {linked}"
+
+
+@dataclass(frozen=True)
+class UpstreamDescriptionUpdate(WorkflowStep):
+    """
+    The description and title of a branch's pull request on the owner's fork copied to
+    the pull request it was opened as upstream; the person's alone.
+
+    :raises PersonOnlyCommandError: If a Claude Code session runs it.
+    :raises ForeignRepositoryError: If the repository is somebody else's.
+    :raises NotOpenedUpstreamError: If no open pull request of the branch was opened
+        upstream.
+    """
+
+    repository: Repository
+    """
+    The owner's fork.
+    """
+
+    branch: BranchName
+    """
+    The fork's branch whose pull request is copied.
+    """
+
+    fork: PullRequestsFromForks
+    """
+    The fork's pull requests from the branch.
+    """
+
+    description_copy: UpstreamDescriptionCopy
+    """
+    Copies one of them upstream.
+    """
+
+    settings: WorkflowSettings
+    """
+    Whose forks are proposed from.
+    """
+
+    run_by_a_session: bool
+    """
+    Whether a Claude Code session runs the command.
+    """
+
+    def run(self) -> str:
+        UpstreamProposal.check_person_runs_it(
+            self.run_by_a_session, self.settings, self.repository
+        )
+        for pull_request in self.fork.fork_branch_pull_requests(
+            self.repository.owner, self.branch
+        ):
+            if pull_request.state is not PullRequestState.OPEN:
+                continue
+            copied = self.description_copy.copy_description_upstream(
+                pull_request.number, pull_request.body or "", pull_request.title
+            )
+            if copied is not None:
+                return copied
+        raise NotOpenedUpstreamError(self.branch)
+
+
+@dataclass(frozen=True)
+class UpstreamUpdateSuggestion(PersonCommandSuggestion):
+    """
+    The command line copying a rewritten pull request's description to the pull
+    request it was opened as upstream, suggested for the person to run when the change
+    matters to the reviewers there.
+    """
+
+    fork: CommentReader
+    """
+    Reads the comments on the fork's pull requests.
+    """
+
+    fork_repository: Repository
+    """
+    The owner's fork.
+    """
+
+    def suggest_person_command(self, number: int, branch: BranchName) -> str | None:
+        linked = UpstreamProposal.find_latest_linked_url(
+            self.fork.comments(number), self.fork_repository.owner
+        )
+        if linked is None:
+            return None
+        words = RunnableCommand.UPSTREAM.words_naming(
+            ArgumentName.REPOSITORY,
+            ArgumentName.BRANCH,
+            CommandOption.UPDATE,
+            values={
+                ArgumentName.REPOSITORY: self.fork_repository.full_name,
+                ArgumentName.BRANCH: branch,
+            },
+        )
+        command = " ".join([Launcher.COMMAND, *words])
+        return (
+            f"#{number} is open upstream as {linked}; when this change matters to its "
+            f"reviewers there, give the person this command, theirs alone: {command}"
+        )
 
 
 # %% following the upstream

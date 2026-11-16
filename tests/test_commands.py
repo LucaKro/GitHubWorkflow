@@ -47,6 +47,7 @@ import github_workflow.session_start
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.command_line import (
     BranchSubcommand,
+    CommandOption,
     FindingSubcommand,
     NotesSubcommand,
     RunnableCommand,
@@ -86,7 +87,11 @@ from github_workflow.remotes import OwnedRemotes
 from github_workflow.report_lines import Speaker, Tone
 from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
-from github_workflow.upstream import IssueMoveSuggestion, UpstreamSuggestion
+from github_workflow.upstream import (
+    IssueMoveSuggestion,
+    UpstreamDescriptionUpdate,
+    UpstreamSuggestion,
+)
 from github_workflow.work import CheckoutOtherForkBases, DescribedDraftOpening
 from github_workflow.why_it_matters import WhyItMattersSection
 
@@ -1269,6 +1274,23 @@ def test_the_person_opens_the_fork_s_pull_request_upstream(
         ("POST", f"/{fork_route.labels}"),
         ("PUT", f"/{fork_route.issue_labels(3)}"),
     ]
+
+
+def test_the_person_s_update_upstream_copies_the_description_again(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+) -> None:
+    fork = Repository(settings.owner, RepositoriesByOwner.repository_name)
+
+    step = build_step(
+        repositories.clone(owned_url, "anywhere"),
+        WorkflowCommand.UPSTREAM,
+        fork.full_name,
+        "feature",
+        CommandOption.UPDATE,
+    )
+
+    assert isinstance(step, UpstreamDescriptionUpdate)
+    assert (step.repository, step.branch) == (fork, "feature")
 
 
 def test_a_session_opening_a_pull_request_upstream_is_refused(

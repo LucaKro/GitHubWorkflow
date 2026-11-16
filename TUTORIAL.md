@@ -240,9 +240,16 @@ copy of the fork's description, so a reviewer there reads why and what without l
 it: the `Fixes`/`Part of` lines and the command line are left out, and every issue
 number names your fork. It links the two and labels the fork's one `opened upstream`.
 
-From then on each `describe` of the fork's pull request copies its description and
-title upstream too, while the pull request there is open. A description a maintainer
-edited upstream is left as it is, and the session tells you.
+After a `describe` of the fork's pull request, the session gives you the command line
+copying the new description and title upstream, when the change matters to the
+reviewers there:
+
+```bash
+github-workflow upstream LucaKro/<fork> <branch> --update
+```
+
+Only you run that too. It asks before overwriting a description a maintainer edited
+upstream since the last copy.
 
 A work branch started from another fork's branch, such as `suturo/main`, goes to that
 fork instead. Its draft targets a mirror of the branch on your fork, named
@@ -258,7 +265,7 @@ That opens the pull request on the other fork, onto its branch.
 From then on `review list` also shows the upstream pull request's reviews and threads.
 On your machine they are read directly. A cloud session cannot reach the upstream, so it
 writes a request to the notes branch; an Actions workflow there reads GitHub's answers
-and saves them, and the session replays them. Nothing else is written upstream: after
+and saves them, and the session replays them. Nothing is written upstream by a session: after
 changing something for an upstream comment, the session says so on the fork's pull
 request with `review addressed <comment number or address> --body-file <what changed>`.
 

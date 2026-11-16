@@ -1726,30 +1726,19 @@ class MissingWhyError(DataclassException, ValueError):
 
 
 @dataclass
-class UpstreamCopyFailedError(DataclassException, RuntimeError):
+class NotOpenedUpstreamError(DataclassException, LookupError):
     """
-    Raised when the description of a fork's pull request was rewritten, but copying it
-    to its pull request upstream failed.
-    """
-
-    number: int
-    """
-    The fork's pull request, rewritten.
+    Raised when the description of a fork's branch's pull request is to be copied
+    upstream, but no open pull request of the branch was opened there.
     """
 
-    failure: str
+    branch: str
     """
-    What failed while copying.
+    The fork's branch.
     """
 
     def error_message(self) -> str:
-        return (
-            f"rewrote #{self.number}, but copying its description upstream failed: "
-            f"{self.failure}"
-        )
+        return f"no open pull request of {self.branch} is open upstream"
 
     def suggest_correction(self) -> str:
-        return (
-            f"#{self.number} keeps its new description; the next describe copies it "
-            "again. Tell the person what failed."
-        )
+        return "Open it upstream first, with upstream and no --update."

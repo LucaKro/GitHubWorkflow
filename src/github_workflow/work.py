@@ -55,7 +55,6 @@ from github_workflow.exceptions import (
     UnpushedCommitsError,
     UnreplaceablePullRequestError,
     UnresolvedConflictError,
-    UpstreamCopyFailedError,
 )
 from github_workflow.labels import IssueLabel
 from github_workflow.notes.saving import NotesSave
@@ -761,21 +760,19 @@ class DescribedDraftOpening(WorkflowStep):
         return replace(self.draft, body=body).run()
 
 
-class DescriptionMirror(ABC):
+class PersonCommandSuggestion(ABC):
     """
-    Copies the description and title of a pull request to the pull request it was opened
-    as elsewhere.
+    A command line only the person runs, suggested to them once a pull request is
+    rewritten.
     """
 
     @abstractmethod
-    def copy_description_upstream(
-        self, number: int, description: str, title: str
-    ) -> str | None:
+    def suggest_person_command(self, number: int, branch: BranchName) -> str | None:
         """
-        :param number: The pull request.
-        :param description: Its description, as it is now.
-        :param title: Its title, as it is now.
-        :return: What was done, ``None`` when it was opened nowhere else.
+        :param number: The rewritten pull request.
+        :param branch: Its branch.
+        :return: The command line, with when the person runs it; ``None`` when there
+            is none to suggest.
         """
 
 
@@ -785,7 +782,7 @@ class DescribedRewrite(WorkflowStep):
     A rewrite of an open pull request whose new description the workflow writes from
     what the session changes in it, the rest kept, once every precondition holds; the
     issues it newly addresses are labelled, those it no longer addresses unlabelled, and
-    the description and title are copied to where it was opened elsewhere.
+    a command line the person may want to run then is suggested.
     """
 
     rewrite: DescriptionRewrite
@@ -808,10 +805,10 @@ class DescribedRewrite(WorkflowStep):
     What has to hold before the description is rewritten.
     """
 
-    mirror: DescriptionMirror | None = None
+    person_command_suggestion: PersonCommandSuggestion | None = None
     """
-    Copies the result to where the pull request was opened elsewhere, ``None`` for
-    nowhere.
+    Suggests a command line to the person once the pull request is rewritten, ``None``
+    for none.
     """
 
     def run(self) -> str:
@@ -819,29 +816,27 @@ class DescribedRewrite(WorkflowStep):
         :raises IssueNamedTwiceError: If the change names an issue twice.
         :raises MissingWhyError: If the description would say nowhere why the pull
             request matters.
-        :raises UpstreamCopyFailedError: If copying fails once the pull request is
-            rewritten.
         """
         rewrite = self.rewrite
         pull_request = rewrite.pull_requests.pull_request(rewrite.number)
-        old = pull_request.body or ""
-        if self.change.is_empty:
-            done, body = [rewrite.run()], old
-        else:
-            done, body = self.rewrite_description(old)
-        if self.mirror is None:
-            return "; ".join(done)
-        title = pull_request.title if rewrite.title is None else rewrite.title
-        try:
-            copied = self.mirror.copy_description_upstream(rewrite.number, body, title)
-        except Exception as raised:
-            raise UpstreamCopyFailedError(rewrite.number, str(raised)) from raised
-        return "; ".join(done if copied is None else [*done, copied])
+        done = (
+            [rewrite.run()]
+            if self.change.is_empty
+            else self.rewrite_description(pull_request.body or "")
+        )
+        suggested = (
+            None
+            if self.person_command_suggestion is None
+            else self.person_command_suggestion.suggest_person_command(
+                rewrite.number, pull_request.head.branch
+            )
+        )
+        return "; ".join(done if suggested is None else [*done, suggested])
 
-    def rewrite_description(self, old: str) -> tuple[list[str], str]:
+    def rewrite_description(self, old: str) -> list[str]:
         """
         :param old: The pull request's description as it is.
-        :return: What was done, and the new description.
+        :return: What was done.
         """
         rewrite = self.rewrite
         issues = self.issue_labels.issues
@@ -864,7 +859,7 @@ class DescribedRewrite(WorkflowStep):
         if unlabelled:
             named = ", ".join(f"#{issue}" for issue in unlabelled)
             done.append(f"took {IssueLabel.PULL_REQUEST_OPENED} off {named}")
-        return done, body
+        return done
 
 
 @dataclass(frozen=True)

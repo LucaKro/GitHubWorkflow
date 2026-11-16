@@ -493,6 +493,11 @@ class CommandOption(StrEnum):
     How urgent a finding is.
     """
 
+    UPDATE = "--update"
+    """
+    Copy the description of a pull request already open upstream instead.
+    """
+
     ONTO = "--onto"
     """
     The branch of another fork to open a pull request onto, as ``owner/name:branch``.
@@ -1672,7 +1677,8 @@ class RunnableCommand(CommandSpecification, Enum):
 
     UPSTREAM = (
         (WorkflowCommand.UPSTREAM,),
-        "open a fork's pull request on its upstream; the person's alone",
+        "open a fork's pull request on its upstream, or copy its description there "
+        "again; the person's alone",
         PersonRuns(),
         (
             CommandArgument(
@@ -1690,6 +1696,14 @@ class RunnableCommand(CommandSpecification, Enum):
                 "instead, the branch of another fork of the upstream to open it onto, "
                 "from the pull request onto that branch's mirror",
                 RepositoryBranch.parse,
+                alternative=True,
+            ),
+            CommandArgument(
+                CommandOption.UPDATE,
+                description="instead, copy the description and title of the pull "
+                "request already open upstream from the fork's again",
+                count=ArgumentCount.NONE,
+                alternative=True,
             ),
         ),
     )
