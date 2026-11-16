@@ -7,7 +7,6 @@ to them; following the upstream.
 from __future__ import annotations
 
 import hashlib
-import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, field
@@ -56,7 +55,7 @@ from github_workflow.plugin import Launcher
 from github_workflow.policy import WritePolicy
 from github_workflow.proofs import Proof
 from github_workflow.pull_request_description import (
-    AddressedIssues,
+    PersonCommandEnding,
     PullRequestDescription,
 )
 from github_workflow.remotes import ForkUpstream
@@ -295,11 +294,8 @@ class UpstreamCopy:
         content = PullRequestDescription.content.read(description)
         if content is not None:
             return cls(content, fork_pull_request)
-        without_lines = AddressedIssues.from_description(description).remove_lines(
-            description
-        )
-        kept = PersonCommandEnding.remove_every(without_lines).strip()
-        return cls(IssueReferences(kept).qualify(fork), fork_pull_request)
+        changes = PullRequestDescription.from_text(description).changes
+        return cls(IssueReferences(changes).qualify(fork), fork_pull_request)
 
     @property
     def text(self) -> str:
@@ -519,60 +515,6 @@ class ForkTips:
 
 
 # %% the suggestion
-
-
-@dataclass(frozen=True)
-class PersonCommandEnding:
-    """
-    The end of a pull request's or issue's description giving the person a command line
-    only they may run, for them to copy.
-    """
-
-    purpose: str
-    """
-    What the command does, as the sentence introducing it finishes ``To ...``.
-    """
-
-    command: str
-    """
-    The command line.
-    """
-
-    @property
-    def text(self) -> str:
-        """
-        The ending itself.
-        """
-        return (
-            f"---\n\n"
-            f"To {self.purpose}, run this yourself (a Claude Code session may not):\n\n"
-            f"```bash\n{self.command}\n```"
-        )
-
-    def remove(self, body: str) -> str:
-        """
-        :param body: A description, which may hold the ending.
-        :return: The description without it.
-        """
-        return body.replace(self.text, "").rstrip()
-
-    @classmethod
-    def remove_every(cls, body: str) -> str:
-        """
-        :param body: A description, which may hold such an ending.
-        :return: The description without any ending of this form, whatever command it
-            gives.
-        """
-        template = re.escape(cls("PURPOSE", "COMMAND").text)
-        pattern = template.replace("PURPOSE", ".+?").replace("COMMAND", ".+?")
-        return re.sub(pattern, "", body, flags=re.DOTALL).rstrip()
-
-    def append_once(self, body: str) -> str:
-        """
-        :param body: A description, which may hold the ending already.
-        :return: The description, ending with it once.
-        """
-        return f"{self.remove(body)}\n\n{self.text}\n"
 
 
 @dataclass(frozen=True)

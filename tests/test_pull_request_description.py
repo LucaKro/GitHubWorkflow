@@ -21,6 +21,7 @@ from github_workflow.findings import FindingStage, Priority
 from github_workflow.pull_request_description import (
     AddressedIssues,
     DescriptionChange,
+    PersonCommandEnding,
     PullRequestDescription,
 )
 
@@ -168,6 +169,14 @@ def test_a_description_the_workflow_did_not_write_is_read_as_its_changes() -> No
     assert PullRequestDescription.from_text(text) == PullRequestDescription(
         "What it does.", addressed=AddressedIssues((3,))
     )
+
+
+def test_an_older_description_is_read_without_its_command_line() -> None:
+    ending = PersonCommandEnding("open it upstream", "upstream fork branch")
+
+    read = PullRequestDescription.from_text(ending.append_once("What it does."))
+
+    assert read.changes == "What it does."
 
 
 def test_a_change_keeps_what_it_leaves_out() -> None:

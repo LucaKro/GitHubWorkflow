@@ -126,6 +126,63 @@ class AddressedIssues:
         return text
 
 
+# %% the command line ending a description
+
+
+@dataclass(frozen=True)
+class PersonCommandEnding:
+    """
+    The end of a pull request's or issue's description giving the person a command line
+    only they may run, for them to copy.
+    """
+
+    purpose: str
+    """
+    What the command does, as the sentence introducing it finishes ``To ...``.
+    """
+
+    command: str
+    """
+    The command line.
+    """
+
+    @property
+    def text(self) -> str:
+        """
+        The ending itself.
+        """
+        return (
+            f"---\n\n"
+            f"To {self.purpose}, run this yourself (a Claude Code session may not):\n\n"
+            f"```bash\n{self.command}\n```"
+        )
+
+    def remove(self, body: str) -> str:
+        """
+        :param body: A description, which may hold the ending.
+        :return: The description without it.
+        """
+        return body.replace(self.text, "").rstrip()
+
+    @classmethod
+    def remove_every(cls, body: str) -> str:
+        """
+        :param body: A description, which may hold such an ending.
+        :return: The description without any ending of this form, whatever command it
+            gives.
+        """
+        template = re.escape(cls("PURPOSE", "COMMAND").text)
+        pattern = template.replace("PURPOSE", ".+?").replace("COMMAND", ".+?")
+        return re.sub(pattern, "", body, flags=re.DOTALL).rstrip()
+
+    def append_once(self, body: str) -> str:
+        """
+        :param body: A description, which may hold the ending already.
+        :return: The description, ending with it once.
+        """
+        return f"{self.remove(body)}\n\n{self.text}\n"
+
+
 # %% the description
 
 
@@ -185,12 +242,13 @@ class PullRequestDescription:
         """
         :param text: A pull request's description.
         :return: What it holds; one the workflow did not write is all changes, its
-            lines naming issues aside.
+            lines naming issues and its command line for the person aside.
         """
         addressed = AddressedIssues.from_description(text)
         changes = cls.changes_part.read(text)
         if changes is None:
-            return cls(addressed.remove_lines(text).strip(), addressed=addressed)
+            kept = PersonCommandEnding.remove_every(addressed.remove_lines(text))
+            return cls(kept.strip(), addressed=addressed)
         return cls(changes, cls.own_why.read(text) or "", addressed)
 
     def render(self, issues: IssueBoard, repository: Repository) -> str:

@@ -56,7 +56,6 @@ from github_workflow.upstream import (
     ForkMainSync,
     IssueUpstreamMove,
     UpstreamLabel,
-    PersonCommandEnding,
     UpstreamCopy,
     UpstreamDescriptionCopy,
     UpstreamMergeFollowing,
@@ -71,6 +70,8 @@ from github_workflow.work import (
 
 from github_workflow.pull_request_description import (
     AddressedIssues,
+    DescriptionChange,
+    PersonCommandEnding,
     PullRequestDescription,
 )
 
@@ -390,6 +391,23 @@ def test_a_description_the_workflow_did_not_write_is_copied_without_its_lines() 
     )
 
     assert copy.content == f"Builds on {ScratchGitHub.owned.full_name}#2."
+
+
+def test_an_older_description_rewritten_then_copied_leaves_out_the_command_line() -> (
+    None
+):
+    ending = PersonCommandEnding("open it upstream", "upstream fork branch")
+    rewritten = (
+        PullRequestDescription.from_text(ending.append_once("What it does."))
+        .changed(DescriptionChange(why="Robots stop."))
+        .render(IssuesInMemory(), ScratchGitHub.owned)
+    )
+
+    copy = UpstreamCopy.from_fork_description(
+        rewritten, ScratchGitHub.owned.pull_request_url(3), ScratchGitHub.owned
+    )
+
+    assert "upstream fork branch" not in copy.text
 
 
 @pytest.mark.parametrize(
