@@ -10,76 +10,77 @@ from dataclasses import dataclass
 from domain_model.class_property import classproperty
 
 from github_workflow.exceptions import EmptyWhyError, WhyTooLongError
-from github_workflow.markers import MarkedPart
+from github_workflow.markers import WorkflowSection
 
 # %% the why
 
 
 @dataclass(frozen=True)
-class WhyItMatters:
+class WhyItMattersSection:
     """
-    Why a finding or a pull request matters: who runs into the problem and what it costs
-    them, kept in a finding's issue under a heading of its own, so that a pull request
-    working on the finding can copy it word for word.
+    The section of a finding's or a pull request's text saying why it matters: who runs
+    into the problem and what it costs them, under a heading of its own, so that a pull
+    request working on the finding can copy it word for word.
     """
 
-    text: str
+    explanation: str
     """
-    The why, as Markdown.
+    Why it matters, as Markdown.
     """
 
     @classproperty
-    def maximum_length(cls) -> int:
+    def maximum_explanation_length(cls) -> int:
         """
-        How many characters a why given to the workflow may hold.
+        How many characters an explanation given to the workflow may hold.
         """
         return 600
 
     @classproperty
-    def part(cls) -> MarkedPart:
+    def workflow_section(cls) -> WorkflowSection:
         """
-        The part of the issue's text that holds the why.
+        The comments the section stands between.
         """
-        return MarkedPart("why")
+        return WorkflowSection("why")
 
     @classproperty
     def heading(cls) -> str:
         """
-        The heading the why stands under in the issue.
+        The heading the explanation stands under.
         """
         return "## Why"
 
     @classmethod
-    def from_text(cls, text: str) -> WhyItMatters:
+    def from_text(cls, text: str) -> WhyItMattersSection:
         """
-        :param text: A why given to the workflow.
-        :return: The why.
+        :param text: An explanation given to the workflow.
+        :return: The section holding it.
         :raises EmptyWhyError: If it holds no text.
-        :raises WhyTooLongError: If it is longer than :attr:`maximum_length`.
+        :raises WhyTooLongError: If it is longer than
+            :attr:`maximum_explanation_length`.
         """
         stripped = text.strip()
         if not stripped:
             raise EmptyWhyError()
-        if len(stripped) > cls.maximum_length:
-            raise WhyTooLongError(len(stripped), cls.maximum_length)
+        if len(stripped) > cls.maximum_explanation_length:
+            raise WhyTooLongError(len(stripped), cls.maximum_explanation_length)
         return cls(stripped)
 
     @classmethod
-    def read(cls, body: str) -> WhyItMatters | None:
+    def from_issue_text(cls, body: str) -> WhyItMattersSection | None:
         """
         :param body: An issue's text.
-        :return: The why it holds, ``None`` when it holds none.
+        :return: The section it holds, ``None`` when it holds none.
         """
-        content = cls.part.read(body)
+        content = cls.workflow_section.find_content(body)
         if content is None:
             return None
         return cls(content.removeprefix(cls.heading).strip())
 
-    def place(self, body: str) -> str:
+    def place_into_issue_text(self, body: str) -> str:
         """
-        :param body: An issue's text, which may hold a why already.
-        :return: The text with this why after it, in place of the one it held.
+        :param body: An issue's text, which may hold such a section already.
+        :return: The text with this section after it, in place of the one it held.
         """
-        rest = self.part.remove(body).rstrip()
-        why = self.part.wrap(f"{self.heading}\n\n{self.text}")
-        return f"{rest}\n\n{why}\n" if rest else f"{why}\n"
+        rest = self.workflow_section.cut_out(body).rstrip()
+        section = self.workflow_section.enclose(f"{self.heading}\n\n{self.explanation}")
+        return f"{rest}\n\n{section}\n" if rest else f"{section}\n"

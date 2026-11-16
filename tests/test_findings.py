@@ -76,8 +76,9 @@ from github_workflow.report_lines import (
 from github_workflow.report_section import ReportGroup
 from github_workflow.settings import WorkflowSettings
 from github_workflow.pull_request_description import (
-    AddressedIssues,
-    PullRequestDescription,
+    AddressedIssueNumber,
+    DescriptionChange,
+    IssueRelation,
 )
 from github_workflow.work import (
     DescribedDraftOpening,
@@ -85,13 +86,13 @@ from github_workflow.work import (
     IssueLabel,
     PullRequestOpenedLabelling,
 )
-from github_workflow.why_it_matters import WhyItMatters
+from github_workflow.why_it_matters import WhyItMattersSection
 
 from .issues_in_memory import (
     IssuesInMemory,
     PresetOutcomeRunner,
     build_finding,
-    finding_why,
+    finding_why_section,
     move_suggestion,
     labelled_board,
 )
@@ -155,7 +156,12 @@ def test_a_finding_is_filed_unreviewed_with_its_priority_and_every_label_created
     board = IssuesInMemory()
 
     FindingFiling(
-        board, "A title", "A body", finding_why(), Priority.HIGH, move_suggestion()
+        board,
+        "A title",
+        "A body",
+        finding_why_section(),
+        Priority.HIGH,
+        move_suggestion(),
     ).run()
 
     created = [f"create_label {label}" for label in FindingLabel.every_label]
@@ -168,7 +174,12 @@ def test_labels_the_repository_has_are_not_created_again() -> None:
     board = IssuesInMemory(present_labels=set(FindingLabel.every_label))
 
     FindingFiling(
-        board, "A title", "A body", finding_why(), Priority.LOW, move_suggestion()
+        board,
+        "A title",
+        "A body",
+        finding_why_section(),
+        Priority.LOW,
+        move_suggestion(),
     ).run()
 
     assert board.writes == [f"open_issue 1 {[FindingStage.UNREVIEWED, Priority.LOW]}"]
@@ -184,7 +195,7 @@ def test_a_proven_finding_is_filed_unreviewed_and_proven_with_its_proof_posted()
         board,
         "A title",
         "A body",
-        finding_why(),
+        finding_why_section(),
         Priority.HIGH,
         move_suggestion(),
         finding_test(),
@@ -211,7 +222,7 @@ def test_a_finding_whose_test_does_not_fail_is_not_filed(
             board,
             "A title",
             "A body",
-            finding_why(),
+            finding_why_section(),
             Priority.HIGH,
             move_suggestion(),
             finding_test(),
@@ -229,12 +240,12 @@ def test_a_finding_filed_on_a_fork_ends_with_the_move_command() -> None:
     suggestion = move_suggestion(ScratchGitHub.upstream)
 
     FindingFiling(
-        board, "A title", "A body", finding_why(), Priority.LOW, suggestion
+        board, "A title", "A body", finding_why_section(), Priority.LOW, suggestion
     ).run()
 
     assert board.writes[-1] == (
         f"set_issue_description 1 "
-        f"{suggestion.append_once(finding_why().place('A body'), 1)}"
+        f"{suggestion.append_once(finding_why_section().place_into_issue_text('A body'), 1)}"
     )
 
 
@@ -242,10 +253,17 @@ def test_a_finding_on_a_repository_that_is_no_fork_has_no_move_command() -> None
     board = labelled_board()
 
     FindingFiling(
-        board, "A title", "A body", finding_why(), Priority.LOW, move_suggestion()
+        board,
+        "A title",
+        "A body",
+        finding_why_section(),
+        Priority.LOW,
+        move_suggestion(),
     ).run()
 
-    assert board.descriptions[1] == finding_why().place("A body")
+    assert board.descriptions[1] == finding_why_section().place_into_issue_text(
+        "A body"
+    )
 
 
 def test_a_new_text_of_a_finding_on_a_fork_ends_with_the_move_command() -> None:
@@ -266,66 +284,85 @@ def test_a_finding_is_filed_with_its_why_after_its_text() -> None:
     board = labelled_board()
 
     FindingFiling(
-        board, "A title", "A body", finding_why(), Priority.LOW, move_suggestion()
+        board,
+        "A title",
+        "A body",
+        finding_why_section(),
+        Priority.LOW,
+        move_suggestion(),
     ).run()
 
     assert board.descriptions[1].startswith("A body")
-    assert WhyItMatters.read(board.descriptions[1]) == finding_why()
+    assert (
+        WhyItMattersSection.from_issue_text(board.descriptions[1])
+        == finding_why_section()
+    )
 
 
 def test_a_why_longer_than_a_why_may_be_is_refused() -> None:
     with pytest.raises(WhyTooLongError):
-        WhyItMatters.from_text("x" * (WhyItMatters.maximum_length + 1))
+        WhyItMattersSection.from_text(
+            "x" * (WhyItMattersSection.maximum_explanation_length + 1)
+        )
 
 
 def test_a_why_holding_no_text_is_refused() -> None:
     with pytest.raises(EmptyWhyError):
-        WhyItMatters.from_text(" \n")
+        WhyItMattersSection.from_text(" \n")
 
 
 def test_a_why_placed_in_a_text_holding_one_replaces_it() -> None:
-    body = finding_why().place(WhyItMatters("The old reason.").place("A body"))
+    body = finding_why_section().place_into_issue_text(
+        WhyItMattersSection("The old reason.").place_into_issue_text("A body")
+    )
 
-    assert WhyItMatters.read(body) == finding_why()
-    assert body.count(WhyItMatters.part.start) == 1
+    assert WhyItMattersSection.from_issue_text(body) == finding_why_section()
+    assert body.count(WhyItMattersSection.workflow_section.start_marker) == 1
 
 
 def test_a_finding_s_new_text_keeps_its_why() -> None:
     finding = build_finding(1, FindingStage.ACCEPTED, Priority.LOW)
     board = IssuesInMemory(
-        {1: replace(finding, body=finding_why().place("The old text."))}
+        {
+            1: replace(
+                finding,
+                body=finding_why_section().place_into_issue_text("The old text."),
+            )
+        }
     )
 
     FindingEdit(board, 1, None, "The new text.", move_suggestion()).run()
 
     assert board.writes == [
-        f"set_issue_description 1 {finding_why().place('The new text.')}"
+        f"set_issue_description 1 {finding_why_section().place_into_issue_text('The new text.')}"
     ]
 
 
 def test_explaining_a_finding_replaces_its_why_and_keeps_its_text() -> None:
     finding = build_finding(1, FindingStage.UNREVIEWED, Priority.LOW)
-    old = WhyItMatters("The old reason.").place("The text.")
+    old = WhyItMattersSection("The old reason.").place_into_issue_text("The text.")
     board = IssuesInMemory({1: replace(finding, body=old)})
 
-    FindingExplanation(board, 1, finding_why(), move_suggestion()).run()
+    FindingExplanation(board, 1, finding_why_section(), move_suggestion()).run()
 
     assert board.writes == [
-        f"set_issue_description 1 {finding_why().place('The text.')}"
+        f"set_issue_description 1 {finding_why_section().place_into_issue_text('The text.')}"
     ]
 
 
 def test_explaining_a_finding_on_a_fork_keeps_the_move_command_last() -> None:
     suggestion = move_suggestion(ScratchGitHub.upstream)
     finding = build_finding(1, FindingStage.UNREVIEWED, Priority.LOW)
-    old = suggestion.append_once(WhyItMatters("The old reason.").place("The text."), 1)
+    old = suggestion.append_once(
+        WhyItMattersSection("The old reason.").place_into_issue_text("The text."), 1
+    )
     board = IssuesInMemory({1: replace(finding, body=old)})
 
-    FindingExplanation(board, 1, finding_why(), suggestion).run()
+    FindingExplanation(board, 1, finding_why_section(), suggestion).run()
 
     written = board.writes[0].removeprefix("set_issue_description 1 ")
     assert written.rstrip().endswith(suggestion.append_once("", 1).strip())
-    assert WhyItMatters.read(written) == finding_why()
+    assert WhyItMattersSection.from_issue_text(written) == finding_why_section()
 
 
 def test_a_closed_finding_is_not_explained() -> None:
@@ -334,7 +371,7 @@ def test_a_closed_finding_is_not_explained() -> None:
     )
 
     with pytest.raises(NotAFindingError):
-        FindingExplanation(board, 1, finding_why(), move_suggestion()).run()
+        FindingExplanation(board, 1, finding_why_section(), move_suggestion()).run()
 
     assert board.writes == []
 
@@ -1053,7 +1090,10 @@ def draft_for_finding(
             "A title",
             "",
         ),
-        PullRequestDescription("A body", addressed=AddressedIssues((7,))),
+        DescriptionChange(
+            change_details="A body",
+            added_issues=(AddressedIssueNumber(7, IssueRelation.FIXES),),
+        ),
         (WorkableFinding(FindingRecheck(board, runner(outcome), [settings.owner], 7)),),
     )
 

@@ -893,7 +893,7 @@ class CommandArgument:
         )
 
     @classmethod
-    def finding_why(cls) -> CommandArgument:
+    def finding_why_file(cls) -> CommandArgument:
         """
         The file holding why a finding matters.
         """
@@ -1238,7 +1238,7 @@ class RunnableCommand(CommandSpecification, Enum):
             CommandArgument.priority(),
             CommandArgument(CommandOption.TITLE, "title", required=True),
             CommandArgument.body_file(),
-            CommandArgument.finding_why(),
+            CommandArgument.finding_why_file(),
             CommandArgument(
                 CommandOption.TEST,
                 "file",
@@ -1342,7 +1342,7 @@ class RunnableCommand(CommandSpecification, Enum):
         SessionRuns(),
         (
             CommandArgument.number(),
-            CommandArgument.finding_why(),
+            CommandArgument.finding_why_file(),
             CommandArgument.other_repository(),
         ),
     )
@@ -1652,7 +1652,7 @@ class RunnableCommand(CommandSpecification, Enum):
             CommandArgument.priority(),
             CommandArgument(CommandOption.TITLE, "title", required=True),
             CommandArgument.body_file("the issue's text, summing up the conversation"),
-            CommandArgument.finding_why(),
+            CommandArgument.finding_why_file(),
             CommandArgument.other_repository(),
         ),
     )

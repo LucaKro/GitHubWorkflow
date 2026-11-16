@@ -61,7 +61,7 @@ from github_workflow.labels import IssueLabel
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
 from github_workflow.pull_request_description import (
-    AddressedIssues,
+    AddressedIssueNumber,
     DescriptionChange,
     PullRequestDescription,
 )
@@ -570,7 +570,9 @@ class DraftOpening(WorkflowStep):
             replaced = self.replacement.number
             self.replacement.retirement.retire(replaced, f"Replaced by #{number}.")
             opened += f"; closed #{replaced}, which it replaces: tell the person"
-        labelled = self.issue_labels.label(body)
+        labelled = self.issue_labels.add_label_to_issues(
+            AddressedIssueNumber.read_issue_numbers(body)
+        )
         if labelled:
             named = ", ".join(f"#{issue}" for issue in labelled)
             opened += f"; labelled {named} {IssueLabel.PULL_REQUEST_OPENED}"
@@ -612,27 +614,26 @@ class PullRequestOpenedLabelling:
     The issues, and the labels they are given.
     """
 
-    def label(self, description: str) -> list[int]:
+    def add_label_to_issues(self, issues: Sequence[int]) -> list[int]:
         """
-        :param description: The opened pull request's description.
-        :return: The issues it addresses, now labelled.
+        :param issues: The numbers of the issues an opened pull request addresses.
+        :return: The issues, now labelled.
         """
-        issues = AddressedIssues.from_description(description).numbers
         if not issues:
             return []
         self.issues.create_missing_labels([IssueLabel.PULL_REQUEST_OPENED])
         for issue in issues:
             self.issues.add_labels(issue, [IssueLabel.PULL_REQUEST_OPENED])
-        return issues
+        return list(issues)
 
-    def unlabel(self, description: str) -> list[int]:
+    def remove_label_from_issues(self, issues: Sequence[int]) -> list[int]:
         """
-        :param description: The description of a pull request closed unmerged.
-        :return: The issues it addresses that carried the label, no longer labelled.
+        :param issues: The numbers of issues a pull request no longer addresses.
+        :return: Those that carried the label, no longer labelled.
         """
         carrying = [
             issue
-            for issue in AddressedIssues.from_description(description).numbers
+            for issue in issues
             if IssueLabel.PULL_REQUEST_OPENED in self.issues.issue(issue).labels
         ]
         for issue in carrying:
@@ -716,7 +717,7 @@ class WorkPrecondition(ABC):
     """
 
     @abstractmethod
-    def check(self) -> None:
+    def check_holds(self) -> None:
         """
         Check that it holds.
 
@@ -736,9 +737,9 @@ class DescribedDraftOpening(WorkflowStep):
     Opens the draft, with the description written.
     """
 
-    description: PullRequestDescription
+    change: DescriptionChange
     """
-    What the description says.
+    What the session gives the description.
     """
 
     preconditions: tuple[WorkPrecondition, ...] = ()
@@ -751,11 +752,12 @@ class DescribedDraftOpening(WorkflowStep):
         :raises MissingWhyError: If the description would say nowhere why the draft
             matters.
         """
-        body = self.description.render(
-            self.draft.issue_labels.issues, self.draft.policy.remote.repository
+        description = PullRequestDescription("").apply_change(
+            self.change, self.draft.issue_labels.issues
         )
+        body = description.to_markdown(self.draft.policy.remote.repository)
         for precondition in self.preconditions:
-            precondition.check()
+            precondition.check_holds()
         return replace(self.draft, body=body).run()
 
 
@@ -766,7 +768,9 @@ class DescriptionMirror(ABC):
     """
 
     @abstractmethod
-    def copy(self, number: int, description: str, title: str) -> str | None:
+    def copy_description_upstream(
+        self, number: int, description: str, title: str
+    ) -> str | None:
         """
         :param number: The pull request.
         :param description: Its description, as it is now.
@@ -821,7 +825,7 @@ class DescribedRewrite(WorkflowStep):
         rewrite = self.rewrite
         pull_request = rewrite.pull_requests.pull_request(rewrite.number)
         old = pull_request.body or ""
-        if self.change.changes_nothing:
+        if self.change.is_empty:
             done, body = [rewrite.run()], old
         else:
             done, body = self.rewrite_description(old)
@@ -829,7 +833,7 @@ class DescribedRewrite(WorkflowStep):
             return "; ".join(done)
         title = pull_request.title if rewrite.title is None else rewrite.title
         try:
-            copied = self.mirror.copy(rewrite.number, body, title)
+            copied = self.mirror.copy_description_upstream(rewrite.number, body, title)
         except Exception as raised:
             raise UpstreamCopyFailedError(rewrite.number, str(raised)) from raised
         return "; ".join(done if copied is None else [*done, copied])
@@ -840,17 +844,23 @@ class DescribedRewrite(WorkflowStep):
         :return: What was done, and the new description.
         """
         rewrite = self.rewrite
-        description = PullRequestDescription.from_text(old).changed(self.change)
-        body = description.render(self.issue_labels.issues, rewrite.repository)
+        issues = self.issue_labels.issues
+        description = PullRequestDescription.from_text(old, issues).apply_change(
+            self.change, issues
+        )
+        body = description.to_markdown(rewrite.repository)
         for precondition in self.preconditions:
-            precondition.check()
+            precondition.check_holds()
         done = [replace(rewrite, body=body).run()]
-        labelled = self.issue_labels.label("\n".join(self.change.added.lines()))
+        labelled = self.issue_labels.add_label_to_issues(
+            [issue.number for issue in self.change.added_issues]
+        )
         if labelled:
             named = ", ".join(f"#{issue}" for issue in labelled)
             done.append(f"labelled {named} {IssueLabel.PULL_REQUEST_OPENED}")
-        dropped = AddressedIssues(self.change.dropped).lines()
-        unlabelled = self.issue_labels.unlabel("\n".join(dropped))
+        unlabelled = self.issue_labels.remove_label_from_issues(
+            self.change.dropped_issues
+        )
         if unlabelled:
             named = ", ".join(f"#{issue}" for issue in unlabelled)
             done.append(f"took {IssueLabel.PULL_REQUEST_OPENED} off {named}")

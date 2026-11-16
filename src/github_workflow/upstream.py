@@ -155,9 +155,9 @@ class UpstreamProposal(WorkflowStep):
             local.title,
             UpstreamCopy.from_fork_description(
                 local.body or "", local.url, self.repository
-            ).text,
+            ).markdown,
         )
-        self.fork.add_comment(local.number, self.comment_linking(opened.url))
+        self.fork.add_comment(local.number, self.compose_link_comment(opened.url))
         self.fork.create_missing_labels([UpstreamLabel.OPENED_UPSTREAM])
         self.fork.replace_labels(
             local.number,
@@ -216,7 +216,7 @@ class UpstreamProposal(WorkflowStep):
         return "Opened upstream: "
 
     @classmethod
-    def comment_linking(cls, url: str) -> str:
+    def compose_link_comment(cls, url: str) -> str:
         """
         :param url: The new pull request upstream.
         :return: The comment on the fork's pull request.
@@ -234,7 +234,7 @@ class UpstreamProposal(WorkflowStep):
         return comment.removeprefix(cls.link_prefix).split()[0]
 
     @classmethod
-    def latest_linked_url(
+    def find_latest_linked_url(
         cls, comments: Sequence[IssueComment], owner: str
     ) -> str | None:
         """
@@ -263,18 +263,18 @@ class UpstreamCopy:
     made upstream since is told apart.
     """
 
-    content: str
+    copied_markdown: str
     """
     What is copied, every issue number naming the fork.
     """
 
-    fork_pull_request: str
+    fork_pull_request_url: str
     """
     The fork's pull request's page.
     """
 
     @classproperty
-    def record(cls) -> WorkflowMarker:
+    def digest_marker(cls) -> WorkflowMarker:
         """
         The comment recording a digest of the copy as the workflow wrote it.
         """
@@ -282,66 +282,70 @@ class UpstreamCopy:
 
     @classmethod
     def from_fork_description(
-        cls, description: str, fork_pull_request: str, fork: Repository
+        cls, description: str, fork_pull_request_url: str, fork: Repository
     ) -> UpstreamCopy:
         """
         :param description: The fork's pull request's description.
-        :param fork_pull_request: Its page.
+        :param fork_pull_request_url: Its page.
         :param fork: The fork, which its bare issue numbers name.
         :return: Its copy; of a description the workflow did not write, its whole text
             but for those lines and the command line.
         """
-        content = PullRequestDescription.content.read(description)
-        if content is not None:
-            return cls(content, fork_pull_request)
-        changes = PullRequestDescription.from_text(description).changes
-        return cls(IssueReferences(changes).qualify(fork), fork_pull_request)
+        copied = PullRequestDescription.copied_section.find_content(description)
+        if copied is not None:
+            return cls(copied, fork_pull_request_url)
+        details = PullRequestDescription.read_change_details(description)
+        return cls(IssueReferences(details).qualify(fork), fork_pull_request_url)
 
     @property
-    def text(self) -> str:
+    def markdown(self) -> str:
         """:return: The description upstream."""
-        shown = self.shown(self.content, self.fork_pull_request)
-        return f"{shown}\n\n{self.record.line(self.digest(shown))}\n"
+        visible = self.compose_visible_markdown(
+            self.copied_markdown, self.fork_pull_request_url
+        )
+        return f"{visible}\n\n{self.digest_marker.line(self.compute_digest(visible))}\n"
 
     @classmethod
-    def shown(cls, content: str, fork_pull_request: str) -> str:
+    def compose_visible_markdown(
+        cls, copied_markdown: str, fork_pull_request_url: str
+    ) -> str:
         """
-        :param content: What is copied.
-        :param fork_pull_request: The fork's pull request's page.
+        :param copied_markdown: What is copied.
+        :param fork_pull_request_url: The fork's pull request's page.
         :return: What a reader of the description upstream sees.
         """
-        return f"{content}\n\n---\n\n{cls.link_back(fork_pull_request)}"
+        return f"{copied_markdown}\n\n---\n\n{cls.compose_link_back_line(fork_pull_request_url)}"
 
     @staticmethod
-    def link_back(fork_pull_request: str) -> str:
+    def compose_link_back_line(fork_pull_request_url: str) -> str:
         """
-        :param fork_pull_request: The fork's pull request's page.
+        :param fork_pull_request_url: The fork's pull request's page.
         :return: The line linking back to it.
         """
-        return f"Proposed from {fork_pull_request}"
+        return f"Proposed from {fork_pull_request_url}"
 
     @staticmethod
-    def digest(shown: str) -> str:
+    def compute_digest(visible_markdown: str) -> str:
         """
-        :param shown: What a reader of a description upstream sees.
+        :param visible_markdown: What a reader of a description upstream sees.
         :return: Its digest, the same for every line ending GitHub stores it with.
         """
-        normalized = shown.replace("\r\n", "\n").strip()
+        normalized = visible_markdown.replace("\r\n", "\n").strip()
         return hashlib.sha256(normalized.encode()).hexdigest()
 
     @classmethod
-    def is_unedited(cls, body: str, fork_pull_request: str) -> bool:
+    def is_unedited(cls, body: str, fork_pull_request_url: str) -> bool:
         """
         :param body: The description of the pull request upstream as it is now.
-        :param fork_pull_request: The fork's pull request's page.
+        :param fork_pull_request_url: The fork's pull request's page.
         :return: Whether it is as the workflow last wrote it: a copy recording its own
             digest, or the bare link back an older workflow opened it with.
         """
-        recorded = cls.record.read(body)
+        recorded = cls.digest_marker.read(body)
         if recorded is None:
-            return body.strip() == cls.link_back(fork_pull_request)
-        record = cls.record.line(recorded)
-        return recorded == cls.digest(body.replace(record, "", 1))
+            return body.strip() == cls.compose_link_back_line(fork_pull_request_url)
+        marker = cls.digest_marker.line(recorded)
+        return recorded == cls.compute_digest(body.replace(marker, "", 1))
 
 
 @dataclass(frozen=True)
@@ -367,14 +371,16 @@ class UpstreamDescriptionCopy(DescriptionMirror):
     Reaches the pull requests of the repository a pull request was opened on upstream.
     """
 
-    def copy(self, number: int, description: str, title: str) -> str | None:
+    def copy_description_upstream(
+        self, number: int, description: str, title: str
+    ) -> str | None:
         """
         :return: What was done, ``None`` when it was opened nowhere upstream or its pull
             request there is no longer open.
         :raises MalformedPullRequestAddressError: If the comment linking it upstream
             names no pull request's page.
         """
-        linked = UpstreamProposal.latest_linked_url(
+        linked = UpstreamProposal.find_latest_linked_url(
             self.fork.comments(number), self.fork_repository.owner
         )
         if linked is None:
@@ -392,7 +398,7 @@ class UpstreamDescriptionCopy(DescriptionMirror):
             )
         copied = UpstreamCopy.from_fork_description(
             description, fork_url, self.fork_repository
-        ).text
+        ).markdown
         if copied != current.body:
             upstream.set_description(reference.number, copied)
         if title != current.title:
@@ -754,7 +760,9 @@ class IssueUpstreamMove(WorkflowStep):
             self.check_templates(issue, upstream, target.issue_templates())
         closing = self.agreed_closing_pull_requests()
         ending = self.ending(self.repository, self.number, upstream)
-        body = IssueReferences(ending.remove(issue.body)).qualify(self.repository)
+        body = IssueReferences(ending.remove_from_description(issue.body)).qualify(
+            self.repository
+        )
         opened = target.open_issue(issue.title, body, [])
         url = upstream.issue_url(opened)
         comments = self.fork.comments(self.number)
@@ -893,7 +901,7 @@ class UpstreamMergeFollowing(ReportSection):
         search = self.upstream_search(upstream)
         lines = []
         for pull_request in opened:
-            linked = UpstreamProposal.latest_linked_url(
+            linked = UpstreamProposal.find_latest_linked_url(
                 self.fork.comments(pull_request.number), self.owner
             )
             merged = [

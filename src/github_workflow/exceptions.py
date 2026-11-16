@@ -1637,20 +1637,20 @@ class WhyTooLongError(DataclassException, ValueError):
     Raised when a finding or a pull request is given a why longer than a why may be.
     """
 
-    length: int
+    explanation_length: int
     """
     How many characters it holds.
     """
 
-    maximum_length: int
+    maximum_explanation_length: int
     """
     How many it may hold.
     """
 
     def error_message(self) -> str:
         return (
-            f"the why given holds {self.length} characters, more than the "
-            f"{self.maximum_length} a why may hold"
+            f"the why given holds {self.explanation_length} characters, more than "
+            f"the {self.maximum_explanation_length} a why may hold"
         )
 
     def suggest_correction(self) -> str:

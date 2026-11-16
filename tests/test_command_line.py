@@ -90,7 +90,7 @@ def build_step(
         lambda step: step.title,
         lambda step: step.reason,
         lambda step: step.message,
-        lambda step: step.why,
+        lambda step: step.why_it_matters_section,
     ],
     ids=["body file", "title", "reason", "message", "why file"],
 )

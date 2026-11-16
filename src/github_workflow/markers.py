@@ -80,58 +80,58 @@ class WorkflowMarker:
         return recorded.partition(CommentDelimiter.CLOSE)[0]
 
 
-# %% a part between two markers
+# %% a section between two markers
 
 
 @dataclass(frozen=True)
-class MarkedPart:
+class WorkflowSection:
     """
-    A part of a Markdown text that only the workflow writes, between a comment starting
-    it and one ending it, read back and replaced while the rest of the text is left as
-    it is.
+    A section of a Markdown text that only the workflow writes, between a comment
+    starting it and one ending it, read back and replaced while the rest of the text is
+    left as it is.
     """
 
     subject: str
     """
-    What the part holds, such as ``why``.
+    What the section holds, such as ``why``.
     """
 
     @property
-    def start(self) -> str:
-        """:return: The comment the part starts after."""
+    def start_marker(self) -> str:
+        """:return: The comment the section starts after."""
         return WorkflowMarker(f"{self.subject}:start").line()
 
     @property
-    def end(self) -> str:
-        """:return: The comment the part ends before."""
+    def end_marker(self) -> str:
+        """:return: The comment the section ends before."""
         return WorkflowMarker(f"{self.subject}:end").line()
 
-    def wrap(self, content: str) -> str:
+    def enclose(self, content: str) -> str:
         """
-        :param content: What the part holds.
-        :return: The part, its comments included.
+        :param content: What the section holds.
+        :return: The section, its comments included.
         """
-        return f"{self.start}\n{content.strip()}\n{self.end}"
+        return f"{self.start_marker}\n{content.strip()}\n{self.end_marker}"
 
-    def read(self, text: str) -> str | None:
+    def find_content(self, text: str) -> str | None:
         """
-        :param text: Markdown that may hold the part.
-        :return: What its first such part holds, ``None`` when it holds none.
+        :param text: Markdown that may hold the section.
+        :return: What its first such section holds, ``None`` when it holds none.
         """
-        start = text.find(self.start)
-        end = text.find(self.end, start)
+        start = text.find(self.start_marker)
+        end = text.find(self.end_marker, start)
         if start == -1 or end == -1:
             return None
-        return text[start + len(self.start) : end].strip()
+        return text[start + len(self.start_marker) : end].strip()
 
-    def remove(self, text: str) -> str:
+    def cut_out(self, text: str) -> str:
         """
-        :param text: Markdown that may hold the part.
-        :return: The text without its first such part, comments included.
+        :param text: Markdown that may hold the section.
+        :return: The text without its first such section, comments included.
         """
-        start = text.find(self.start)
-        end = text.find(self.end, start)
+        start = text.find(self.start_marker)
+        end = text.find(self.end_marker, start)
         if start == -1 or end == -1:
             return text
-        around = (text[:start].rstrip(), text[end + len(self.end) :].strip())
+        around = (text[:start].rstrip(), text[end + len(self.end_marker) :].strip())
         return "\n\n".join(piece for piece in around if piece)

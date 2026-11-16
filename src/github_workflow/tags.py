@@ -43,7 +43,7 @@ from github_workflow.notes.branch import NotesBranch
 from github_workflow.report_lines import ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportGroup, ReportSection
 from github_workflow.upstream import IssueMoveSuggestion
-from github_workflow.why_it_matters import WhyItMatters
+from github_workflow.why_it_matters import WhyItMattersSection
 from github_workflow.workflow_step import WorkflowStep
 from github_workflow.workflow_templates import ForwardedSubject
 
@@ -747,7 +747,7 @@ class TagFiling(WorkflowStep):
     The finding's text, summing up the conversation.
     """
 
-    why: WhyItMatters
+    why_it_matters: WhyItMattersSection
     """
     Why the finding matters.
     """
@@ -765,7 +765,12 @@ class TagFiling(WorkflowStep):
         mention = status.waiting_tag(self.comment)
         body = f"{self.body.rstrip()}\n\nTagged in {mention.comment.url}\n"
         number = FindingFiling(
-            self.board, self.title, body, self.why, self.priority, self.suggestion
+            self.board,
+            self.title,
+            body,
+            self.why_it_matters,
+            self.priority,
+            self.suggestion,
         ).file([])
         repository = self.suggestion.repository
         issue = repository.issue_url(number)

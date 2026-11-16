@@ -5,7 +5,7 @@ read back what they record.
 
 from __future__ import annotations
 
-from github_workflow.markers import CommentDelimiter, MarkedPart, WorkflowMarker
+from github_workflow.markers import CommentDelimiter, WorkflowSection, WorkflowMarker
 
 # %% reading a marker back
 
@@ -29,26 +29,30 @@ def test_text_without_the_marker_records_nothing() -> None:
     assert WorkflowMarker("proof").read(WorkflowMarker("branch").line("x")) is None
 
 
-# %% a part between two markers
+# %% a section between two markers
 
 
-def test_a_marked_part_reads_back_what_it_wraps() -> None:
-    part = MarkedPart("why")
+def test_a_workflow_section_finds_the_content_it_encloses() -> None:
+    section = WorkflowSection("why")
 
-    assert part.read(f"before\n\n{part.wrap('The reason.')}\n\nafter") == "The reason."
+    text = f"before\n\n{section.enclose('The reason.')}\n\nafter"
 
-
-def test_text_without_the_part_holds_none() -> None:
-    assert MarkedPart("why").read(MarkedPart("changes").wrap("x")) is None
+    assert section.find_content(text) == "The reason."
 
 
-def test_removing_a_part_keeps_the_text_around_it() -> None:
-    part = MarkedPart("why")
+def test_text_without_the_section_holds_no_content() -> None:
+    other = WorkflowSection("changes").enclose("x")
 
-    assert part.remove(f"before\n\n{part.wrap('The reason.')}\n\nafter") == (
-        "before\n\nafter"
-    )
+    assert WorkflowSection("why").find_content(other) is None
 
 
-def test_removing_a_part_from_text_without_it_changes_nothing() -> None:
-    assert MarkedPart("why").remove("text") == "text"
+def test_cutting_out_a_section_keeps_the_text_around_it() -> None:
+    section = WorkflowSection("why")
+
+    text = f"before\n\n{section.enclose('The reason.')}\n\nafter"
+
+    assert section.cut_out(text) == "before\n\nafter"
+
+
+def test_cutting_out_a_section_from_text_without_it_changes_nothing() -> None:
+    assert WorkflowSection("why").cut_out("text") == "text"

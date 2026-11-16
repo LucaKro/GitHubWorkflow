@@ -88,7 +88,7 @@ from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
 from github_workflow.upstream import IssueMoveSuggestion, UpstreamSuggestion
 from github_workflow.work import CheckoutOtherForkBases, DescribedDraftOpening
-from github_workflow.why_it_matters import WhyItMatters
+from github_workflow.why_it_matters import WhyItMattersSection
 
 from .repositories_by_owner import RepositoriesByOwner
 from .test_proofs import ProofDataset
@@ -774,7 +774,7 @@ def test_a_finding_filed_with_a_test_is_proven_on_the_default_branch(
         github,
         "A title",
         "What was found.\n",
-        WhyItMatters("Why it matters."),
+        WhyItMattersSection("Why it matters."),
         Priority.HIGH,
         filed_on(github),
         read_finding_test(finding_checkout),
@@ -800,7 +800,7 @@ def test_a_finding_filed_without_a_test_runs_none(
         github,
         "A title",
         "What was found.\n",
-        WhyItMatters("Why it matters."),
+        WhyItMattersSection("Why it matters."),
         Priority.HIGH,
         filed_on(github),
     )
@@ -819,7 +819,7 @@ def test_a_finding_s_why_is_rewritten_through_the_command_line(
 
     github = owner_s_github(settings)
     assert step == FindingExplanation(
-        github, 3, WhyItMatters("Why it matters."), filed_on(github)
+        github, 3, WhyItMattersSection("Why it matters."), filed_on(github)
     )
 
 
@@ -1384,7 +1384,7 @@ def test_a_rewritten_description_of_a_fork_s_pull_request_keeps_the_upstream_lin
     )
     described = PullRequestDescription(
         "What it does, after the review.", "Why it matters."
-    ).render(owner_s_github(settings), fork)
+    ).to_markdown(fork)
     assert written == [
         {
             RestJSONKey.BODY: suggestion.append_once(
@@ -1491,7 +1491,7 @@ def test_a_finding_is_filed_on_the_workflow_from_outside_any_checkout(
         board,
         "A read was refused",
         (tmp_path / "finding.md").read_text(),
-        WhyItMatters("Every session filing there is refused."),
+        WhyItMattersSection("Every session filing there is refused."),
         Priority.MEDIUM,
         filed_on(board),
     )

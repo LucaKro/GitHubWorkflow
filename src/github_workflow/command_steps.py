@@ -64,9 +64,9 @@ from github_workflow.own_pull_request import (
 )
 from github_workflow.proofs import FindingTest
 from github_workflow.pull_request_description import (
-    AddressedIssues,
+    AddressedIssueNumber,
     DescriptionChange,
-    PullRequestDescription,
+    IssueRelation,
 )
 from github_workflow.pull_request_overview import (
     PullRequestDetails,
@@ -109,7 +109,7 @@ from github_workflow.work import (
     RepositoryCloning,
     StackPlacing,
 )
-from github_workflow.why_it_matters import WhyItMatters
+from github_workflow.why_it_matters import WhyItMattersSection
 from github_workflow.workflow_step import WorkflowStep
 
 if TYPE_CHECKING:
@@ -183,7 +183,7 @@ class CommandStep(ClassFamily, ABC):
         return self.refuse_markers(text, CommandOption.BODY_FILE)
 
     @property
-    def why(self) -> WhyItMatters | None:
+    def why_it_matters_section(self) -> WhyItMattersSection | None:
         """
         :return: The why the file ``--why-file`` names holds, ``None`` without one.
         :raises WorkflowMarkerError: If it carries a workflow marker.
@@ -194,7 +194,7 @@ class CommandStep(ClassFamily, ABC):
         if file is None:
             return None
         text = self.refuse_markers(file.read_text(), CommandOption.WHY_FILE)
-        return WhyItMatters.from_text(text)
+        return WhyItMattersSection.from_text(text)
 
     @property
     def description_change(self) -> DescriptionChange:
@@ -204,19 +204,30 @@ class CommandStep(ClassFamily, ABC):
         :raises AddressedIssueLineError: If the body or the why names an addressed
             issue in a line only the workflow writes.
         """
-        why = self.why
+        why = self.why_it_matters_section
+        added = [
+            AddressedIssueNumber(number, relation)
+            for numbers, relation in (
+                (self.arguments.finding, IssueRelation.FIXES),
+                (self.arguments.partly, IssueRelation.FIXES_IN_PART),
+            )
+            for number in numbers or ()
+        ]
         return DescriptionChange(
-            AddressedIssues.refuse_lines(self.body, CommandOption.BODY_FILE),
+            AddressedIssueNumber.refuse_reference_lines(
+                self.body, CommandOption.BODY_FILE
+            ),
             (
                 None
                 if why is None
-                else AddressedIssues.refuse_lines(why.text, CommandOption.WHY_FILE)
+                else AddressedIssueNumber.refuse_reference_lines(
+                    why.explanation, CommandOption.WHY_FILE
+                )
             ),
-            tuple(self.arguments.finding or ()),
-            tuple(self.arguments.partly or ()),
+            tuple(added),
         )
 
-    def workable_findings(
+    def build_workable_findings(
         self, change: DescriptionChange, built_on: str | None
     ) -> tuple[WorkableFinding, ...]:
         """
@@ -225,7 +236,7 @@ class CommandStep(ClassFamily, ABC):
             for the default branch.
         :return: A check, rerunning its proof, for every finding the change addresses.
         """
-        if not change.added.numbers:
+        if not change.added_issues:
             return ()
         session = self.session
         runner = session.proof_runner(
@@ -233,8 +244,10 @@ class CommandStep(ClassFamily, ABC):
         )
         authors = session.trusted_authors
         return tuple(
-            WorkableFinding(FindingRecheck(session.github, runner, authors, number))
-            for number in change.added.numbers
+            WorkableFinding(
+                FindingRecheck(session.github, runner, authors, added.number)
+            )
+            for added in change.added_issues
         )
 
     @property
@@ -417,12 +430,9 @@ class DraftStep(FreshenedCommandStep):
             session.other_fork_bases,
         )
         change = self.description_change
-        description = PullRequestDescription(
-            change.changes or "", change.why or "", change.added
-        )
         built_on = None if arguments.on is None else str(arguments.on)
         return DescribedDraftOpening(
-            draft, description, self.workable_findings(change, built_on)
+            draft, change, self.build_workable_findings(change, built_on)
         )
 
 
@@ -509,13 +519,13 @@ class DescribeStep(FreshenedCommandStep):
             repository=session.remote.repository,
         )
         change = replace(
-            self.description_change, dropped=tuple(self.arguments.drop or ())
+            self.description_change, dropped_issues=tuple(self.arguments.drop or ())
         )
         return DescribedRewrite(
             rewrite,
             change,
             session.issue_labels,
-            self.workable_findings(change, None),
+            self.build_workable_findings(change, None),
             UpstreamDescriptionCopy(
                 session.github,
                 session.remote.repository,
@@ -592,13 +602,18 @@ class FindingFileStep(CommandStep):
         suggestion = IssueMoveSuggestion(board.repository, board)
         if arguments.test is None:
             return FindingFiling(
-                board, self.title, self.body, self.why, self.priority, suggestion
+                board,
+                self.title,
+                self.body,
+                self.why_it_matters_section,
+                self.priority,
+                suggestion,
             )
         return ProvenFindingFiling(
             board,
             self.title,
             self.body,
-            self.why,
+            self.why_it_matters_section,
             self.priority,
             suggestion,
             FindingTest.read(session.checkout, arguments.test),
@@ -768,7 +783,7 @@ class FindingExplainStep(CommandStep):
         return FindingExplanation(
             board,
             self.arguments.number,
-            self.why,
+            self.why_it_matters_section,
             IssueMoveSuggestion(board.repository, board),
         )
 
@@ -942,7 +957,7 @@ class TagFileStep(CommandStep):
             IssueMoveSuggestion(board.repository, board),
             arguments.title,
             self.body,
-            self.why,
+            self.why_it_matters_section,
             self.priority,
         )
 

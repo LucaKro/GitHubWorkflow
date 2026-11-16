@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
-from domain_model.github.vocabulary import ClosingKeyword
 
 from github_workflow.command_line import CommandOption
 from github_workflow.exceptions import (
@@ -19,56 +18,44 @@ from github_workflow.exceptions import (
 )
 from github_workflow.findings import FindingStage, Priority
 from github_workflow.pull_request_description import (
-    AddressedIssues,
+    AddressedIssue,
+    AddressedIssueNumber,
     DescriptionChange,
+    IssueRelation,
     PersonCommandEnding,
     PullRequestDescription,
 )
 
-from .issues_in_memory import IssuesInMemory, build_finding, finding_why
+from .issues_in_memory import IssuesInMemory, build_finding, finding_why_section
 from .scratch_github import ScratchGitHub
 
 # %% the issues addressed
 
 
 def test_the_lines_naming_the_issues_are_read_back() -> None:
-    addressed = AddressedIssues((3, 4), (5,))
+    named = (
+        AddressedIssueNumber(3, IssueRelation.FIXES),
+        AddressedIssueNumber(5, IssueRelation.FIXES_IN_PART),
+    )
 
-    text = "What it does.\n\n" + "\n".join(addressed.lines())
+    text = "What it does.\n\n" + "\n".join(issue.reference_line for issue in named)
 
-    assert AddressedIssues.from_description(text) == addressed
-
-
-def test_an_issue_named_again_moves_to_the_list_it_is_named_in() -> None:
-    addressed = AddressedIssues((3,), (5,))
-
-    assert addressed.changed([5], [3], []) == AddressedIssues((5,), (3,))
+    assert AddressedIssueNumber.from_description(text) == named
 
 
-def test_a_dropped_issue_is_no_longer_addressed() -> None:
-    addressed = AddressedIssues((3, 4), (5,))
+@pytest.mark.parametrize("relation", list(IssueRelation))
+def test_a_session_s_text_naming_an_addressed_issue_is_refused(
+    relation: IssueRelation,
+) -> None:
+    line = relation.write_reference_line(3)
 
-    assert addressed.changed([], [], [4, 5]) == AddressedIssues((3,), ())
-
-
-def test_an_issue_named_twice_in_one_change_is_refused() -> None:
-    with pytest.raises(IssueNamedTwiceError):
-        AddressedIssues().changed([3], [], [3])
-
-
-@pytest.mark.parametrize(
-    "line",
-    [ClosingKeyword.FIXES.reference(3), f"{AddressedIssues.partial_fix_words} #3"],
-    ids=["fixed", "fixed in part"],
-)
-def test_a_session_s_text_naming_an_addressed_issue_is_refused(line: str) -> None:
     with pytest.raises(AddressedIssueLineError):
-        AddressedIssues.refuse_lines(
+        AddressedIssueNumber.refuse_reference_lines(
             f"What it does.\n\n{line}\n", CommandOption.BODY_FILE
         )
 
 
-# %% rendering
+# %% the findings
 
 
 def findings_board() -> IssuesInMemory:
@@ -77,111 +64,184 @@ def findings_board() -> IssuesInMemory:
     three = build_finding(3, FindingStage.ACCEPTED, Priority.HIGH)
     five = build_finding(5, FindingStage.ACCEPTED, Priority.LOW)
     return IssuesInMemory(
-        {3: replace(three, body=finding_why().place("What was found.")), 5: five}
+        {
+            3: replace(
+                three,
+                body=finding_why_section().place_into_issue_text("What was found."),
+            ),
+            5: five,
+        }
     )
 
 
-def fixing_three() -> PullRequestDescription:
+def addressed_issue(number: int, relation: IssueRelation) -> AddressedIssue:
+    """
+    :param number: An issue on :func:`findings_board`.
+    :param relation: How the pull request addresses it.
+    :return: It, as GitHub has it.
+    """
+    return AddressedIssueNumber(number, relation).read_issue(findings_board())
+
+
+def description_fixing_three() -> PullRequestDescription:
     """:return: The description of a pull request fixing finding 3."""
     return PullRequestDescription(
-        "Records the goals before a restart.", addressed=AddressedIssues((3,))
+        "Records the goals before a restart.",
+        addressed_issues=(addressed_issue(3, IssueRelation.FIXES),),
     )
+
+
+# %% writing it
 
 
 def test_a_fixed_finding_s_why_is_copied_ahead_of_what_changes() -> None:
-    rendered = fixing_three().render(findings_board(), ScratchGitHub.owned)
+    markdown = description_fixing_three().to_markdown(ScratchGitHub.owned)
 
-    assert rendered.index(finding_why().text) < rendered.index(
+    assert markdown.index(finding_why_section().explanation) < markdown.index(
         "Records the goals before a restart."
     )
 
 
 def test_what_changes_is_folded_away() -> None:
-    rendered = fixing_three().render(findings_board(), ScratchGitHub.owned)
+    markdown = description_fixing_three().to_markdown(ScratchGitHub.owned)
 
-    folded = rendered[rendered.index("<details>") : rendered.index("</details>")]
+    folded = markdown[markdown.index("<details>") : markdown.index("</details>")]
     assert "Records the goals before a restart." in folded
 
 
 def test_a_finding_is_linked_on_the_pull_request_s_repository() -> None:
-    rendered = fixing_three().render(findings_board(), ScratchGitHub.owned)
+    markdown = description_fixing_three().to_markdown(ScratchGitHub.owned)
 
-    assert f"({ScratchGitHub.owned.issue_url(3)})" in rendered
+    assert f"({ScratchGitHub.owned.issue_url(3)})" in markdown
 
 
 def test_the_description_ends_with_the_lines_naming_the_issues() -> None:
-    description = replace(fixing_three(), addressed=AddressedIssues((3,), (5,)))
+    issues = (
+        addressed_issue(3, IssueRelation.FIXES),
+        addressed_issue(5, IssueRelation.FIXES_IN_PART),
+    )
+    description = replace(description_fixing_three(), addressed_issues=issues)
 
-    rendered = description.render(findings_board(), ScratchGitHub.owned)
+    markdown = description.to_markdown(ScratchGitHub.owned)
 
-    assert rendered.rstrip().splitlines()[-2:] == description.addressed.lines()
+    assert markdown.rstrip().splitlines()[-2:] == [
+        issue.reference_line for issue in issues
+    ]
 
 
 def test_a_bare_issue_number_names_the_pull_request_s_repository() -> None:
-    description = replace(fixing_three(), changes="Builds on #2.")
+    description = replace(description_fixing_three(), change_details="Builds on #2.")
 
-    rendered = description.render(findings_board(), ScratchGitHub.owned)
+    markdown = description.to_markdown(ScratchGitHub.owned)
 
-    assert f"Builds on {ScratchGitHub.owned.full_name}#2." in rendered
+    assert f"Builds on {ScratchGitHub.owned.full_name}#2." in markdown
 
 
 def test_a_finding_without_a_why_is_named_by_its_title() -> None:
-    description = PullRequestDescription("A change.", addressed=AddressedIssues((5,)))
+    five = addressed_issue(5, IssueRelation.FIXES)
+    description = PullRequestDescription("A change.", addressed_issues=(five,))
 
-    rendered = description.render(findings_board(), ScratchGitHub.owned)
+    markdown = description.to_markdown(ScratchGitHub.owned)
 
-    assert findings_board().issue(5).title in rendered
+    assert five.issue.title in markdown
 
 
 def test_a_description_saying_nowhere_why_it_matters_is_refused() -> None:
     with pytest.raises(MissingWhyError):
-        PullRequestDescription("A change.").render(
-            findings_board(), ScratchGitHub.owned
-        )
+        PullRequestDescription("A change.").to_markdown(ScratchGitHub.owned)
 
 
 def test_the_session_s_own_why_leads_the_description() -> None:
-    description = replace(fixing_three(), why="Robots stop on every restart.")
+    description = replace(
+        description_fixing_three(), why_it_matters="Robots stop on restart."
+    )
 
-    rendered = description.render(findings_board(), ScratchGitHub.owned)
+    markdown = description.to_markdown(ScratchGitHub.owned)
 
-    assert rendered.index("Robots stop on every restart.") < rendered.index(
-        finding_why().text
+    assert markdown.index("Robots stop on restart.") < markdown.index(
+        finding_why_section().explanation
     )
 
 
 # %% reading it back
 
 
-def test_a_rendered_description_is_read_back_as_it_was_given() -> None:
+def test_a_written_description_is_read_back_as_it_was_given() -> None:
     description = PullRequestDescription(
-        "Records the goals.", "Robots stop.", AddressedIssues((3,), (5,))
+        "Records the goals.",
+        "Robots stop.",
+        (
+            addressed_issue(3, IssueRelation.FIXES),
+            addressed_issue(5, IssueRelation.FIXES_IN_PART),
+        ),
     )
 
-    rendered = description.render(findings_board(), ScratchGitHub.owned)
+    markdown = description.to_markdown(ScratchGitHub.owned)
 
-    assert PullRequestDescription.from_text(rendered) == description
+    assert PullRequestDescription.from_text(markdown, findings_board()) == description
 
 
-def test_a_description_the_workflow_did_not_write_is_read_as_its_changes() -> None:
-    text = f"What it does.\n\n{ClosingKeyword.FIXES.reference(3)}\n"
+def test_a_description_the_workflow_did_not_write_is_read_as_its_change_details() -> (
+    None
+):
+    text = f"What it does.\n\n{IssueRelation.FIXES.write_reference_line(3)}\n"
 
-    assert PullRequestDescription.from_text(text) == PullRequestDescription(
-        "What it does.", addressed=AddressedIssues((3,))
+    assert PullRequestDescription.from_text(
+        text, findings_board()
+    ) == PullRequestDescription(
+        "What it does.", addressed_issues=(addressed_issue(3, IssueRelation.FIXES),)
     )
 
 
 def test_an_older_description_is_read_without_its_command_line() -> None:
     ending = PersonCommandEnding("open it upstream", "upstream fork branch")
 
-    read = PullRequestDescription.from_text(ending.append_once("What it does."))
+    details = PullRequestDescription.read_change_details(
+        ending.append_once("What it does.")
+    )
 
-    assert read.changes == "What it does."
+    assert details == "What it does."
+
+
+# %% changing it
 
 
 def test_a_change_keeps_what_it_leaves_out() -> None:
     description = PullRequestDescription("A change.", "Robots stop.")
+    three = AddressedIssueNumber(3, IssueRelation.FIXES)
 
-    changed = description.changed(DescriptionChange(fixed=(3,)))
+    changed = description.apply_change(
+        DescriptionChange(added_issues=(three,)), findings_board()
+    )
 
-    assert changed == replace(description, addressed=AddressedIssues((3,)))
+    assert changed == replace(
+        description, addressed_issues=(three.read_issue(findings_board()),)
+    )
+
+
+def test_an_issue_named_again_takes_its_new_relation() -> None:
+    three = AddressedIssueNumber(3, IssueRelation.FIXES_IN_PART)
+
+    changed = description_fixing_three().apply_change(
+        DescriptionChange(added_issues=(three,)), findings_board()
+    )
+
+    assert changed.addressed_issues == (three.read_issue(findings_board()),)
+
+
+def test_a_dropped_issue_is_no_longer_addressed() -> None:
+    changed = description_fixing_three().apply_change(
+        DescriptionChange(dropped_issues=(3,)), findings_board()
+    )
+
+    assert changed.addressed_issues == ()
+
+
+def test_an_issue_named_twice_in_one_change_is_refused() -> None:
+    three = AddressedIssueNumber(3, IssueRelation.FIXES)
+
+    with pytest.raises(IssueNamedTwiceError):
+        description_fixing_three().apply_change(
+            DescriptionChange(added_issues=(three,), dropped_issues=(3,)),
+            findings_board(),
+        )

@@ -66,8 +66,10 @@ from github_workflow.findings import FindingStage, Priority
 from github_workflow.labels import IssueLabel
 from github_workflow.policy import Attribution, WritePolicy
 from github_workflow.pull_request_description import (
-    AddressedIssues,
+    AddressedIssue,
+    AddressedIssueNumber,
     DescriptionChange,
+    IssueRelation,
     PullRequestDescription,
 )
 from github_workflow.push_hook import PushHook
@@ -101,7 +103,7 @@ from github_workflow.work import (
 )
 from github_workflow.workflow_step import SessionLog
 
-from .issues_in_memory import IssuesInMemory, build_finding, finding_why
+from .issues_in_memory import IssuesInMemory, build_finding, finding_why_section
 from .pull_requests import pull_request
 from .repositories_by_owner import RepositoriesByOwner
 from .scratch_github import ScratchGitHub
@@ -1354,19 +1356,18 @@ class NeverHolds(WorkPrecondition):
     A precondition that never holds.
     """
 
-    def check(self) -> None:
+    def check_holds(self) -> None:
         raise NotHeldError()
 
 
 def test_a_draft_s_description_is_written_by_the_workflow(work: WritePolicy) -> None:
     github = DraftsAndStacksInMemory({})
-    description = PullRequestDescription("A body", "Why it matters.")
+    change = DescriptionChange("A body", "Why it matters.")
 
-    DescribedDraftOpening(draft(work, github, None), description).run()
+    DescribedDraftOpening(draft(work, github, None), change).run()
 
-    assert github.bodies == {
-        1: description.render(IssuesInMemory(), work.remote.repository)
-    }
+    written = PullRequestDescription("A body", "Why it matters.")
+    assert github.bodies == {1: written.to_markdown(work.remote.repository)}
 
 
 def test_a_draft_saying_nowhere_why_it_matters_opens_nothing(
@@ -1376,7 +1377,7 @@ def test_a_draft_saying_nowhere_why_it_matters_opens_nothing(
 
     with pytest.raises(MissingWhyError):
         DescribedDraftOpening(
-            draft(work, github, None), PullRequestDescription("A body")
+            draft(work, github, None), DescriptionChange("A body")
         ).run()
 
     assert github.writes == []
@@ -1384,12 +1385,10 @@ def test_a_draft_saying_nowhere_why_it_matters_opens_nothing(
 
 def test_a_draft_whose_precondition_fails_opens_nothing(work: WritePolicy) -> None:
     github = DraftsAndStacksInMemory({})
-    description = PullRequestDescription("A body", "Why it matters.")
+    change = DescriptionChange("A body", "Why it matters.")
 
     with pytest.raises(NotHeldError):
-        DescribedDraftOpening(
-            draft(work, github, None), description, (NeverHolds(),)
-        ).run()
+        DescribedDraftOpening(draft(work, github, None), change, (NeverHolds(),)).run()
 
     assert github.writes == []
 
@@ -1416,13 +1415,28 @@ def findings_three_and_five() -> IssuesInMemory:
     five = build_finding(5, FindingStage.ACCEPTED, Priority.LOW)
     return IssuesInMemory(
         {
-            3: replace(three, body=finding_why().place("What was found.")),
+            3: replace(
+                three,
+                body=finding_why_section().place_into_issue_text("What was found."),
+            ),
             5: replace(five, labels=(*five.labels, IssueLabel.PULL_REQUEST_OPENED)),
         }
     )
 
 
-def described_rewrite(
+def fixed_issues(board: IssuesInMemory, *numbers: int) -> tuple[AddressedIssue, ...]:
+    """
+    :param board: The issues.
+    :param numbers: Issues on it a pull request fixes.
+    :return: Them, as the board has them.
+    """
+    return tuple(
+        AddressedIssueNumber(number, IssueRelation.FIXES).read_issue(board)
+        for number in numbers
+    )
+
+
+def pull_request_one_rewrite(
     old: PullRequestDescription, board: IssuesInMemory, change: DescriptionChange
 ) -> tuple[DescribedRewrite, DescribedPullRequestsInMemory]:
     """
@@ -1433,7 +1447,7 @@ def described_rewrite(
     """
     github = DescribedPullRequestsInMemory(
         {1: RepositoriesByOwner.default_branch},
-        descriptions={1: old.render(board, ScratchGitHub.owned)},
+        descriptions={1: old.to_markdown(ScratchGitHub.owned)},
     )
     labelling = PullRequestOpenedLabelling(board)
     return DescribedRewrite(rewrite(github, None), change, labelling), github
@@ -1441,33 +1455,44 @@ def described_rewrite(
 
 def test_a_rewrite_keeps_what_the_change_leaves_out() -> None:
     board = findings_three_and_five()
-    old = PullRequestDescription("What it did.", "Why.", AddressedIssues((3,)))
-    step, github = described_rewrite(
-        old, board, DescriptionChange(changes="What it does now.")
+    old = PullRequestDescription("What it did.", "Why.", fixed_issues(board, 3))
+    step, github = pull_request_one_rewrite(
+        old, board, DescriptionChange(change_details="What it does now.")
     )
 
     step.run()
 
-    new = replace(old, changes="What it does now.").render(board, ScratchGitHub.owned)
-    assert github.writes == [f"set_description 1 {new}"]
+    new = replace(old, change_details="What it does now.")
+    assert github.writes == [
+        f"set_description 1 {new.to_markdown(ScratchGitHub.owned)}"
+    ]
 
 
 def test_a_dropped_issue_loses_its_line_and_its_label() -> None:
     board = findings_three_and_five()
-    old = PullRequestDescription("What it does.", addressed=AddressedIssues((3, 5)))
-    step, github = described_rewrite(old, board, DescriptionChange(dropped=(5,)))
+    old = PullRequestDescription(
+        "What it does.", addressed_issues=fixed_issues(board, 3, 5)
+    )
+    step, github = pull_request_one_rewrite(
+        old, board, DescriptionChange(dropped_issues=(5,))
+    )
 
     step.run()
 
     written = github.writes[0].removeprefix("set_description 1 ")
-    assert AddressedIssues.from_description(written) == AddressedIssues((3,))
+    assert AddressedIssueNumber.read_issue_numbers(written) == [3]
     assert IssueLabel.PULL_REQUEST_OPENED not in board.issue(5).labels
 
 
 def test_a_newly_fixed_issue_is_labelled_as_having_a_pull_request() -> None:
     board = findings_three_and_five()
-    old = PullRequestDescription("What it does.", addressed=AddressedIssues((5,)))
-    step, _ = described_rewrite(old, board, DescriptionChange(fixed=(3,)))
+    old = PullRequestDescription(
+        "What it does.", addressed_issues=fixed_issues(board, 5)
+    )
+    three = AddressedIssueNumber(3, IssueRelation.FIXES)
+    step, _ = pull_request_one_rewrite(
+        old, board, DescriptionChange(added_issues=(three,))
+    )
 
     step.run()
 
@@ -1477,7 +1502,7 @@ def test_a_newly_fixed_issue_is_labelled_as_having_a_pull_request() -> None:
 def test_a_new_title_alone_leaves_the_description_as_it_is() -> None:
     board = findings_three_and_five()
     old = PullRequestDescription("What it does.", "Why.")
-    step, github = described_rewrite(old, board, DescriptionChange())
+    step, github = pull_request_one_rewrite(old, board, DescriptionChange())
 
     replace(step, rewrite=replace(step.rewrite, title="A sharper title")).run()
 
@@ -1500,7 +1525,9 @@ class MirrorInMemory(DescriptionMirror):
     Whether copying fails.
     """
 
-    def copy(self, number: int, description: str, title: str) -> str | None:
+    def copy_description_upstream(
+        self, number: int, description: str, title: str
+    ) -> str | None:
         if self.fails:
             raise RuntimeError("GitHub refused the copy")
         self.copies.append((number, description, title))
@@ -1510,7 +1537,7 @@ class MirrorInMemory(DescriptionMirror):
 def test_a_new_title_alone_is_copied_with_the_description_as_it_is() -> None:
     board = findings_three_and_five()
     old = PullRequestDescription("What it does.", "Why.")
-    step, _ = described_rewrite(old, board, DescriptionChange())
+    step, _ = pull_request_one_rewrite(old, board, DescriptionChange())
     mirror = MirrorInMemory()
 
     replace(
@@ -1518,19 +1545,21 @@ def test_a_new_title_alone_is_copied_with_the_description_as_it_is() -> None:
     ).run()
 
     assert mirror.copies == [
-        (1, old.render(board, ScratchGitHub.owned), "A sharper title")
+        (1, old.to_markdown(ScratchGitHub.owned), "A sharper title")
     ]
 
 
 def test_a_failed_copy_is_reported_once_the_pull_request_is_rewritten() -> None:
     board = findings_three_and_five()
     old = PullRequestDescription("What it did.", "Why.")
-    step, github = described_rewrite(old, board, DescriptionChange(changes="Now."))
+    step, github = pull_request_one_rewrite(
+        old, board, DescriptionChange(change_details="Now.")
+    )
 
     with pytest.raises(UpstreamCopyFailedError):
         replace(step, mirror=MirrorInMemory(fails=True)).run()
 
-    new = replace(old, changes="Now.").render(board, ScratchGitHub.owned)
+    new = replace(old, change_details="Now.").to_markdown(ScratchGitHub.owned)
     assert github.writes == [f"set_description 1 {new}"]
 
 

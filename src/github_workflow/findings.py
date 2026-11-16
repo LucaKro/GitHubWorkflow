@@ -40,6 +40,7 @@ from github_workflow.exceptions import (
 )
 from github_workflow.labels import DescribedLabel
 from github_workflow.proofs import FindingTest, Proof, ProofOutcome, ProofRunner
+from github_workflow.pull_request_description import AddressedIssueNumber
 from github_workflow.report_lines import (
     Emphasis,
     Highlight,
@@ -53,7 +54,7 @@ from github_workflow.work import (
     PullRequestRetirement,
     WorkPrecondition,
 )
-from github_workflow.why_it_matters import WhyItMatters
+from github_workflow.why_it_matters import WhyItMattersSection
 from github_workflow.workflow_step import SessionLog, WorkflowStep
 
 # %% the labels
@@ -341,7 +342,7 @@ class FindingFiling(FindingLabelling):
     What was found, and where.
     """
 
-    why: WhyItMatters
+    why_it_matters: WhyItMattersSection
     """
     Why it matters, placed after its text.
     """
@@ -366,7 +367,7 @@ class FindingFiling(FindingLabelling):
         :return: The number of the issue filed.
         """
         self.create_missing_labels()
-        body = self.why.place(self.body)
+        body = self.why_it_matters.place_into_issue_text(self.body)
         number = self.issues.open_issue(
             self.title, body, [FindingStage.UNREVIEWED, self.priority, *evidence]
         )
@@ -688,7 +689,9 @@ class SessionPullRequestClosing(PullRequestRetirement):
         self.pull_requests.add_comment(number, f"{reason} {ClosedBy.closing_note}")
         self.pull_requests.close_pull_request(number)
         description = self.pull_requests.pull_request(number).body or ""
-        PullRequestOpenedLabelling(self.pull_requests).unlabel(description)
+        PullRequestOpenedLabelling(self.pull_requests).remove_label_from_issues(
+            AddressedIssueNumber.read_issue_numbers(description)
+        )
         self.log.enter(f"closed pull request #{number}: {reason}")
 
 
@@ -749,8 +752,8 @@ class FindingEdit(FindingChange):
         if self.title is not None:
             self.issues.set_issue_title(self.number, self.title)
         if self.body is not None:
-            why = WhyItMatters.read(issue.body)
-            body = self.body if why is None else why.place(self.body)
+            why = WhyItMattersSection.from_issue_text(issue.body)
+            body = self.body if why is None else why.place_into_issue_text(self.body)
             self.issues.set_issue_description(
                 self.number, self.suggestion.append_once(body, self.number)
             )
@@ -764,7 +767,7 @@ class FindingExplanation(FindingChange):
     text still ends with the command line moving it upstream.
     """
 
-    why: WhyItMatters
+    why_it_matters: WhyItMattersSection
     """
     The new why.
     """
@@ -779,7 +782,9 @@ class FindingExplanation(FindingChange):
         :raises NotAFindingError: If the issue is no open finding.
         """
         issue = self.open_finding(FindingStage.open_stages)
-        body = self.suggestion.append_once(self.why.place(issue.body), self.number)
+        body = self.suggestion.append_once(
+            self.why_it_matters.place_into_issue_text(issue.body), self.number
+        )
         self.issues.set_issue_description(self.number, body)
         return f"rewrote why finding #{self.number} matters"
 
@@ -906,7 +911,7 @@ class WorkableFinding(WorkPrecondition):
     Runs the finding's proof again.
     """
 
-    def check(self) -> None:
+    def check_holds(self) -> None:
         """
         :raises FindingNotAcceptedError: If it is no open, accepted finding.
         :raises MissingProofError: If it is not proven.
