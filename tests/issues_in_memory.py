@@ -19,6 +19,7 @@ from github_workflow.findings import FindingLabel, FindingStage, Priority
 from github_workflow.proofs import FindingTest, ProofAttempt, ProofRunner
 from github_workflow.settings import WorkflowSettings
 from github_workflow.upstream import IssueMoveSuggestion
+from github_workflow.why_it_matters import WhyItMattersSection
 
 from .scratch_github import ForkOf, ScratchGitHub
 
@@ -144,6 +145,13 @@ def move_suggestion(forked_from: Repository | None = None) -> IssueMoveSuggestio
         none.
     :return: The command line moving an issue of the owner's repository upstream."""
     return IssueMoveSuggestion(ScratchGitHub.owned, ForkOf(forked_from))
+
+
+def finding_why_section() -> WhyItMattersSection:
+    """:return: Why a finding matters, as a session wrote it."""
+    return WhyItMattersSection(
+        "Every planner restarted loses its goals, so its robot stops."
+    )
 
 
 def build_finding(number: int, stage: FindingStage, priority: Priority) -> Issue:

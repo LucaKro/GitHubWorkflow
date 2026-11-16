@@ -6,8 +6,9 @@ to them; following the upstream.
 
 from __future__ import annotations
 
+import hashlib
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -16,14 +17,17 @@ from domain_model.git.remotes import ProposedPush, RemoteBranch, RepositoryBranc
 from domain_model.git.revisions import BranchName, BranchTip, Commit
 from domain_model.github.labels import LabelWrite
 from domain_model.github.closing_lines import ClosingLines
-from domain_model.github.issue_models import Issue
+from domain_model.github.issue_models import Issue, IssueComment
 from domain_model.github.issue_references import IssueReferences
 from domain_model.github.repository_client import (
     ClosablePullRequests,
+    CommentReader,
     FollowedFork,
     ForkDetails,
     ProposingFork,
     PullRequestSearch,
+    PullRequestsFromForks,
+    RewritablePullRequests,
     UpstreamIssueTracker,
     UpstreamRepository,
 )
@@ -34,7 +38,7 @@ from domain_model.github.vocabulary import (
     IssueStateReason,
     PullRequestState,
 )
-from domain_model.repository import Repository
+from domain_model.repository import PullRequestReference, Repository
 
 from github_workflow.command_line import ArgumentName, CommandOption, RunnableCommand
 from github_workflow.exceptions import (
@@ -43,13 +47,19 @@ from github_workflow.exceptions import (
     IssueNotMovableError,
     IssueTemplatesRequiredError,
     NotAForkError,
+    NotOpenedUpstreamError,
     PersonOnlyCommandError,
     PullRequestNotProposableError,
 )
 from github_workflow.labels import UpstreamLabel
+from github_workflow.markers import WorkflowMarker
 from github_workflow.plugin import Launcher
 from github_workflow.policy import WritePolicy
 from github_workflow.proofs import Proof
+from github_workflow.pull_request_description import (
+    PersonCommandEnding,
+    PullRequestDescription,
+)
 from github_workflow.remotes import ForkUpstream
 from github_workflow.report_lines import CountedThing, ReportLine, Speaker, Tone
 from github_workflow.report_section import ReportSection
@@ -58,6 +68,7 @@ from github_workflow.work import (
     DescriptionEnding,
     OtherForkBases,
     LocalBranchFollowing,
+    PersonCommandSuggestion,
     PullRequestRetirement,
 )
 from github_workflow.workflow_step import WorkflowStep
@@ -70,8 +81,8 @@ class UpstreamProposal(WorkflowStep):
     """
     The open pull request of a branch of the owner's fork opened on the repository the
     fork was forked from, or onto a branch of another fork of it, ready for review,
-    with the same title and a description linking back to it; the fork's pull request
-    then links to the new one and is labelled :attr:`UpstreamLabel.OPENED_UPSTREAM`.
+    with the same title and a copy of its description; the fork's pull request then
+    links to the new one and is labelled :attr:`UpstreamLabel.OPENED_UPSTREAM`.
 
     :raises PersonOnlyCommandError: If a Claude Code session runs it.
     :raises ForeignRepositoryError: If the repository is somebody else's.
@@ -120,10 +131,7 @@ class UpstreamProposal(WorkflowStep):
     """
 
     def run(self) -> str:
-        if self.run_by_a_session:
-            raise PersonOnlyCommandError(" ".join(RunnableCommand.UPSTREAM.words))
-        if not self.settings.owns(self.repository):
-            raise ForeignRepositoryError(self.repository, self.settings.owner)
+        self.check_person_runs_it(self.run_by_a_session, self.settings, self.repository)
         upstream = self.fork.upstream()
         if upstream is None:
             raise NotAForkError(self.repository)
@@ -144,9 +152,11 @@ class UpstreamProposal(WorkflowStep):
             self.branch,
             proposals.default_branch() if self.onto is None else self.onto.branch,
             local.title,
-            self.body_linking(local.url),
+            UpstreamCopy.from_fork_description(
+                local.body or "", local.url, self.repository
+            ).markdown,
         )
-        self.fork.add_comment(local.number, self.comment_linking(opened.url))
+        self.fork.add_comment(local.number, self.compose_link_comment(opened.url))
         self.fork.create_missing_labels([UpstreamLabel.OPENED_UPSTREAM])
         self.fork.replace_labels(
             local.number,
@@ -198,12 +208,20 @@ class UpstreamProposal(WorkflowStep):
         return onto_expected[0]
 
     @staticmethod
-    def body_linking(url: str) -> str:
+    def check_person_runs_it(
+        run_by_a_session: bool, settings: WorkflowSettings, repository: Repository
+    ) -> None:
         """
-        :param url: The fork's pull request.
-        :return: The new pull request's description.
+        :param run_by_a_session: Whether a Claude Code session runs the command.
+        :param settings: Whose forks are proposed from.
+        :param repository: The fork named.
+        :raises PersonOnlyCommandError: If a session runs it.
+        :raises ForeignRepositoryError: If the fork is somebody else's.
         """
-        return f"Proposed from {url}"
+        if run_by_a_session:
+            raise PersonOnlyCommandError(" ".join(RunnableCommand.UPSTREAM.words))
+        if not settings.owns(repository):
+            raise ForeignRepositoryError(repository, settings.owner)
 
     @classproperty
     def link_prefix(cls) -> str:
@@ -213,7 +231,7 @@ class UpstreamProposal(WorkflowStep):
         return "Opened upstream: "
 
     @classmethod
-    def comment_linking(cls, url: str) -> str:
+    def compose_link_comment(cls, url: str) -> str:
         """
         :param url: The new pull request upstream.
         :return: The comment on the fork's pull request.
@@ -229,6 +247,283 @@ class UpstreamProposal(WorkflowStep):
         if not comment.startswith(cls.link_prefix):
             return None
         return comment.removeprefix(cls.link_prefix).split()[0]
+
+    @classmethod
+    def find_latest_linked_url(
+        cls, comments: Sequence[IssueComment], owner: str
+    ) -> str | None:
+        """
+        :param comments: The comments on a fork's pull request, oldest first.
+        :param owner: The fork's owner, whose comments alone count.
+        :return: The pull request upstream the owner's latest comment linking one
+            links, ``None`` when none does.
+        """
+        links = [
+            cls.read_linked_url(comment.body)
+            for comment in comments
+            if comment.author == owner
+        ]
+        return next((link for link in reversed(links) if link is not None), None)
+
+
+# %% the description upstream
+
+
+@dataclass(frozen=True)
+class UpstreamCopy:
+    """
+    The description of a fork's pull request as its pull request upstream carries it:
+    without the lines naming the fork's issues it addresses or the command line opening
+    it upstream, linking back to it, and recording what was copied, so that an edit
+    made upstream since is told apart.
+    """
+
+    copied_markdown: str
+    """
+    What is copied, every issue number naming the fork.
+    """
+
+    fork_pull_request_url: str
+    """
+    The fork's pull request's page.
+    """
+
+    @classproperty
+    def digest_marker(cls) -> WorkflowMarker:
+        """
+        The comment recording a digest of the copy as the workflow wrote it.
+        """
+        return WorkflowMarker("copy")
+
+    @classmethod
+    def from_fork_description(
+        cls, description: str, fork_pull_request_url: str, fork: Repository
+    ) -> UpstreamCopy:
+        """
+        :param description: The fork's pull request's description.
+        :param fork_pull_request_url: Its page.
+        :param fork: The fork, which its bare issue numbers name.
+        :return: Its copy; of a description the workflow did not write, its whole text
+            but for those lines and the command line.
+        """
+        copied = PullRequestDescription.copied_section.find_content(description)
+        if copied is not None:
+            return cls(copied, fork_pull_request_url)
+        details = PullRequestDescription.read_change_details(description)
+        return cls(IssueReferences(details).qualify(fork), fork_pull_request_url)
+
+    @property
+    def markdown(self) -> str:
+        """:return: The description upstream."""
+        visible = self.compose_visible_markdown(
+            self.copied_markdown, self.fork_pull_request_url
+        )
+        return f"{visible}\n\n{self.digest_marker.line(self.compute_digest(visible))}\n"
+
+    @classmethod
+    def compose_visible_markdown(
+        cls, copied_markdown: str, fork_pull_request_url: str
+    ) -> str:
+        """
+        :param copied_markdown: What is copied.
+        :param fork_pull_request_url: The fork's pull request's page.
+        :return: What a reader of the description upstream sees.
+        """
+        return f"{copied_markdown}\n\n---\n\n{cls.compose_link_back_line(fork_pull_request_url)}"
+
+    @staticmethod
+    def compose_link_back_line(fork_pull_request_url: str) -> str:
+        """
+        :param fork_pull_request_url: The fork's pull request's page.
+        :return: The line linking back to it.
+        """
+        return f"Proposed from {fork_pull_request_url}"
+
+    @staticmethod
+    def compute_digest(visible_markdown: str) -> str:
+        """
+        :param visible_markdown: What a reader of a description upstream sees.
+        :return: Its digest, the same for every line ending GitHub stores it with.
+        """
+        normalized = visible_markdown.replace("\r\n", "\n").strip()
+        return hashlib.sha256(normalized.encode()).hexdigest()
+
+    @classmethod
+    def is_unedited(cls, body: str, fork_pull_request_url: str) -> bool:
+        """
+        :param body: The description of the pull request upstream as it is now.
+        :param fork_pull_request_url: The fork's pull request's page.
+        :return: Whether it is as the workflow last wrote it: a copy recording its own
+            digest, or the bare link back an older workflow opened it with.
+        """
+        recorded = cls.digest_marker.read(body)
+        if recorded is None:
+            return body.strip() == cls.compose_link_back_line(fork_pull_request_url)
+        marker = cls.digest_marker.line(recorded)
+        return recorded == cls.compute_digest(body.replace(marker, "", 1))
+
+
+@dataclass(frozen=True)
+class UpstreamDescriptionCopy:
+    """
+    Copies a fork's pull request's description and title to the pull request it was
+    opened as upstream, while that one is open; a description edited there since the
+    last copy is overwritten only when the person agrees.
+    """
+
+    fork: CommentReader
+    """
+    Reads the comments on the fork's pull requests.
+    """
+
+    fork_repository: Repository
+    """
+    The owner's fork.
+    """
+
+    upstream_pull_requests: Callable[[Repository], RewritablePullRequests]
+    """
+    Reaches the pull requests of the repository a pull request was opened on upstream.
+    """
+
+    confirmation: Confirmation
+    """
+    Asks the person before a description edited upstream is overwritten.
+    """
+
+    def copy_description_upstream(
+        self, number: int, description: str, title: str
+    ) -> str | None:
+        """
+        :return: What was done, ``None`` when it was opened nowhere upstream or its pull
+            request there is no longer open.
+        :raises MalformedPullRequestAddressError: If the comment linking it upstream
+            names no pull request's page.
+        """
+        linked = UpstreamProposal.find_latest_linked_url(
+            self.fork.comments(number), self.fork_repository.owner
+        )
+        if linked is None:
+            return None
+        reference = PullRequestReference.from_url(linked)
+        upstream = self.upstream_pull_requests(reference.repository)
+        current = upstream.pull_request(reference.number)
+        if current.state is not PullRequestState.OPEN:
+            return None
+        fork_url = self.fork_repository.pull_request_url(number)
+        edited = not UpstreamCopy.is_unedited(current.body or "", fork_url)
+        if edited and not self.confirmation.confirm(
+            f"The description of {linked} was edited there since the last copy. "
+            "Overwrite it with the fork's?"
+        ):
+            return f"left {linked} as it is"
+        copied = UpstreamCopy.from_fork_description(
+            description, fork_url, self.fork_repository
+        ).markdown
+        if copied != current.body:
+            upstream.set_description(reference.number, copied)
+        if title != current.title:
+            upstream.set_issue_title(reference.number, title)
+        return f"copied the description to {linked}"
+
+
+@dataclass(frozen=True)
+class UpstreamDescriptionUpdate(WorkflowStep):
+    """
+    The description and title of a branch's pull request on the owner's fork copied to
+    the pull request it was opened as upstream; the person's alone.
+
+    :raises PersonOnlyCommandError: If a Claude Code session runs it.
+    :raises ForeignRepositoryError: If the repository is somebody else's.
+    :raises NotOpenedUpstreamError: If no open pull request of the branch was opened
+        upstream.
+    """
+
+    repository: Repository
+    """
+    The owner's fork.
+    """
+
+    branch: BranchName
+    """
+    The fork's branch whose pull request is copied.
+    """
+
+    fork: PullRequestsFromForks
+    """
+    The fork's pull requests from the branch.
+    """
+
+    description_copy: UpstreamDescriptionCopy
+    """
+    Copies one of them upstream.
+    """
+
+    settings: WorkflowSettings
+    """
+    Whose forks are proposed from.
+    """
+
+    run_by_a_session: bool
+    """
+    Whether a Claude Code session runs the command.
+    """
+
+    def run(self) -> str:
+        UpstreamProposal.check_person_runs_it(
+            self.run_by_a_session, self.settings, self.repository
+        )
+        for pull_request in self.fork.fork_branch_pull_requests(
+            self.repository.owner, self.branch
+        ):
+            if pull_request.state is not PullRequestState.OPEN:
+                continue
+            copied = self.description_copy.copy_description_upstream(
+                pull_request.number, pull_request.body or "", pull_request.title
+            )
+            if copied is not None:
+                return copied
+        raise NotOpenedUpstreamError(self.branch)
+
+
+@dataclass(frozen=True)
+class UpstreamUpdateSuggestion(PersonCommandSuggestion):
+    """
+    The command line copying a rewritten pull request's description to the pull
+    request it was opened as upstream, suggested for the person to run when the change
+    matters to the reviewers there.
+    """
+
+    fork: CommentReader
+    """
+    Reads the comments on the fork's pull requests.
+    """
+
+    fork_repository: Repository
+    """
+    The owner's fork.
+    """
+
+    def suggest_person_command(self, number: int, branch: BranchName) -> str | None:
+        linked = UpstreamProposal.find_latest_linked_url(
+            self.fork.comments(number), self.fork_repository.owner
+        )
+        if linked is None:
+            return None
+        words = RunnableCommand.UPSTREAM.words_naming(
+            ArgumentName.REPOSITORY,
+            ArgumentName.BRANCH,
+            CommandOption.UPDATE,
+            values={
+                ArgumentName.REPOSITORY: self.fork_repository.full_name,
+                ArgumentName.BRANCH: branch,
+            },
+        )
+        command = " ".join([Launcher.COMMAND, *words])
+        return (
+            f"#{number} is open upstream as {linked}; when this change matters to its "
+            f"reviewers there, give the person this command, theirs alone: {command}"
+        )
 
 
 # %% following the upstream
@@ -346,49 +641,6 @@ class ForkTips:
 
 
 # %% the suggestion
-
-
-@dataclass(frozen=True)
-class PersonCommandEnding:
-    """
-    The end of a pull request's or issue's description giving the person a command line
-    only they may run, for them to copy.
-    """
-
-    purpose: str
-    """
-    What the command does, as the sentence introducing it finishes ``To ...``.
-    """
-
-    command: str
-    """
-    The command line.
-    """
-
-    @property
-    def text(self) -> str:
-        """
-        The ending itself.
-        """
-        return (
-            f"---\n\n"
-            f"To {self.purpose}, run this yourself (a Claude Code session may not):\n\n"
-            f"```bash\n{self.command}\n```"
-        )
-
-    def remove(self, body: str) -> str:
-        """
-        :param body: A description, which may hold the ending.
-        :return: The description without it.
-        """
-        return body.replace(self.text, "").rstrip()
-
-    def append_once(self, body: str) -> str:
-        """
-        :param body: A description, which may hold the ending already.
-        :return: The description, ending with it once.
-        """
-        return f"{self.remove(body)}\n\n{self.text}\n"
 
 
 @dataclass(frozen=True)
@@ -628,7 +880,9 @@ class IssueUpstreamMove(WorkflowStep):
             self.check_templates(issue, upstream, target.issue_templates())
         closing = self.agreed_closing_pull_requests()
         ending = self.ending(self.repository, self.number, upstream)
-        body = IssueReferences(ending.remove(issue.body)).qualify(self.repository)
+        body = IssueReferences(ending.remove_from_description(issue.body)).qualify(
+            self.repository
+        )
         opened = target.open_issue(issue.title, body, [])
         url = upstream.issue_url(opened)
         comments = self.fork.comments(self.number)
@@ -767,7 +1021,9 @@ class UpstreamMergeFollowing(ReportSection):
         search = self.upstream_search(upstream)
         lines = []
         for pull_request in opened:
-            linked = self.linked_upstream(pull_request.number)
+            linked = UpstreamProposal.find_latest_linked_url(
+                self.fork.comments(pull_request.number), self.owner
+            )
             merged = [
                 found
                 for found in search.search_branch_pull_requests(
@@ -789,19 +1045,6 @@ class UpstreamMergeFollowing(ReportSection):
                 )
             )
         return lines
-
-    def linked_upstream(self, number: int) -> str | None:
-        """
-        :param number: A fork's pull request opened upstream.
-        :return: The pull request upstream the owner's latest comment on it links,
-            ``None`` when none does.
-        """
-        links = [
-            UpstreamProposal.read_linked_url(comment.body)
-            for comment in self.fork.comments(number)
-            if comment.author == self.owner
-        ]
-        return next((link for link in reversed(links) if link is not None), None)
 
     def pull_requests_to_follow(
         self, default_branch: BranchName

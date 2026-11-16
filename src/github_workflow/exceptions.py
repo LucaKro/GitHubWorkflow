@@ -1611,3 +1611,134 @@ class RuntimeInstallError(DataclassException, RuntimeError):
 
     def suggest_correction(self) -> str:
         return ""
+
+
+# %% why a finding matters
+
+
+@dataclass
+class EmptyWhyError(DataclassException, ValueError):
+    """
+    Raised when a finding or a pull request is given a why holding no text.
+    """
+
+    def error_message(self) -> str:
+        return "the why given holds no text"
+
+    def suggest_correction(self) -> str:
+        return (
+            "Say in a few sentences who runs into the problem and what it costs them."
+        )
+
+
+@dataclass
+class WhyTooLongError(DataclassException, ValueError):
+    """
+    Raised when a finding or a pull request is given a why longer than a why may be.
+    """
+
+    explanation_length: int
+    """
+    How many characters it holds.
+    """
+
+    maximum_explanation_length: int
+    """
+    How many it may hold.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"the why given holds {self.explanation_length} characters, more than "
+            f"the {self.maximum_explanation_length} a why may hold"
+        )
+
+    def suggest_correction(self) -> str:
+        return (
+            "Keep only the most important bits: who runs into the problem and what it "
+            "costs them; the details belong in the text."
+        )
+
+
+# %% a pull request's description
+
+
+@dataclass
+class AddressedIssueLineError(DataclassException, ValueError):
+    """
+    Raised when text a session gives for a pull request's description holds a line
+    naming an issue the pull request addresses, such as ``Fixes #12``.
+    """
+
+    argument: str
+    """
+    The argument carrying it.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"{self.argument} holds a line naming an issue the pull request addresses"
+        )
+
+    def suggest_correction(self) -> str:
+        return (
+            "Leave the line out and name the finding with --finding, or --partly when "
+            "the pull request fixes it only in part; the workflow writes the lines and "
+            "copies each finding's why."
+        )
+
+
+@dataclass
+class IssueNamedTwiceError(DataclassException, ValueError):
+    """
+    Raised when one change to a pull request's description names an issue as fixed,
+    fixed in part or no longer addressed more than once.
+    """
+
+    numbers: tuple[int, ...]
+    """
+    The issues named twice.
+    """
+
+    def error_message(self) -> str:
+        named = ", ".join(f"#{number}" for number in self.numbers)
+        return f"{named} named more than once"
+
+    def suggest_correction(self) -> str:
+        return "Name each issue once: fixed, fixed in part, or dropped."
+
+
+@dataclass
+class MissingWhyError(DataclassException, ValueError):
+    """
+    Raised when a pull request's description would say nowhere why the pull request
+    matters.
+    """
+
+    def error_message(self) -> str:
+        return "the description says nowhere why the pull request matters"
+
+    def suggest_correction(self) -> str:
+        return (
+            "Name the findings it works on with --finding or --partly, or give a why "
+            "of its own with --why-file."
+        )
+
+
+@dataclass
+class NotOpenedUpstreamError(DataclassException, LookupError):
+    """
+    Raised when the description of a fork's branch's pull request is to be copied
+    upstream, but no open pull request of the branch was opened there.
+    """
+
+    branch: str
+    """
+    The fork's branch.
+    """
+
+    def error_message(self) -> str:
+        return f"no open pull request of {self.branch} is open upstream"
+
+    def suggest_correction(self) -> str:
+        return "Open it upstream first, with upstream and no --update."

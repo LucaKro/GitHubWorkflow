@@ -70,7 +70,7 @@ github-workflow branch start fix-parser          # from GitHub's default branch
 # ... edit files, run tests ...
 github-workflow commit -m "Fix the parser" src/parser.py tests/test_parser.py
 github-workflow push
-github-workflow draft --title "Fix the parser" --body-file /tmp/description.md
+github-workflow draft --title "Fix the parser" --why-file /tmp/why.md --body-file /tmp/description.md
 ```
 
 What each step checks:
@@ -88,14 +88,19 @@ What each step checks:
   line "Made with AI assistance" itself.
 - **`push`** pushes the work branch to your remote and sets its upstream. Never forced.
 - **`draft`** opens a draft pull request from the pushed branch onto the default branch.
-  It labels every issue the description closes (`Fixes #12`) `pull request opened`. With
-  `--on <number>` it stacks the draft on another pull request, using GitHub's native
-  stacks; with `--replaces <number>` it closes the pull request it replaces.
+  The workflow writes its description: why it matters first, the `--why-file`'s and
+  each finding's why, copied from the finding; then what changes, from `--body-file`,
+  folded away; then a `Fixes #12` line for each `--finding` and a `Part of #12` line for
+  each `--partly`, which a body file may not hold itself. Each such issue is labelled
+  `pull request opened`. With `--on <number>` it stacks the draft on another pull
+  request, using GitHub's native stacks; with `--replaces <number>` it closes the pull
+  request it replaces.
 
 Afterwards, on the work branch's own pull request, a session may do these without asking:
 
 ```bash
 github-workflow describe --title "..." --body-file /tmp/description.md
+github-workflow describe --why-file /tmp/why.md --finding 12 --drop 9   # the rest kept
 github-workflow label --add bug --remove wip
 github-workflow review list
 github-workflow review reply <comment id> --body-file /tmp/reply.md
@@ -159,10 +164,16 @@ A finding is something a session notices outside its current work. It is filed a
 issue and not acted on.
 
 ```bash
-github-workflow finding file --priority medium --title "..." --body-file /tmp/finding.md
+github-workflow finding file --priority medium --title "..." --body-file /tmp/finding.md \
+  --why-file /tmp/why.md
 github-workflow finding file ... --test tests/test_shows_it.py   # filed already proven
+github-workflow finding explain 12 --why-file /tmp/why.md      # a sharper why
 github-workflow finding list
 ```
+
+The why says who runs into the problem and what it costs them, in at most 600
+characters. It stands under its own *Why* heading in the issue, and a pull request
+working on the finding copies it word for word.
 
 On a fork, a session first searches the upstream's issues, open and closed, and files
 the finding only when none of them covers it. A finding filed on a fork ends with the
@@ -190,6 +201,7 @@ branch>` runs it on another branch.
 ```bash
 github-workflow finding recheck 12                 # does the proof still fail?
 github-workflow draft --finding 12 --title "..." --body-file /tmp/description.md
+github-workflow draft --finding 12 --partly 14 ...  # several; 14 only in part
 # ... after the pull request is merged ...
 github-workflow finding close 12 --fixed-by 34     # closes only if the proof now passes
 ```
@@ -204,7 +216,7 @@ lists the tags waiting; a session files them only when you say so:
 github-workflow tag list                         # read afresh; through Actions in a cloud session
 github-workflow tag show <comment page>          # the whole conversation, to sum it up
 github-workflow tag file <comment page> --repository LucaKro/<repo> --priority medium \
-  --title "..." --body-file /tmp/finding.md      # an unreviewed finding linking the comment
+  --title "..." --body-file /tmp/finding.md --why-file /tmp/why.md  # an unreviewed finding linking the comment
 github-workflow tag dismiss <comment page>
 ```
 
@@ -223,8 +235,21 @@ github-workflow upstream LucaKro/<fork> <branch>
 ```
 
 Only you run that. The guard denies it to a session, and the command itself refuses
-where Claude Code's marker variable is set. It opens the pull request upstream, links the
-two and labels the fork's one `opened upstream`.
+where Claude Code's marker variable is set. It opens the pull request upstream with a
+copy of the fork's description, so a reviewer there reads why and what without leaving
+it: the `Fixes`/`Part of` lines and the command line are left out, and every issue
+number names your fork. It links the two and labels the fork's one `opened upstream`.
+
+After a `describe` of the fork's pull request, the session gives you the command line
+copying the new description and title upstream, when the change matters to the
+reviewers there:
+
+```bash
+github-workflow upstream LucaKro/<fork> <branch> --update
+```
+
+Only you run that too. It asks before overwriting a description a maintainer edited
+upstream since the last copy.
 
 A work branch started from another fork's branch, such as `suturo/main`, goes to that
 fork instead. Its draft targets a mirror of the branch on your fork, named
@@ -240,7 +265,7 @@ That opens the pull request on the other fork, onto its branch.
 From then on `review list` also shows the upstream pull request's reviews and threads.
 On your machine they are read directly. A cloud session cannot reach the upstream, so it
 writes a request to the notes branch; an Actions workflow there reads GitHub's answers
-and saves them, and the session replays them. Nothing is ever written upstream: after
+and saves them, and the session replays them. Nothing is written upstream by a session: after
 changing something for an upstream comment, the session says so on the fork's pull
 request with `review addressed <comment number or address> --body-file <what changed>`.
 
@@ -339,7 +364,7 @@ them on the notes branch for the Actions workflow.
 | start, switch and discard branches; commit; push | accept, shelve, reject, edit or prioritize a finding | open a pull request upstream (`upstream`); move an issue upstream (`issue upstream`) |
 | open drafts; describe, label and answer reviews on its own pull request | describe, comment on or review another pull request | change repository settings |
 | sync and merge its branch; fast-forward a fork's default branch | change a stack (`stack on`) | merge pull requests |
-| file, prove, recheck and comment on findings; close a fixed one | post an idea; file or dismiss a tag | set `pull request: shelved` |
+| file, explain, prove, recheck and comment on findings; close a fixed one | post an idea; file or dismiss a tag | set `pull request: shelved` |
 | clone to read; clean up branches; save notes | set up the label workflow (`finding automate`) | unresolve a thread |
 
 ## 11. Finding your way in the code

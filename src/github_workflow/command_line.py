@@ -233,6 +233,11 @@ class FindingSubcommand(StrEnum):
     Rewrite an open finding's title or text.
     """
 
+    EXPLAIN = "explain"
+    """
+    Rewrite why an open finding matters.
+    """
+
     PROVE = "prove"
     """
     Prove an open finding with a test failing on the default branch.
@@ -433,6 +438,11 @@ class CommandOption(StrEnum):
     The file holding a description, a comment or a reply.
     """
 
+    WHY_FILE = "--why-file"
+    """
+    The file holding why a finding or a pull request matters.
+    """
+
     REPLACES = "--replaces"
     """
     The pull request a draft replaces.
@@ -440,7 +450,17 @@ class CommandOption(StrEnum):
 
     FINDING = "--finding"
     """
-    The finding a draft works on.
+    A finding a pull request fixes.
+    """
+
+    PARTLY = "--partly"
+    """
+    A finding a pull request fixes in part.
+    """
+
+    DROP = "--drop"
+    """
+    An issue a pull request no longer addresses.
     """
 
     PYTHON = "--python"
@@ -471,6 +491,11 @@ class CommandOption(StrEnum):
     PRIORITY = "--priority"
     """
     How urgent a finding is.
+    """
+
+    UPDATE = "--update"
+    """
+    Copy the description of a pull request already open upstream instead.
     """
 
     ONTO = "--onto"
@@ -840,6 +865,49 @@ class CommandArgument:
         return cls(CommandOption.BODY_FILE, "file", description, Path, required)
 
     @classmethod
+    def why_file(cls, description: str, required: bool = True) -> CommandArgument:
+        """
+        :param description: What the why is of, as ``--help`` shows it.
+        :param required: Whether it has to be given.
+        :return: The file holding why something matters.
+        """
+        return cls(CommandOption.WHY_FILE, "file", description, Path, required)
+
+    @classmethod
+    def addressed_findings(cls) -> tuple[CommandArgument, CommandArgument]:
+        """
+        The findings a pull request fixes, and those it fixes in part, each rechecked
+        before the pull request is written.
+        """
+        return (
+            cls(
+                CommandOption.FINDING,
+                "number",
+                "an accepted, proven finding it fixes, rechecked first; repeatable",
+                int,
+                count=ArgumentCount.REPEATED,
+            ),
+            cls(
+                CommandOption.PARTLY,
+                "number",
+                "an accepted, proven finding it fixes in part, rechecked first; "
+                "repeatable",
+                int,
+                count=ArgumentCount.REPEATED,
+            ),
+        )
+
+    @classmethod
+    def finding_why_file(cls) -> CommandArgument:
+        """
+        The file holding why a finding matters.
+        """
+        return cls.why_file(
+            "why the finding matters: who runs into the problem and what it costs "
+            "them, in a few sentences"
+        )
+
+    @classmethod
     def tag(cls) -> CommandArgument:
         """
         The page of a comment the person tagged, as the tag listing links it.
@@ -1074,7 +1142,9 @@ class RunnableCommand(CommandSpecification, Enum):
         SessionRuns(),
         (
             CommandArgument(CommandOption.TITLE, "title", required=True),
-            CommandArgument.body_file(),
+            CommandArgument.body_file(
+                "what it changes, how it is tested and what breaks"
+            ),
             CommandArgument(
                 CommandOption.ON, "pull request", "the pull request to stack it on", int
             ),
@@ -1084,12 +1154,11 @@ class RunnableCommand(CommandSpecification, Enum):
                 "the pull request it replaces, closed once it is open",
                 int,
             ),
-            CommandArgument(
-                CommandOption.FINDING,
-                "number",
-                "the accepted, proven finding it works on, rechecked first",
-                int,
+            CommandArgument.why_file(
+                "why the pull request matters, ahead of its findings' own whys",
+                required=False,
             ),
+            *CommandArgument.addressed_findings(),
             CommandArgument.interpreter(),
         ),
     )
@@ -1174,6 +1243,7 @@ class RunnableCommand(CommandSpecification, Enum):
             CommandArgument.priority(),
             CommandArgument(CommandOption.TITLE, "title", required=True),
             CommandArgument.body_file(),
+            CommandArgument.finding_why_file(),
             CommandArgument(
                 CommandOption.TEST,
                 "file",
@@ -1269,6 +1339,20 @@ class RunnableCommand(CommandSpecification, Enum):
     )
     """
     ``finding edit``.
+    """
+
+    FINDING_EXPLAIN = (
+        (WorkflowCommand.FINDING, FindingSubcommand.EXPLAIN),
+        "rewrite why an open finding matters, its text left as it is",
+        SessionRuns(),
+        (
+            CommandArgument.number(),
+            CommandArgument.finding_why_file(),
+            CommandArgument.other_repository(),
+        ),
+    )
+    """
+    ``finding explain``.
     """
 
     FINDING_PROVE = (
@@ -1401,8 +1485,22 @@ class RunnableCommand(CommandSpecification, Enum):
                 int,
                 count=ArgumentCount.OPTIONAL,
             ),
-            CommandArgument.body_file("the new description", required=False),
+            CommandArgument.body_file(
+                "what it changes, how it is tested and what breaks", required=False
+            ),
             CommandArgument(CommandOption.TITLE, "title", "the new title"),
+            CommandArgument.why_file(
+                "why it matters, ahead of its findings' own whys", required=False
+            ),
+            *CommandArgument.addressed_findings(),
+            CommandArgument(
+                CommandOption.DROP,
+                "number",
+                "an issue it no longer addresses; repeatable",
+                int,
+                count=ArgumentCount.REPEATED,
+            ),
+            CommandArgument.interpreter(),
         ),
     )
     """
@@ -1559,6 +1657,7 @@ class RunnableCommand(CommandSpecification, Enum):
             CommandArgument.priority(),
             CommandArgument(CommandOption.TITLE, "title", required=True),
             CommandArgument.body_file("the issue's text, summing up the conversation"),
+            CommandArgument.finding_why_file(),
             CommandArgument.other_repository(),
         ),
     )
@@ -1578,7 +1677,8 @@ class RunnableCommand(CommandSpecification, Enum):
 
     UPSTREAM = (
         (WorkflowCommand.UPSTREAM,),
-        "open a fork's pull request on its upstream; the person's alone",
+        "open a fork's pull request on its upstream, or copy its description there "
+        "again; the person's alone",
         PersonRuns(),
         (
             CommandArgument(
@@ -1596,6 +1696,14 @@ class RunnableCommand(CommandSpecification, Enum):
                 "instead, the branch of another fork of the upstream to open it onto, "
                 "from the pull request onto that branch's mirror",
                 RepositoryBranch.parse,
+                alternative=True,
+            ),
+            CommandArgument(
+                CommandOption.UPDATE,
+                description="instead, copy the description and title of the pull "
+                "request already open upstream from the fork's again",
+                count=ArgumentCount.NONE,
+                alternative=True,
             ),
         ),
     )

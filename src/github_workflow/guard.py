@@ -387,7 +387,9 @@ class DraftAlternative(WorkflowAlternative):
         return GitHubCliWrite.PULL_REQUEST_CREATE, GitHubToolWrite.CREATE_PULL_REQUEST
 
     def command_line(self) -> str:
-        return RunnableCommand.DRAFT.usage(CommandOption.TITLE, CommandOption.BODY_FILE)
+        return RunnableCommand.DRAFT.usage(
+            CommandOption.TITLE, CommandOption.WHY_FILE, CommandOption.BODY_FILE
+        )
 
 
 @dataclass(frozen=True)
@@ -402,7 +404,12 @@ class DescribeAlternative(WorkflowAlternative):
 
     def command_line(self) -> str:
         return RunnableCommand.DESCRIBE.usage(
-            ArgumentName.NUMBER, optional=(CommandOption.BODY_FILE, CommandOption.TITLE)
+            ArgumentName.NUMBER,
+            optional=(
+                CommandOption.WHY_FILE,
+                CommandOption.BODY_FILE,
+                CommandOption.TITLE,
+            ),
         )
 
 

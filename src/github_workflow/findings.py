@@ -9,13 +9,12 @@ from __future__ import annotations
 
 from abc import ABC
 from collections.abc import Collection, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Self
 
 from domain_model.class_property import classproperty
 from domain_model.git.revisions import BranchName
-from domain_model.github.closing_lines import ClosingLines
 from domain_model.github.issue_models import Issue
 from domain_model.github.repository_client import (
     ClosablePullRequests,
@@ -23,7 +22,7 @@ from domain_model.github.repository_client import (
     IssueBoard,
     IssueTracker,
 )
-from domain_model.github.vocabulary import ClosingKeyword, IssueState, IssueStateReason
+from domain_model.github.vocabulary import IssueState, IssueStateReason
 from domain_model.repository import Repository
 
 from github_workflow.command_line import PriorityLevel
@@ -41,6 +40,7 @@ from github_workflow.exceptions import (
 )
 from github_workflow.labels import DescribedLabel
 from github_workflow.proofs import FindingTest, Proof, ProofOutcome, ProofRunner
+from github_workflow.pull_request_description import AddressedIssueNumber
 from github_workflow.report_lines import (
     Emphasis,
     Highlight,
@@ -50,10 +50,11 @@ from github_workflow.report_lines import (
 from github_workflow.report_section import ReportGroup, ReportSection
 from github_workflow.upstream import IssueMoveSuggestion
 from github_workflow.work import (
-    DraftOpening,
     PullRequestOpenedLabelling,
     PullRequestRetirement,
+    WorkPrecondition,
 )
+from github_workflow.why_it_matters import WhyItMattersSection
 from github_workflow.workflow_step import SessionLog, WorkflowStep
 
 # %% the labels
@@ -327,8 +328,8 @@ class FindingLabelling(WorkflowStep, ABC):
 @dataclass(frozen=True)
 class FindingFiling(FindingLabelling):
     """
-    A finding filed as an unreviewed issue with its priority; on a fork, its text ends
-    with the command line moving it upstream.
+    A finding filed as an unreviewed issue with its priority, its why after its text; on
+    a fork, its text ends with the command line moving it upstream.
     """
 
     title: str
@@ -339,6 +340,11 @@ class FindingFiling(FindingLabelling):
     body: str
     """
     What was found, and where.
+    """
+
+    why_it_matters: WhyItMattersSection
+    """
+    Why it matters, placed after its text.
     """
 
     priority: Priority
@@ -361,11 +367,12 @@ class FindingFiling(FindingLabelling):
         :return: The number of the issue filed.
         """
         self.create_missing_labels()
+        body = self.why_it_matters.place_into_issue_text(self.body)
         number = self.issues.open_issue(
-            self.title, self.body, [FindingStage.UNREVIEWED, self.priority, *evidence]
+            self.title, body, [FindingStage.UNREVIEWED, self.priority, *evidence]
         )
-        suggested = self.suggestion.append_once(self.body, number)
-        if suggested != self.body:
+        suggested = self.suggestion.append_once(body, number)
+        if suggested != body:
             self.issues.set_issue_description(number, suggested)
         return number
 
@@ -682,7 +689,9 @@ class SessionPullRequestClosing(PullRequestRetirement):
         self.pull_requests.add_comment(number, f"{reason} {ClosedBy.closing_note}")
         self.pull_requests.close_pull_request(number)
         description = self.pull_requests.pull_request(number).body or ""
-        PullRequestOpenedLabelling(self.pull_requests).unlabel(description)
+        PullRequestOpenedLabelling(self.pull_requests).remove_label_from_issues(
+            AddressedIssueNumber.read_issue_numbers(description)
+        )
         self.log.enter(f"closed pull request #{number}: {reason}")
 
 
@@ -714,8 +723,9 @@ class FindingComment(FindingChange):
 @dataclass(frozen=True)
 class FindingEdit(FindingChange):
     """
-    An open finding's title, text or both rewritten, the rest left as it is; on a fork,
-    a new text ends with the command line moving it upstream.
+    An open finding's title, text or both rewritten, the rest left as it is: a new text
+    keeps the finding's why; on a fork, it ends with the command line moving the
+    finding upstream.
 
     :raises NothingToEditError: If neither is given.
     """
@@ -738,13 +748,45 @@ class FindingEdit(FindingChange):
     def run(self) -> str:
         if self.title is None and self.body is None:
             raise NothingToEditError(self.number)
-        self.open_finding(FindingStage.open_stages)
+        issue = self.open_finding(FindingStage.open_stages)
         if self.title is not None:
             self.issues.set_issue_title(self.number, self.title)
         if self.body is not None:
-            body = self.suggestion.append_once(self.body, self.number)
-            self.issues.set_issue_description(self.number, body)
+            why = WhyItMattersSection.from_marked_text(issue.body)
+            body = self.body if why is None else why.place_into_issue_text(self.body)
+            self.issues.set_issue_description(
+                self.number, self.suggestion.append_once(body, self.number)
+            )
         return f"edited finding #{self.number}"
+
+
+@dataclass(frozen=True)
+class FindingExplanation(FindingChange):
+    """
+    An open finding's why replaced, its text and title left as they are; on a fork, its
+    text still ends with the command line moving it upstream.
+    """
+
+    why_it_matters: WhyItMattersSection
+    """
+    The new why.
+    """
+
+    suggestion: IssueMoveSuggestion
+    """
+    Keeps the command line moving the finding upstream at the end of its text.
+    """
+
+    def run(self) -> str:
+        """
+        :raises NotAFindingError: If the issue is no open finding.
+        """
+        issue = self.open_finding(FindingStage.open_stages)
+        body = self.suggestion.append_once(
+            self.why_it_matters.place_into_issue_text(issue.body), self.number
+        )
+        self.issues.set_issue_description(self.number, body)
+        return f"rewrote why finding #{self.number} matters"
 
 
 # %% proving
@@ -858,23 +900,18 @@ class FindingRecheck(WorkflowStep):
 
 
 @dataclass(frozen=True)
-class FindingDraftOpening(WorkflowStep):
+class WorkableFinding(WorkPrecondition):
     """
-    A draft pull request working on an open, accepted finding whose proof still holds,
-    closing the finding when it is merged.
+    A finding a pull request may work on: open, accepted, and proven by a test that
+    still fails.
     """
 
     recheck: FindingRecheck
     """
-    Runs the finding's proof again first.
+    Runs the finding's proof again.
     """
 
-    draft: DraftOpening
-    """
-    Opens the draft.
-    """
-
-    def run(self) -> str:
+    def check_holds(self) -> None:
         """
         :raises FindingNotAcceptedError: If it is no open, accepted finding.
         :raises MissingProofError: If it is not proven.
@@ -888,13 +925,6 @@ class FindingDraftOpening(WorkflowStep):
         ):
             raise FindingNotAcceptedError(number)
         self.recheck.run()
-        fixes = ClosingKeyword.FIXES.reference(number)
-        body = (
-            self.draft.body
-            if fixes in ClosingLines(self.draft.body).lines()
-            else f"{self.draft.body}\n\n{fixes}"
-        )
-        return f"{replace(self.draft, body=body).run()}, for finding #{number}"
 
 
 # %% the section

@@ -30,7 +30,7 @@ from domain_model.github.repository_client import (
 from domain_model.github.rest_models import RestPullRequest
 from domain_model.github.stack_models import Stack
 from domain_model.github.stack_placement import StackPlacement
-from domain_model.github.vocabulary import ClosingKeyword, PullRequestState
+from domain_model.github.vocabulary import PullRequestState
 from domain_model.repository import Repository
 
 import github_workflow
@@ -47,6 +47,7 @@ from github_workflow.exceptions import (
     DetachedHeadError,
     DraftUnfinishedError,
     MergeConflictError,
+    MissingWhyError,
     MergeInProgressError,
     NoMergeInProgressError,
     NothingToDescribeError,
@@ -60,7 +61,16 @@ from github_workflow.exceptions import (
     UnresolvedConflictError,
 )
 from github_workflow.locations import PluginDataDirectory
+from github_workflow.findings import FindingStage, Priority
+from github_workflow.labels import IssueLabel
 from github_workflow.policy import Attribution, WritePolicy
+from github_workflow.pull_request_description import (
+    AddressedIssue,
+    AddressedIssueNumber,
+    DescriptionChange,
+    IssueRelation,
+    PullRequestDescription,
+)
 from github_workflow.push_hook import PushHook
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.session import WorkflowSession
@@ -72,9 +82,11 @@ from github_workflow.work import (
     BranchStart,
     BranchSwitch,
     BranchSync,
-    ClosingLines,
     CommitWork,
+    DescribedDraftOpening,
+    DescribedRewrite,
     DescriptionEnding,
+    PersonCommandSuggestion,
     DescriptionRewrite,
     DraftOpening,
     LocalBranchFollowing,
@@ -86,10 +98,12 @@ from github_workflow.work import (
     PushWork,
     Replacement,
     RepositoryCloning,
+    WorkPrecondition,
 )
 from github_workflow.workflow_step import SessionLog
 
-from .issues_in_memory import IssuesInMemory
+from github_workflow.why_it_matters import WhyItMattersSection
+from .issues_in_memory import IssuesInMemory, build_finding, finding_why_section
 from .pull_requests import pull_request
 from .repositories_by_owner import RepositoriesByOwner
 from .scratch_github import ScratchGitHub
@@ -1295,25 +1309,6 @@ def test_a_new_description_s_ending_is_given_the_branch_it_targets() -> None:
     assert github.writes == [f"set_description 2 {described}"]
 
 
-def test_a_new_description_keeps_the_old_one_s_closing_lines() -> None:
-    closing = ClosingKeyword.FIXES.reference(148)
-    old = f"What it did.\n\n{closing}\n"
-
-    kept = ClosingLines(old).append_missing_lines("What it does now.\n")
-
-    assert kept == f"What it does now.\n\n{closing}\n"
-
-
-def test_a_closing_line_the_new_description_has_is_not_repeated() -> None:
-    closing = ClosingKeyword.FIXES.reference(148)
-    rewritten = f"What it does now.\n\n{closing}\n"
-
-    assert (
-        ClosingLines(f"What it did.\n\n{closing}\n").append_missing_lines(rewritten)
-        == rewritten
-    )
-
-
 def test_an_open_pull_request_s_title_is_rewritten() -> None:
     github = DraftsInMemory({1: RepositoriesByOwner.default_branch})
     step = rewrite(github, None, "A sharper title")
@@ -1343,6 +1338,223 @@ def test_a_rewrite_changing_nothing_is_refused() -> None:
         step.run()
 
     assert github.writes == []
+
+
+# %% descriptions the workflow writes
+
+
+@dataclass
+class NotHeldError(Exception):
+    """
+    Raised by the precondition that never holds.
+    """
+
+
+@dataclass(frozen=True)
+class NeverHolds(WorkPrecondition):
+    """
+    A precondition that never holds.
+    """
+
+    def check_holds(self) -> None:
+        raise NotHeldError()
+
+
+def test_a_draft_s_description_is_written_by_the_workflow(work: WritePolicy) -> None:
+    github = DraftsAndStacksInMemory({})
+    change = DescriptionChange("A body", WhyItMattersSection("Why it matters."))
+
+    DescribedDraftOpening(draft(work, github, None), change).run()
+
+    written = PullRequestDescription("A body", WhyItMattersSection("Why it matters."))
+    assert github.bodies == {1: written.to_markdown(work.remote.repository)}
+
+
+def test_a_draft_saying_nowhere_why_it_matters_opens_nothing(
+    work: WritePolicy,
+) -> None:
+    github = DraftsAndStacksInMemory({})
+
+    with pytest.raises(MissingWhyError):
+        DescribedDraftOpening(
+            draft(work, github, None), DescriptionChange("A body")
+        ).run()
+
+    assert github.writes == []
+
+
+def test_a_draft_whose_precondition_fails_opens_nothing(work: WritePolicy) -> None:
+    github = DraftsAndStacksInMemory({})
+    change = DescriptionChange("A body", WhyItMattersSection("Why it matters."))
+
+    with pytest.raises(NotHeldError):
+        DescribedDraftOpening(draft(work, github, None), change, (NeverHolds(),)).run()
+
+    assert github.writes == []
+
+
+@dataclass(frozen=True)
+class DescribedPullRequestsInMemory(DraftsInMemory):
+    """
+    The stand-in, each pull request answered with the description given for it.
+    """
+
+    descriptions: dict[int, str] = field(default_factory=dict)
+    """
+    The description of each pull request, by number.
+    """
+
+    def pull_request(self, number: int) -> RestPullRequest:
+        return replace(super().pull_request(number), body=self.descriptions.get(number))
+
+
+def findings_three_and_five() -> IssuesInMemory:
+    """:return: Finding 3, with a why, and finding 5, labelled as having a pull
+    request."""
+    three = build_finding(3, FindingStage.ACCEPTED, Priority.HIGH)
+    five = build_finding(5, FindingStage.ACCEPTED, Priority.LOW)
+    return IssuesInMemory(
+        {
+            3: replace(
+                three,
+                body=finding_why_section().place_into_issue_text("What was found."),
+            ),
+            5: replace(five, labels=(*five.labels, IssueLabel.PULL_REQUEST_OPENED)),
+        }
+    )
+
+
+def fixed_issues(board: IssuesInMemory, *numbers: int) -> tuple[AddressedIssue, ...]:
+    """
+    :param board: The issues.
+    :param numbers: Issues on it a pull request fixes.
+    :return: Them, as the board has them.
+    """
+    return tuple(
+        AddressedIssueNumber(number, IssueRelation.FIXES).read_issue(board)
+        for number in numbers
+    )
+
+
+def pull_request_one_rewrite(
+    old: PullRequestDescription, board: IssuesInMemory, change: DescriptionChange
+) -> tuple[DescribedRewrite, DescribedPullRequestsInMemory]:
+    """
+    :param old: What pull request 1's description says now.
+    :param board: The issues it addresses.
+    :param change: What the session changes in it.
+    :return: The rewrite of pull request 1, and the pull requests it writes to.
+    """
+    github = DescribedPullRequestsInMemory(
+        {1: RepositoriesByOwner.default_branch},
+        descriptions={1: old.to_markdown(ScratchGitHub.owned)},
+    )
+    labelling = PullRequestOpenedLabelling(board)
+    return DescribedRewrite(rewrite(github, None), change, labelling), github
+
+
+def test_a_rewrite_keeps_what_the_change_leaves_out() -> None:
+    board = findings_three_and_five()
+    old = PullRequestDescription(
+        "What it did.", WhyItMattersSection("Why."), fixed_issues(board, 3)
+    )
+    step, github = pull_request_one_rewrite(
+        old, board, DescriptionChange(change_details="What it does now.")
+    )
+
+    step.run()
+
+    new = replace(old, change_details="What it does now.")
+    assert github.writes == [
+        f"set_description 1 {new.to_markdown(ScratchGitHub.owned)}"
+    ]
+
+
+def test_a_dropped_issue_loses_its_line_and_its_label() -> None:
+    board = findings_three_and_five()
+    old = PullRequestDescription(
+        "What it does.", addressed_issues=fixed_issues(board, 3, 5)
+    )
+    step, github = pull_request_one_rewrite(
+        old, board, DescriptionChange(dropped_issues=(5,))
+    )
+
+    step.run()
+
+    written = github.writes[0].removeprefix("set_description 1 ")
+    assert AddressedIssueNumber.read_issue_numbers(written) == [3]
+    assert IssueLabel.PULL_REQUEST_OPENED not in board.issue(5).labels
+
+
+def test_a_newly_fixed_issue_is_labelled_as_having_a_pull_request() -> None:
+    board = findings_three_and_five()
+    old = PullRequestDescription(
+        "What it does.", addressed_issues=fixed_issues(board, 5)
+    )
+    three = AddressedIssueNumber(3, IssueRelation.FIXES)
+    step, _ = pull_request_one_rewrite(
+        old, board, DescriptionChange(added_issues=(three,))
+    )
+
+    step.run()
+
+    assert IssueLabel.PULL_REQUEST_OPENED in board.issue(3).labels
+
+
+def test_a_new_title_alone_leaves_the_description_as_it_is() -> None:
+    board = findings_three_and_five()
+    old = PullRequestDescription("What it does.", WhyItMattersSection("Why."))
+    step, github = pull_request_one_rewrite(old, board, DescriptionChange())
+
+    replace(step, rewrite=replace(step.rewrite, title="A sharper title")).run()
+
+    assert github.writes == ["set_issue_title 1 A sharper title"]
+
+
+@dataclass(frozen=True)
+class SuggestionInMemory(PersonCommandSuggestion):
+    """
+    Suggests one command line for every pull request, recording each one asked about.
+    """
+
+    asked: list[tuple[int, BranchName]] = field(default_factory=list)
+    """
+    Each pull request and branch a command was asked for.
+    """
+
+    @classproperty
+    def command_line(cls) -> str:
+        """
+        The command line it suggests.
+        """
+        return "run this"
+
+    def suggest_person_command(self, number: int, branch: BranchName) -> str | None:
+        self.asked.append((number, branch))
+        return self.command_line
+
+
+@pytest.mark.parametrize(
+    "change",
+    [DescriptionChange(change_details="Now."), DescriptionChange()],
+    ids=["new description", "new title alone"],
+)
+def test_a_rewrite_ends_with_the_command_suggested_to_the_person(
+    change: DescriptionChange,
+) -> None:
+    board = findings_three_and_five()
+    old = PullRequestDescription("What it did.", WhyItMattersSection("Why."))
+    step, github = pull_request_one_rewrite(old, board, change)
+    suggestion = SuggestionInMemory()
+
+    done = replace(
+        step,
+        rewrite=replace(step.rewrite, title="A title"),
+        person_command_suggestion=suggestion,
+    ).run()
+
+    assert done.endswith(SuggestionInMemory.command_line)
+    assert suggestion.asked == [(1, BranchName(github.name_branch(1)))]
 
 
 # %% commenting on a pull request

@@ -8,7 +8,7 @@ from __future__ import annotations
 import sys
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 
@@ -23,7 +23,6 @@ from domain_model.git.remotes import (
 )
 from domain_model.git.revisions import BranchName, LocalBranch
 from domain_model.git.working_tree import WorkingTree
-from domain_model.github.closing_lines import ClosingLines
 from domain_model.github.repository_client import (
     BranchStacks,
     ForkDetails,
@@ -60,6 +59,11 @@ from github_workflow.exceptions import (
 from github_workflow.labels import IssueLabel
 from github_workflow.notes.saving import NotesSave
 from github_workflow.policy import WritePolicy
+from github_workflow.pull_request_description import (
+    AddressedIssueNumber,
+    DescriptionChange,
+    PullRequestDescription,
+)
 from github_workflow.push_hook import PushHook
 from github_workflow.remotes import ForkUpstream
 from github_workflow.settings import WorkflowSettings
@@ -565,7 +569,9 @@ class DraftOpening(WorkflowStep):
             replaced = self.replacement.number
             self.replacement.retirement.retire(replaced, f"Replaced by #{number}.")
             opened += f"; closed #{replaced}, which it replaces: tell the person"
-        labelled = self.issue_labels.label(body)
+        labelled = self.issue_labels.add_label_to_issues(
+            AddressedIssueNumber.read_issue_numbers(body)
+        )
         if labelled:
             named = ", ".join(f"#{issue}" for issue in labelled)
             opened += f"; labelled {named} {IssueLabel.PULL_REQUEST_OPENED}"
@@ -599,7 +605,7 @@ class DraftOpening(WorkflowStep):
 class PullRequestOpenedLabelling:
     """
     :attr:`IssueLabel.PULL_REQUEST_OPENED` on the issues a pull request's description
-    closes, put on when it opens and taken off when it is closed unmerged.
+    addresses, put on when it opens and taken off when it is closed unmerged.
     """
 
     issues: IssueTracker
@@ -607,27 +613,26 @@ class PullRequestOpenedLabelling:
     The issues, and the labels they are given.
     """
 
-    def label(self, description: str) -> list[int]:
+    def add_label_to_issues(self, issues: Sequence[int]) -> list[int]:
         """
-        :param description: The opened pull request's description.
-        :return: The issues it closes, now labelled.
+        :param issues: The numbers of the issues an opened pull request addresses.
+        :return: The issues, now labelled.
         """
-        issues = ClosingLines(description).issues()
         if not issues:
             return []
         self.issues.create_missing_labels([IssueLabel.PULL_REQUEST_OPENED])
         for issue in issues:
             self.issues.add_labels(issue, [IssueLabel.PULL_REQUEST_OPENED])
-        return issues
+        return list(issues)
 
-    def unlabel(self, description: str) -> list[int]:
+    def remove_label_from_issues(self, issues: Sequence[int]) -> list[int]:
         """
-        :param description: The description of a pull request closed unmerged.
-        :return: The issues it closes that carried the label, no longer labelled.
+        :param issues: The numbers of issues a pull request no longer addresses.
+        :return: Those that carried the label, no longer labelled.
         """
         carrying = [
             issue
-            for issue in ClosingLines(description).issues()
+            for issue in issues
             if IssueLabel.PULL_REQUEST_OPENED in self.issues.issue(issue).labels
         ]
         for issue in carrying:
@@ -640,8 +645,7 @@ class DescriptionRewrite(WorkflowStep):
     """
     A new description, title or both for an open pull request on the owner's repository,
     a draft or ready for review, so it follows the pushed commits; a closed or merged
-    one keeps its own. A new description keeps the lines of the old one that close an
-    issue, and it ends as a draft onto the same base does.
+    one keeps its own. A new description ends as a draft onto the same base does.
 
     :raises NothingToDescribeError: If neither is given.
     :raises PullRequestNotOpenError: If the pull request is not open.
@@ -690,12 +694,11 @@ class DescriptionRewrite(WorkflowStep):
             raise ForeignPullRequestError(self.number, pull_request.head.repository)
         rewritten = []
         if self.body is not None:
-            kept = ClosingLines(pull_request.body or "").append_missing_lines(self.body)
             body = (
-                kept
+                self.body
                 if self.ending is None
                 else self.ending.append_once(
-                    kept, pull_request.head.branch, pull_request.base
+                    self.body, pull_request.head.branch, pull_request.base
                 )
             )
             self.pull_requests.set_description(self.number, body)
@@ -704,6 +707,159 @@ class DescriptionRewrite(WorkflowStep):
             self.pull_requests.set_issue_title(self.number, self.title)
             rewritten.append("title")
         return f"rewrote the {' and '.join(rewritten)} of #{self.number}"
+
+
+class WorkPrecondition(ABC):
+    """
+    What has to hold before a session opens or rewrites a pull request working on
+    something, checked before anything is written.
+    """
+
+    @abstractmethod
+    def check_holds(self) -> None:
+        """
+        Check that it holds.
+
+        :raises Exception: Of a type naming what does not hold, when it does not.
+        """
+
+
+@dataclass(frozen=True)
+class DescribedDraftOpening(WorkflowStep):
+    """
+    A draft whose description the workflow writes from the session's text and the issues
+    the draft addresses, once every precondition holds.
+    """
+
+    draft: DraftOpening
+    """
+    Opens the draft, with the description written.
+    """
+
+    change: DescriptionChange
+    """
+    What the session gives the description.
+    """
+
+    preconditions: tuple[WorkPrecondition, ...] = ()
+    """
+    What has to hold before the draft is opened.
+    """
+
+    def run(self) -> str:
+        """
+        :raises MissingWhyError: If the description would say nowhere why the draft
+            matters.
+        """
+        description = PullRequestDescription("").apply_change(
+            self.change, self.draft.issue_labels.issues
+        )
+        body = description.to_markdown(self.draft.policy.remote.repository)
+        for precondition in self.preconditions:
+            precondition.check_holds()
+        return replace(self.draft, body=body).run()
+
+
+class PersonCommandSuggestion(ABC):
+    """
+    A command line only the person runs, suggested to them once a pull request is
+    rewritten.
+    """
+
+    @abstractmethod
+    def suggest_person_command(self, number: int, branch: BranchName) -> str | None:
+        """
+        :param number: The rewritten pull request.
+        :param branch: Its branch.
+        :return: The command line, with when the person runs it; ``None`` when there
+            is none to suggest.
+        """
+
+
+@dataclass(frozen=True)
+class DescribedRewrite(WorkflowStep):
+    """
+    A rewrite of an open pull request whose new description the workflow writes from
+    what the session changes in it, the rest kept, once every precondition holds; the
+    issues it newly addresses are labelled, those it no longer addresses unlabelled, and
+    a command line the person may want to run then is suggested.
+    """
+
+    rewrite: DescriptionRewrite
+    """
+    Writes the new description and title.
+    """
+
+    change: DescriptionChange
+    """
+    What the session changes in the description.
+    """
+
+    issue_labels: PullRequestOpenedLabelling
+    """
+    Reads the issues addressed and labels them.
+    """
+
+    preconditions: tuple[WorkPrecondition, ...] = ()
+    """
+    What has to hold before the description is rewritten.
+    """
+
+    person_command_suggestion: PersonCommandSuggestion | None = None
+    """
+    Suggests a command line to the person once the pull request is rewritten, ``None``
+    for none.
+    """
+
+    def run(self) -> str:
+        """
+        :raises IssueNamedTwiceError: If the change names an issue twice.
+        :raises MissingWhyError: If the description would say nowhere why the pull
+            request matters.
+        """
+        rewrite = self.rewrite
+        pull_request = rewrite.pull_requests.pull_request(rewrite.number)
+        done = (
+            [rewrite.run()]
+            if self.change.is_empty
+            else self.rewrite_description(pull_request.body or "")
+        )
+        suggested = (
+            None
+            if self.person_command_suggestion is None
+            else self.person_command_suggestion.suggest_person_command(
+                rewrite.number, pull_request.head.branch
+            )
+        )
+        return "; ".join(done if suggested is None else [*done, suggested])
+
+    def rewrite_description(self, old: str) -> list[str]:
+        """
+        :param old: The pull request's description as it is.
+        :return: What was done.
+        """
+        rewrite = self.rewrite
+        issues = self.issue_labels.issues
+        description = PullRequestDescription.from_text(old, issues).apply_change(
+            self.change, issues
+        )
+        body = description.to_markdown(rewrite.repository)
+        for precondition in self.preconditions:
+            precondition.check_holds()
+        done = [replace(rewrite, body=body).run()]
+        labelled = self.issue_labels.add_label_to_issues(
+            [issue.number for issue in self.change.added_issues]
+        )
+        if labelled:
+            named = ", ".join(f"#{issue}" for issue in labelled)
+            done.append(f"labelled {named} {IssueLabel.PULL_REQUEST_OPENED}")
+        unlabelled = self.issue_labels.remove_label_from_issues(
+            self.change.dropped_issues
+        )
+        if unlabelled:
+            named = ", ".join(f"#{issue}" for issue in unlabelled)
+            done.append(f"took {IssueLabel.PULL_REQUEST_OPENED} off {named}")
+        return done
 
 
 @dataclass(frozen=True)

@@ -47,6 +47,7 @@ import github_workflow.session_start
 from github_workflow.checkout import ProjectCheckout
 from github_workflow.command_line import (
     BranchSubcommand,
+    CommandOption,
     FindingSubcommand,
     NotesSubcommand,
     RunnableCommand,
@@ -63,7 +64,7 @@ from github_workflow.exceptions import (
 from github_workflow.findings import (
     ClosedBy,
     FindingClosing,
-    FindingDraftOpening,
+    FindingExplanation,
     FindingFiling,
     FindingLabel,
     FindingListing,
@@ -73,19 +74,26 @@ from github_workflow.findings import (
     FindingUnproving,
     Priority,
     ProvenFindingFiling,
+    WorkableFinding,
 )
 from github_workflow.locations import NotesFile, PluginDirectory, ProjectFile
 from github_workflow.notes.branch import NotesBranch
 from github_workflow.notes.document import NotesBlock, NotesSection
 from github_workflow.plugin import ToolRepository
 from github_workflow.proofs import BranchProofRunner, FindingTest
+from github_workflow.pull_request_description import PullRequestDescription
 from github_workflow.pull_request_overview import PullRequestLabel
 from github_workflow.remotes import OwnedRemotes
 from github_workflow.report_lines import Speaker, Tone
 from github_workflow.session import WorkflowSession
 from github_workflow.settings import WorkflowSettings
-from github_workflow.upstream import IssueMoveSuggestion, UpstreamSuggestion
-from github_workflow.work import CheckoutOtherForkBases
+from github_workflow.upstream import (
+    IssueMoveSuggestion,
+    UpstreamDescriptionUpdate,
+    UpstreamSuggestion,
+)
+from github_workflow.work import CheckoutOtherForkBases, DescribedDraftOpening
+from github_workflow.why_it_matters import WhyItMattersSection
 
 from .repositories_by_owner import RepositoriesByOwner
 from .test_proofs import ProofDataset
@@ -705,6 +713,7 @@ def finding_checkout(
         ProofDataset.DOUBLING_SHOWN_WRONG.read_text()
     )
     (checkout.root / "finding.md").write_text("What was found.\n")
+    (checkout.root / "why.md").write_text("Why it matters.\n")
     return checkout
 
 
@@ -759,6 +768,7 @@ def test_a_finding_filed_with_a_test_is_proven_on_the_default_branch(
         FindingSubcommand.FILE,
         "--title=A title",
         "--body-file=finding.md",
+        "--why-file=why.md",
         f"--priority={Priority.HIGH.level}",
         "--test=tests/test_finding.py",
         "--python=project-python",
@@ -769,6 +779,7 @@ def test_a_finding_filed_with_a_test_is_proven_on_the_default_branch(
         github,
         "A title",
         "What was found.\n",
+        WhyItMattersSection("Why it matters."),
         Priority.HIGH,
         filed_on(github),
         read_finding_test(finding_checkout),
@@ -785,12 +796,35 @@ def test_a_finding_filed_without_a_test_runs_none(
         FindingSubcommand.FILE,
         "--title=A title",
         "--body-file=finding.md",
+        "--why-file=why.md",
         f"--priority={Priority.HIGH.level}",
     )
 
     github = owner_s_github(settings)
     assert step == FindingFiling(
-        github, "A title", "What was found.\n", Priority.HIGH, filed_on(github)
+        github,
+        "A title",
+        "What was found.\n",
+        WhyItMattersSection("Why it matters."),
+        Priority.HIGH,
+        filed_on(github),
+    )
+
+
+def test_a_finding_s_why_is_rewritten_through_the_command_line(
+    finding_checkout: ProjectCheckout, settings: WorkflowSettings
+) -> None:
+    step = build_step(
+        finding_checkout,
+        WorkflowCommand.FINDING,
+        FindingSubcommand.EXPLAIN,
+        "3",
+        "--why-file=why.md",
+    )
+
+    github = owner_s_github(settings)
+    assert step == FindingExplanation(
+        github, 3, WhyItMattersSection("Why it matters."), filed_on(github)
     )
 
 
@@ -996,12 +1030,16 @@ def test_a_draft_naming_a_finding_rechecks_it_first(
         "--python=project-python",
     )
 
-    assert isinstance(step, FindingDraftOpening)
-    assert step.recheck == FindingRecheck(
-        owner_s_github(settings),
-        build_proof_runner(finding_checkout),
-        {settings.owner, signed_in},
-        3,
+    assert isinstance(step, DescribedDraftOpening)
+    assert step.preconditions == (
+        WorkableFinding(
+            FindingRecheck(
+                owner_s_github(settings),
+                build_proof_runner(finding_checkout),
+                {settings.owner, signed_in},
+                3,
+            )
+        ),
     )
 
 
@@ -1032,9 +1070,9 @@ def test_a_draft_building_on_a_pull_request_rechecks_on_its_branch(
         "--python=project-python",
     )
 
-    assert isinstance(step, FindingDraftOpening)
+    assert isinstance(step, DescribedDraftOpening)
     runner = build_proof_runner(finding_checkout)
-    assert step.recheck.runner == replace(
+    assert step.preconditions[0].recheck.runner == replace(
         runner, branch=runner.branch.remote.branch(BranchName("below"))
     )
 
@@ -1238,6 +1276,23 @@ def test_the_person_opens_the_fork_s_pull_request_upstream(
     ]
 
 
+def test_the_person_s_update_upstream_copies_the_description_again(
+    repositories: RepositoriesByOwner, owned_url: str, settings: WorkflowSettings
+) -> None:
+    fork = Repository(settings.owner, RepositoriesByOwner.repository_name)
+
+    step = build_step(
+        repositories.clone(owned_url, "anywhere"),
+        WorkflowCommand.UPSTREAM,
+        fork.full_name,
+        "feature",
+        CommandOption.UPDATE,
+    )
+
+    assert isinstance(step, UpstreamDescriptionUpdate)
+    assert (step.repository, step.branch) == (fork, "feature")
+
+
 def test_a_session_opening_a_pull_request_upstream_is_refused(
     github: ReplayedApi,
     repositories: RepositoriesByOwner,
@@ -1305,7 +1360,7 @@ def test_a_draft_on_a_fork_ends_with_the_command_for_the_person(
     )
 
     fork = Repository(settings.owner, RepositoriesByOwner.repository_name)
-    assert step.ending == UpstreamSuggestion(
+    assert step.draft.ending == UpstreamSuggestion(
         owner_s_github(settings),
         fork,
         RepositoriesByOwner.default_branch,
@@ -1331,6 +1386,7 @@ def test_a_rewritten_description_of_a_fork_s_pull_request_keeps_the_upstream_lin
     )
     checkout = repositories.clone(owned_url, "session")
     (checkout.root / "body.md").write_text("What it does, after the review.\n")
+    (checkout.root / "why.md").write_text("Why it matters.\n")
 
     run(
         github_workflow.__name__,
@@ -1338,6 +1394,7 @@ def test_a_rewritten_description_of_a_fork_s_pull_request_keeps_the_upstream_lin
         WorkflowCommand.DESCRIBE,
         "3",
         f"--body-file={checkout.root / 'body.md'}",
+        f"--why-file={checkout.root / 'why.md'}",
     )
 
     written = [sent.payload for sent in github.sent if sent.method == "PATCH"]
@@ -1347,12 +1404,13 @@ def test_a_rewritten_description_of_a_fork_s_pull_request_keeps_the_upstream_lin
         RepositoriesByOwner.default_branch,
         CheckoutOtherForkBases(checkout.git),
     )
+    described = PullRequestDescription(
+        "What it does, after the review.", WhyItMattersSection("Why it matters.")
+    ).to_markdown(fork)
     assert written == [
         {
             RestJSONKey.BODY: suggestion.append_once(
-                "What it does, after the review.\n",
-                "feature",
-                RepositoriesByOwner.default_branch,
+                described, "feature", RepositoriesByOwner.default_branch
             )
         }
     ]
@@ -1368,8 +1426,9 @@ def test_a_rewritten_description_keeps_the_line_closing_its_finding(
         Repository(settings.owner, RepositoriesByOwner.repository_name)
     )
     opened = json.loads(UpstreamDataset.FORK_PULL_REQUESTS.value.read_text())[0]
-    closing = ClosingKeyword.FIXES.reference(148)
+    closing = ClosingKeyword.FIXES.reference(1)
     opened[RestJSONKey.BODY] = f"What it does.\n\n{closing}"
+    open_finding(github, route)
     for method in ("GET", "PATCH"):
         github.answers[(method, f"/{route.pull_request(3)}")] = RecordedAnswer(
             HTTPStatus.OK, json.dumps(opened)
@@ -1412,7 +1471,7 @@ def test_describe_without_a_number_rewrites_the_work_branch_s_own_pull_request(
     )
 
     opened = json.loads(UpstreamDataset.FORK_PULL_REQUESTS.value.read_text())[0]
-    assert step.number == opened[RestJSONKey.NUMBER]
+    assert step.rewrite.number == opened[RestJSONKey.NUMBER]
 
 
 # %% findings on another of the owner's repositories
@@ -1427,6 +1486,8 @@ def filing_elsewhere(directory: Path, repository: str, *more: str) -> object:
     """
     body = directory / "finding.md"
     body.write_text("What was refused, and why it should not have been.\n")
+    why = directory / "why.md"
+    why.write_text("Every session filing there is refused.\n")
     arguments = RunnableCommand.parser().parse_args(
         [
             WorkflowCommand.FINDING,
@@ -1435,6 +1496,7 @@ def filing_elsewhere(directory: Path, repository: str, *more: str) -> object:
             "--priority=medium",
             "--title=A read was refused",
             f"--body-file={body}",
+            f"--why-file={why}",
             *more,
         ]
     )
@@ -1451,6 +1513,7 @@ def test_a_finding_is_filed_on_the_workflow_from_outside_any_checkout(
         board,
         "A read was refused",
         (tmp_path / "finding.md").read_text(),
+        WhyItMattersSection("Every session filing there is refused."),
         Priority.MEDIUM,
         filed_on(board),
     )

@@ -39,14 +39,3 @@ class ClosingLines:
             close, in order.
         """
         return [int(line.rpartition("#")[2]) for line in self.lines()]
-
-    def append_missing_lines(self, rewritten: str) -> str:
-        """
-        :param rewritten: A new description replacing this one.
-        :return: It, ending with every closing line of this one it lacks.
-        """
-        held = ClosingLines(rewritten).lines()
-        missing = [line for line in self.lines() if line not in held]
-        if not missing:
-            return rewritten
-        return f"{rewritten.rstrip()}\n\n" + "\n".join(missing) + "\n"

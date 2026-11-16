@@ -114,3 +114,21 @@ class MalformedRepositoryError(DataclassException, ValueError):
 
     def suggest_correction(self) -> str:
         return ""
+
+
+@dataclass
+class MalformedPullRequestAddressError(DataclassException, ValueError):
+    """
+    Raised when an address is not the page of a pull request on GitHub.
+    """
+
+    address: str
+    """
+    The address that could not be parsed.
+    """
+
+    def error_message(self) -> str:
+        return f"expected a pull request's page on GitHub, got {self.address!r}"
+
+    def suggest_correction(self) -> str:
+        return "Give the address as https://github.com/<owner>/<name>/pull/<number>."

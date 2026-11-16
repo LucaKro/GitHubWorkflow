@@ -50,8 +50,9 @@ from github_workflow.tags import (
     TagSource,
     WaitingTags,
 )
+from github_workflow.why_it_matters import WhyItMattersSection
 
-from .issues_in_memory import IssuesInMemory, move_suggestion
+from .issues_in_memory import IssuesInMemory, finding_why_section, move_suggestion
 from .repositories_by_owner import RepositoriesByOwner
 from .scratch_github import ScratchGitHub
 from .test_discussions import clone_notes_branch
@@ -349,6 +350,7 @@ def filing(notes: NotesBranch, board: IssuesInMemory, comment: str) -> TagFiling
         move_suggestion(),
         "Test restarts",
         "The planner loses its goals on restart.",
+        finding_why_section(),
         Priority.at_level(PriorityLevel.MEDIUM),
     )
 
@@ -361,7 +363,8 @@ def test_filing_a_tag_files_an_unreviewed_finding_linking_the_comment(
     filing(notes, board, tag_urls()[0]).run()
 
     issue = board.open_issues[1]
-    assert (issue.labels, board.descriptions[1].splitlines()[-1]) == (
+    text = WhyItMattersSection.workflow_section.cut_out(board.descriptions[1])
+    assert (issue.labels, text.splitlines()[-1]) == (
         (FindingStage.UNREVIEWED, Priority.at_level(PriorityLevel.MEDIUM)),
         f"Tagged in {tag_urls()[0]}",
     )

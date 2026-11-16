@@ -331,10 +331,11 @@ them:
   the pull request stacked on it moves onto the default branch, the stack made again
   from the open ones above. One the fork merged already, as the fork sync does, still
   has what is stacked on it moved
-- open draft pull requests, labelling every issue a draft's description closes
-  (`Fixes #N`) `pull request opened`, created where my repository lacks it; a pull
-  request a session closes unmerged takes the label off its issues again, and a draft
-  replacing one labels its own issues after the old one is closed
+- open draft pull requests, labelling every issue a draft addresses (`Fixes #N`, or
+  `Part of #N` for one it fixes only in part) `pull request opened`, created where my
+  repository lacks it; a pull request a session closes unmerged, or a `describe --drop`,
+  takes the label off its issues again, and a draft replacing one labels its own issues
+  after the old one is closed
 - on the work branch's own open pull request: add or remove labels the repository has
   (`label`), except `pull request: shelved`, which only I set, rewrite its description
   and title (`describe` without a number), and reply to or resolve its review threads
@@ -349,8 +350,11 @@ them:
   threads, which it always lists, with the link to turn them on or to the run's log. The workflow lives only on
   the notes branch, never on the default branch or upstream. Nothing is ever
   written upstream: having changed something for an upstream comment, the session says
-  so on the own pull request with `review addressed <number or address> --body-file <what
-  changed>`, which links the comment
+  so on the own pull request with `review addressed <number or address> --body-file
+  <what changed>`, which links the comment
+- name, after `describe` of a fork's pull request that is open upstream, the command
+  line copying its description there (`upstream <fork> <branch> --update`), and give it
+  to me when the change matters to the reviewers upstream
 - add a comment to a finding (`finding comment`), a closed one too, such as a correction
   after the fix landed, and on another of my repositories with `--repository`
 - delete branches that are merged or marked discarded, still at the commit they were
@@ -390,9 +394,13 @@ Everything else written to GitHub needs me to ask for it.
 
 - Opening a fork's pull request on its upstream: `github-workflow upstream <fork>
   <branch>` opens it,
-  ready for review, with the same title and a description linking back to the fork's
-  pull request, which then links to it and is labelled `opened upstream` (blue, created
-  on the fork when missing), so the fork's list shows what has gone upstream. It
+  ready for review, with the same title and a copy of the fork's description, without
+  its `Fixes`/`Part of` lines or the command line and every issue number naming the
+  fork, linking back to the fork's pull request, which then links to it and is labelled
+  `opened upstream` (blue, created on the fork when missing), so the fork's list shows
+  what has gone upstream. With `--update`, it copies the fork's description and title
+  to the pull request already open upstream again, asking me first when a maintainer
+  edited the description there since the last copy. It
   refuses a pull request that is not open, is stacked, or is open upstream already, and
   a refused run labels nothing.
 - No session runs it, not even with my go-ahead: the guard denies it, and the command
@@ -413,6 +421,17 @@ Everything else written to GitHub needs me to ask for it.
 - A pull request's description and title follow its pushed commits: `describe` rewrites
   them on any open pull request of mine, a draft or ready for review, when I say so,
   and on the work branch's own without asking; a closed or merged one keeps its own.
+- A pull request's description leads with why it matters, so a reviewer reads the
+  reason first, on one page: under *Why*, the session's own why (`--why-file`) and each
+  finding's why, copied word for word from the finding under its title and link; what
+  changes, how it is tested and what breaks (`--body-file`) follows, folded away. The
+  workflow writes it, and the lines naming the issues addressed (`Fixes #N`, `Part of
+  #N`), only from `--finding`, `--partly` and, on `describe`, `--drop`; a text holding
+  such a line is refused, and so is a description saying nowhere why it matters. Every
+  issue number in it names my repository, so it links there wherever it is copied.
+- Every finding says why it matters, in at most 600 characters, under its own *Why*
+  heading: `finding file` and `tag file` take it as `--why-file`, `finding explain`
+  rewrites it, on a session's own, and `finding edit` keeps it.
 - Starting a work branch from the default branch also fast-forwards my local default
   branch to GitHub's, unless it has commits of its own.
 - `branch switch` also switches to a branch only GitHub has, fetching it first.
